@@ -12,6 +12,9 @@ extern crate libz_sys;
 // The jsimpls module just implements traits so can be private
 mod jsimpls;
 
+// A hack to build the rusthook here and not in gecko-dev
+mod rusthook;
+
 // Modules with public definitions
 pub mod jsgc;
 pub mod jsid;
