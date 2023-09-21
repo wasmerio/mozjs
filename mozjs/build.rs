@@ -54,9 +54,11 @@ fn main() {
 
     fs::create_dir_all(&build_dir).expect("could not create build dir");
 
-    build_jsapi(&build_dir);
-    build_jsglue(&build_dir);
-    build_jsapi_bindings(&build_dir);
+    let object_build_dir = PathBuf::from("/Users/syrusakbary/Development/js-compute-runtime/runtime/spidermonkey/obj-release");
+    build_jsapi(&object_build_dir);
+    build_jsglue(&object_build_dir, &build_dir);
+    // build_jsapi_bindings(&object_build_dir, &build_dir);
+    build_fakejsapi_bindings(&build_dir);
 
     if env::var_os("MOZJS_FORCE_RERUN").is_none() {
         for var in ENV_VARS {
@@ -120,6 +122,11 @@ fn cc_flags() -> Vec<&'static str> {
             "-Wno-invalid-offsetof",
             "-Wno-unused-private-field",
         ]);
+        if target.contains("wasi") {
+            result.extend(&[
+                "-m32",
+            ]);
+        }
     }
 
     let is_apple = target.contains("apple");
@@ -257,22 +264,60 @@ fn build_jsapi(build_dir: &Path) {
         if target.contains("gnu") {
             println!("cargo:rustc-link-lib=stdc++");
         }
-    } else if target.contains("apple") || target.contains("freebsd") {
+    }else if target.contains("apple") || target.contains("freebsd") {
         println!("cargo:rustc-link-lib=c++");
-    } else {
+    } else if !target.contains("wasi"){
         println!("cargo:rustc-link-lib=stdc++");
+    }
+    else {
+        // if we are in WASI
+        let wasi_sdk_path = env::var("WASI_SDK").expect("The wasm32-wasi target requires WASI_SDK to be set");
+        let wasi_sysroot = PathBuf::from(&wasi_sdk_path).join("share/wasi-sysroot");
+
+        // libshit
+        println!(
+            "cargo:rustc-link-search=native=/Users/syrusakbary/Development/mozjs/mozjs/"
+        );
+        println!("cargo:rustc-link-lib=static=shit");
+
+        println!(
+             "cargo:rustc-link-search=native={}/obj-release/js/src/build", build_dir.display()
+        );
+
+        println!(
+            "cargo:rustc-link-search=native={}/lib/wasm32-wasi", wasi_sysroot.display()
+        );
+        println!("cargo:rustc-link-lib=wasi-emulated-getpid");
+
+        println!("cargo:rustc-link-lib=c++");
+        println!("cargo:rustc-link-lib=c++abi");
+
+        println!(
+            "cargo:rustc-link-search=native={}/lib/clang/16/lib/wasi", wasi_sdk_path
+        );
+        println!("cargo:rustc-link-lib=clang_rt.builtins-wasm32");
     }
 }
 
-fn build_jsglue(build_dir: &Path) {
+fn build_jsglue(object_build_dir: &Path, build_dir: &Path) {
     let mut build = cc::Build::new();
     build.cpp(true);
+
+    let target = env::var("TARGET").unwrap();
+    if target.contains("wasi") {
+        let wasi_sdk_path = env::var("WASI_SDK").expect("The wasm32-wasi target requires WASI_SDK to be set");
+        let wasi_sysroot = PathBuf::from(&wasi_sdk_path).join("share/wasi-sysroot");
+        let wasi_compiler = PathBuf::from(&wasi_sdk_path).join("bin/clang");
+        build.compiler(wasi_compiler);
+        build.flag(&format!("--sysroot={}", wasi_sysroot.display()));
+        build.cpp_set_stdlib(None);
+    }
 
     for flag in cc_flags() {
         build.flag_if_supported(flag);
     }
 
-    let config = format!("{}/js/src/js-confdefs.h", build_dir.display());
+    let config = format!("{}/js/src/js-confdefs.h", object_build_dir.display());
     if build.get_compiler().is_like_msvc() {
         build.flag_if_supported("-std:c++17");
         build.flag("-FI");
@@ -282,8 +327,8 @@ fn build_jsglue(build_dir: &Path) {
     build
         .flag(&config)
         .file("src/jsglue.cpp")
-        .include(build_dir.join("dist/include"))
-        .include(build_dir.join("js/src"))
+        .include(object_build_dir.join("dist/include"))
+        .include(object_build_dir.join("js/src"))
         .out_dir(build_dir.join("glue"))
         .compile("jsglue");
 }
@@ -293,7 +338,19 @@ fn build_jsglue(build_dir: &Path) {
 ///
 /// To add or remove which functions, types, and variables get bindings
 /// generated, see the `const` configuration variables below.
-fn build_jsapi_bindings(build_dir: &Path) {
+fn build_fakejsapi_bindings(build_dir: &Path) {
+    let contents = std::fs::read("jsapi.rs").unwrap();
+    let path = build_dir.join("jsapi.rs");
+    std::fs::write(path, contents)
+        .expect("Should write bindings to file OK");
+}
+
+/// Invoke bindgen on the JSAPI headers to produce raw FFI bindings for use from
+/// Rust.
+///
+/// To add or remove which functions, types, and variables get bindings
+/// generated, see the `const` configuration variables below.
+fn build_jsapi_bindings(object_build_dir: &Path, build_dir: &Path) {
     // By default, constructors, destructors and methods declared in .h files are inlined,
     // so their symbols aren't available. Adding the -fkeep-inlined-functions option
     // causes the jsapi library to bloat from 500M to 6G, so that's not an option.
@@ -314,9 +371,9 @@ fn build_jsapi_bindings(build_dir: &Path) {
         .with_codegen_config(config)
         .formatter(Formatter::Rustfmt)
         .clang_arg("-I")
-        .clang_arg(build_dir.join("dist/include").to_str().expect("UTF-8"))
+        .clang_arg(object_build_dir.join("dist/include").to_str().expect("UTF-8"))
         .clang_arg("-I")
-        .clang_arg(build_dir.join("js/src").to_str().expect("UTF-8"))
+        .clang_arg(object_build_dir.join("js/src").to_str().expect("UTF-8"))
         .clang_arg("-x")
         .clang_arg("c++");
 
@@ -343,14 +400,14 @@ fn build_jsapi_bindings(build_dir: &Path) {
 
     builder = builder.clang_arg("-include");
     builder = builder.clang_arg(
-        build_dir
+        object_build_dir
             .join("js/src/js-confdefs.h")
             .to_str()
             .expect("UTF-8"),
     );
 
     println!(
-        "Generting bindings {:?} {}.",
+        "Generating bindings {:?} {}.",
         builder.command_line_flags(),
         bindgen::clang_version().full
     );
