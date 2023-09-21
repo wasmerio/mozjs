@@ -48,6 +48,18 @@ fn main() {
         build.flag_if_supported(flag);
     }
 
+    let target = env::var("TARGET").unwrap();
+    let is_wasi = target.contains("wasi");
+    if is_wasi {
+        let wasi_sdk_path =
+            env::var("WASI_SDK").expect("The wasm32-wasi target requires WASI_SDK to be set");
+        let wasi_sysroot = PathBuf::from(&wasi_sdk_path).join("share/wasi-sysroot");
+        let wasi_compiler = PathBuf::from(&wasi_sdk_path).join("bin/clang");
+        build.compiler(wasi_compiler);
+        build.flag(&format!("--sysroot={}", wasi_sysroot.display()));
+        build.cpp_set_stdlib(None);
+    }
+
     let confdefs_path: PathBuf = [&outdir, "js", "src", "js-confdefs.h"].iter().collect();
     let msvc = if build.get_compiler().is_like_msvc() {
         build.flag(&format!("-FI{}", confdefs_path.to_string_lossy()));
@@ -67,6 +79,16 @@ fn main() {
 
     build.compile("jsglue");
     println!("cargo:rerun-if-changed=src/jsglue.cpp");
+
+    if is_wasi {
+        // If is wasi rather than building the bindings we just copy the
+        // pre-generated bindings from the source tree.
+        let contents = std::fs::read("wasi-gluebindings.rs").unwrap();
+        let path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("gluebindings.rs");
+        std::fs::write(path, contents).expect("Couldn't write bindings!");
+        return;
+    }
+
     let mut builder = bindgen::Builder::default()
         .header("./src/jsglue.cpp")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))

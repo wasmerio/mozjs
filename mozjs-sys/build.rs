@@ -30,6 +30,7 @@ const ENV_VARS: &'static [&'static str] = &[
 
 const EXTRA_FILES: &'static [&'static str] = &[
     "makefile.cargo",
+    "makefile-wasi.cargo",
     "src/rustfmt.toml",
     "src/jsglue.hpp",
     "src/jsglue.cpp",
@@ -56,7 +57,15 @@ fn main() {
 
     build_jsapi(&build_dir);
     build_jsglue(&build_dir);
-    build_jsapi_bindings(&build_dir);
+
+    let target = env::var("TARGET").unwrap();
+    if target.contains("wasi") {
+        // We just copy the ones, as some of the things are not in the c files generated,
+        // but they are in the jsextended.o file
+        copy_jsapi_bindings(&build_dir);
+    } else {
+        build_jsapi_bindings(&build_dir);
+    }
 
     if env::var_os("MOZJS_FORCE_RERUN").is_none() {
         for var in ENV_VARS {
@@ -128,8 +137,17 @@ fn cc_flags() -> Vec<&'static str> {
     if is_apple || is_freebsd {
         result.push("-stdlib=libc++");
     }
+    if target.contains("wasi") {
+        result.extend(&["-m32"]);
+    }
 
     result
+}
+
+fn copy_jsapi_bindings(build_dir: &Path) {
+    let contents = std::fs::read("wasi-jsapi.rs").unwrap();
+    let path = build_dir.join("jsapi.rs");
+    std::fs::write(path, contents).expect("Should write bindings to file OK");
 }
 
 #[cfg(windows)]
@@ -235,11 +253,20 @@ fn build_jsapi(build_dir: &Path) {
     }
 
     let cargo_manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let cargo_makefile = if target.contains("wasi") {
+        // We use a special/simpler makefile for WASI
+        cargo_manifest_dir.join("wasi-makefile.cargo")
+    }
+    else {
+        cargo_manifest_dir.join("makefile.cargo")
+    };
+
     let result = cmd
         .args(&["-R", "-f"])
-        .arg(cargo_manifest_dir.join("makefile.cargo"))
+        .arg(cargo_makefile)
         .current_dir(&build_dir)
-        .env("SRC_DIR", &cargo_manifest_dir.join("mozjs"))
+        .env("BASE_DIR", &cargo_manifest_dir)
+        .env("MOZ_OBJDIR", &build_dir)
         .env("NO_RUST_PANIC_HOOK", "1")
         .status()
         .expect(&format!("Failed to run `{:?}`", make));
@@ -264,6 +291,38 @@ fn build_jsapi(build_dir: &Path) {
         }
     } else if target.contains("apple") || target.contains("freebsd") {
         println!("cargo:rustc-link-lib=c++");
+    } else if target.contains("wasi") {
+        // if we are in WASI
+        let wasi_sdk_path =
+            env::var("WASI_SDK").expect("The wasm32-wasi target requires WASI_SDK to be set");
+        let wasi_sysroot = PathBuf::from(&wasi_sdk_path).join("share/wasi-sysroot");
+
+        // js_static_extended (the extra functions)
+        println!(
+            "cargo:rustc-link-search=native={}/mozjs-libs",
+            build_dir.display()
+        );
+        println!("cargo:rustc-link-lib=static=js_static_extended");
+
+        println!(
+            "cargo:rustc-link-search=native={}/js/src/build",
+            build_dir.display()
+        );
+
+        println!(
+            "cargo:rustc-link-search=native={}/lib/wasm32-wasi",
+            wasi_sysroot.display()
+        );
+        println!("cargo:rustc-link-lib=wasi-emulated-getpid");
+
+        println!("cargo:rustc-link-lib=c++");
+        println!("cargo:rustc-link-lib=c++abi");
+
+        println!(
+            "cargo:rustc-link-search=native={}/lib/clang/16/lib/wasi",
+            wasi_sdk_path
+        );
+        println!("cargo:rustc-link-lib=clang_rt.builtins-wasm32");
     } else {
         println!("cargo:rustc-link-lib=stdc++");
     }
@@ -272,6 +331,17 @@ fn build_jsapi(build_dir: &Path) {
 fn build_jsglue(build_dir: &Path) {
     let mut build = cc::Build::new();
     build.cpp(true);
+
+    let target = env::var("TARGET").unwrap();
+    if target.contains("wasi") {
+        let wasi_sdk_path =
+            env::var("WASI_SDK").expect("The wasm32-wasi target requires WASI_SDK to be set");
+        let wasi_sysroot = PathBuf::from(&wasi_sdk_path).join("share/wasi-sysroot");
+        let wasi_compiler = PathBuf::from(&wasi_sdk_path).join("bin/clang");
+        build.compiler(wasi_compiler);
+        build.flag(&format!("--sysroot={}", wasi_sysroot.display()));
+        build.cpp_set_stdlib(None);
+    }
 
     for flag in cc_flags() {
         build.flag_if_supported(flag);
@@ -336,6 +406,13 @@ fn build_jsapi_bindings(build_dir: &Path) {
             builder = builder.clang_arg(flag);
         }
     }
+    let target = env::var("TARGET").unwrap();
+    if target.contains("wasi") {
+        let wasi_sdk_path =
+            env::var("WASI_SDK").expect("The wasm32-wasi target requires WASI_SDK to be set");
+        let wasi_sysroot = PathBuf::from(&wasi_sdk_path).join("share/wasi-sysroot");
+        builder = builder.clang_arg(&format!("--sysroot={}", wasi_sysroot.display()));
+    }
 
     if let Ok(flags) = env::var("CLANGFLAGS") {
         for flag in flags.split_whitespace() {
@@ -356,7 +433,7 @@ fn build_jsapi_bindings(build_dir: &Path) {
     );
 
     println!(
-        "Generting bindings {:?} {}.",
+        "Generating bindings {:?} {}.",
         builder.command_line_flags(),
         bindgen::clang_version().full
     );
