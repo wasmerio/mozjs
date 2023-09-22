@@ -6,10 +6,11 @@ set -x
 working_dir="$(pwd)"
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 mode="${1:-release}"
-mozconfig="${working_dir}/mozconfig-${mode}"
 objdir="obj-$mode"
+# MOZ_OBJDIR="${script_dir}/${objdir}"
+# TARGET="wasm32-wasmer-wasi"
 
-mozconfig="${working_dir}/mozconfig-${mode}"
+mozconfig="${script_dir}/mozconfig-${mode}"
 
 cat << EOF > "$mozconfig"
 mk_add_options AUTOCLOBBER=1
@@ -24,7 +25,7 @@ ac_add_options --without-intl-api
 ac_add_options --disable-tests
 ac_add_options --disable-clang-plugin
 ac_add_options --disable-jit
-ac_add_options --target=wasm32-wasi
+ac_add_options --target=${TARGET}
 ac_add_options --disable-js-shell
 ac_add_options --disable-export-js
 ac_add_options --disable-shared-js
@@ -68,7 +69,7 @@ cd mozjs-wasi
 MOZCONFIG="${mozconfig}" \
   ./mach build
 
-mkdir -p ${MOZ_OBJDIR}/mozjs-libs
+mkdir -p "${MOZ_OBJDIR}/mozjs-libs"
 
 while read -r file; do
   cp "${MOZ_OBJDIR}/$file" "${MOZ_OBJDIR}/mozjs-libs/"

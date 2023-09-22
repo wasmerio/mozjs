@@ -267,6 +267,7 @@ fn build_jsapi(build_dir: &Path) {
         .current_dir(&build_dir)
         .env("BASE_DIR", &cargo_manifest_dir)
         .env("MOZ_OBJDIR", &build_dir)
+        .env("WASI_SYSROOT", env::var("WASI_SYSROOT").expect("Please provide WASI_SYSROOT"))
         .env("NO_RUST_PANIC_HOOK", "1")
         .status()
         .expect(&format!("Failed to run `{:?}`", make));
@@ -293,9 +294,9 @@ fn build_jsapi(build_dir: &Path) {
         println!("cargo:rustc-link-lib=c++");
     } else if target.contains("wasi") {
         // if we are in WASI
-        let wasi_sdk_path =
-            env::var("WASI_SDK").expect("The wasm32-wasi target requires WASI_SDK to be set");
-        let wasi_sysroot = PathBuf::from(&wasi_sdk_path).join("share/wasi-sysroot");
+        let wasi_sysroot_path =
+            env::var("WASI_SYSROOT").expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
+        let wasi_sysroot = PathBuf::from(&wasi_sysroot_path);
 
         // js_static_extended (the extra functions)
         println!(
@@ -334,12 +335,10 @@ fn build_jsglue(build_dir: &Path) {
 
     let target = env::var("TARGET").unwrap();
     if target.contains("wasi") {
-        let wasi_sdk_path =
-            env::var("WASI_SDK").expect("The wasm32-wasi target requires WASI_SDK to be set");
-        let wasi_sysroot = PathBuf::from(&wasi_sdk_path).join("share/wasi-sysroot");
-        let wasi_compiler = PathBuf::from(&wasi_sdk_path).join("bin/clang");
-        build.compiler(wasi_compiler);
-        build.flag(&format!("--sysroot={}", wasi_sysroot.display()));
+        build.compiler("clang");
+        let wasi_sysroot_path =
+            env::var("WASI_SYSROOT").expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
+        build.flag(&format!("--sysroot={}", wasi_sysroot_path));
         build.cpp_set_stdlib(None);
     }
 
@@ -408,10 +407,9 @@ fn build_jsapi_bindings(build_dir: &Path) {
     }
     let target = env::var("TARGET").unwrap();
     if target.contains("wasi") {
-        let wasi_sdk_path =
-            env::var("WASI_SDK").expect("The wasm32-wasi target requires WASI_SDK to be set");
-        let wasi_sysroot = PathBuf::from(&wasi_sdk_path).join("share/wasi-sysroot");
-        builder = builder.clang_arg(&format!("--sysroot={}", wasi_sysroot.display()));
+        let wasi_sysroot_path =
+            env::var("WASI_SYSROOT").expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
+        builder = builder.clang_arg(&format!("--sysroot={}", wasi_sysroot_path));
     }
 
     if let Ok(flags) = env::var("CLANGFLAGS") {

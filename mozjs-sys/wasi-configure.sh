@@ -11,8 +11,7 @@ objdir="obj-$mode"
 
 fetch_commits=
 if [[ ! -a mozjs-wasi ]]; then
-
-  # Clone Gecko repository at the required revision
+  # Clone mozjs repo
   mkdir mozjs-wasi
 
   git -C mozjs-wasi init
@@ -32,3 +31,4 @@ fi
 cd mozjs-wasi
 
 ./mach --no-interactive bootstrap --application-choice=js --no-system-changes
+# ./mach configure --target=wasm32-wasi --with-wasi-sysroot=/Users/syrusakbary/Downloads/wasix-sysroot
