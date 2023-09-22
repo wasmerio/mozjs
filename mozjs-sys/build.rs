@@ -314,15 +314,20 @@ fn build_jsapi(build_dir: &Path) {
             "cargo:rustc-link-search=native={}/lib/wasm32-wasi",
             wasi_sysroot.display()
         );
-        println!("cargo:rustc-link-lib=wasi-emulated-getpid");
-
+        if target.contains("wasix") {
+            println!("cargo:rustc-link-lib=wasi-emulated-process-clocks");
+        }
+        else {
+            println!("cargo:rustc-link-lib=wasi-emulated-getpid");
+            println!(
+                "cargo:rustc-link-search=native={}/lib/wasm32-wasi",
+                wasi_sysroot.display()
+            );    
+        }
+        
         println!("cargo:rustc-link-lib=c++");
         println!("cargo:rustc-link-lib=c++abi");
 
-        println!(
-            "cargo:rustc-link-search=native={}/lib/clang/16/lib/wasi",
-            wasi_sdk_path
-        );
         println!("cargo:rustc-link-lib=clang_rt.builtins-wasm32");
     } else {
         println!("cargo:rustc-link-lib=stdc++");
