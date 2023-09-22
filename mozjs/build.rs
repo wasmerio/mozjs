@@ -51,11 +51,10 @@ fn main() {
     let target = env::var("TARGET").unwrap();
     let is_wasi = target.contains("wasi");
     if is_wasi {
-        let wasi_sdk_path =
-            env::var("WASI_SDK").expect("The wasm32-wasi target requires WASI_SDK to be set");
-        let wasi_sysroot = PathBuf::from(&wasi_sdk_path).join("share/wasi-sysroot");
-        let wasi_compiler = PathBuf::from(&wasi_sdk_path).join("bin/clang");
-        build.compiler(wasi_compiler);
+        let wasi_sysroot_path =
+            env::var("WASI_SYSROOT").expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
+        let wasi_sysroot = PathBuf::from(&wasi_sysroot_path);
+        build.compiler("clang++");
         build.flag(&format!("--sysroot={}", wasi_sysroot.display()));
         build.cpp_set_stdlib(None);
     }
