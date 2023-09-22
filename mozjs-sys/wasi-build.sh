@@ -67,6 +67,8 @@ esac
 cd mozjs-wasi
 
 MOZCONFIG="${mozconfig}" \
+CXXFLAGS="-matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix -ftls-model=local-exec -fno-trapping-math -lwasi-emulated-process-clocks" \
+CFLAGS="-matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix -ftls-model=local-exec -fno-trapping-math -lwasi-emulated-process-clocks" \
   ./mach build
 
 mkdir -p "${MOZ_OBJDIR}/mozjs-libs"
