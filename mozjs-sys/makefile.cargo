@@ -145,7 +145,7 @@ all: maybe-configure
 # Only touch and run configure if we need to, to avoid unnecessary rebuilds.
 # The second two time checks handle the case of configure.in and configure having
 # the same timestamp (e.g. after a git checkout)
-JSSRC := '$(SRC_DIR)'/js/src
+JSSRC := '$(BASE_DIR)'/mozjs/js/src
 maybe-configure:
 	[[ $(JSSRC)/configure -ot $(JSSRC)/configure.in ]] && touch $(JSSRC)/configure || true
 	[[ $(JSSRC)/old-configure -ot $(JSSRC)/old-configure.in ]] && touch $(JSSRC)/old-configure || true

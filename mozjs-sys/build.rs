@@ -251,6 +251,10 @@ fn build_jsapi(build_dir: &Path) {
     if target.contains("apple") || target.contains("freebsd") {
         cmd.env("CXXFLAGS", "-stdlib=libc++");
     }
+    if target.contains("wasi") {
+        let wasi_sysroot = env::var("WASI_SYSROOT").expect("Please provide WASI_SYSROOT for WASI targets");
+        cmd.env("WASI_SYSROOT", wasi_sysroot);
+    }
 
     let cargo_manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let cargo_makefile = if target.contains("wasi") {
@@ -267,7 +271,6 @@ fn build_jsapi(build_dir: &Path) {
         .current_dir(&build_dir)
         .env("BASE_DIR", &cargo_manifest_dir)
         .env("MOZ_OBJDIR", &build_dir)
-        .env("WASI_SYSROOT", env::var("WASI_SYSROOT").expect("Please provide WASI_SYSROOT"))
         .env("NO_RUST_PANIC_HOOK", "1")
         .status()
         .expect(&format!("Failed to run `{:?}`", make));
