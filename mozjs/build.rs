@@ -103,9 +103,9 @@ fn main() {
 
     if msvc {
         builder = builder.clang_args([
+            "-fms-compatibility",
             &format!("-FI{}", confdefs_path.to_string_lossy()),
             "-DWIN32",
-            "-GR-",
             "-std=c++17",
         ])
     } else {
