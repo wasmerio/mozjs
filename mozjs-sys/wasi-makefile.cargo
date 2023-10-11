@@ -142,7 +142,7 @@ all: configure
 	cd $(BASE_DIR) &&  ./wasi-build.sh
 
 configure:
-    cd $(BASE_DIR) && ./wasi-configure.sh
+	cd $(BASE_DIR) && ./wasi-configure.sh
 
 # Only touch and run configure if we need to, to avoid unnecessary rebuilds.
 # The second two time checks handle the case of configure.in and configure having
