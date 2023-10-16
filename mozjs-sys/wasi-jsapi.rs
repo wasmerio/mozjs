@@ -3477,7 +3477,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[link_name = "\u{1}_ZN2js12ToUint64SlowEP9JSContextN2JS6HandleINS2_5ValueEEEPm"]
+            #[link_name = "\u{1}_ZN2js12ToUint64SlowEP9JSContextN2JS6HandleINS2_5ValueEEEPy"]
             pub fn ToUint64Slow(
                 cx: *mut root::JSContext,
                 v: root::JS::HandleValue,
@@ -23109,999 +23109,999 @@ pub mod root {
             use_: root::JS::MemoryUse,
         );
     }
-        extern "C" {
-            #[doc = " Report an exception represented by the sprintf-like conversion of format\n and its arguments."]
-            #[link_name = "\u{1}_Z19JS_ReportErrorASCIIP9JSContextPKcz"]
-            pub fn JS_ReportErrorASCII(
-                cx: *mut root::JSContext,
-                format: *const ::std::os::raw::c_char,
-                ...
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z20JS_ReportErrorLatin1P9JSContextPKcz"]
-            pub fn JS_ReportErrorLatin1(
-                cx: *mut root::JSContext,
-                format: *const ::std::os::raw::c_char,
-                ...
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z18JS_ReportErrorUTF8P9JSContextPKcz"]
-            pub fn JS_ReportErrorUTF8(
-                cx: *mut root::JSContext,
-                format: *const ::std::os::raw::c_char,
-                ...
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z25JS_ReportErrorNumberASCIIP9JSContextPFPK19JSErrorFormatStringPvjES4_jz"]
-            pub fn JS_ReportErrorNumberASCII(
-                cx: *mut root::JSContext,
-                errorCallback: root::JSErrorCallback,
-                userRef: *mut ::std::os::raw::c_void,
-                errorNumber: ::std::os::raw::c_uint,
-                ...
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z27JS_ReportErrorNumberASCIIVAP9JSContextPFPK19JSErrorFormatStringPvjES4_jP13__va_list_tag"]
-            pub fn JS_ReportErrorNumberASCIIVA(
-                cx: *mut root::JSContext,
-                errorCallback: root::JSErrorCallback,
-                userRef: *mut ::std::os::raw::c_void,
-                errorNumber: ::std::os::raw::c_uint,
-                ap: *mut root::__va_list_tag,
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z26JS_ReportErrorNumberLatin1P9JSContextPFPK19JSErrorFormatStringPvjES4_jz"]
-            pub fn JS_ReportErrorNumberLatin1(
-                cx: *mut root::JSContext,
-                errorCallback: root::JSErrorCallback,
-                userRef: *mut ::std::os::raw::c_void,
-                errorNumber: ::std::os::raw::c_uint,
-                ...
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z28JS_ReportErrorNumberLatin1VAP9JSContextPFPK19JSErrorFormatStringPvjES4_jP13__va_list_tag"]
-            pub fn JS_ReportErrorNumberLatin1VA(
-                cx: *mut root::JSContext,
-                errorCallback: root::JSErrorCallback,
-                userRef: *mut ::std::os::raw::c_void,
-                errorNumber: ::std::os::raw::c_uint,
-                ap: *mut root::__va_list_tag,
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z24JS_ReportErrorNumberUTF8P9JSContextPFPK19JSErrorFormatStringPvjES4_jz"]
-            pub fn JS_ReportErrorNumberUTF8(
-                cx: *mut root::JSContext,
-                errorCallback: root::JSErrorCallback,
-                userRef: *mut ::std::os::raw::c_void,
-                errorNumber: ::std::os::raw::c_uint,
-                ...
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z26JS_ReportErrorNumberUTF8VAP9JSContextPFPK19JSErrorFormatStringPvjES4_jP13__va_list_tag"]
-            pub fn JS_ReportErrorNumberUTF8VA(
-                cx: *mut root::JSContext,
-                errorCallback: root::JSErrorCallback,
-                userRef: *mut ::std::os::raw::c_void,
-                errorNumber: ::std::os::raw::c_uint,
-                ap: *mut root::__va_list_tag,
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z29JS_ReportErrorNumberUTF8ArrayP9JSContextPFPK19JSErrorFormatStringPvjES4_jPPKc"]
-            pub fn JS_ReportErrorNumberUTF8Array(
-                cx: *mut root::JSContext,
-                errorCallback: root::JSErrorCallback,
-                userRef: *mut ::std::os::raw::c_void,
-                errorNumber: ::std::os::raw::c_uint,
-                args: *mut *const ::std::os::raw::c_char,
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z22JS_ReportErrorNumberUCP9JSContextPFPK19JSErrorFormatStringPvjES4_jz"]
-            pub fn JS_ReportErrorNumberUC(
-                cx: *mut root::JSContext,
-                errorCallback: root::JSErrorCallback,
-                userRef: *mut ::std::os::raw::c_void,
-                errorNumber: ::std::os::raw::c_uint,
-                ...
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z27JS_ReportErrorNumberUCArrayP9JSContextPFPK19JSErrorFormatStringPvjES4_jPPKDs"]
-            pub fn JS_ReportErrorNumberUCArray(
-                cx: *mut root::JSContext,
-                errorCallback: root::JSErrorCallback,
-                userRef: *mut ::std::os::raw::c_void,
-                errorNumber: ::std::os::raw::c_uint,
-                args: *mut *const u16,
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z28JS_ExpandErrorArgumentsASCIIP9JSContextPFPK19JSErrorFormatStringPvjEjP13JSErrorReportz"]
-            pub fn JS_ExpandErrorArgumentsASCII(
-                cx: *mut root::JSContext,
-                errorCallback: root::JSErrorCallback,
-                errorNumber: ::std::os::raw::c_uint,
-                reportp: *mut root::JSErrorReport,
-                ...
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Complain when an allocation size overflows the maximum supported limit."]
-            #[link_name = "\u{1}_Z27JS_ReportAllocationOverflowP9JSContext"]
-            pub fn JS_ReportAllocationOverflow(cx: *mut root::JSContext);
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z21JS_IsExceptionPendingP9JSContext"]
-            pub fn JS_IsExceptionPending(cx: *mut root::JSContext) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z24JS_IsThrowingOutOfMemoryP9JSContext"]
-            pub fn JS_IsThrowingOutOfMemory(cx: *mut root::JSContext) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z22JS_GetPendingExceptionP9JSContextN2JS13MutableHandleINS1_5ValueEEE"]
-            pub fn JS_GetPendingException(
-                cx: *mut root::JSContext,
-                vp: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z22JS_SetPendingExceptionP9JSContextN2JS6HandleINS1_5ValueEEENS1_22ExceptionStackBehaviorE"]
-            pub fn JS_SetPendingException(
-                cx: *mut root::JSContext,
-                v: root::JS::HandleValue,
-                behavior: root::JS::ExceptionStackBehavior,
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z24JS_ClearPendingExceptionP9JSContext"]
-            pub fn JS_ClearPendingException(cx: *mut root::JSContext);
-        }
-        extern "C" {
-            #[doc = " If the given object is an exception object, the exception will have (or be\n able to lazily create) an error report struct, and this function will return\n the address of that struct.  Otherwise, it returns nullptr. The lifetime\n of the error report struct that might be returned is the same as the\n lifetime of the exception object."]
-            #[link_name = "\u{1}_Z21JS_ErrorFromExceptionP9JSContextN2JS6HandleIP8JSObjectEE"]
-            pub fn JS_ErrorFromException(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-            ) -> *mut root::JSErrorReport;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_IsGlobalObjectP8JSObject"]
-            pub fn JS_IsGlobalObject(obj: *mut root::JSObject) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z18JS_NewGlobalObjectP9JSContextPK7JSClassP12JSPrincipalsN2JS21OnNewGlobalHookOptionERKNS6_12RealmOptionsE"]
-            pub fn JS_NewGlobalObject(
-                cx: *mut root::JSContext,
-                clasp: *const root::JSClass,
-                principals: *mut root::JSPrincipals,
-                hookOption: root::JS::OnNewGlobalHookOption,
-                options: *const root::JS::RealmOptions,
-            ) -> *mut root::JSObject;
-        }
-        extern "C" {
-            #[doc = " Spidermonkey does not have a good way of keeping track of what compartments\n should be marked on their own. We can mark the roots unconditionally, but\n marking GC things only relevant in live compartments is hard. To mitigate\n this, we create a static trace hook, installed on each global object, from\n which we can be sure the compartment is relevant, and mark it.\n\n It is still possible to specify custom trace hooks for global object classes.\n They can be provided via the RealmOptions passed to JS_NewGlobalObject."]
-            #[link_name = "\u{1}_Z24JS_GlobalObjectTraceHookP8JSTracerP8JSObject"]
-            pub fn JS_GlobalObjectTraceHook(trc: *mut root::JSTracer, global: *mut root::JSObject);
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z24JS_FireOnNewGlobalObjectP9JSContextN2JS6HandleIP8JSObjectEE"]
-            pub fn JS_FireOnNewGlobalObject(cx: *mut root::JSContext, global: root::JS::HandleObject);
-        }
-        pub type JSInterruptCallback =
-            ::std::option::Option<unsafe extern "C" fn(arg1: *mut root::JSContext) -> bool>;
-        extern "C" {
-            #[link_name = "\u{1}_Z20JS_CheckForInterruptP9JSContext"]
-            pub fn JS_CheckForInterrupt(cx: *mut root::JSContext) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z23JS_AddInterruptCallbackP9JSContextPFbS0_E"]
-            pub fn JS_AddInterruptCallback(
-                cx: *mut root::JSContext,
-                callback: root::JSInterruptCallback,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z27JS_DisableInterruptCallbackP9JSContext"]
-            pub fn JS_DisableInterruptCallback(cx: *mut root::JSContext) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z25JS_ResetInterruptCallbackP9JSContextb"]
-            pub fn JS_ResetInterruptCallback(cx: *mut root::JSContext, enable: bool);
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z27JS_RequestInterruptCallbackP9JSContext"]
-            pub fn JS_RequestInterruptCallback(cx: *mut root::JSContext);
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z34JS_RequestInterruptCallbackCanWaitP9JSContext"]
-            pub fn JS_RequestInterruptCallbackCanWait(cx: *mut root::JSContext);
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z9JS_mallocP9JSContextm"]
-            pub fn JS_malloc(cx: *mut root::JSContext, nbytes: usize) -> *mut ::std::os::raw::c_void;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z10JS_reallocP9JSContextPvmm"]
-            pub fn JS_realloc(
-                cx: *mut root::JSContext,
-                p: *mut ::std::os::raw::c_void,
-                oldBytes: usize,
-                newBytes: usize,
-            ) -> *mut ::std::os::raw::c_void;
-        }
-        extern "C" {
-            #[doc = " A wrapper for |js_free(p)| that may delay |js_free(p)| invocation as a\n performance optimization.  |cx| may be nullptr."]
-            #[link_name = "\u{1}_Z7JS_freeP9JSContextPv"]
-            pub fn JS_free(cx: *mut root::JSContext, p: *mut ::std::os::raw::c_void);
-        }
-        extern "C" {
-            #[doc = " Same as above, but for buffers that will be used with the BYOB\n (Bring Your Own Buffer) JSString creation functions, such as\n JS_NewLatin1String and JS_NewUCString"]
-            #[link_name = "\u{1}_Z16JS_string_mallocP9JSContextm"]
-            pub fn JS_string_malloc(
-                cx: *mut root::JSContext,
-                nbytes: usize,
-            ) -> *mut ::std::os::raw::c_void;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_string_reallocP9JSContextPvmm"]
-            pub fn JS_string_realloc(
-                cx: *mut root::JSContext,
-                p: *mut ::std::os::raw::c_void,
-                oldBytes: usize,
-                newBytes: usize,
-            ) -> *mut ::std::os::raw::c_void;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z14JS_string_freeP9JSContextPv"]
-            pub fn JS_string_free(cx: *mut root::JSContext, p: *mut ::std::os::raw::c_void);
-        }
-        extern "C" {
-            #[doc = " Define a property on obj.\n\n This function uses JS::ObjectOpResult to indicate conditions that ES6\n specifies as non-error failures. This is inconvenient at best, so use this\n function only if you are implementing a proxy handler's defineProperty()\n method. For all other purposes, use one of the many DefineProperty functions\n below that throw an exception in all failure cases.\n\n Implements: ES6 [[DefineOwnProperty]] internal method."]
-            #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_18PropertyDescriptorEEERNS1_14ObjectOpResultE"]
-            pub fn JS_DefinePropertyById(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                desc: root::JS::Handle<root::JS::PropertyDescriptor>,
-                result: *mut root::JS::ObjectOpResult,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Define a property on obj, throwing a TypeError if the attempt fails.\n This is the C++ equivalent of `Object.defineProperty(obj, id, desc)`."]
-            #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_18PropertyDescriptorEEE"]
-            pub fn JS_DefinePropertyById1(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                desc: root::JS::Handle<root::JS::PropertyDescriptor>,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_5ValueEEEj"]
-            pub fn JS_DefinePropertyById2(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                value: root::JS::Handle<root::JS::Value>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEPFbS0_jPNS1_5ValueEESB_j"]
-            pub fn JS_DefinePropertyById3(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                getter: root::JSNative,
-                setter: root::JSNative,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEES5_S5_j"]
-            pub fn JS_DefinePropertyById4(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                getter: root::JS::Handle<*mut root::JSObject>,
-                setter: root::JS::Handle<*mut root::JSObject>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEES5_j"]
-            pub fn JS_DefinePropertyById5(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                value: root::JS::Handle<*mut root::JSObject>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_IP8JSStringEEj"]
-            pub fn JS_DefinePropertyById6(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                value: root::JS::Handle<*mut root::JSString>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEij"]
-            pub fn JS_DefinePropertyById7(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                value: i32,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEjj"]
-            pub fn JS_DefinePropertyById8(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                value: u32,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEdj"]
-            pub fn JS_DefinePropertyById9(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                value: f64,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcNS2_INS1_5ValueEEEj"]
-            pub fn JS_DefineProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                value: root::JS::Handle<root::JS::Value>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcPFbS0_jPNS1_5ValueEESB_j"]
-            pub fn JS_DefineProperty1(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                getter: root::JSNative,
-                setter: root::JSNative,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcS5_S5_j"]
-            pub fn JS_DefineProperty2(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                getter: root::JS::Handle<*mut root::JSObject>,
-                setter: root::JS::Handle<*mut root::JSObject>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcS5_j"]
-            pub fn JS_DefineProperty3(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                value: root::JS::Handle<*mut root::JSObject>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcNS2_IP8JSStringEEj"]
-            pub fn JS_DefineProperty4(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                value: root::JS::Handle<*mut root::JSString>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcij"]
-            pub fn JS_DefineProperty5(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                value: i32,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcjj"]
-            pub fn JS_DefineProperty6(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                value: u32,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcdj"]
-            pub fn JS_DefineProperty7(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                value: f64,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS2_INS1_18PropertyDescriptorEEERNS1_14ObjectOpResultE"]
-            pub fn JS_DefineUCProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                desc: root::JS::Handle<root::JS::PropertyDescriptor>,
-                result: *mut root::JS::ObjectOpResult,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS2_INS1_18PropertyDescriptorEEE"]
-            pub fn JS_DefineUCProperty1(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                desc: root::JS::Handle<root::JS::PropertyDescriptor>,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS2_INS1_5ValueEEEj"]
-            pub fn JS_DefineUCProperty2(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                value: root::JS::Handle<root::JS::Value>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmS5_S5_j"]
-            pub fn JS_DefineUCProperty3(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                getter: root::JS::Handle<*mut root::JSObject>,
-                setter: root::JS::Handle<*mut root::JSObject>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmS5_j"]
-            pub fn JS_DefineUCProperty4(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                value: root::JS::Handle<*mut root::JSObject>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS2_IP8JSStringEEj"]
-            pub fn JS_DefineUCProperty5(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                value: root::JS::Handle<*mut root::JSString>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmij"]
-            pub fn JS_DefineUCProperty6(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                value: i32,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmjj"]
-            pub fn JS_DefineUCProperty7(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                value: u32,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmdj"]
-            pub fn JS_DefineUCProperty8(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                value: f64,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjNS2_INS1_5ValueEEEj"]
-            pub fn JS_DefineElement(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                value: root::JS::Handle<root::JS::Value>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjS5_S5_j"]
-            pub fn JS_DefineElement1(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                getter: root::JS::Handle<*mut root::JSObject>,
-                setter: root::JS::Handle<*mut root::JSObject>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjS5_j"]
-            pub fn JS_DefineElement2(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                value: root::JS::Handle<*mut root::JSObject>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjNS2_IP8JSStringEEj"]
-            pub fn JS_DefineElement3(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                value: root::JS::Handle<*mut root::JSString>,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjij"]
-            pub fn JS_DefineElement4(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                value: i32,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjjj"]
-            pub fn JS_DefineElement5(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                value: u32,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjdj"]
-            pub fn JS_DefineElement6(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                value: f64,
-                attrs: ::std::os::raw::c_uint,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Compute the expression `id in obj`.\n\n If obj has an own or inherited property obj[id], set *foundp = true and\n return true. If not, set *foundp = false and return true. On error, return\n false with an exception pending.\n\n Implements: ES6 [[Has]] internal method."]
-            #[link_name = "\u{1}_Z18JS_HasPropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEPb"]
-            pub fn JS_HasPropertyById(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                foundp: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z14JS_HasPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcPb"]
-            pub fn JS_HasProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                foundp: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_HasUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmPb"]
-            pub fn JS_HasUCProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                vp: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z13JS_HasElementP9JSContextN2JS6HandleIP8JSObjectEEjPb"]
-            pub fn JS_HasElement(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                foundp: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Determine whether obj has an own property with the key `id`.\n\n Implements: ES6 7.3.11 HasOwnProperty(O, P)."]
-            #[link_name = "\u{1}_Z21JS_HasOwnPropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEPb"]
-            pub fn JS_HasOwnPropertyById(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                foundp: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_HasOwnPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcPb"]
-            pub fn JS_HasOwnProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                foundp: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Get the value of the property `obj[id]`, or undefined if no such property\n exists. This is the C++ equivalent of `vp = Reflect.get(obj, id, receiver)`.\n\n Most callers don't need the `receiver` argument. Consider using\n JS_GetProperty instead. (But if you're implementing a proxy handler's set()\n method, it's often correct to call this function and pass the receiver\n through.)\n\n Implements: ES6 [[Get]] internal method."]
-            #[link_name = "\u{1}_Z23JS_ForwardGetPropertyToP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_5ValueEEENS1_13MutableHandleIS8_EE"]
-            pub fn JS_ForwardGetPropertyTo(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                receiver: root::JS::Handle<root::JS::Value>,
-                vp: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z22JS_ForwardGetElementToP9JSContextN2JS6HandleIP8JSObjectEEjS5_NS1_13MutableHandleINS1_5ValueEEE"]
-            pub fn JS_ForwardGetElementTo(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                receiver: root::JS::Handle<*mut root::JSObject>,
-                vp: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Get the value of the property `obj[id]`, or undefined if no such property\n exists. The result is stored in vp.\n\n Implements: ES6 7.3.1 Get(O, P)."]
-            #[link_name = "\u{1}_Z18JS_GetPropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS1_13MutableHandleINS1_5ValueEEE"]
-            pub fn JS_GetPropertyById(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                vp: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z14JS_GetPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcNS1_13MutableHandleINS1_5ValueEEE"]
-            pub fn JS_GetProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                vp: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_GetUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS1_13MutableHandleINS1_5ValueEEE"]
-            pub fn JS_GetUCProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                vp: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z13JS_GetElementP9JSContextN2JS6HandleIP8JSObjectEEjNS1_13MutableHandleINS1_5ValueEEE"]
-            pub fn JS_GetElement(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                vp: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Perform the same property assignment as `Reflect.set(obj, id, v, receiver)`.\n\n This function has a `receiver` argument that most callers don't need.\n Consider using JS_SetProperty instead.\n\n Implements: ES6 [[Set]] internal method."]
-            #[link_name = "\u{1}_Z23JS_ForwardSetPropertyToP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_5ValueEEES9_RNS1_14ObjectOpResultE"]
-            pub fn JS_ForwardSetPropertyTo(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                v: root::JS::Handle<root::JS::Value>,
-                receiver: root::JS::Handle<root::JS::Value>,
-                result: *mut root::JS::ObjectOpResult,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Perform the assignment `obj[id] = v`.\n\n This function performs non-strict assignment, so if the property is\n read-only, nothing happens and no error is thrown."]
-            #[link_name = "\u{1}_Z18JS_SetPropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_5ValueEEE"]
-            pub fn JS_SetPropertyById(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                v: root::JS::Handle<root::JS::Value>,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z14JS_SetPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcNS2_INS1_5ValueEEE"]
-            pub fn JS_SetProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                v: root::JS::Handle<root::JS::Value>,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_SetUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS2_INS1_5ValueEEE"]
-            pub fn JS_SetUCProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                v: root::JS::Handle<root::JS::Value>,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEjNS2_INS1_5ValueEEE"]
-            pub fn JS_SetElement(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                v: root::JS::Handle<root::JS::Value>,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEjS5_"]
-            pub fn JS_SetElement1(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                v: root::JS::Handle<*mut root::JSObject>,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEjNS2_IP8JSStringEE"]
-            pub fn JS_SetElement2(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                v: root::JS::Handle<*mut root::JSString>,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEji"]
-            pub fn JS_SetElement3(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                v: i32,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEjj"]
-            pub fn JS_SetElement4(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                v: u32,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEjd"]
-            pub fn JS_SetElement5(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                v: f64,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Delete a property. This is the C++ equivalent of\n `result = Reflect.deleteProperty(obj, id)`.\n\n This function has a `result` out parameter that most callers don't need.\n Unless you can pass through an ObjectOpResult provided by your caller, it's\n probably best to use the JS_DeletePropertyById signature with just 3\n arguments.\n\n Implements: ES6 [[Delete]] internal method."]
-            #[link_name = "\u{1}_Z21JS_DeletePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEERNS1_14ObjectOpResultE"]
-            pub fn JS_DeletePropertyById(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                result: *mut root::JS::ObjectOpResult,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_DeletePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcRNS1_14ObjectOpResultE"]
-            pub fn JS_DeleteProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                result: *mut root::JS::ObjectOpResult,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DeleteUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmRNS1_14ObjectOpResultE"]
-            pub fn JS_DeleteUCProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                result: *mut root::JS::ObjectOpResult,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_DeleteElementP9JSContextN2JS6HandleIP8JSObjectEEjRNS1_14ObjectOpResultE"]
-            pub fn JS_DeleteElement(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                result: *mut root::JS::ObjectOpResult,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Delete a property, ignoring strict failures. This is the C++ equivalent of\n the JS `delete obj[id]` in non-strict mode code."]
-            #[link_name = "\u{1}_Z21JS_DeletePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS1_11PropertyKeyE"]
-            pub fn JS_DeletePropertyById1(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::jsid,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_DeletePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKc"]
-            pub fn JS_DeleteProperty1(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z16JS_DeleteElementP9JSContextN2JS6HandleIP8JSObjectEEj"]
-            pub fn JS_DeleteElement1(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Get an array of the non-symbol enumerable properties of obj.\n This function is roughly equivalent to:\n\n     var result = [];\n     for (key in obj) {\n         result.push(key);\n     }\n     return result;\n\n This is the closest thing we currently have to the ES6 [[Enumerate]]\n internal method.\n\n The array of ids returned by JS_Enumerate must be rooted to protect its\n contents from garbage collection. Use JS::Rooted<JS::IdVector>."]
-            #[link_name = "\u{1}_Z12JS_EnumerateP9JSContextN2JS6HandleIP8JSObjectEENS1_13MutableHandleINS1_8GCVectorINS1_11PropertyKeyELm0EN2js15TempAllocPolicyEEEEE"]
-            pub fn JS_Enumerate(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                props: root::JS::MutableHandle<root::JS::IdVector>,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Other property-defining functions"]
-            #[link_name = "\u{1}_Z15JS_DefineObjectP9JSContextN2JS6HandleIP8JSObjectEEPKcPK7JSClassj"]
-            pub fn JS_DefineObject(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                clasp: *const root::JSClass,
-                attrs: ::std::os::raw::c_uint,
-            ) -> *mut root::JSObject;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DefinePropertiesP9JSContextN2JS6HandleIP8JSObjectEEPK14JSPropertySpec"]
-            pub fn JS_DefineProperties(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                ps: *const root::JSPropertySpec,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z28JS_AlreadyHasOwnPropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEPb"]
-            pub fn JS_AlreadyHasOwnPropertyById(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                foundp: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z24JS_AlreadyHasOwnPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcPb"]
-            pub fn JS_AlreadyHasOwnProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                foundp: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z26JS_AlreadyHasOwnUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmPb"]
-            pub fn JS_AlreadyHasOwnUCProperty(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                foundp: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z23JS_AlreadyHasOwnElementP9JSContextN2JS6HandleIP8JSObjectEEjPb"]
-            pub fn JS_AlreadyHasOwnElement(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                index: u32,
-                foundp: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z18JS_DefineFunctionsP9JSContextN2JS6HandleIP8JSObjectEEPK14JSFunctionSpec"]
-            pub fn JS_DefineFunctions(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                fs: *const root::JSFunctionSpec,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z17JS_DefineFunctionP9JSContextN2JS6HandleIP8JSObjectEEPKcPFbS0_jPNS1_5ValueEEjj"]
-            pub fn JS_DefineFunction(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const ::std::os::raw::c_char,
-                call: root::JSNative,
-                nargs: ::std::os::raw::c_uint,
-                attrs: ::std::os::raw::c_uint,
-            ) -> *mut root::JSFunction;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z19JS_DefineUCFunctionP9JSContextN2JS6HandleIP8JSObjectEEPKDsmPFbS0_jPNS1_5ValueEEjj"]
-            pub fn JS_DefineUCFunction(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                name: *const u16,
-                namelen: usize,
-                call: root::JSNative,
-                nargs: ::std::os::raw::c_uint,
-                attrs: ::std::os::raw::c_uint,
-            ) -> *mut root::JSFunction;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_Z21JS_DefineFunctionByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEPFbS0_jPNS1_5ValueEEjj"]
-            pub fn JS_DefineFunctionById(
-                cx: *mut root::JSContext,
-                obj: root::JS::Handle<*mut root::JSObject>,
-                id: root::JS::Handle<root::jsid>,
-                call: root::JSNative,
-                nargs: ::std::os::raw::c_uint,
-                attrs: ::std::os::raw::c_uint,
-            ) -> *mut root::JSFunction;
-        }
-        pub type JSIterateCompartmentCallback = ::std::option::Option<
+    extern "C" {
+        #[doc = " Report an exception represented by the sprintf-like conversion of format\n and its arguments."]
+        #[link_name = "\u{1}_Z19JS_ReportErrorASCIIP9JSContextPKcz"]
+        pub fn JS_ReportErrorASCII(
+            cx: *mut root::JSContext,
+            format: *const ::std::os::raw::c_char,
+            ...
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z20JS_ReportErrorLatin1P9JSContextPKcz"]
+        pub fn JS_ReportErrorLatin1(
+            cx: *mut root::JSContext,
+            format: *const ::std::os::raw::c_char,
+            ...
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z18JS_ReportErrorUTF8P9JSContextPKcz"]
+        pub fn JS_ReportErrorUTF8(
+            cx: *mut root::JSContext,
+            format: *const ::std::os::raw::c_char,
+            ...
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z25JS_ReportErrorNumberASCIIP9JSContextPFPK19JSErrorFormatStringPvjES4_jz"]
+        pub fn JS_ReportErrorNumberASCII(
+            cx: *mut root::JSContext,
+            errorCallback: root::JSErrorCallback,
+            userRef: *mut ::std::os::raw::c_void,
+            errorNumber: ::std::os::raw::c_uint,
+            ...
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z27JS_ReportErrorNumberASCIIVAP9JSContextPFPK19JSErrorFormatStringPvjES4_jP13__va_list_tag"]
+        pub fn JS_ReportErrorNumberASCIIVA(
+            cx: *mut root::JSContext,
+            errorCallback: root::JSErrorCallback,
+            userRef: *mut ::std::os::raw::c_void,
+            errorNumber: ::std::os::raw::c_uint,
+            ap: *mut root::__va_list_tag,
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z26JS_ReportErrorNumberLatin1P9JSContextPFPK19JSErrorFormatStringPvjES4_jz"]
+        pub fn JS_ReportErrorNumberLatin1(
+            cx: *mut root::JSContext,
+            errorCallback: root::JSErrorCallback,
+            userRef: *mut ::std::os::raw::c_void,
+            errorNumber: ::std::os::raw::c_uint,
+            ...
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z28JS_ReportErrorNumberLatin1VAP9JSContextPFPK19JSErrorFormatStringPvjES4_jP13__va_list_tag"]
+        pub fn JS_ReportErrorNumberLatin1VA(
+            cx: *mut root::JSContext,
+            errorCallback: root::JSErrorCallback,
+            userRef: *mut ::std::os::raw::c_void,
+            errorNumber: ::std::os::raw::c_uint,
+            ap: *mut root::__va_list_tag,
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z24JS_ReportErrorNumberUTF8P9JSContextPFPK19JSErrorFormatStringPvjES4_jz"]
+        pub fn JS_ReportErrorNumberUTF8(
+            cx: *mut root::JSContext,
+            errorCallback: root::JSErrorCallback,
+            userRef: *mut ::std::os::raw::c_void,
+            errorNumber: ::std::os::raw::c_uint,
+            ...
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z26JS_ReportErrorNumberUTF8VAP9JSContextPFPK19JSErrorFormatStringPvjES4_jP13__va_list_tag"]
+        pub fn JS_ReportErrorNumberUTF8VA(
+            cx: *mut root::JSContext,
+            errorCallback: root::JSErrorCallback,
+            userRef: *mut ::std::os::raw::c_void,
+            errorNumber: ::std::os::raw::c_uint,
+            ap: *mut root::__va_list_tag,
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z29JS_ReportErrorNumberUTF8ArrayP9JSContextPFPK19JSErrorFormatStringPvjES4_jPPKc"]
+        pub fn JS_ReportErrorNumberUTF8Array(
+            cx: *mut root::JSContext,
+            errorCallback: root::JSErrorCallback,
+            userRef: *mut ::std::os::raw::c_void,
+            errorNumber: ::std::os::raw::c_uint,
+            args: *mut *const ::std::os::raw::c_char,
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z22JS_ReportErrorNumberUCP9JSContextPFPK19JSErrorFormatStringPvjES4_jz"]
+        pub fn JS_ReportErrorNumberUC(
+            cx: *mut root::JSContext,
+            errorCallback: root::JSErrorCallback,
+            userRef: *mut ::std::os::raw::c_void,
+            errorNumber: ::std::os::raw::c_uint,
+            ...
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z27JS_ReportErrorNumberUCArrayP9JSContextPFPK19JSErrorFormatStringPvjES4_jPPKDs"]
+        pub fn JS_ReportErrorNumberUCArray(
+            cx: *mut root::JSContext,
+            errorCallback: root::JSErrorCallback,
+            userRef: *mut ::std::os::raw::c_void,
+            errorNumber: ::std::os::raw::c_uint,
+            args: *mut *const u16,
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z28JS_ExpandErrorArgumentsASCIIP9JSContextPFPK19JSErrorFormatStringPvjEjP13JSErrorReportz"]
+        pub fn JS_ExpandErrorArgumentsASCII(
+            cx: *mut root::JSContext,
+            errorCallback: root::JSErrorCallback,
+            errorNumber: ::std::os::raw::c_uint,
+            reportp: *mut root::JSErrorReport,
+            ...
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Complain when an allocation size overflows the maximum supported limit."]
+        #[link_name = "\u{1}_Z27JS_ReportAllocationOverflowP9JSContext"]
+        pub fn JS_ReportAllocationOverflow(cx: *mut root::JSContext);
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z21JS_IsExceptionPendingP9JSContext"]
+        pub fn JS_IsExceptionPending(cx: *mut root::JSContext) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z24JS_IsThrowingOutOfMemoryP9JSContext"]
+        pub fn JS_IsThrowingOutOfMemory(cx: *mut root::JSContext) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z22JS_GetPendingExceptionP9JSContextN2JS13MutableHandleINS1_5ValueEEE"]
+        pub fn JS_GetPendingException(
+            cx: *mut root::JSContext,
+            vp: root::JS::MutableHandleValue,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z22JS_SetPendingExceptionP9JSContextN2JS6HandleINS1_5ValueEEENS1_22ExceptionStackBehaviorE"]
+        pub fn JS_SetPendingException(
+            cx: *mut root::JSContext,
+            v: root::JS::HandleValue,
+            behavior: root::JS::ExceptionStackBehavior,
+        );
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z24JS_ClearPendingExceptionP9JSContext"]
+        pub fn JS_ClearPendingException(cx: *mut root::JSContext);
+    }
+    extern "C" {
+        #[doc = " If the given object is an exception object, the exception will have (or be\n able to lazily create) an error report struct, and this function will return\n the address of that struct.  Otherwise, it returns nullptr. The lifetime\n of the error report struct that might be returned is the same as the\n lifetime of the exception object."]
+        #[link_name = "\u{1}_Z21JS_ErrorFromExceptionP9JSContextN2JS6HandleIP8JSObjectEE"]
+        pub fn JS_ErrorFromException(
+            cx: *mut root::JSContext,
+            obj: root::JS::HandleObject,
+        ) -> *mut root::JSErrorReport;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_IsGlobalObjectP8JSObject"]
+        pub fn JS_IsGlobalObject(obj: *mut root::JSObject) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z18JS_NewGlobalObjectP9JSContextPK7JSClassP12JSPrincipalsN2JS21OnNewGlobalHookOptionERKNS6_12RealmOptionsE"]
+        pub fn JS_NewGlobalObject(
+            cx: *mut root::JSContext,
+            clasp: *const root::JSClass,
+            principals: *mut root::JSPrincipals,
+            hookOption: root::JS::OnNewGlobalHookOption,
+            options: *const root::JS::RealmOptions,
+        ) -> *mut root::JSObject;
+    }
+    extern "C" {
+        #[doc = " Spidermonkey does not have a good way of keeping track of what compartments\n should be marked on their own. We can mark the roots unconditionally, but\n marking GC things only relevant in live compartments is hard. To mitigate\n this, we create a static trace hook, installed on each global object, from\n which we can be sure the compartment is relevant, and mark it.\n\n It is still possible to specify custom trace hooks for global object classes.\n They can be provided via the RealmOptions passed to JS_NewGlobalObject."]
+        #[link_name = "\u{1}_Z24JS_GlobalObjectTraceHookP8JSTracerP8JSObject"]
+        pub fn JS_GlobalObjectTraceHook(trc: *mut root::JSTracer, global: *mut root::JSObject);
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z24JS_FireOnNewGlobalObjectP9JSContextN2JS6HandleIP8JSObjectEE"]
+        pub fn JS_FireOnNewGlobalObject(cx: *mut root::JSContext, global: root::JS::HandleObject);
+    }
+    pub type JSInterruptCallback =
+        ::std::option::Option<unsafe extern "C" fn(arg1: *mut root::JSContext) -> bool>;
+    extern "C" {
+        #[link_name = "\u{1}_Z20JS_CheckForInterruptP9JSContext"]
+        pub fn JS_CheckForInterrupt(cx: *mut root::JSContext) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z23JS_AddInterruptCallbackP9JSContextPFbS0_E"]
+        pub fn JS_AddInterruptCallback(
+            cx: *mut root::JSContext,
+            callback: root::JSInterruptCallback,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z27JS_DisableInterruptCallbackP9JSContext"]
+        pub fn JS_DisableInterruptCallback(cx: *mut root::JSContext) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z25JS_ResetInterruptCallbackP9JSContextb"]
+        pub fn JS_ResetInterruptCallback(cx: *mut root::JSContext, enable: bool);
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z27JS_RequestInterruptCallbackP9JSContext"]
+        pub fn JS_RequestInterruptCallback(cx: *mut root::JSContext);
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z34JS_RequestInterruptCallbackCanWaitP9JSContext"]
+        pub fn JS_RequestInterruptCallbackCanWait(cx: *mut root::JSContext);
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z9JS_mallocP9JSContextm"]
+        pub fn JS_malloc(cx: *mut root::JSContext, nbytes: usize) -> *mut ::std::os::raw::c_void;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z10JS_reallocP9JSContextPvmm"]
+        pub fn JS_realloc(
+            cx: *mut root::JSContext,
+            p: *mut ::std::os::raw::c_void,
+            oldBytes: usize,
+            newBytes: usize,
+        ) -> *mut ::std::os::raw::c_void;
+    }
+    extern "C" {
+        #[doc = " A wrapper for |js_free(p)| that may delay |js_free(p)| invocation as a\n performance optimization.  |cx| may be nullptr."]
+        #[link_name = "\u{1}_Z7JS_freeP9JSContextPv"]
+        pub fn JS_free(cx: *mut root::JSContext, p: *mut ::std::os::raw::c_void);
+    }
+    extern "C" {
+        #[doc = " Same as above, but for buffers that will be used with the BYOB\n (Bring Your Own Buffer) JSString creation functions, such as\n JS_NewLatin1String and JS_NewUCString"]
+        #[link_name = "\u{1}_Z16JS_string_mallocP9JSContextm"]
+        pub fn JS_string_malloc(
+            cx: *mut root::JSContext,
+            nbytes: usize,
+        ) -> *mut ::std::os::raw::c_void;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_string_reallocP9JSContextPvmm"]
+        pub fn JS_string_realloc(
+            cx: *mut root::JSContext,
+            p: *mut ::std::os::raw::c_void,
+            oldBytes: usize,
+            newBytes: usize,
+        ) -> *mut ::std::os::raw::c_void;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z14JS_string_freeP9JSContextPv"]
+        pub fn JS_string_free(cx: *mut root::JSContext, p: *mut ::std::os::raw::c_void);
+    }
+    extern "C" {
+        #[doc = " Define a property on obj.\n\n This function uses JS::ObjectOpResult to indicate conditions that ES6\n specifies as non-error failures. This is inconvenient at best, so use this\n function only if you are implementing a proxy handler's defineProperty()\n method. For all other purposes, use one of the many DefineProperty functions\n below that throw an exception in all failure cases.\n\n Implements: ES6 [[DefineOwnProperty]] internal method."]
+        #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_18PropertyDescriptorEEERNS1_14ObjectOpResultE"]
+        pub fn JS_DefinePropertyById(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            desc: root::JS::Handle<root::JS::PropertyDescriptor>,
+            result: *mut root::JS::ObjectOpResult,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Define a property on obj, throwing a TypeError if the attempt fails.\n This is the C++ equivalent of `Object.defineProperty(obj, id, desc)`."]
+        #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_18PropertyDescriptorEEE"]
+        pub fn JS_DefinePropertyById1(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            desc: root::JS::Handle<root::JS::PropertyDescriptor>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_5ValueEEEj"]
+        pub fn JS_DefinePropertyById2(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            value: root::JS::Handle<root::JS::Value>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEPFbS0_jPNS1_5ValueEESB_j"]
+        pub fn JS_DefinePropertyById3(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            getter: root::JSNative,
+            setter: root::JSNative,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEES5_S5_j"]
+        pub fn JS_DefinePropertyById4(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            getter: root::JS::Handle<*mut root::JSObject>,
+            setter: root::JS::Handle<*mut root::JSObject>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEES5_j"]
+        pub fn JS_DefinePropertyById5(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            value: root::JS::Handle<*mut root::JSObject>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_IP8JSStringEEj"]
+        pub fn JS_DefinePropertyById6(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            value: root::JS::Handle<*mut root::JSString>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEij"]
+        pub fn JS_DefinePropertyById7(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            value: i32,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEjj"]
+        pub fn JS_DefinePropertyById8(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            value: u32,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z21JS_DefinePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEdj"]
+        pub fn JS_DefinePropertyById9(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            value: f64,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcNS2_INS1_5ValueEEEj"]
+        pub fn JS_DefineProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            value: root::JS::Handle<root::JS::Value>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcPFbS0_jPNS1_5ValueEESB_j"]
+        pub fn JS_DefineProperty1(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            getter: root::JSNative,
+            setter: root::JSNative,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcS5_S5_j"]
+        pub fn JS_DefineProperty2(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            getter: root::JS::Handle<*mut root::JSObject>,
+            setter: root::JS::Handle<*mut root::JSObject>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcS5_j"]
+        pub fn JS_DefineProperty3(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            value: root::JS::Handle<*mut root::JSObject>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcNS2_IP8JSStringEEj"]
+        pub fn JS_DefineProperty4(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            value: root::JS::Handle<*mut root::JSString>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcij"]
+        pub fn JS_DefineProperty5(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            value: i32,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcjj"]
+        pub fn JS_DefineProperty6(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            value: u32,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DefinePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcdj"]
+        pub fn JS_DefineProperty7(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            value: f64,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS2_INS1_18PropertyDescriptorEEERNS1_14ObjectOpResultE"]
+        pub fn JS_DefineUCProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            desc: root::JS::Handle<root::JS::PropertyDescriptor>,
+            result: *mut root::JS::ObjectOpResult,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS2_INS1_18PropertyDescriptorEEE"]
+        pub fn JS_DefineUCProperty1(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            desc: root::JS::Handle<root::JS::PropertyDescriptor>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS2_INS1_5ValueEEEj"]
+        pub fn JS_DefineUCProperty2(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            value: root::JS::Handle<root::JS::Value>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmS5_S5_j"]
+        pub fn JS_DefineUCProperty3(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            getter: root::JS::Handle<*mut root::JSObject>,
+            setter: root::JS::Handle<*mut root::JSObject>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmS5_j"]
+        pub fn JS_DefineUCProperty4(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            value: root::JS::Handle<*mut root::JSObject>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS2_IP8JSStringEEj"]
+        pub fn JS_DefineUCProperty5(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            value: root::JS::Handle<*mut root::JSString>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmij"]
+        pub fn JS_DefineUCProperty6(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            value: i32,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmjj"]
+        pub fn JS_DefineUCProperty7(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            value: u32,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DefineUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmdj"]
+        pub fn JS_DefineUCProperty8(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            value: f64,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjNS2_INS1_5ValueEEEj"]
+        pub fn JS_DefineElement(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            value: root::JS::Handle<root::JS::Value>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjS5_S5_j"]
+        pub fn JS_DefineElement1(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            getter: root::JS::Handle<*mut root::JSObject>,
+            setter: root::JS::Handle<*mut root::JSObject>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjS5_j"]
+        pub fn JS_DefineElement2(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            value: root::JS::Handle<*mut root::JSObject>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjNS2_IP8JSStringEEj"]
+        pub fn JS_DefineElement3(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            value: root::JS::Handle<*mut root::JSString>,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjij"]
+        pub fn JS_DefineElement4(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            value: i32,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjjj"]
+        pub fn JS_DefineElement5(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            value: u32,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_DefineElementP9JSContextN2JS6HandleIP8JSObjectEEjdj"]
+        pub fn JS_DefineElement6(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            value: f64,
+            attrs: ::std::os::raw::c_uint,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Compute the expression `id in obj`.\n\n If obj has an own or inherited property obj[id], set *foundp = true and\n return true. If not, set *foundp = false and return true. On error, return\n false with an exception pending.\n\n Implements: ES6 [[Has]] internal method."]
+        #[link_name = "\u{1}_Z18JS_HasPropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEPb"]
+        pub fn JS_HasPropertyById(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            foundp: *mut bool,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z14JS_HasPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcPb"]
+        pub fn JS_HasProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            foundp: *mut bool,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_HasUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmPb"]
+        pub fn JS_HasUCProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            vp: *mut bool,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z13JS_HasElementP9JSContextN2JS6HandleIP8JSObjectEEjPb"]
+        pub fn JS_HasElement(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            foundp: *mut bool,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Determine whether obj has an own property with the key `id`.\n\n Implements: ES6 7.3.11 HasOwnProperty(O, P)."]
+        #[link_name = "\u{1}_Z21JS_HasOwnPropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEPb"]
+        pub fn JS_HasOwnPropertyById(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            foundp: *mut bool,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_HasOwnPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcPb"]
+        pub fn JS_HasOwnProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            foundp: *mut bool,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Get the value of the property `obj[id]`, or undefined if no such property\n exists. This is the C++ equivalent of `vp = Reflect.get(obj, id, receiver)`.\n\n Most callers don't need the `receiver` argument. Consider using\n JS_GetProperty instead. (But if you're implementing a proxy handler's set()\n method, it's often correct to call this function and pass the receiver\n through.)\n\n Implements: ES6 [[Get]] internal method."]
+        #[link_name = "\u{1}_Z23JS_ForwardGetPropertyToP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_5ValueEEENS1_13MutableHandleIS8_EE"]
+        pub fn JS_ForwardGetPropertyTo(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            receiver: root::JS::Handle<root::JS::Value>,
+            vp: root::JS::MutableHandleValue,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z22JS_ForwardGetElementToP9JSContextN2JS6HandleIP8JSObjectEEjS5_NS1_13MutableHandleINS1_5ValueEEE"]
+        pub fn JS_ForwardGetElementTo(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            receiver: root::JS::Handle<*mut root::JSObject>,
+            vp: root::JS::MutableHandleValue,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Get the value of the property `obj[id]`, or undefined if no such property\n exists. The result is stored in vp.\n\n Implements: ES6 7.3.1 Get(O, P)."]
+        #[link_name = "\u{1}_Z18JS_GetPropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS1_13MutableHandleINS1_5ValueEEE"]
+        pub fn JS_GetPropertyById(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            vp: root::JS::MutableHandleValue,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z14JS_GetPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcNS1_13MutableHandleINS1_5ValueEEE"]
+        pub fn JS_GetProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            vp: root::JS::MutableHandleValue,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_GetUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS1_13MutableHandleINS1_5ValueEEE"]
+        pub fn JS_GetUCProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            vp: root::JS::MutableHandleValue,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z13JS_GetElementP9JSContextN2JS6HandleIP8JSObjectEEjNS1_13MutableHandleINS1_5ValueEEE"]
+        pub fn JS_GetElement(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            vp: root::JS::MutableHandleValue,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Perform the same property assignment as `Reflect.set(obj, id, v, receiver)`.\n\n This function has a `receiver` argument that most callers don't need.\n Consider using JS_SetProperty instead.\n\n Implements: ES6 [[Set]] internal method."]
+        #[link_name = "\u{1}_Z23JS_ForwardSetPropertyToP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_5ValueEEES9_RNS1_14ObjectOpResultE"]
+        pub fn JS_ForwardSetPropertyTo(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            v: root::JS::Handle<root::JS::Value>,
+            receiver: root::JS::Handle<root::JS::Value>,
+            result: *mut root::JS::ObjectOpResult,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Perform the assignment `obj[id] = v`.\n\n This function performs non-strict assignment, so if the property is\n read-only, nothing happens and no error is thrown."]
+        #[link_name = "\u{1}_Z18JS_SetPropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEENS2_INS1_5ValueEEE"]
+        pub fn JS_SetPropertyById(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            v: root::JS::Handle<root::JS::Value>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z14JS_SetPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcNS2_INS1_5ValueEEE"]
+        pub fn JS_SetProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            v: root::JS::Handle<root::JS::Value>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_SetUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmNS2_INS1_5ValueEEE"]
+        pub fn JS_SetUCProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            v: root::JS::Handle<root::JS::Value>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEjNS2_INS1_5ValueEEE"]
+        pub fn JS_SetElement(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            v: root::JS::Handle<root::JS::Value>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEjS5_"]
+        pub fn JS_SetElement1(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            v: root::JS::Handle<*mut root::JSObject>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEjNS2_IP8JSStringEE"]
+        pub fn JS_SetElement2(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            v: root::JS::Handle<*mut root::JSString>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEji"]
+        pub fn JS_SetElement3(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            v: i32,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEjj"]
+        pub fn JS_SetElement4(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            v: u32,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z13JS_SetElementP9JSContextN2JS6HandleIP8JSObjectEEjd"]
+        pub fn JS_SetElement5(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            v: f64,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Delete a property. This is the C++ equivalent of\n `result = Reflect.deleteProperty(obj, id)`.\n\n This function has a `result` out parameter that most callers don't need.\n Unless you can pass through an ObjectOpResult provided by your caller, it's\n probably best to use the JS_DeletePropertyById signature with just 3\n arguments.\n\n Implements: ES6 [[Delete]] internal method."]
+        #[link_name = "\u{1}_Z21JS_DeletePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEERNS1_14ObjectOpResultE"]
+        pub fn JS_DeletePropertyById(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            result: *mut root::JS::ObjectOpResult,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DeletePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcRNS1_14ObjectOpResultE"]
+        pub fn JS_DeleteProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            result: *mut root::JS::ObjectOpResult,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DeleteUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmRNS1_14ObjectOpResultE"]
+        pub fn JS_DeleteUCProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            result: *mut root::JS::ObjectOpResult,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_DeleteElementP9JSContextN2JS6HandleIP8JSObjectEEjRNS1_14ObjectOpResultE"]
+        pub fn JS_DeleteElement(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            result: *mut root::JS::ObjectOpResult,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Delete a property, ignoring strict failures. This is the C++ equivalent of\n the JS `delete obj[id]` in non-strict mode code."]
+        #[link_name = "\u{1}_Z21JS_DeletePropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS1_11PropertyKeyE"]
+        pub fn JS_DeletePropertyById1(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::jsid,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DeletePropertyP9JSContextN2JS6HandleIP8JSObjectEEPKc"]
+        pub fn JS_DeleteProperty1(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z16JS_DeleteElementP9JSContextN2JS6HandleIP8JSObjectEEj"]
+        pub fn JS_DeleteElement1(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Get an array of the non-symbol enumerable properties of obj.\n This function is roughly equivalent to:\n\n     var result = [];\n     for (key in obj) {\n         result.push(key);\n     }\n     return result;\n\n This is the closest thing we currently have to the ES6 [[Enumerate]]\n internal method.\n\n The array of ids returned by JS_Enumerate must be rooted to protect its\n contents from garbage collection. Use JS::Rooted<JS::IdVector>."]
+        #[link_name = "\u{1}_Z12JS_EnumerateP9JSContextN2JS6HandleIP8JSObjectEENS1_13MutableHandleINS1_8GCVectorINS1_11PropertyKeyELm0EN2js15TempAllocPolicyEEEEE"]
+        pub fn JS_Enumerate(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            props: root::JS::MutableHandle<root::JS::IdVector>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Other property-defining functions"]
+        #[link_name = "\u{1}_Z15JS_DefineObjectP9JSContextN2JS6HandleIP8JSObjectEEPKcPK7JSClassj"]
+        pub fn JS_DefineObject(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            clasp: *const root::JSClass,
+            attrs: ::std::os::raw::c_uint,
+        ) -> *mut root::JSObject;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DefinePropertiesP9JSContextN2JS6HandleIP8JSObjectEEPK14JSPropertySpec"]
+        pub fn JS_DefineProperties(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            ps: *const root::JSPropertySpec,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z28JS_AlreadyHasOwnPropertyByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEPb"]
+        pub fn JS_AlreadyHasOwnPropertyById(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            foundp: *mut bool,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z24JS_AlreadyHasOwnPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKcPb"]
+        pub fn JS_AlreadyHasOwnProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            foundp: *mut bool,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z26JS_AlreadyHasOwnUCPropertyP9JSContextN2JS6HandleIP8JSObjectEEPKDsmPb"]
+        pub fn JS_AlreadyHasOwnUCProperty(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            foundp: *mut bool,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z23JS_AlreadyHasOwnElementP9JSContextN2JS6HandleIP8JSObjectEEjPb"]
+        pub fn JS_AlreadyHasOwnElement(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            index: u32,
+            foundp: *mut bool,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z18JS_DefineFunctionsP9JSContextN2JS6HandleIP8JSObjectEEPK14JSFunctionSpec"]
+        pub fn JS_DefineFunctions(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            fs: *const root::JSFunctionSpec,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DefineFunctionP9JSContextN2JS6HandleIP8JSObjectEEPKcPFbS0_jPNS1_5ValueEEjj"]
+        pub fn JS_DefineFunction(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            call: root::JSNative,
+            nargs: ::std::os::raw::c_uint,
+            attrs: ::std::os::raw::c_uint,
+        ) -> *mut root::JSFunction;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_DefineUCFunctionP9JSContextN2JS6HandleIP8JSObjectEEPKDsmPFbS0_jPNS1_5ValueEEjj"]
+        pub fn JS_DefineUCFunction(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const u16,
+            namelen: usize,
+            call: root::JSNative,
+            nargs: ::std::os::raw::c_uint,
+            attrs: ::std::os::raw::c_uint,
+        ) -> *mut root::JSFunction;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z21JS_DefineFunctionByIdP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_11PropertyKeyEEEPFbS0_jPNS1_5ValueEEjj"]
+        pub fn JS_DefineFunctionById(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            id: root::JS::Handle<root::jsid>,
+            call: root::JSNative,
+            nargs: ::std::os::raw::c_uint,
+            attrs: ::std::os::raw::c_uint,
+        ) -> *mut root::JSFunction;
+    }
+    pub type JSIterateCompartmentCallback = ::std::option::Option<
         unsafe extern "C" fn(
             arg1: *mut root::JSContext,
             arg2: *mut ::std::os::raw::c_void,
