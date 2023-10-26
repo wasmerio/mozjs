@@ -25,7 +25,7 @@ jobs:
       CCACHE: sccache
       SCCACHE_GHA_ENABLED: "true"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install deps
         run: brew install python llvm yasm
       - name: Run sccache-cache
@@ -33,7 +33,7 @@ jobs:
       - name: Build
         run: |
           cargo build --verbose ${{ matrix.features }}
-          cargo test --verbose ${{ matrix.features }}
+          cargo test --tests --examples --verbose ${{ matrix.features }}
   linux:
     env:
       RUSTC_WRAPPER: "sccache"
@@ -45,7 +45,7 @@ jobs:
       matrix:
         features: ["--features debugmozjs", ""]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Install deps
         run: |
@@ -55,7 +55,14 @@ jobs:
       - name: Build
         run: |
           cargo build --verbose ${{ matrix.features }}
-          cargo test --verbose ${{ matrix.features }}
+          cargo test --tests --examples --verbose ${{ matrix.features }}
+      - name: Check wrappers integrity
+        # we generate wrappers only without debugmozjs
+        if: ${{ matrix.features == '' }}
+        run: |
+          bash ./mozjs/src/generate_wrappers.sh
+          git diff --quiet --exit-code
+
   windows:
     runs-on: windows-latest
     strategy:
@@ -71,7 +78,7 @@ jobs:
       CCACHE: sccache
       SCCACHE_GHA_ENABLED: "true"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -89,12 +96,12 @@ jobs:
         if: ${{ !contains(matrix.target, 'aarch64') }}
         shell: cmd
         run: |
-          cargo test --verbose --target ${{ matrix.target }} ${{ matrix.features }}
+          cargo test --tests --examples --verbose --target ${{ matrix.target }} ${{ matrix.features }}
 
   android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install NDK
         uses: nttld/setup-ndk@v1
         id: setup-ndk
@@ -126,12 +133,15 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - run: cargo test --target ${{ matrix.target }}
+      - run: cargo test --tests --examples --target ${{ matrix.target }}
 
   integrity:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check formatting
+        run: cargo fmt --check
       - name: Get mozjs
         run: |
           bash ./mozjs-sys/etc/get_mozjs.sh

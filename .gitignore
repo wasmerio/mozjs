@@ -9,3 +9,6 @@
 *.so
 *.dll
 *.dylib
+
+# We are skipping the mozjs wasi dir
+mozjs-sys/mozjs-wasi

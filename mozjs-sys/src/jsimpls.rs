@@ -187,6 +187,7 @@ impl JS::AutoGCRooter {
         *autoGCRooters = self as *mut _ as _;
     }
 
+    #[allow(invalid_reference_casting)]
     pub unsafe fn remove_from_root_stack(&mut self) {
         assert!(*self.stackTop == self);
         // This hoop-jumping is needed because bindgen gives stackTop
