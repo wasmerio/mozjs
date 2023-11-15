@@ -619,6 +619,10 @@ bool shell::enableSourcePragmas = true;
 bool shell::enableAsyncStacks = false;
 bool shell::enableAsyncStackCaptureDebuggeeOnly = false;
 bool shell::enableStreams = false;
+bool shell::enableReadableByteStreams = false;
+bool shell::enableBYOBStreamReaders = false;
+bool shell::enableWritableStreams = false;
+bool shell::enableReadableStreamPipeTo = false;
 bool shell::enableWeakRefs = false;
 bool shell::enableToSource = false;
 bool shell::enablePropertyErrorMessageFix = false;
@@ -4701,6 +4705,19 @@ static bool SetJitCompilerOption(JSContext* cx, unsigned argc, Value* vp) {
     }
   }
 
+  // Changing code memory protection settings at runtime is not supported. Don't
+  // throw if not changing the setting because some jit-tests depend on that.
+  if (opt == JSJITCOMPILER_WRITE_PROTECT_CODE) {
+    uint32_t writeProtect;
+    MOZ_ALWAYS_TRUE(JS_GetGlobalJitCompilerOption(
+        cx, JSJITCOMPILER_WRITE_PROTECT_CODE, &writeProtect));
+    if (bool(number) != writeProtect) {
+      JS_ReportErrorASCII(cx, "Can't change code write protection at runtime");
+      return false;
+    }
+    return true;
+  }
+
   // Throw if trying to disable all the Wasm compilers.  The logic here is that
   // if we're trying to disable a compiler that is currently enabled and that is
   // the last compiler enabled then we must throw.
@@ -5879,10 +5896,12 @@ static bool OffThreadCompileModuleToStencil(JSContext* cx, unsigned argc,
                                             Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
-  if (args.length() != 1 || !args[0].isString()) {
-    JS_ReportErrorNumberASCII(cx, my_GetErrorMessage, nullptr,
-                              JSSMSG_INVALID_ARGS,
-                              "offThreadCompileModuleToStencil");
+  if (!args.requireAtLeast(cx, "offThreadCompileModuleToStencil", 1)) {
+    return false;
+  }
+  if (!args[0].isString()) {
+    const char* typeName = InformalValueTypeName(args[0]);
+    JS_ReportErrorASCII(cx, "expected string to parse, got %s", typeName);
     return false;
   }
 
@@ -5890,6 +5909,23 @@ static bool OffThreadCompileModuleToStencil(JSContext* cx, unsigned argc,
   CompileOptions options(cx);
   options.setIntroductionType("js shell offThreadCompileModuleToStencil")
       .setFileAndLine("<string>", 1);
+
+  if (args.length() >= 2) {
+    if (!args[1].isObject()) {
+      JS_ReportErrorASCII(cx,
+                          "offThreadCompileModuleToStencil: The 2nd argument "
+                          "must be an object");
+      return false;
+    }
+
+    // Offthread compilation requires that the debug metadata be set when the
+    // script is collected from offthread, rather than when compiled.
+    RootedObject opts(cx, &args[1].toObject());
+    if (!js::ParseCompileOptions(cx, options, opts, &fileNameBytes)) {
+      return false;
+    }
+  }
+
   options.setIsRunOnce(true).setSourceIsLazy(false);
   options.forceAsync = true;
 
@@ -6643,11 +6679,18 @@ static bool NewGlobal(JSContext* cx, unsigned argc, Value* vp) {
       creationOptions.setDefineSharedArrayBufferConstructor(v.toBoolean());
     }
 
-    if (!JS_GetProperty(cx, opts, "shouldResistFingerprinting", &v)) {
+    if (!JS_GetProperty(cx, opts, "forceUTC", &v)) {
       return false;
     }
     if (v.isBoolean()) {
-      behaviors.setShouldResistFingerprinting(v.toBoolean());
+      creationOptions.setForceUTC(v.toBoolean());
+    }
+
+    if (!JS_GetProperty(cx, opts, "alwaysUseFdlibm", &v)) {
+      return false;
+    }
+    if (v.isBoolean()) {
+      creationOptions.setAlwaysUseFdlibm(v.toBoolean());
     }
   }
 
@@ -8972,7 +9015,7 @@ static const JSFunctionSpecWithHelp shell_functions[] = {
 "  Check the syntax of a string, returning success value"),
 
     JS_FN_HELP("offThreadCompileModuleToStencil", OffThreadCompileModuleToStencil, 1, 0,
-"offThreadCompileModuleToStencil(code)",
+"offThreadCompileModuleToStencil(code[, options])",
 "  Compile |code| on a helper thread, returning a job ID. To wait for the\n"
 "  compilation to finish and and get the module stencil object call\n"
 "  |finishOffThreadStencil| passing the job ID."),
@@ -11371,6 +11414,17 @@ bool InitOptionParser(OptionParser& op) {
       !op.addBoolOption('\0', "enable-streams",
                         "Enable WHATWG Streams (default)") ||
       !op.addBoolOption('\0', "no-streams", "Disable WHATWG Streams") ||
+      !op.addBoolOption('\0', "enable-readable-byte-streams",
+                        "Enable support for WHATWG ReadableStreams of type "
+                        "'bytes'") ||
+      !op.addBoolOption('\0', "enable-byob-stream-readers",
+                        "Enable support for getting BYOB readers for WHATWG "
+                        "ReadableStreams of type \"bytes\"") ||
+      !op.addBoolOption('\0', "enable-writable-streams",
+                        "Enable support for WHATWG WritableStreams") ||
+      !op.addBoolOption('\0', "enable-readablestream-pipeto",
+                        "Enable support for "
+                        "WHATWG ReadableStream.prototype.pipeTo") ||
       !op.addBoolOption('\0', "disable-weak-refs", "Disable weak references") ||
       !op.addBoolOption('\0', "disable-tosource", "Disable toSource/uneval") ||
       !op.addBoolOption('\0', "disable-property-error-message-fix",
@@ -11416,6 +11470,11 @@ bool InitOptionParser(OptionParser& op) {
       !op.addStringOption('\0', "spectre-mitigations", "on/off",
                           "Whether Spectre mitigations are enabled (default: "
                           "off, on to enable)") ||
+      !op.addStringOption('\0', "write-protect-code", "on/off",
+                          "Whether the W^X policy is enforced to mark JIT code "
+                          "pages as either writable or executable but never "
+                          "both at the same time (default: on, off to "
+                          "disable)") ||
       !op.addStringOption('\0', "cache-ir-stubs", "on/off/call",
                           "Use CacheIR stubs (default: on, off to disable, "
                           "call to enable work-in-progress call ICs)") ||
@@ -11506,6 +11565,14 @@ bool InitOptionParser(OptionParser& op) {
       !op.addBoolOption('\0', "no-baseline", "Disable baseline compiler") ||
       !op.addBoolOption('\0', "baseline-eager",
                         "Always baseline-compile methods") ||
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+      !op.addBoolOption('\0', "portable-baseline-eager",
+                        "Always use the porbale baseline interpreter") ||
+      !op.addBoolOption('\0', "portable-baseline",
+                        "Enable Portable Baseline Interpreter (default)") ||
+      !op.addBoolOption('\0', "no-portable-baseline",
+                        "Disable Portable Baseline Interpreter") ||
+#endif
       !op.addIntOption(
           '\0', "baseline-warmup-threshold", "COUNT",
           "Wait for COUNT calls or iterations before baseline-compiling "
@@ -11893,7 +11960,6 @@ bool SetContextOptions(JSContext* cx, const OptionParser& op) {
   enableAsyncStacks = !op.getBoolOption("no-async-stacks");
   enableAsyncStackCaptureDebuggeeOnly =
       op.getBoolOption("async-stacks-capture-debuggee-only");
-  enableStreams = !op.getBoolOption("no-streams");
   enableWeakRefs = !op.getBoolOption("disable-weak-refs");
   enableToSource = !op.getBoolOption("disable-tosource");
   enablePropertyErrorMessageFix =
@@ -12019,6 +12085,11 @@ bool SetContextWasmOptions(JSContext* cx, const OptionParser& op) {
 
   enableWasmVerbose = op.getBoolOption("wasm-verbose");
   enableTestWasmAwaitTier2 = op.getBoolOption("test-wasm-await-tier2");
+  enableStreams = !op.getBoolOption("no-streams");
+  enableReadableByteStreams = op.getBoolOption("enable-readable-byte-streams");
+  enableBYOBStreamReaders = op.getBoolOption("enable-byob-stream-readers");
+  enableWritableStreams = op.getBoolOption("enable-writable-streams");
+  enableReadableStreamPipeTo = op.getBoolOption("enable-readablestream-pipeto");
 
   JS::ContextOptionsRef(cx)
       .setAsmJS(enableAsmJS)
@@ -12133,6 +12204,16 @@ bool SetContextJITOptions(JSContext* cx, const OptionParser& op) {
       jit::JitOptions.spectreJitToCxxCalls = false;
     } else {
       return OptionFailure("spectre-mitigations", str);
+    }
+  }
+
+  if (const char* str = op.getStringOption("write-protect-code")) {
+    if (strcmp(str, "on") == 0) {
+      jit::JitOptions.maybeSetWriteProtectCode(true);
+    } else if (strcmp(str, "off") == 0) {
+      jit::JitOptions.maybeSetWriteProtectCode(false);
+    } else {
+      return OptionFailure("write-protect-code", str);
     }
   }
 
@@ -12302,6 +12383,18 @@ bool SetContextJITOptions(JSContext* cx, const OptionParser& op) {
   if (op.getBoolOption("baseline-eager")) {
     jit::JitOptions.setEagerBaselineCompilation();
   }
+
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  if (op.getBoolOption("portable-baseline-eager")) {
+    jit::JitOptions.setEagerPortableBaselineInterpreter();
+  }
+  if (op.getBoolOption("portable-baseline")) {
+    jit::JitOptions.portableBaselineInterpreter = true;
+  }
+  if (op.getBoolOption("no-portable-baseline")) {
+    jit::JitOptions.portableBaselineInterpreter = false;
+  }
+#endif
 
   if (op.getBoolOption("blinterp")) {
     jit::JitOptions.baselineInterpreter = true;

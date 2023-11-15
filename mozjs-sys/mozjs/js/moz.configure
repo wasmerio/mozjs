@@ -59,6 +59,7 @@ set_config("JS_ENABLE_SMOOSH", enable_smoosh)
 set_define("JS_ENABLE_SMOOSH", enable_smoosh)
 
 include("../build/moz.configure/nspr.configure", when="--enable-compile-environment")
+include("../build/moz.configure/rust.configure", when="--enable-compile-environment")
 include("../build/moz.configure/bindgen.configure", when="--enable-compile-environment")
 
 set_config("JS_STANDALONE", js_standalone)
@@ -190,11 +191,34 @@ def enable_js_streams(value):
 set_config("MOZ_JS_STREAMS", enable_js_streams)
 set_define("MOZ_JS_STREAMS", enable_js_streams)
 
+# Portable Baseline Inteprreter
+# =======================================================
+option(
+    "--enable-portable-baseline-interp",
+    default=False,
+    help="{Enable|Disable} the portable baseline interpreter.",
+)
+set_define("ENABLE_PORTABLE_BASELINE_INTERP", depends_if("--enable-portable-baseline-interp")(lambda _: True))
+set_config("ENABLE_PORTABLE_BASELINE_INTERP", depends_if("--enable-portable-baseline-interp")(lambda _: True))
+
+# Option to always force PBL tier.
+option(
+    "--enable-portable-baseline-interp-force",
+    default=False,
+    help="{Enable|Disable} forcing use of the portable baseline interpreter.",
+)
+
+set_define("ENABLE_PORTABLE_BASELINE_INTERP_FORCE", depends_if("--enable-portable-baseline-interp-force")(lambda _: True))
+set_config("ENABLE_PORTABLE_BASELINE_INTERP_FORCE", depends_if("--enable-portable-baseline-interp-force")(lambda _: True))
+
+
 # JIT support
 # =======================================================
-@depends(target, "--enable-record-tuple")
-def jit_default(target, enable_record_tuple):
+@depends(target, "--enable-record-tuple", "--enable-portable-baseline-interp")
+def jit_default(target, enable_record_tuple, enable_portable_baseline_interp):
     if enable_record_tuple:
+        return False
+    if enable_portable_baseline_interp:
         return False
     if target.cpu in (
         "x86",
@@ -448,7 +472,7 @@ option("--enable-perf", env="JS_ION_PERF", help="Enable Linux perf integration")
 
 @depends("--enable-perf", target)
 def ion_perf(value, target):
-    is_linux = target.kernel == "Linux" and target.os == "GNU"
+    is_linux = target.kernel == "Linux"
     is_mac = target.kernel == "Darwin" and target.os == "OSX"
 
     if value and (is_linux or is_mac):
@@ -569,6 +593,16 @@ def aarch64_jscvt(fjcvtzs, target, simulator):
 
 
 set_define("MOZ_AARCH64_JSCVT", aarch64_jscvt)
+
+
+@depends(target)
+def has_pthread_jit_write_protect_np(target):
+    return target.os == "OSX" and target.cpu == "aarch64"
+
+
+# On Apple Silicon we use MAP_JIT with pthread_jit_write_protect_np to implement
+# JIT code write protection.
+set_define("JS_USE_APPLE_FAST_WX", True, when=has_pthread_jit_write_protect_np)
 
 # CTypes
 # =======================================================
@@ -1176,6 +1210,21 @@ set_define("U_USING_ICU_NAMESPACE", "0", when="--with-intl-api")
 
 # We build ICU as a static library.
 set_define("U_STATIC_IMPLEMENTATION", True, when=depends(system_icu)(lambda x: not x))
+
+
+# ECMAScript Temporal API Support (uses ICU)
+# ======================================================
+
+option("--with-temporal-api", default=False, help="Enable ECMAScript Temporal API")
+
+set_config("JS_HAS_TEMPORAL_API", True, when="--with-temporal-api")
+set_define("JS_HAS_TEMPORAL_API", True, when="--with-temporal-api")
+
+
+@depends("--with-temporal-api", "--with-intl-api")
+def check_temporal_api(temporal_enabled, intl_enabled):
+    if temporal_enabled and not intl_enabled:
+        die("Can't use both --with-temporal-api and --without-intl-api")
 
 
 # Initial support for WebAssembly JS-API Type Reflections

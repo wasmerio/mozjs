@@ -12,7 +12,7 @@
 
 #include "jsfriendapi.h"  // JS_ReportErrorNumberASCII
 
-#include "builtin/Stream.h"  // js::ReadableStreamController, js::ReadableStreamControllerPullSteps
+#include "builtin/streams/PullIntoDescriptor.h"        // js::PullIntoDescriptor
 #include "builtin/streams/ReadableStream.h"            // js::ReadableStream
 #include "builtin/streams/ReadableStreamController.h"  // js::ReadableStreamController
 #include "builtin/streams/ReadableStreamInternals.h"  // js::ReadableStream{Cancel,CreateReadResult}
@@ -35,7 +35,9 @@ using JS::Rooted;
 using JS::Value;
 
 using js::PromiseObject;
+using js::PullIntoDescriptor;
 using js::ReadableStreamController;
+using js::ReaderType;
 using js::UnwrapStreamFromReader;
 
 /*** 3.8. Readable stream reader abstract operations ************************/
@@ -147,18 +149,19 @@ using js::UnwrapStreamFromReader;
 }
 
 /**
- * Streams spec, 3.8.5. ReadableStreamReaderGenericRelease ( reader )
+ * https://streams.spec.whatwg.org/#readable-stream-reader-generic-release
  */
 [[nodiscard]] bool js::ReadableStreamReaderGenericRelease(
     JSContext* cx, Handle<ReadableStreamReader*> unwrappedReader) {
-  // Step 1: Assert: reader.[[ownerReadableStream]] is not undefined.
+  // Let stream be reader.[[stream]].
+  // Assert: stream is not undefined.
   Rooted<ReadableStream*> unwrappedStream(
       cx, UnwrapStreamFromReader(cx, unwrappedReader));
   if (!unwrappedStream) {
     return false;
   }
 
-  // Step 2: Assert: reader.[[ownerReadableStream]].[[reader]] is reader.
+  // Assert: stream.[[reader]] is reader.
 #ifdef DEBUG
   // The assertion is weakened a bit to allow for nuked wrappers.
   ReadableStreamReader* unwrappedReader2 =
@@ -177,8 +180,8 @@ using js::UnwrapStreamFromReader;
     return false;
   }
 
-  // Step 3: If reader.[[ownerReadableStream]].[[state]] is "readable", reject
-  //         reader.[[closedPromise]] with a TypeError exception.
+  // If stream.[[state]] is "readable", reject reader.[[closedPromise]] with a
+  // TypeError exception.
   Rooted<PromiseObject*> unwrappedClosedPromise(cx);
   if (unwrappedStream->readable()) {
     unwrappedClosedPromise = UnwrapInternalSlot<PromiseObject>(
@@ -195,8 +198,8 @@ using js::UnwrapStreamFromReader;
       return false;
     }
   } else {
-    // Step 4: Otherwise, set reader.[[closedPromise]] to a new promise
-    //         rejected with a TypeError exception.
+    // Otherwise, set reader.[[closedPromise]] to a promise rejected with a
+    // TypeError exception.
     Rooted<JSObject*> closedPromise(cx,
                                     PromiseObject::unforgeableReject(cx, exn));
     if (!closedPromise) {
@@ -211,65 +214,46 @@ using js::UnwrapStreamFromReader;
     unwrappedReader->setClosedPromise(closedPromise);
   }
 
-  // Step 5: Set reader.[[closedPromise]].[[PromiseIsHandled]] to true.
+  // Set reader.[[closedPromise]].[[PromiseIsHandled]] to true.
   js::SetSettledPromiseIsHandled(cx, unwrappedClosedPromise);
 
-  // Step 6: Set reader.[[ownerReadableStream]].[[reader]] to undefined.
+  // Perform ! stream.[[controller]].[[ReleaseSteps]]().
+  // https://streams.spec.whatwg.org/#abstract-opdef-readablebytestreamcontroller-releasesteps
+  if (unwrappedStream->controller()->is<ReadableByteStreamController>()) {
+    Rooted<ReadableByteStreamController*> unwrappedController(
+        cx, &unwrappedStream->controller()->as<ReadableByteStreamController>());
+
+    // If this.[[pendingPullIntos]] is not empty,
+    if (unwrappedController->pendingPullIntos()->length() > 0) {
+      // Let firstPendingPullInto be this.[[pendingPullIntos]][0].
+      Rooted<PullIntoDescriptor*> firstPendingPullInto(
+          cx, UnwrapAndDowncastObject<PullIntoDescriptor>(
+                  cx, &unwrappedController->pendingPullIntos()
+                           ->popFirstAs<JSObject>(cx)));
+
+      // Set firstPendingPullInto’s reader type to "none".
+      firstPendingPullInto->setReaderType(ReaderType::None);
+
+      // Set this.[[pendingPullIntos]] to the list « firstPendingPullInto ».
+      if (!StoreNewListInFixedSlot(
+              cx, unwrappedController,
+              ReadableByteStreamController::Slot_PendingPullIntos)) {
+        return false;
+      }
+      Rooted<Value> firstPendingPullIntoValue(cx);
+      firstPendingPullIntoValue.setObject(*firstPendingPullInto);
+      if (!unwrappedController->pendingPullIntos()->append(
+              cx, firstPendingPullIntoValue)) {
+        return false;
+      }
+    }
+  }
+
+  // Set stream.[[reader]] to undefined.
   unwrappedStream->clearReader();
 
-  // Step 7: Set reader.[[ownerReadableStream]] to undefined.
+  // Set reader.[[stream]] to undefined.
   unwrappedReader->clearStream();
 
   return true;
-}
-
-/**
- * Streams spec, 3.8.7.
- *      ReadableStreamDefaultReaderRead ( reader [, forAuthorCode ] )
- */
-[[nodiscard]] PromiseObject* js::ReadableStreamDefaultReaderRead(
-    JSContext* cx, Handle<ReadableStreamDefaultReader*> unwrappedReader) {
-  // Step 1: If forAuthorCode was not passed, set it to false (implicit).
-
-  // Step 2: Let stream be reader.[[ownerReadableStream]].
-  // Step 3: Assert: stream is not undefined.
-  Rooted<ReadableStream*> unwrappedStream(
-      cx, UnwrapStreamFromReader(cx, unwrappedReader));
-  if (!unwrappedStream) {
-    return nullptr;
-  }
-
-  // Step 4: Set stream.[[disturbed]] to true.
-  unwrappedStream->setDisturbed();
-
-  // Step 5: If stream.[[state]] is "closed", return a promise resolved with
-  //         ! ReadableStreamCreateReadResult(undefined, true, forAuthorCode).
-  if (unwrappedStream->closed()) {
-    PlainObject* iterResult = ReadableStreamCreateReadResult(
-        cx, UndefinedHandleValue, true, unwrappedReader->forAuthorCode());
-    if (!iterResult) {
-      return nullptr;
-    }
-
-    Rooted<Value> iterResultVal(cx, JS::ObjectValue(*iterResult));
-    return PromiseObject::unforgeableResolveWithNonPromise(cx, iterResultVal);
-  }
-
-  // Step 6: If stream.[[state]] is "errored", return a promise rejected
-  //         with stream.[[storedError]].
-  if (unwrappedStream->errored()) {
-    Rooted<Value> storedError(cx, unwrappedStream->storedError());
-    if (!cx->compartment()->wrap(cx, &storedError)) {
-      return nullptr;
-    }
-    return PromiseObject::unforgeableReject(cx, storedError);
-  }
-
-  // Step 7: Assert: stream.[[state]] is "readable".
-  MOZ_ASSERT(unwrappedStream->readable());
-
-  // Step 8: Return ! stream.[[readableStreamController]].[[PullSteps]]().
-  Rooted<ReadableStreamController*> unwrappedController(
-      cx, unwrappedStream->controller());
-  return ReadableStreamControllerPullSteps(cx, unwrappedController);
 }

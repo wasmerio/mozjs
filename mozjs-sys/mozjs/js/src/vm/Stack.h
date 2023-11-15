@@ -97,11 +97,11 @@ class AbstractFramePtr {
   uintptr_t ptr_;
 
   enum {
-    Tag_InterpreterFrame = 0x1,
-    Tag_BaselineFrame = 0x2,
-    Tag_RematerializedFrame = 0x3,
-    Tag_WasmDebugFrame = 0x4,
-    TagMask = 0x7
+    Tag_InterpreterFrame = 0x0,
+    Tag_BaselineFrame = 0x1,
+    Tag_RematerializedFrame = 0x2,
+    Tag_WasmDebugFrame = 0x3,
+    TagMask = 0x3
   };
 
  public:
@@ -976,6 +976,22 @@ inline bool FillArgumentsFromArraylike(JSContext* cx, Args& args,
 
   return true;
 }
+
+struct PortableBaselineStack {
+  static const size_t DEFAULT_SIZE = 512 * 1024;
+
+  void* base;
+  void* top;
+
+  bool valid() { return base != nullptr; }
+
+  PortableBaselineStack() {
+    base = js_calloc(DEFAULT_SIZE);
+    top = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(base) +
+                                  DEFAULT_SIZE);
+  }
+  ~PortableBaselineStack() { js_free(base); }
+};
 
 }  // namespace js
 

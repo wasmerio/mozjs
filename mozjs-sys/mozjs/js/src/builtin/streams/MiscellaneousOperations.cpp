@@ -9,7 +9,7 @@
 #include "builtin/streams/MiscellaneousOperations.h"
 
 #include "mozilla/Assertions.h"     // MOZ_ASSERT
-#include "mozilla/FloatingPoint.h"  // std::isnan
+#include "mozilla/FloatingPoint.h"  // mozilla::IsNaN
 
 #include "js/CallAndConstruct.h"      // JS::IsCallable
 #include "js/Conversions.h"           // JS::ToNumber
@@ -29,6 +29,57 @@ using JS::Handle;
 using JS::MutableHandle;
 using JS::ToNumber;
 using JS::Value;
+
+// https://streams.spec.whatwg.org/#transfer-array-buffer
+// As some parts of the specifcation want to use the abrupt completion value,
+// this function may leave a pending exception if it returns nullptr.
+[[nodiscard]] JSObject* js::TransferArrayBuffer(JSContext* cx,
+                                                JS::Handle<JSObject*> buffer) {
+  // Assert: ! IsDetachedBuffer(O) is false.
+  MOZ_ASSERT(!JS::IsDetachedArrayBufferObject(buffer));
+
+  // Let arrayBufferByteLength be O.[[ArrayBufferByteLength]].
+  // (must get length before stealing data)
+  size_t bufferLength = JS::GetArrayBufferByteLength(buffer);
+
+  // Let arrayBufferData be O.[[ArrayBufferData]].
+  void* bufferData = JS::StealArrayBufferContents(cx, buffer);
+
+  // Perform ? DetachArrayBuffer(O).
+  if (!JS::DetachArrayBuffer(cx, buffer)) {
+    return nullptr;
+  }
+
+  // Return a new ArrayBuffer object, created in the current Realm, whose
+  // [[ArrayBufferData]] internal slot value is arrayBufferData and whose
+  // [[ArrayBufferByteLength]] internal slot value is arrayBufferByteLength.
+  return JS::NewArrayBufferWithContents(cx, bufferLength, bufferData);
+}
+
+// https://streams.spec.whatwg.org/#can-transfer-array-buffer
+[[nodiscard]] bool js::CanTransferArrayBuffer(JSContext* cx,
+                                              JS::Handle<JSObject*> buffer) {
+  // Step 1. Assert: Type(O) is Object. (Implicit in types)
+  // Step 2. Assert: O has an [[ArrayBufferData]] internal slot.
+  MOZ_ASSERT(JS::IsArrayBufferObject(buffer));
+
+  // Step 3. If ! IsDetachedBuffer(O) is true, return false.
+  if (JS::IsDetachedArrayBufferObject(buffer)) {
+    return false;
+  }
+
+  // Step 4. If SameValue(O.[[ArrayBufferDetachKey]], undefined) is false,
+  // return false.
+  // Step 5. Return true.
+  // Note: WASM memories are the only buffers that would qualify
+  // as having an undefined [[ArrayBufferDetachKey]],
+  bool hasDefinedArrayBufferDetachKey = false;
+  if (!JS::HasDefinedArrayBufferDetachKey(cx, buffer,
+                                          &hasDefinedArrayBufferDetachKey)) {
+    return false;
+  }
+  return !hasDefinedArrayBufferDetachKey;
+}
 
 [[nodiscard]] js::PromiseObject* js::PromiseRejectedWithPendingError(
     JSContext* cx) {
@@ -137,10 +188,17 @@ using JS::Value;
 }
 
 /**
- * Streams spec, 6.3.7. ValidateAndNormalizeHighWaterMark ( highWaterMark )
+ * Streams spec, 6.3.7. ValidateAndNormalizeHighWaterMark ( highWaterMark,
+ * defaultHighWaterMark )
  */
 [[nodiscard]] bool js::ValidateAndNormalizeHighWaterMark(
-    JSContext* cx, Handle<Value> highWaterMarkVal, double* highWaterMark) {
+    JSContext* cx, Handle<Value> highWaterMarkVal, double* highWaterMark,
+    double defaultHighWaterMark) {
+  if (highWaterMarkVal.isUndefined()) {
+    *highWaterMark = defaultHighWaterMark;
+    return true;
+  }
+
   // Step 1: Set highWaterMark to ? ToNumber(highWaterMark).
   if (!ToNumber(cx, highWaterMarkVal, highWaterMark)) {
     return false;

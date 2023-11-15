@@ -58,7 +58,7 @@ bool js::math_use_fdlibm_for_sin_cos_tan() { return sUseFdlibmForSinCosTan; }
 
 static inline bool UseFdlibmForSinCosTan(const CallArgs& args) {
   return sUseFdlibmForSinCosTan ||
-         args.callee().nonCCWRealm()->behaviors().shouldResistFingerprinting();
+         args.callee().nonCCWRealm()->creationOptions().alwaysUseFdlibm();
 }
 
 template <UnaryMathFunctionType F>
@@ -511,6 +511,12 @@ Realm::getOrCreateRandomNumberGenerator() {
   }
 
   return randomNumberGenerator_.ref();
+}
+
+void Realm::resetRandomNumberGenerator() {
+  if (randomNumberGenerator_.isSome()) {
+    randomNumberGenerator_.reset();
+  }
 }
 
 double js::math_random_impl(JSContext* cx) {

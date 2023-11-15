@@ -12,7 +12,6 @@
 
 #include "jsfriendapi.h"  // js::AssertSameCompartment
 
-#include "builtin/Stream.h"  // js::ReadableByteStreamControllerClearPendingPullIntos
 #include "builtin/streams/MiscellaneousOperations.h"  // js::CreateAlgorithmFromUnderlyingMethod, js::InvokeOrNoop, js::IsMaybeWrapped
 #include "builtin/streams/QueueWithSizes.h"  // js::EnqueueValueWithSize, js::ResetQueue
 #include "builtin/streams/ReadableStreamController.h"  // js::ReadableStream{,Default}Controller, js::ReadableByteStreamController, js::ReadableStreamControllerStart{,Failed}Handler
@@ -65,7 +64,7 @@ using JS::Value;
  * Streams spec, 3.10.2 and 3.13.3. step 7:
  *      Upon fulfillment of pullPromise, [...]
  */
-static bool ControllerPullHandler(JSContext* cx, unsigned argc, Value* vp) {
+bool DefaultControllerPullHandler(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
   Rooted<ReadableStreamController*> unwrappedController(
@@ -98,8 +97,8 @@ static bool ControllerPullHandler(JSContext* cx, unsigned argc, Value* vp) {
  * Streams spec, 3.10.2 and 3.13.3. step 8:
  * Upon rejection of pullPromise with reason e,
  */
-static bool ControllerPullFailedHandler(JSContext* cx, unsigned argc,
-                                        Value* vp) {
+static bool DefaultControllerPullFailedHandler(JSContext* cx, unsigned argc,
+                                               Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
   Handle<Value> e = args.get(0);
 
@@ -119,13 +118,9 @@ static bool ControllerPullFailedHandler(JSContext* cx, unsigned argc,
   return true;
 }
 
-static bool ReadableStreamControllerShouldCallPull(
-    ReadableStreamController* unwrappedController);
-
 /**
  * Streams spec, 3.10.2
  *      ReadableStreamDefaultControllerCallPullIfNeeded ( controller )
- * Streams spec, 3.13.3.
  *      ReadableByteStreamControllerCallPullIfNeeded ( controller )
  */
 [[nodiscard]] bool js::ReadableStreamControllerCallPullIfNeeded(
@@ -133,7 +128,8 @@ static bool ReadableStreamControllerShouldCallPull(
   // Step 1: Let shouldPull be
   //         ! ReadableStreamDefaultControllerShouldCallPull(controller).
   // (ReadableByteStreamDefaultControllerShouldCallPull in 3.13.3.)
-  bool shouldPull = ReadableStreamControllerShouldCallPull(unwrappedController);
+  bool shouldPull =
+      js::ReadableStreamControllerShouldCallPull(cx, unwrappedController);
 
   // Step 2: If shouldPull is false, return.
   if (!shouldPull) {
@@ -228,12 +224,13 @@ static bool ReadableStreamControllerShouldCallPull(
   // Step 7: Upon fulfillment of pullPromise, [...]
   // Step 8. Upon rejection of pullPromise with reason e, [...]
   Rooted<JSObject*> onPullFulfilled(
-      cx, NewHandler(cx, ControllerPullHandler, wrappedController));
+      cx, NewHandler(cx, DefaultControllerPullHandler, wrappedController));
   if (!onPullFulfilled) {
     return false;
   }
   Rooted<JSObject*> onPullRejected(
-      cx, NewHandler(cx, ControllerPullFailedHandler, wrappedController));
+      cx,
+      NewHandler(cx, DefaultControllerPullFailedHandler, wrappedController));
   if (!onPullRejected) {
     return false;
   }
@@ -244,14 +241,13 @@ static bool ReadableStreamControllerShouldCallPull(
 /**
  * Streams spec, 3.10.3.
  *      ReadableStreamDefaultControllerShouldCallPull ( controller )
- * Streams spec, 3.13.25.
  *      ReadableByteStreamControllerShouldCallPull ( controller )
  */
-static bool ReadableStreamControllerShouldCallPull(
-    ReadableStreamController* unwrappedController) {
+[[nodiscard]] bool js::ReadableStreamControllerShouldCallPull(
+    JSContext* cx, ReadableStreamController* unwrappedController) {
   // Step 1: Let stream be controller.[[controlledReadableStream]]
   //         (or [[controlledReadableByteStream]]).
-  ReadableStream* unwrappedStream = unwrappedController->stream();
+  Rooted<ReadableStream*> unwrappedStream(cx, unwrappedController->stream());
 
   // 3.10.3. Step 2:
   //      If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller)
@@ -274,20 +270,42 @@ static bool ReadableStreamControllerShouldCallPull(
     return false;
   }
 
-  // 3.10.3.
-  // Step 4: If ! IsReadableStreamLocked(stream) is true and
-  //      ! ReadableStreamGetNumReadRequests(stream) > 0, return true.
-  //
-  // 3.13.25.
-  // Step 5: If ! ReadableStreamHasDefaultReader(stream) is true and
-  //         ! ReadableStreamGetNumReadRequests(stream) > 0, return true.
-  // Step 6: If ! ReadableStreamHasBYOBReader(stream) is true and
-  //         ! ReadableStreamGetNumReadIntoRequests(stream) > 0, return true.
-  //
-  // All of these amount to the same thing in this implementation:
-  if (unwrappedStream->locked() &&
-      ReadableStreamGetNumReadRequests(unwrappedStream) > 0) {
-    return true;
+  if (unwrappedController->is<ReadableStreamDefaultController>()) {
+    // Default Stream Path
+
+    // 3.10.3.
+    // Step 4: If ! IsReadableStreamLocked(stream) is true and
+    //      ! ReadableStreamGetNumReadRequests(stream) > 0, return true.
+    if (unwrappedStream->locked() &&
+        ReadableStreamGetNumReadRequests(unwrappedStream) > 0) {
+      return true;
+    }
+  } else {
+    // Byte Stream Path
+
+    // If ! ReadableStreamHasDefaultReader(stream) is true and !
+    // ReadableStreamGetNumReadRequests(stream) > 0, return true.
+
+    bool hasDefaultReader = false;
+    if (!js::ReadableStreamHasDefaultReader(cx, unwrappedStream,
+                                            &hasDefaultReader)) {
+      MOZ_ASSERT(false);
+    }
+    if (hasDefaultReader &&
+        ReadableStreamGetNumReadRequests(unwrappedStream) > 0) {
+      return true;
+    }
+
+    // If ! ReadableStreamHasBYOBReader(stream) is true and !
+    // ReadableStreamGetNumReadIntoRequests(stream) > 0, return true.
+    bool hasBYOBReader = false;
+    if (!js::ReadableStreamHasBYOBReader(cx, unwrappedStream, &hasBYOBReader)) {
+      MOZ_ASSERT(false);
+    }
+    if (hasBYOBReader &&
+        ReadableStreamGetNumReadRequests(unwrappedStream) > 0) {
+      return true;
+    }
   }
 
   // Step 5 (or 7):

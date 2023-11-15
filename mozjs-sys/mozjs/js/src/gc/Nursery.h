@@ -11,6 +11,7 @@
 #include "mozilla/EnumeratedArray.h"
 #include "mozilla/TimeStamp.h"
 
+#include "gc/GCProbes.h"
 #include "gc/Heap.h"
 #include "gc/MallocedBlockCache.h"
 #include "gc/Pretenuring.h"
@@ -67,7 +68,7 @@ class GCSchedulingTunables;
 class TenuringTracer;
 }  // namespace gc
 
-class Nursery {
+class alignas(TypicalCacheLineSize) Nursery {
  public:
   explicit Nursery(gc::GCRuntime* gc);
   ~Nursery();
@@ -105,7 +106,7 @@ class Nursery {
   // slower than IsInsideNursery(Cell*), but works on all types of pointers.
   MOZ_ALWAYS_INLINE bool isInside(gc::Cell* cellp) const = delete;
   MOZ_ALWAYS_INLINE bool isInside(const void* p) const {
-    for (auto chunk : chunks_) {
+    for (auto* chunk : chunks_) {
       if (uintptr_t(p) - uintptr_t(chunk) < gc::ChunkSize) {
         return true;
       }
@@ -119,6 +120,44 @@ class Nursery {
   // Allocate and return a pointer to a new GC thing. Returns nullptr if the
   // Nursery is full.
   void* allocateCell(gc::AllocSite* site, size_t size, JS::TraceKind kind);
+
+  // Allocate and return a pointer to a new GC thing. Returns nullptr if the
+  // handleAllocationFailure() needs to be called before retrying.
+  void* tryAllocateCell(gc::AllocSite* site, size_t size, JS::TraceKind kind) {
+    // Ensure there's enough space to replace the contents with a
+    // RelocationOverlay.
+    // MOZ_ASSERT(size >= sizeof(RelocationOverlay));
+    MOZ_ASSERT(size % gc::CellAlignBytes == 0);
+    MOZ_ASSERT(size_t(kind) < gc::NurseryTraceKinds);
+    MOZ_ASSERT_IF(kind == JS::TraceKind::String, canAllocateStrings());
+    MOZ_ASSERT_IF(kind == JS::TraceKind::BigInt, canAllocateBigInts());
+
+    void* ptr = tryAllocate(sizeof(gc::NurseryCellHeader) + size);
+    if (MOZ_UNLIKELY(!ptr)) {
+      return nullptr;
+    }
+
+    new (ptr) gc::NurseryCellHeader(site, kind);
+
+    void* cell =
+        reinterpret_cast<void*>(uintptr_t(ptr) + sizeof(gc::NurseryCellHeader));
+
+    // Update the allocation site. This code is also inlined in
+    // MacroAssembler::updateAllocSite.
+    uint32_t allocCount = site->incAllocCount();
+    if (MOZ_UNLIKELY(allocCount == 1)) {
+      pretenuringNursery.insertIntoAllocatedList(site);
+    }
+    MOZ_ASSERT_IF(site->isNormal(), site->isInAllocatedList());
+
+    gc::gcprobes::NurseryAlloc(cell, kind);
+    return cell;
+  }
+
+  // Attempt to handle the failure of tryAllocate. Returns a GCReason if minor
+  // GC is required, or NO_REASON if the failure was handled and allocation will
+  // now succeed.
+  [[nodiscard]] JS::GCReason handleAllocationFailure();
 
   static size_t nurseryCellHeaderSize() {
     return sizeof(gc::NurseryCellHeader);
@@ -313,15 +352,12 @@ class Nursery {
     return pretenuringNursery.addressOfAllocatedSites();
   }
 
-  void requestMinorGC(JS::GCReason reason) const;
+  void requestMinorGC(JS::GCReason reason);
 
   bool minorGCRequested() const {
     return minorGCTriggerReason_ != JS::GCReason::NO_REASON;
   }
   JS::GCReason minorGCTriggerReason() const { return minorGCTriggerReason_; }
-  void clearMinorGCRequest() {
-    minorGCTriggerReason_ = JS::GCReason::NO_REASON;
-  }
 
   bool shouldCollect() const;
   bool isNearlyFull() const;
@@ -403,8 +439,9 @@ class Nursery {
   mozilla::TimeDuration timeInChunkAlloc_;
 
   // Report minor collections taking at least this long, if enabled.
-  bool enableProfiling_;
-  bool profileWorkers_;
+  bool enableProfiling_ = false;
+  bool profileWorkers_ = false;
+
   mozilla::TimeDuration profileThreshold_;
 
   // Whether we will nursery-allocate strings.
@@ -421,10 +458,11 @@ class Nursery {
   bool reportPretenuring_;
   size_t reportPretenuringThreshold_;
 
-  // Whether and why a collection of this nursery has been requested. This is
-  // mutable as it is set by the store buffer, which otherwise cannot modify
-  // anything in the nursery.
-  mutable JS::GCReason minorGCTriggerReason_;
+  // Whether and why a collection of this nursery has been requested. When this
+  // happens |prevPosition_| is set to the current position and |position_| set
+  // to the end of the chunk to force the next allocation to fail.
+  JS::GCReason minorGCTriggerReason_;
+  uintptr_t prevPosition_;
 
   // Profiling data.
 
@@ -492,8 +530,8 @@ class Nursery {
   // for buffers whose length is less than pointer width, or when different
   // buffers might overlap each other. For these, an entry in the following
   // table is used.
-  typedef HashMap<void*, void*, PointerHasher<void*>, SystemAllocPolicy>
-      ForwardedBufferMap;
+  using ForwardedBufferMap =
+      HashMap<void*, void*, PointerHasher<void*>, SystemAllocPolicy>;
   ForwardedBufferMap forwardedBuffers;
 
   // When we assign a unique id to cell in the nursery, that almost always
@@ -547,7 +585,7 @@ class Nursery {
   [[nodiscard]] bool allocateNextChunk(unsigned chunkno,
                                        AutoLockGCBgAlloc& lock);
 
-  MOZ_ALWAYS_INLINE uintptr_t currentEnd() const;
+  uintptr_t currentEnd() const { return currentEnd_; }
 
   uintptr_t position() const { return position_; }
 
@@ -564,10 +602,32 @@ class Nursery {
   void updateAllocFlagsForZone(JS::Zone* zone);
   void discardCodeAndSetJitFlagsForZone(JS::Zone* zone);
 
-  // Common internal allocator function.
   void* allocate(size_t size);
 
-  void* moveToNextChunkAndAllocate(size_t size);
+  // Common internal allocator function. If this fails, call
+  // handleAllocationFailure to see whether it's possible to retry.
+  void* tryAllocate(size_t size) {
+    MOZ_ASSERT(isEnabled());
+    MOZ_ASSERT(!JS::RuntimeHeapIsBusy());
+    MOZ_ASSERT_IF(currentChunk_ == currentStartChunk_,
+                  position() >= currentStartPosition_);
+    MOZ_ASSERT(size % gc::CellAlignBytes == 0);
+    MOZ_ASSERT(position() % gc::CellAlignBytes == 0);
+
+    if (MOZ_UNLIKELY(currentEnd() < position() + size)) {
+      return nullptr;
+    }
+
+    void* ptr = reinterpret_cast<void*>(position());
+    position_ = position() + size;
+
+    DebugOnlyPoison(ptr, JS_ALLOCATED_NURSERY_PATTERN, size,
+                    MemCheckKind::MakeUndefined);
+
+    return ptr;
+  }
+
+  [[nodiscard]] bool moveToNextChunk();
 
   struct CollectionResult {
     size_t tenuredBytes;

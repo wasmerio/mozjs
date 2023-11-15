@@ -17,7 +17,7 @@
 
 namespace js {
 
-enum class ReaderType : int32_t { Default = 0, BYOB = 1 };
+enum class ReaderType : int32_t { None = 0, Default = 1, BYOB = 2 };
 
 class PullIntoDescriptor : public NativeObject {
  private:
@@ -35,13 +35,11 @@ class PullIntoDescriptor : public NativeObject {
  public:
   static const JSClass class_;
 
-  ArrayBufferObject* buffer() {
-    return &getFixedSlot(Slot_buffer).toObject().as<ArrayBufferObject>();
-  }
-  void setBuffer(ArrayBufferObject* buffer) {
+  JSObject* buffer() { return &getFixedSlot(Slot_buffer).toObject(); }
+  void setBuffer(JSObject* buffer) {
     setFixedSlot(Slot_buffer, ObjectValue(*buffer));
   }
-  JSObject* ctor() { return getFixedSlot(Slot_Ctor).toObjectOrNull(); }
+  Value ctor() { return getFixedSlot(Slot_Ctor); }
   uint32_t byteOffset() const {
     return getFixedSlot(Slot_ByteOffset).toInt32();
   }
@@ -60,8 +58,12 @@ class PullIntoDescriptor : public NativeObject {
   ReaderType readerType() const {
     int32_t n = getFixedSlot(Slot_ReaderType).toInt32();
     MOZ_ASSERT(n == int32_t(ReaderType::Default) ||
-               n == int32_t(ReaderType::BYOB));
+               n == int32_t(ReaderType::BYOB) ||
+               n == int32_t(ReaderType::None));
     return ReaderType(n);
+  }
+  void setReaderType(ReaderType readerType) {
+    setFixedSlot(Slot_ReaderType, Int32Value(int32_t(readerType)));
   }
 
   static PullIntoDescriptor* create(JSContext* cx,

@@ -77,7 +77,7 @@ void StoreBuffer::GenericBuffer::trace(JSTracer* trc) {
   }
 }
 
-StoreBuffer::StoreBuffer(JSRuntime* rt, const Nursery& nursery)
+StoreBuffer::StoreBuffer(JSRuntime* rt, Nursery& nursery)
     : lock_(mutexid::StoreBuffer),
       bufferVal(this, JS::GCReason::FULL_VALUE_BUFFER),
       bufStrCell(this, JS::GCReason::FULL_CELL_PTR_STR_BUFFER),
@@ -202,7 +202,7 @@ ArenaCellSet* StoreBuffer::WholeCellBuffer::allocateCellSet(Arena* arena) {
 
   AutoEnterOOMUnsafeRegion oomUnsafe;
   ArenaCellSet*& head = isString ? stringHead_ : nonStringHead_;
-  auto cells = storage_->new_<ArenaCellSet>(arena, head);
+  auto* cells = storage_->new_<ArenaCellSet>(arena, head);
   if (!cells) {
     oomUnsafe.crash("Failed to allocate ArenaCellSet");
   }

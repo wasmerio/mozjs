@@ -200,8 +200,8 @@ struct Callback {
 template <typename F>
 using CallbackVector = Vector<Callback<F>, 4, SystemAllocPolicy>;
 
-typedef HashMap<Value*, const char*, DefaultHasher<Value*>, SystemAllocPolicy>
-    RootedValueMap;
+using RootedValueMap =
+    HashMap<Value*, const char*, DefaultHasher<Value*>, SystemAllocPolicy>;
 
 using AllocKinds = mozilla::EnumSet<AllocKind, uint64_t>;
 
@@ -463,7 +463,7 @@ class GCRuntime {
   void callObjectsTenuredCallback();
   [[nodiscard]] bool addFinalizeCallback(JSFinalizeCallback callback,
                                          void* data);
-  void removeFinalizeCallback(JSFinalizeCallback func);
+  void removeFinalizeCallback(JSFinalizeCallback callback);
   void setHostCleanupFinalizationRegistryCallback(
       JSHostCleanupFinalizationRegistryCallback callback, void* data);
   void callHostCleanupFinalizationRegistryCallback(
@@ -489,7 +489,7 @@ class GCRuntime {
 
   void nukeFinalizationRecordWrapper(JSObject* wrapper,
                                      FinalizationRecordObject* record);
-  void nukeWeakRefWrapper(JSObject* wrapper, WeakRefObject* record);
+  void nukeWeakRefWrapper(JSObject* wrapper, WeakRefObject* weakRef);
 
   void setFullCompartmentChecks(bool enable);
 
@@ -599,14 +599,7 @@ class GCRuntime {
   // Public here for ReleaseArenaLists and FinalizeTypedArenas.
   void releaseArena(Arena* arena, const AutoLockGC& lock);
 
-  // Allocator
-  template <AllowGC allowGC>
-  [[nodiscard]] bool checkAllocatorState(JSContext* cx, AllocKind kind);
-  template <JS::TraceKind kind, AllowGC allowGC>
-  void* tryNewNurseryCell(JSContext* cx, size_t thingSize, AllocSite* site);
-  template <AllowGC allowGC>
-  static void* tryNewTenuredThing(JSContext* cx, AllocKind kind,
-                                  size_t thingSize);
+  // Allocator internals.
   static void* refillFreeListInGC(Zone* zone, AllocKind thingKind);
 
   // Delayed marking.
@@ -632,6 +625,11 @@ class GCRuntime {
 
   void updateAllocationRates();
 
+  // Allocator internals
+  static void* refillFreeList(JSContext* cx, AllocKind thingKind);
+  void attemptLastDitchGC(JSContext* cx);
+
+  // Test mark queue.
 #ifdef DEBUG
   const GCVector<HeapPtr<JS::Value>, 0, SystemAllocPolicy>& getTestMarkQueue()
       const;
@@ -666,14 +664,6 @@ class GCRuntime {
   Arena* allocateArena(TenuredChunk* chunk, Zone* zone, AllocKind kind,
                        ShouldCheckThresholds checkThresholds,
                        const AutoLockGC& lock);
-
-  // Allocator internals
-  void gcIfNeededAtAllocation(JSContext* cx);
-  static void* refillFreeList(JSContext* cx, AllocKind thingKind);
-  void attemptLastDitchGC(JSContext* cx);
-#ifdef DEBUG
-  static void checkIncrementalZoneState(JSContext* cx, void* ptr);
-#endif
 
   /*
    * Return the list of chunks that can be released outside the GC lock.
@@ -867,7 +857,7 @@ class GCRuntime {
                           js::SliceBudget& sliceBudget,
                           SortedArenaList& sweepList);
   IncrementalProgress sweepPropMapTree(JS::GCContext* gcx, SliceBudget& budget);
-  void endSweepPhase(bool lastGC);
+  void endSweepPhase(bool destroyingRuntime);
   void queueZonesAndStartBackgroundSweep(ZoneList&& zones);
   void sweepFromBackgroundThread(AutoLockHelperThreadState& lock);
   void startBackgroundFree();
@@ -1198,7 +1188,7 @@ class GCRuntime {
       testMarkQueue;
 
   /* Position within the test mark queue. */
-  size_t queuePos;
+  size_t queuePos = 0;
 
   /* The test marking queue might want to be marking a particular color. */
   mozilla::Maybe<js::gc::MarkColor> queueMarkColor;

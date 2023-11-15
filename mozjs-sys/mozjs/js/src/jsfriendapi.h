@@ -245,9 +245,17 @@ extern JS_PUBLIC_API bool EnqueueJob(JSContext* cx, JS::HandleObject job);
  */
 extern JS_PUBLIC_API void StopDrainingJobQueue(JSContext* cx);
 
+extern JS_PUBLIC_API void RunJobs(JSContext* cx);
+
 extern JS_PUBLIC_API bool HasJobsPending(JSContext* cx);
 
-extern JS_PUBLIC_API void RunJobs(JSContext* cx);
+/**
+ * Reset the seed for Math.random().
+ *
+ * Enables embedders to reset the seed at controlled points, e.g. after
+ * resuming execution from an instance snapshot of SpiderMonkey's VM.
+ */
+extern JS_PUBLIC_API void ResetMathRandomSeed(JSContext* cx);
 
 extern JS_PUBLIC_API JS::Zone* GetRealmZone(JS::Realm* realm);
 

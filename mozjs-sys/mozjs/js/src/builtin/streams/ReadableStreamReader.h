@@ -92,7 +92,11 @@ class ReadableStreamReader : public NativeObject {
   }
 
   ListObject* requests() const {
-    return &getFixedSlot(Slot_Requests).toObject().as<ListObject>();
+    Value requests = getFixedSlot(Slot_Requests);
+    if (requests.isUndefined()) {
+      return nullptr;
+    }
+    return &requests.toObject().as<ListObject>();
   }
   void clearRequests() { setFixedSlot(Slot_Requests, JS::UndefinedValue()); }
 
@@ -121,6 +125,9 @@ CreateReadableStreamDefaultReader(JSContext* cx,
                                   ForAuthorCodeBool forAuthorCode,
                                   JS::Handle<JSObject*> proto = nullptr);
 
+[[nodiscard]] extern PromiseObject* ReadableStreamDefaultReaderRead(
+    JSContext* cx, JS::Handle<ReadableStreamReader*> unwrappedReader);
+
 [[nodiscard]] extern JSObject* ReadableStreamReaderGenericCancel(
     JSContext* cx, JS::Handle<ReadableStreamReader*> unwrappedReader,
     JS::Handle<JS::Value> reason);
@@ -133,22 +140,33 @@ CreateReadableStreamDefaultReader(JSContext* cx,
 [[nodiscard]] extern bool ReadableStreamReaderGenericRelease(
     JSContext* cx, JS::Handle<ReadableStreamReader*> unwrappedReader);
 
-[[nodiscard]] extern PromiseObject* ReadableStreamDefaultReaderRead(
-    JSContext* cx, JS::Handle<ReadableStreamDefaultReader*> unwrappedReader);
+}  // namespace js
+
+namespace js {
+
+class ReadableStreamBYOBReader : public ReadableStreamReader {
+ public:
+  static bool constructor(JSContext* cx, unsigned argc, JS::Value* vp);
+  static const ClassSpec classSpec_;
+  static const JSClass class_;
+  static const ClassSpec protoClassSpec_;
+  static const JSClass protoClass_;
+};
+
+[[nodiscard]] extern ReadableStreamBYOBReader* CreateReadableStreamBYOBReader(
+    JSContext* cx, JS::Handle<ReadableStream*> unwrappedStream,
+    ForAuthorCodeBool forAuthorCode, JS::Handle<JSObject*> proto = nullptr);
+
+[[nodiscard]] extern PromiseObject* ReadableStreamBYOBReaderRead(
+    JSContext* cx, JS::Handle<ReadableStreamReader*> unwrappedReader,
+    JS::Handle<JSObject*> view);
 
 }  // namespace js
 
 template <>
 inline bool JSObject::is<js::ReadableStreamReader>() const {
-  return is<js::ReadableStreamDefaultReader>();
+  return is<js::ReadableStreamDefaultReader>() ||
+         is<js::ReadableStreamBYOBReader>();
 }
-
-namespace js {
-
-[[nodiscard]] extern JSObject* CreateReadableStreamBYOBReader(
-    JSContext* cx, JS::Handle<ReadableStream*> unwrappedStream,
-    ForAuthorCodeBool forAuthorCode, JS::Handle<JSObject*> proto = nullptr);
-
-}  // namespace js
 
 #endif  // builtin_streams_ReadableStreamReader_h

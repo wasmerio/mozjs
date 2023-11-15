@@ -482,7 +482,7 @@ static void PrintSingleError(FILE* file, JS::ConstUTF8CharsZ toStringResult,
                              T* report, PrintErrorKind kind) {
   UniqueChars prefix;
   if (report->filename) {
-    prefix = JS_smprintf("%s:", report->filename);
+    prefix = JS_smprintf("%s:", report->filename.c_str());
   }
 
   if (report->lineno) {
@@ -696,7 +696,7 @@ JSObject* js::CreateErrorNotesArray(JSContext* cx, JSErrorReport* report) {
     }
 
     RootedValue filenameVal(cx);
-    if (const char* filename = note->filename) {
+    if (const char* filename = note->filename.c_str()) {
       JS::UTF8Chars utf8chars(filename, strlen(filename));
       Rooted<JSString*> filenameStr(cx, NewStringCopyUTF8N(cx, utf8chars));
       if (!filenameStr) {
@@ -832,6 +832,11 @@ JSObject* InternalJobQueue::getIncumbentGlobal(JSContext* cx) {
     return nullptr;
   }
   return cx->global();
+}
+
+JS_PUBLIC_API void js::ResetMathRandomSeed(JSContext* cx) {
+  MOZ_ASSERT(cx->realm());
+  cx->realm()->resetRandomNumberGenerator();
 }
 
 bool InternalJobQueue::enqueuePromiseJob(JSContext* cx,
@@ -987,7 +992,8 @@ mozilla::GenericErrorResult<JS::Error> JSContext::alreadyReportedError() {
 }
 
 JSContext::JSContext(JSRuntime* runtime, const JS::ContextOptions& options)
-    : runtime_(runtime),
+    : RootingContext(runtime ? &runtime->gc.nursery() : nullptr),
+      runtime_(runtime),
       kind_(ContextKind::Uninitialized),
       options_(this, options),
       freeUnusedMemory(false),
@@ -1047,6 +1053,8 @@ JSContext::JSContext(JSRuntime* runtime, const JS::ContextOptions& options)
       interruptCallbackDisabled(this, false),
       interruptBits_(0),
       inlinedICScript_(this, nullptr),
+      lastStubFoldingBailoutChild_(this, nullptr),
+      lastStubFoldingBailoutParent_(this, nullptr),
       jitStackLimit(JS::NativeStackLimitMin),
       jitStackLimitNoInterrupt(this, JS::NativeStackLimitMin),
       jobQueue(this, nullptr),

@@ -6,6 +6,13 @@
 
 #include "frontend/FrontendContext.h"
 
+#ifdef _WIN32
+#  include <windows.h>
+#  include <process.h>  // GetCurrentThreadId
+#else
+#  include <pthread.h>  // pthread_self
+#endif
+
 #include "gc/GC.h"
 #include "js/AllocPolicy.h"         // js::ReportOutOfMemory
 #include "js/friend/StackLimits.h"  // js::ReportOverRecursed
@@ -15,6 +22,14 @@
 #include "vm/JSContext.h"
 
 using namespace js;
+
+void FrontendErrors::clearErrors() {
+  error.reset();
+  warnings.clear();
+  overRecursed = false;
+  outOfMemory = false;
+  allocationOverflow = false;
+}
 
 void FrontendAllocator::reportAllocationOverflow() {
   fc_->onAllocationOverflow();
@@ -53,6 +68,10 @@ void FrontendContext::setStackQuota(JS::NativeStackSize stackSize) {
     stackLimit_ = JS::GetNativeStackLimit(GetNativeStackBase(), stackSize - 1);
   }
 #endif  // !__wasi__
+
+#if defined(DEBUG) && !defined(__wasi__)
+  setNativeStackLimitThread();
+#endif
 }
 
 bool FrontendContext::allocateOwnedPool() {
@@ -74,6 +93,11 @@ bool FrontendContext::hadErrors() const {
   }
 
   return errors_.hadErrors();
+}
+
+void FrontendContext::clearErrors() {
+  MOZ_ASSERT(!maybeCx_);
+  return errors_.clearErrors();
 }
 
 void* FrontendContext::onOutOfMemory(AllocFunction allocFunc, arena_id_t arena,
@@ -151,26 +175,26 @@ void FrontendContext::setCurrentJSContext(JSContext* cx) {
   nameCollectionPool_ = &cx->frontendCollectionPool();
   scriptDataTableHolder_ = &cx->runtime()->scriptDataTableHolder();
   stackLimit_ = cx->stackLimitForCurrentPrincipal();
+
+#ifdef DEBUG
+  setNativeStackLimitThread();
+#endif
 }
 
-bool FrontendContext::convertToRuntimeError(
+void FrontendContext::convertToRuntimeError(
     JSContext* cx, Warning warning /* = Warning::Report */) {
   // Report out of memory errors eagerly, or errors could be malformed.
   if (hadOutOfMemory()) {
     js::ReportOutOfMemory(cx);
-    return false;
+    return;
   }
 
   if (maybeError()) {
-    if (!maybeError()->throwError(cx)) {
-      return false;
-    }
+    maybeError()->throwError(cx);
   }
   if (warning == Warning::Report) {
     for (CompileError& error : warnings()) {
-      if (!error.throwError(cx)) {
-        return false;
-      }
+      error.throwError(cx);
     }
   }
   if (hadOverRecursed()) {
@@ -179,7 +203,6 @@ bool FrontendContext::convertToRuntimeError(
   if (hadAllocationOverflow()) {
     js::ReportAllocationOverflow(cx);
   }
-  return true;
 }
 
 void FrontendContext::linkWithJSContext(JSContext* cx) {
@@ -187,6 +210,32 @@ void FrontendContext::linkWithJSContext(JSContext* cx) {
     cx->setFrontendErrors(&errors_);
   }
 }
+
+#ifdef DEBUG
+static size_t GetTid() {
+#  if defined(_WIN32)
+  return size_t(GetCurrentThreadId());
+#  elif defined(__wasi__)
+  // empty
+# else
+  return size_t(pthread_self());
+#  endif
+}
+
+void FrontendContext::setNativeStackLimitThread() {
+#ifndef __wasi__
+  stackLimitThreadId_.emplace(GetTid());
+#endif
+}
+
+void FrontendContext::assertNativeStackLimitThread() {
+  if (!stackLimitThreadId_.isSome()) {
+    return;
+  }
+
+  MOZ_ASSERT(*stackLimitThreadId_ == GetTid());
+}
+#endif
 
 #ifdef __wasi__
 void FrontendContext::incWasiRecursionDepth() {

@@ -1,0 +1,5 @@
+commit d52a5bbbe88b82bee0122689c161f1bf15fe8a0d
+Author: Linus Groh <mail@linusgroh.de>
+Date:   Thu Jun 8 14:19:36 2023 +0200
+
+    Replace arrow function with regular function in harness/sta.js

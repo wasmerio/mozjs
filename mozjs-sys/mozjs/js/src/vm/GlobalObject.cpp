@@ -25,12 +25,29 @@
 #include "builtin/FinalizationRegistryObject.h"
 #include "builtin/MapObject.h"
 #include "builtin/ShadowRealm.h"
-#include "builtin/Stream.h"
 #include "builtin/streams/QueueingStrategies.h"  // js::{ByteLength,Count}QueueingStrategy
-#include "builtin/streams/ReadableStream.h"  // js::ReadableStream
+#include "builtin/streams/ReadableStream.h"             // js::ReadableStream
+#include "builtin/streams/ReadableStreamBYOBRequest.h"  // js::ReadableStreamBYOBRequest
 #include "builtin/streams/ReadableStreamController.h"  // js::Readable{StreamDefault,ByteStream}Controller
 #include "builtin/streams/ReadableStreamReader.h"  // js::ReadableStreamDefaultReader
+#include "builtin/streams/WritableStream.h"        // js::WritableStream
+#include "builtin/streams/WritableStreamDefaultController.h"  // js::WritableStreamDefaultController
+#include "builtin/streams/WritableStreamDefaultWriter.h"  // js::WritableStreamDefaultWriter
 #include "builtin/Symbol.h"
+#ifdef JS_HAS_TEMPORAL_API
+#  include "builtin/temporal/Calendar.h"
+#  include "builtin/temporal/Duration.h"
+#  include "builtin/temporal/Instant.h"
+#  include "builtin/temporal/PlainDate.h"
+#  include "builtin/temporal/PlainDateTime.h"
+#  include "builtin/temporal/PlainMonthDay.h"
+#  include "builtin/temporal/PlainTime.h"
+#  include "builtin/temporal/PlainYearMonth.h"
+#  include "builtin/temporal/Temporal.h"
+#  include "builtin/temporal/TemporalNow.h"
+#  include "builtin/temporal/TimeZone.h"
+#  include "builtin/temporal/ZonedDateTime.h"
+#endif
 #include "builtin/WeakMapObject.h"
 #include "builtin/WeakRefObject.h"
 #include "builtin/WeakSetObject.h"
@@ -185,10 +202,31 @@ bool GlobalObject::skipDeselectedConstructor(JSContext* cx, JSProtoKey key) {
     case JSProto_ReadableStream:
     case JSProto_ReadableStreamDefaultReader:
     case JSProto_ReadableStreamDefaultController:
-    case JSProto_ReadableByteStreamController:
     case JSProto_ByteLengthQueuingStrategy:
     case JSProto_CountQueuingStrategy:
+    case JSProto_ReadableStreamBYOBReader:
+    case JSProto_ReadableStreamBYOBRequest:
+    case JSProto_ReadableByteStreamController:
+    case JSProto_WritableStream:
+    case JSProto_WritableStreamDefaultController:
+    case JSProto_WritableStreamDefaultWriter:
       return !cx->realm()->creationOptions().getStreamsEnabled();
+#endif
+
+#ifdef JS_HAS_TEMPORAL_API
+    case JSProto_Temporal:
+    case JSProto_Calendar:
+    case JSProto_Duration:
+    case JSProto_Instant:
+    case JSProto_PlainDate:
+    case JSProto_PlainDateTime:
+    case JSProto_PlainMonthDay:
+    case JSProto_PlainTime:
+    case JSProto_PlainYearMonth:
+    case JSProto_TemporalNow:
+    case JSProto_TimeZone:
+    case JSProto_ZonedDateTime:
+      return false;
 #endif
 
     // Return true if the given constructor has been disabled at run-time.

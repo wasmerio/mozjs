@@ -19,6 +19,7 @@
 #include "frontend/FrontendContext.h"
 #include "frontend/ScopeBindingCache.h"  // frontend::ScopeBindingCache
 #include "gc/GC.h"
+#include "jit/Ion.h"
 #include "jit/IonCompileTask.h"
 #include "jit/JitRuntime.h"
 #include "jit/JitScript.h"
@@ -313,6 +314,7 @@ void js::FinishOffThreadIonCompile(jit::IonCompileTask* task,
       ->numFinishedOffThreadTasksRef(lock)++;
 }
 
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
 static JSRuntime* GetSelectorRuntime(const CompilationSelector& selector) {
   struct Matcher {
     JSRuntime* operator()(JSScript* script) {
@@ -328,6 +330,7 @@ static JSRuntime* GetSelectorRuntime(const CompilationSelector& selector) {
 
   return selector.match(Matcher());
 }
+#endif
 
 static bool JitDataStructuresExist(const CompilationSelector& selector) {
   struct Matcher {
@@ -341,6 +344,7 @@ static bool JitDataStructuresExist(const CompilationSelector& selector) {
   return selector.match(Matcher());
 }
 
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
 static bool IonCompileTaskMatches(const CompilationSelector& selector,
                                   jit::IonCompileTask* task) {
   struct TaskMatches {
@@ -362,9 +366,11 @@ static bool IonCompileTaskMatches(const CompilationSelector& selector,
 
   return selector.match(TaskMatches{task});
 }
+#endif
 
 static void CancelOffThreadIonCompileLocked(const CompilationSelector& selector,
                                             AutoLockHelperThreadState& lock) {
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
   if (!HelperThreadState().isInitialized(lock)) {
     return;
   }
@@ -422,15 +428,18 @@ static void CancelOffThreadIonCompileLocked(const CompilationSelector& selector,
 
   /* Cancel lazy linking for pending tasks (attached to the ionScript). */
   JSRuntime* runtime = GetSelectorRuntime(selector);
-  jit::IonCompileTask* task =
-      runtime->jitRuntime()->ionLazyLinkList(runtime).getFirst();
-  while (task) {
-    jit::IonCompileTask* next = task->getNext();
-    if (IonCompileTaskMatches(selector, task)) {
-      jit::FinishOffThreadTask(runtime, task, lock);
+  if (runtime->jitRuntime()) {
+    jit::IonCompileTask* task =
+        runtime->jitRuntime()->ionLazyLinkList(runtime).getFirst();
+    while (task) {
+      jit::IonCompileTask* next = task->getNext();
+      if (IonCompileTaskMatches(selector, task)) {
+        jit::FinishOffThreadTask(runtime, task, lock);
+      }
+      task = next;
     }
-    task = next;
   }
+#endif  // ENABLE_PORTABLE_BASELINE_INTERP
 }
 
 void js::CancelOffThreadIonCompile(const CompilationSelector& selector) {
@@ -444,6 +453,9 @@ void js::CancelOffThreadIonCompile(const CompilationSelector& selector) {
 
 #ifdef DEBUG
 bool js::HasOffThreadIonCompile(Realm* realm) {
+#  ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  return false;
+#  else
   AutoLockHelperThreadState lock;
 
   if (!HelperThreadState().isInitialized(lock)) {
@@ -485,6 +497,7 @@ bool js::HasOffThreadIonCompile(Realm* realm) {
   }
 
   return false;
+#  endif  //   !ENABLE_PORTABLE_BASELINE_INTERP
 }
 #endif
 
@@ -540,10 +553,6 @@ bool ParseTask::init(JSContext* cx, const ReadOnlyCompileOptions& options) {
     ReportOutOfMemory(cx);
     return false;
   }
-
-  // MultiStencilsDecode doesn't support JS::InstantiationStorage.
-  MOZ_ASSERT_IF(this->options.allocateInstantiationStorage,
-                kind != ParseTaskKind::MultiStencilsDecode);
 
   return true;
 }
@@ -670,15 +679,6 @@ struct DecodeStencilTask : public ParseTask {
   void parse(FrontendContext* fc) override;
 };
 
-struct MultiStencilsDecodeTask : public ParseTask {
-  JS::TranscodeSources* sources;
-
-  MultiStencilsDecodeTask(JSContext* cx, JS::TranscodeSources& sources,
-                          JS::OffThreadCompileCallback callback,
-                          void* callbackData);
-  void parse(FrontendContext* fc) override;
-};
-
 template <typename Unit>
 CompileToStencilTask<Unit>::CompileToStencilTask(
     JSContext* cx, JS::SourceText<Unit>& srcBuf,
@@ -734,24 +734,6 @@ DecodeStencilTask::DecodeStencilTask(JSContext* cx,
   MOZ_ASSERT(JS::IsTranscodingBytecodeAligned(range.begin().get()));
 }
 
-static void ReportDecodeFailure(JS::FrontendContext* fc, ...) {
-  va_list ap;
-  va_start(ap, fc);
-
-  js::ErrorMetadata metadata;
-  metadata.filename = "<unknown>";
-  metadata.lineNumber = 0;
-  metadata.columnNumber = 0;
-  metadata.lineLength = 0;
-  metadata.tokenOffset = 0;
-  metadata.isMuted = false;
-
-  js::ReportCompileErrorLatin1(fc, std::move(metadata), nullptr,
-                               JSMSG_DECODE_FAILURE, &ap);
-
-  va_end(ap);
-}
-
 void DecodeStencilTask::parse(FrontendContext* fc) {
   if (!compileStorage_.allocateInput(fc, options)) {
     return;
@@ -769,9 +751,6 @@ void DecodeStencilTask::parse(FrontendContext* fc) {
   bool succeeded = false;
   (void)stencil_->deserializeStencils(fc, options, range, &succeeded);
   if (!succeeded) {
-    if (!fc->hadErrors()) {
-      ReportDecodeFailure(fc);
-    }
     stencil_ = nullptr;
     return;
   }
@@ -781,40 +760,6 @@ void DecodeStencilTask::parse(FrontendContext* fc) {
                                    instantiationStorage_)) {
       stencil_ = nullptr;
     }
-  }
-}
-
-MultiStencilsDecodeTask::MultiStencilsDecodeTask(
-    JSContext* cx, JS::TranscodeSources& sources,
-    JS::OffThreadCompileCallback callback, void* callbackData)
-    : ParseTask(ParseTaskKind::MultiStencilsDecode, cx, callback, callbackData),
-      sources(&sources) {}
-
-void MultiStencilsDecodeTask::parse(FrontendContext* fc) {
-  if (!stencils.reserve(sources->length())) {
-    ReportOutOfMemory(fc);  // This sets |outOfMemory|.
-    return;
-  }
-
-  for (auto& source : *sources) {
-    frontend::CompilationInput stencilInput(options);
-    if (!stencilInput.initForGlobal(fc)) {
-      break;
-    }
-
-    RefPtr<frontend::CompilationStencil> stencil =
-        fc->getAllocator()->new_<frontend::CompilationStencil>(
-            stencilInput.source);
-    if (!stencil) {
-      break;
-    }
-    bool succeeded = false;
-    (void)stencil->deserializeStencils(fc, options, source.range, &succeeded);
-    if (!succeeded) {
-      // If any decodes fail, don't process the rest. We likely are hitting OOM.
-      break;
-    }
-    stencils.infallibleEmplaceBack(stencil.forget());
   }
 }
 
@@ -1509,22 +1454,6 @@ JS::OffThreadToken* js::StartOffThreadDecodeStencil(
     void* callbackData) {
   auto task =
       cx->make_unique<DecodeStencilTask>(cx, range, callback, callbackData);
-  if (!task) {
-    return nullptr;
-  }
-
-  JS::CompileOptions compileOptions(cx);
-  options.copyTo(compileOptions);
-
-  return StartOffThreadParseTask(cx, std::move(task), compileOptions);
-}
-
-JS::OffThreadToken* js::StartOffThreadDecodeMultiStencils(
-    JSContext* cx, const JS::DecodeOptions& options,
-    JS::TranscodeSources& sources, JS::OffThreadCompileCallback callback,
-    void* callbackData) {
-  auto task = cx->make_unique<MultiStencilsDecodeTask>(cx, sources, callback,
-                                                       callbackData);
   if (!task) {
     return nullptr;
   }
@@ -2302,9 +2231,7 @@ UniquePtr<ParseTask> GlobalHelperThreadState::finishParseTaskCommon(
   Rooted<UniquePtr<ParseTask>> parseTask(cx,
                                          removeFinishedParseTask(cx, token));
 
-  if (!parseTask->fc_.convertToRuntimeError(cx)) {
-    return nullptr;
-  }
+  parseTask->fc_.convertToRuntimeError(cx);
 
   if (cx->isExceptionPending()) {
     return nullptr;
@@ -2331,46 +2258,6 @@ GlobalHelperThreadState::finishStencilTask(JSContext* cx,
   }
 
   return parseTask->stencil_.forget();
-}
-
-bool GlobalHelperThreadState::finishMultiParseTask(
-    JSContext* cx, ParseTaskKind kind, JS::OffThreadToken* token,
-    mozilla::Vector<RefPtr<JS::Stencil>>* stencils) {
-  MOZ_ASSERT(stencils);
-  Rooted<UniquePtr<ParseTask>> parseTask(cx, finishParseTaskCommon(cx, token));
-  if (!parseTask) {
-    return false;
-  }
-
-  MOZ_ASSERT(parseTask->kind == ParseTaskKind::MultiStencilsDecode);
-  auto task = static_cast<MultiStencilsDecodeTask*>(parseTask.get().get());
-  size_t expectedLength = task->sources->length();
-
-  if (!stencils->reserve(parseTask->stencils.length())) {
-    ReportOutOfMemory(cx);
-    return false;
-  }
-
-  for (auto& stencil : parseTask->stencils) {
-    stencils->infallibleEmplaceBack(stencil.forget());
-  }
-
-  if (stencils->length() != expectedLength) {
-    // No error was reported, but fewer stencils produced than expected.
-    // Assume we hit out of memory.
-    MOZ_ASSERT(false, "Expected more stencils");
-    ReportOutOfMemory(cx);
-    return false;
-  }
-
-  return true;
-}
-
-bool GlobalHelperThreadState::finishMultiStencilsDecodeTask(
-    JSContext* cx, JS::OffThreadToken* token,
-    mozilla::Vector<RefPtr<JS::Stencil>>* stencils) {
-  return finishMultiParseTask(cx, ParseTaskKind::MultiStencilsDecode, token,
-                              stencils);
 }
 
 void GlobalHelperThreadState::cancelParseTask(JSRuntime* rt,

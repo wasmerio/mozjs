@@ -20,7 +20,8 @@
 #include "builtin/streams/ReadableStreamInternals.h"  // js::ReadableStreamCancel
 #include "builtin/streams/ReadableStreamOperations.h"  // js::ReadableStream{PipeTo,Tee}
 #include "builtin/streams/ReadableStreamReader.h"  // js::CreateReadableStream{BYOB,Default}Reader, js::ForAuthorCodeBool
-#include "js/CallArgs.h"     // JS::CallArgs{,FromVp}
+#include "builtin/streams/WritableStream.h"  // js::WritableStream
+#include "js/CallArgs.h"                     // JS::CallArgs{,FromVp}
 #include "js/Class.h"        // JSCLASS_SLOT0_IS_NSISUPPORTS, JS_NULL_CLASS_OPS
 #include "js/Conversions.h"  // JS::ToBoolean
 #include "js/ErrorReport.h"  // JS_ReportErrorNumberASCII
@@ -55,12 +56,14 @@ using js::NewBuiltinClassInstance;
 using js::NewDenseFullyAllocatedArray;
 using js::PlainObject;
 using js::ReadableStream;
+using js::ReadableStreamPipeTo;
 using js::ReadableStreamTee;
 using js::ReturnPromiseRejectedWithPendingError;
 using js::ToString;
 using js::UnwrapAndTypeCheckArgument;
 using js::UnwrapAndTypeCheckThis;
 using js::UnwrapAndTypeCheckValue;
+using js::WritableStream;
 
 using JS::CallArgs;
 using JS::CallArgsFromVp;
@@ -172,11 +175,26 @@ bool ReadableStream::constructor(JSContext* cx, unsigned argc, JS::Value* vp) {
     return false;
   }
   if (equal) {
-    // The rest of step 6 is unimplemented, since we don't support
-    // user-defined byte streams yet.
-    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                              JSMSG_READABLESTREAM_BYTES_TYPE_NOT_IMPLEMENTED);
-    return false;
+    // If strategy["size"] exists, throw a RangeError exception.
+    if (!size.isUndefined()) {
+      JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                                JSMSG_READABLESTREAM_BYOB_SIZE);
+      return false;
+    }
+
+    double highWaterMark = 0;
+    if (!ValidateAndNormalizeHighWaterMark(cx, highWaterMarkVal, &highWaterMark,
+                                           0)) {
+      return false;
+    }
+
+    if (!SetUpReadableByteStreamControllerFromUnderlyingSource(
+            cx, stream, underlyingSource, highWaterMark)) {
+      return false;
+    }
+
+    args.rval().setObject(*stream);
+    return true;
   }
 
   // Step 7: Otherwise, if type is undefined,
@@ -194,7 +212,7 @@ bool ReadableStream::constructor(JSContext* cx, unsigned argc, JS::Value* vp) {
       // Step 7.c: Set highWaterMark to ?
       // ValidateAndNormalizeHighWaterMark(highWaterMark).
       if (!ValidateAndNormalizeHighWaterMark(cx, highWaterMarkVal,
-                                             &highWaterMark)) {
+                                             &highWaterMark, 1)) {
         return false;
       }
     }
@@ -365,6 +383,125 @@ bool ReadableStream::constructor(JSContext* cx, unsigned argc, JS::Value* vp) {
   return true;
 }
 
+// Streams spec, 3.2.5.5.
+//      pipeThrough({ writable, readable },
+//                  { preventClose, preventAbort, preventCancel, signal })
+//
+// Not implemented.
+
+/**
+ * Streams spec, 3.2.5.6.
+ *      pipeTo(dest, { preventClose, preventAbort, preventCancel, signal } = {})
+ */
+static bool ReadableStream_pipeTo(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  // Implicit in the spec: argument default values.
+  Rooted<Value> options(cx, args.get(1));
+  if (options.isUndefined()) {
+    JSObject* emptyObj = NewPlainObject(cx);
+    if (!emptyObj) {
+      return false;
+    }
+    options.setObject(*emptyObj);
+  }
+  // Step 3 (reordered).
+  // Implicit in the spec: get the values of the named parameters inside the
+  // second argument destructuring pattern.  But as |ToBoolean| is infallible
+  // and has no observable side effects, we may as well do step 3 here too.
+  bool preventClose, preventAbort, preventCancel;
+  Rooted<Value> signalVal(cx);
+  {
+    // (P)(Re)use the |signal| root.
+    auto& v = signalVal;
+
+    if (!GetProperty(cx, options, cx->names().preventClose, &v)) {
+      return false;
+    }
+    preventClose = JS::ToBoolean(v);
+
+    if (!GetProperty(cx, options, cx->names().preventAbort, &v)) {
+      return false;
+    }
+    preventAbort = JS::ToBoolean(v);
+
+    if (!GetProperty(cx, options, cx->names().preventCancel, &v)) {
+      return false;
+    }
+    preventCancel = JS::ToBoolean(v);
+  }
+  if (!GetProperty(cx, options, cx->names().signal, &signalVal)) {
+    return false;
+  }
+
+  // Step 1: If ! IsReadableStream(this) is false, return a promise rejected
+  //         with a TypeError exception.
+  Rooted<ReadableStream*> unwrappedThis(
+      cx, UnwrapAndTypeCheckThis<ReadableStream>(cx, args, "pipeTo"));
+  if (!unwrappedThis) {
+    return ReturnPromiseRejectedWithPendingError(cx, args);
+  }
+
+  // Step 2: If ! IsWritableStream(dest) is false, return a promise rejected
+  //         with a TypeError exception.
+  Rooted<WritableStream*> unwrappedDest(
+      cx, UnwrapAndTypeCheckArgument<WritableStream>(cx, args, "pipeTo", 0));
+  if (!unwrappedDest) {
+    return ReturnPromiseRejectedWithPendingError(cx, args);
+  }
+
+  // Step 3: Set preventClose to ! ToBoolean(preventClose), set preventAbort to
+  //         ! ToBoolean(preventAbort), and set preventCancel to
+  //         ! ToBoolean(preventCancel).
+  // This already happened above.
+
+  // Step 4: If signal is not undefined, and signal is not an instance of the
+  //         AbortSignal interface, return a promise rejected with a TypeError
+  //         exception.
+  Rooted<JSObject*> signal(cx, nullptr);
+  if (!signalVal.isUndefined()) {
+    if (!UnwrapAndTypeCheckValue(
+            cx, signalVal, cx->runtime()->maybeAbortSignalClass(), [cx] {
+              JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                                        JSMSG_READABLESTREAM_PIPETO_BAD_SIGNAL);
+            })) {
+      return ReturnPromiseRejectedWithPendingError(cx, args);
+    }
+
+    // Note: |signal| can be a wrapper.
+    signal = &signalVal.toObject();
+  }
+
+  // Step 5: If ! IsReadableStreamLocked(this) is true, return a promise
+  //         rejected with a TypeError exception.
+  if (unwrappedThis->locked()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_READABLESTREAM_LOCKED_METHOD, "pipeTo");
+    return ReturnPromiseRejectedWithPendingError(cx, args);
+  }
+
+  // Step 6: If ! IsWritableStreamLocked(dest) is true, return a promise
+  //         rejected with a TypeError exception.
+  if (unwrappedDest->isLocked()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_WRITABLESTREAM_ALREADY_LOCKED);
+    return ReturnPromiseRejectedWithPendingError(cx, args);
+  }
+
+  // Step 7: Return
+  //         ! ReadableStreamPipeTo(this, dest, preventClose, preventAbort,
+  //                                preventCancel, signal).
+  JSObject* promise =
+      ReadableStreamPipeTo(cx, unwrappedThis, unwrappedDest, preventClose,
+                           preventAbort, preventCancel, signal);
+  if (!promise) {
+    return false;
+  }
+
+  args.rval().setObject(*promise);
+  return true;
+}
+
 /**
  * Streams spec, 3.2.5.7. tee()
  */
@@ -415,6 +552,27 @@ static const JSPropertySpec ReadableStream_properties[] = {
     JS_STRING_SYM_PS(toStringTag, "ReadableStream", JSPROP_READONLY),
     JS_PS_END};
 
+static bool FinishReadableStreamClassInit(JSContext* cx, Handle<JSObject*> ctor,
+                                          Handle<JSObject*> proto) {
+  // This function and everything below should be replaced with
+  //
+  // JS_STREAMS_CLASS_SPEC(ReadableStream, 0, SlotCount, 0,
+  //                       JSCLASS_SLOT0_IS_NSISUPPORTS,
+  //                       JS_NULL_CLASS_OPS);
+  //
+  // when "pipeTo" is always enabled.
+  const auto& rco = cx->realm()->creationOptions();
+  if (rco.getStreamsEnabled()) {
+    Rooted<jsid> pipeTo(cx, NameToId(cx->names().pipeTo));
+    if (!DefineFunction(cx, proto, pipeTo, ReadableStream_pipeTo, 2,
+                        JSPROP_RESOLVING | JSPROP_ENUMERATE)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 const ClassSpec ReadableStream::classSpec_ = {
     js::GenericCreateConstructor<ReadableStream::constructor, 0,
                                  js::gc::AllocKind::FUNCTION>,
@@ -423,7 +581,7 @@ const ClassSpec ReadableStream::classSpec_ = {
     nullptr,
     ReadableStream_methods,
     ReadableStream_properties,
-    nullptr,
+    FinishReadableStreamClassInit,
     0};
 
 const JSClass ReadableStream::class_ = {

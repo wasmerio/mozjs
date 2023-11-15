@@ -225,10 +225,9 @@ bool JitRuntime::generateTrampolines(JSContext* cx) {
   rangeRecorder.recordOffset("Trampoline: DoubleToInt32ValueStub");
 
   JitSpew(JitSpew_Codegen, "# Emitting VM function wrappers");
-  if (!generateVMWrappers(cx, masm)) {
+  if (!generateVMWrappers(cx, masm, rangeRecorder)) {
     return false;
   }
-  rangeRecorder.recordOffset("Trampoline: VM Wrapper");
 
   JitSpew(JitSpew_Codegen, "# Emitting profiler exit frame tail stub");
   Label profilerExitTail;
@@ -525,11 +524,6 @@ bool RecompileInfo::traceWeak(JSTracer* trc) {
 void JitZone::traceWeak(JSTracer* trc) {
   baselineCacheIRStubCodes_.traceWeak(trc);
   inlinedCompilations_.traceWeak(trc);
-
-  TraceWeakEdge(trc, &lastStubFoldingBailoutChild_,
-                "JitZone::lastStubFoldingBailoutChild_");
-  TraceWeakEdge(trc, &lastStubFoldingBailoutParent_,
-                "JitZone::lastStubFoldingBailoutParent_");
 }
 
 size_t JitRealm::sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const {

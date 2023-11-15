@@ -86,8 +86,7 @@ class MOZ_RAII FallbackICCodeCompiler final {
   void pushStubPayload(MacroAssembler& masm, Register scratch);
 
   // Emits a tail call to a VMFunction wrapper.
-  [[nodiscard]] bool tailCallVMInternal(MacroAssembler& masm,
-                                        TailCallVMFunctionId id);
+  [[nodiscard]] bool tailCallVMInternal(MacroAssembler& masm, VMFunctionId id);
 
   template <typename Fn, Fn fn>
   [[nodiscard]] bool tailCallVM(MacroAssembler& masm);
@@ -324,7 +323,12 @@ static constexpr OpToFallbackKindTable FallbackKindTable;
 
 void ICScript::initICEntries(JSContext* cx, JSScript* script) {
   MOZ_ASSERT(cx->realm()->jitRealm());
+  #ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  MOZ_ASSERT(jit::IsBaselineInterpreterEnabled() ||
+             jit::IsPortableBaselineInterpreterEnabled());
+  #else
   MOZ_ASSERT(jit::IsBaselineInterpreterEnabled());
+  #endif
 
   MOZ_ASSERT(numICEntries() == script->numICEntries());
 
@@ -353,7 +357,9 @@ void ICScript::initICEntries(JSContext* cx, JSScript* script) {
                "Unexpected fallback kind for non-JOF_IC op");
 
     BaselineICFallbackKind kind = BaselineICFallbackKind(tableValue);
-    TrampolinePtr stubCode = fallbackCode.addr(kind);
+    TrampolinePtr stubCode = jit::IsBaselineInterpreterEnabled()
+                                 ? fallbackCode.addr(kind)
+                                 : TrampolinePtr();
 
     // Initialize the ICEntry and ICFallbackStub.
     uint32_t offset = loc.bytecodeToOffset(script);
@@ -396,8 +402,12 @@ static void MaybeNotifyWarp(JSScript* script, ICFallbackStub* stub) {
 }
 
 void ICCacheIRStub::trace(JSTracer* trc) {
-  JitCode* stubJitCode = jitCode();
-  TraceManuallyBarrieredEdge(trc, &stubJitCode, "baseline-ic-stub-code");
+  if (hasJitCode()) {
+    JitCode* stubJitCode = jitCode();
+    if (stubJitCode) {
+      TraceManuallyBarrieredEdge(trc, &stubJitCode, "baseline-ic-stub-code");
+    }
+  }
 
   TraceCacheIRStub(trc, this, stubInfo());
 }
@@ -509,10 +519,9 @@ static void InitMacroAssemblerForICStub(StackMacroAssembler& masm) {
 }
 
 bool FallbackICCodeCompiler::tailCallVMInternal(MacroAssembler& masm,
-                                                TailCallVMFunctionId id) {
+                                                VMFunctionId id) {
   TrampolinePtr code = cx->runtime()->jitRuntime()->getVMWrapper(id);
   const VMFunctionData& fun = GetVMFunction(id);
-  MOZ_ASSERT(fun.expectTailCall == TailCall);
   uint32_t argSize = fun.explicitStackSlots() * sizeof(void*);
   EmitBaselineTailCallVM(code, masm, argSize);
   return true;
@@ -523,7 +532,6 @@ bool FallbackICCodeCompiler::callVMInternal(MacroAssembler& masm,
   MOZ_ASSERT(inStubFrame_);
 
   TrampolinePtr code = cx->runtime()->jitRuntime()->getVMWrapper(id);
-  MOZ_ASSERT(GetVMFunction(id).expectTailCall == NonTailCall);
 
   EmitBaselineCallVM(code, masm);
   return true;
@@ -537,7 +545,7 @@ bool FallbackICCodeCompiler::callVM(MacroAssembler& masm) {
 
 template <typename Fn, Fn fn>
 bool FallbackICCodeCompiler::tailCallVM(MacroAssembler& masm) {
-  TailCallVMFunctionId id = TailCallVMFunctionToId<Fn, fn>::id;
+  VMFunctionId id = VMFunctionToId<Fn, fn>::id;
   return tailCallVMInternal(masm, id);
 }
 
@@ -835,9 +843,12 @@ bool DoSetElemFallback(JSContext* cx, BaselineFrame* frame,
     }
   }
 
-  // Overwrite the object on the stack (pushed for the decompiler) with the rhs.
-  MOZ_ASSERT(stack[2] == objv);
-  stack[2] = rhs;
+  if (stack) {
+    // Overwrite the object on the stack (pushed for the decompiler) with the
+    // rhs.
+    MOZ_ASSERT(stack[2] == objv);
+    stack[2] = rhs;
+  }
 
   if (attached) {
     return true;
@@ -1342,7 +1353,7 @@ bool DoSetPropFallback(JSContext* cx, BaselineFrame* frame,
   Rooted<PropertyName*> name(cx, script->getName(pc));
   RootedId id(cx, NameToId(name));
 
-  int lhsIndex = -2;
+  int lhsIndex = stack ? -2 : JSDVG_IGNORE_STACK;
   RootedObject obj(cx,
                    ToObjectFromStackForPropertyAccess(cx, lhs, lhsIndex, id));
   if (!obj) {
@@ -1410,9 +1421,11 @@ bool DoSetPropFallback(JSContext* cx, BaselineFrame* frame,
     }
   }
 
-  // Overwrite the LHS on the stack (pushed for the decompiler) with the RHS.
-  MOZ_ASSERT(stack[1] == lhs);
-  stack[1] = rhs;
+  if (stack) {
+    // Overwrite the LHS on the stack (pushed for the decompiler) with the RHS.
+    MOZ_ASSERT(stack[1] == lhs);
+    stack[1] = rhs;
+  }
 
   if (attached) {
     return true;

@@ -26,6 +26,10 @@ class ReadableStream;
 [[nodiscard]] extern PromiseObject* ReadableStreamAddReadOrReadIntoRequest(
     JSContext* cx, JS::Handle<ReadableStream*> unwrappedStream);
 
+[[nodiscard]] extern bool ReadableStreamReaderErrorReadOrReadIntoRequests(
+    JSContext* cx, JS::Handle<ReadableStreamReader*> reader,
+    JS::Handle<Value> err);
+
 [[nodiscard]] extern JSObject* ReadableStreamCancel(
     JSContext* cx, JS::Handle<ReadableStream*> unwrappedStream,
     JS::Handle<JS::Value> reason);
@@ -46,6 +50,9 @@ class ReadableStream;
     JS::Handle<JS::Value> chunk, bool done);
 
 extern uint32_t ReadableStreamGetNumReadRequests(ReadableStream* stream);
+
+[[nodiscard]] extern bool ReadableStreamHasBYOBReader(
+    JSContext* cx, JS::Handle<ReadableStream*> unwrappedStream, bool* result);
 
 [[nodiscard]] extern bool ReadableStreamHasDefaultReader(
     JSContext* cx, JS::Handle<ReadableStream*> unwrappedStream, bool* result);

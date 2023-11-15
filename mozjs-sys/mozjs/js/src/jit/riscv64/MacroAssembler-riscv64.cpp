@@ -2125,7 +2125,8 @@ CodeOffset MacroAssembler::nopPatchableToCall() {
 CodeOffset MacroAssembler::wasmTrapInstruction() {
   CodeOffset offset(currentOffset());
   BlockTrampolinePoolScope block_trampoline_pool(this, 2);
-  break_(kWasmTrapCode);  // TODO: teq(zero, zero, WASM_TRAP)
+  illegal_trap(kWasmTrapCode);
+  ebreak();
   return offset;
 }
 size_t MacroAssembler::PushRegsInMaskSizeInBytes(LiveRegisterSet set) {
@@ -4285,7 +4286,12 @@ void MacroAssembler::widenInt32(Register r) {
 // modified by UpdateLoad64Value, either during compilation (eg.
 // Assembler::bind), or during execution (eg. jit::PatchJump).
 void MacroAssemblerRiscv64::ma_liPatchable(Register dest, Imm32 imm) {
-  return ma_liPatchable(dest, ImmWord(uintptr_t(imm.value)));
+  m_buffer.ensureSpace(2 * sizeof(uint32_t));
+  int64_t value = imm.value;
+  int64_t high_20 = ((value + 0x800) >> 12);
+  int64_t low_12 = value << 52 >> 52;
+  lui(dest, high_20);
+  addi(dest, dest, low_12);
 }
 
 void MacroAssemblerRiscv64::ma_liPatchable(Register dest, ImmPtr imm) {

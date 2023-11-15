@@ -10,13 +10,14 @@
 
 #include "mozilla/Assertions.h"  // MOZ_ASSERT{,_IF}
 
-#include "builtin/Array.h"    // js::NewDenseFullyAllocatedArray
-#include "builtin/Promise.h"  // js::RejectPromiseWithPendingError
+#include "builtin/Array.h"                // js::NewDenseFullyAllocatedArray
+#include "builtin/Promise.h"              // js::RejectPromiseWithPendingError
+#include "builtin/streams/PipeToState.h"  // js::PipeToState
 #include "builtin/streams/ReadableStream.h"  // js::ReadableStream
 #include "builtin/streams/ReadableStreamController.h"  // js::ReadableStream{,Default}Controller
 #include "builtin/streams/ReadableStreamDefaultControllerOperations.h"  // js::ReadableStreamDefaultController{Close,Enqueue}, js::ReadableStreamControllerError, js::SourceAlgorithms
 #include "builtin/streams/ReadableStreamInternals.h"  // js::ReadableStreamCancel
-#include "builtin/streams/ReadableStreamReader.h"  // js::CreateReadableStreamDefaultReader, js::ForAuthorCodeBool, js::ReadableStream{,Default}Reader, js::ReadableStreamDefaultReaderRead
+#include "builtin/streams/ReadableStreamReader.h"  // js::CreateReadableStreamDefaultReader, js::ForAuthorCodeBool, js::ReadableStream{,Default}Reader, js::ReadableStreamReaderGenericRead
 #include "builtin/streams/TeeState.h"              // js::TeeState
 #include "js/CallAndConstruct.h"                   // JS::IsCallable
 #include "js/CallArgs.h"                           // JS::CallArgs{,FromVp}
@@ -535,6 +536,17 @@ static bool TeeReaderErroredHandler(JSContext* cx, unsigned argc,
     JSContext* cx, JS::Handle<ReadableStream*> unwrappedStream,
     bool cloneForBranch2, JS::MutableHandle<ReadableStream*> branch1Stream,
     JS::MutableHandle<ReadableStream*> branch2Stream) {
+  // BYOB stream tee is unimplemented
+  if (unwrappedStream->controller()->is<ReadableByteStreamController>()) {
+    Rooted<ReadableByteStreamController*> unwrappedController(
+        cx, &unwrappedStream->controller()->as<ReadableByteStreamController>());
+    if (!unwrappedController->hasExternalSource()) {
+      JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                                JSMSG_READABLESTREAMTEE_BYOB);
+      return false;
+    }
+  }
+
   // Step 1: Assert: ! IsReadableStream(stream) is true (implicit).
 
   // Step 2: Assert: Type(cloneForBranch2) is Boolean (implicit).
@@ -542,8 +554,11 @@ static bool TeeReaderErroredHandler(JSContext* cx, unsigned argc,
   // The streams spec only ever passes |cloneForBranch2 = false|.  It's expected
   // that external specs that pass |cloneForBranch2 = true| will at some point
   // come into existence, but we don't presently implement any such specs.
-  MOZ_ASSERT(!cloneForBranch2,
-             "support for cloneForBranch2=true is not yet implemented");
+  if (cloneForBranch2) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_READABLESTREAMTEE_CLONE);
+    return false;
+  }
 
   // Step 3: Let reader be ? AcquireReadableStreamDefaultReader(stream).
   Rooted<ReadableStreamDefaultReader*> reader(
@@ -630,4 +645,49 @@ static bool TeeReaderErroredHandler(JSContext* cx, unsigned argc,
 
   // Step 19: Return « branch1, branch2 ».
   return true;
+}
+
+/**
+ * Streams spec, 3.4.10.
+ *      ReadableStreamPipeTo ( source, dest, preventClose, preventAbort,
+ *                             preventCancel, signal )
+ */
+PromiseObject* js::ReadableStreamPipeTo(JSContext* cx,
+                                        Handle<ReadableStream*> unwrappedSource,
+                                        Handle<WritableStream*> unwrappedDest,
+                                        bool preventClose, bool preventAbort,
+                                        bool preventCancel,
+                                        Handle<JSObject*> signal) {
+  cx->check(signal);
+
+  // Step 1. Assert: ! IsReadableStream(source) is true.
+  // Step 2. Assert: ! IsWritableStream(dest) is true.
+  // Step 3. Assert: Type(preventClose) is Boolean, Type(preventAbort) is
+  //         Boolean, and Type(preventCancel) is Boolean.
+  // (These are guaranteed by the type system.)
+
+  // Step 12: Let promise be a new promise.
+  //
+  // We reorder this so that this promise can be rejected and returned in case
+  // of internal error.
+  Rooted<PromiseObject*> promise(cx, PromiseObject::createSkippingExecutor(cx));
+  if (!promise) {
+    return nullptr;
+  }
+
+  // Steps 4-11, 13-14.
+  Rooted<PipeToState*> pipeToState(
+      cx,
+      PipeToState::create(cx, promise, unwrappedSource, unwrappedDest,
+                          preventClose, preventAbort, preventCancel, signal));
+  if (!pipeToState) {
+    if (!RejectPromiseWithPendingError(cx, promise)) {
+      return nullptr;
+    }
+
+    return promise;
+  }
+
+  // Step 15.
+  return promise;
 }

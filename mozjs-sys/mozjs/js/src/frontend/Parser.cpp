@@ -489,7 +489,7 @@ void GeneralParser<ParseHandler, Unit>::reportMissingClosing(
   char lineNumber[MaxWidth];
   SprintfLiteral(lineNumber, "%" PRIu32, line);
 
-  if (!notes->addNoteASCII(this->fc_, getFilename(), 0, line, column,
+  if (!notes->addNoteASCII(this->fc_, getFilename().c_str(), 0, line, column,
                            GetErrorMessage, nullptr, noteNumber, lineNumber,
                            columnNumber)) {
     return;
@@ -529,7 +529,7 @@ void GeneralParser<ParseHandler, Unit>::reportRedeclaration(
   char lineNumber[MaxWidth];
   SprintfLiteral(lineNumber, "%" PRIu32, line);
 
-  if (!notes->addNoteASCII(this->fc_, getFilename(), 0, line, column,
+  if (!notes->addNoteASCII(this->fc_, getFilename().c_str(), 0, line, column,
                            GetErrorMessage, nullptr, JSMSG_REDECLARED_PREV,
                            lineNumber, columnNumber)) {
     return;
@@ -7675,7 +7675,7 @@ GeneralParser<ParseHandler, Unit>::decoratorList(YieldHandling yieldHandling) {
       // We've hit a `(`, so it's actually a DecoratorCallExpression
       if (tt == TokenKind::LeftParen) {
         bool isSpread = false;
-        Node args = argumentList(yieldHandling, &isSpread);
+        ListNodeType args = argumentList(yieldHandling, &isSpread);
         if (!args) {
           return null();
         }
@@ -10948,7 +10948,7 @@ typename ParseHandler::Node GeneralParser<ParseHandler, Unit>::memberExpr(
       }
 
       bool isSpread = false;
-      Node args;
+      ListNodeType args;
       if (matched) {
         args = argumentList(yieldHandling, &isSpread);
       } else {
@@ -11172,7 +11172,7 @@ typename ParseHandler::Node GeneralParser<ParseHandler, Unit>::memberSuperCall(
   // generator, we still inherit the yieldHandling of the
   // memberExpression, per spec. Curious.
   bool isSpread = false;
-  Node args = argumentList(yieldHandling, &isSpread);
+  ListNodeType args = argumentList(yieldHandling, &isSpread);
   if (!args) {
     return null();
   }
@@ -11247,7 +11247,8 @@ typename ParseHandler::Node GeneralParser<ParseHandler, Unit>::memberCall(
     bool isSpread = false;
     PossibleError* asyncPossibleError =
         maybeAsyncArrow ? possibleError : nullptr;
-    Node args = argumentList(yieldHandling, &isSpread, asyncPossibleError);
+    ListNodeType args =
+        argumentList(yieldHandling, &isSpread, asyncPossibleError);
     if (!args) {
       return null();
     }

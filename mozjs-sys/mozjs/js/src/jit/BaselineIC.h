@@ -33,7 +33,6 @@ class BaselineFrame;
 class CacheIRStubInfo;
 class ICScript;
 
-enum class TailCallVMFunctionId;
 enum class VMFunctionId;
 
 // [SMDOC] JIT Inline Caches (ICs)
@@ -157,7 +156,9 @@ class ICStub {
 
   ICStub(uint8_t* stubCode, bool isFallback)
       : stubCode_(stubCode), isFallback_(isFallback) {
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
     MOZ_ASSERT(stubCode != nullptr);
+#endif  // !ENABLE_PORTABLE_BASELINE_INTERP
   }
 
  public:
@@ -192,6 +193,9 @@ class ICStub {
   JitCode* jitCode() {
     MOZ_ASSERT(!usesTrampolineCode());
     return JitCode::FromExecutable(stubCode_);
+  }
+  bool hasJitCode() {
+    return !!stubCode_;
   }
 
   uint32_t enteredCount() const { return enteredCount_; }
@@ -267,7 +271,7 @@ class ICCacheIRStub final : public ICStub {
 
  public:
   ICCacheIRStub(JitCode* stubCode, const CacheIRStubInfo* stubInfo)
-      : ICStub(stubCode->raw(), /* isFallback = */ false),
+      : ICStub(stubCode ? stubCode->raw() : nullptr, /* isFallback = */ false),
         stubInfo_(stubInfo) {}
 
   ICStub* next() const { return next_; }

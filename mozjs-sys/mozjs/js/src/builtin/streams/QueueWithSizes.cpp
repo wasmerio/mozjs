@@ -121,7 +121,7 @@ void js::DequeueValue(StreamController* unwrappedContainer, JSContext* cx) {
 
   // Step 3: If ! IsFiniteNonNegativeNumber(size) is false, throw a RangeError
   //         exception.
-  if (size < 0 || std::isnan(size) || std::isinf(size)) {
+  if (size < 0 || std::isnan(size) || !std::isfinite(size)) {
     JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
                               JSMSG_NUMBER_MUST_BE_FINITE_NON_NEGATIVE, "size");
     return false;

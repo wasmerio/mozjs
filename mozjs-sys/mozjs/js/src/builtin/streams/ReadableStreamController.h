@@ -10,14 +10,16 @@
 #define builtin_streams_ReadableStreamController_h
 
 #include "mozilla/Assertions.h"  // MOZ_ASSERT
+#include "mozilla/Maybe.h"       // mozilla::Maybe, mozilla::Some
 
 #include <stdint.h>  // uint32_t
 
-#include "builtin/streams/ReadableStream.h"    // js::ReadableStream
-#include "builtin/streams/StreamController.h"  // js::StreamController
-#include "js/Class.h"                          // JSClass, js::ClassSpec
-#include "js/RootingAPI.h"                     // JS::Handle
-#include "js/Stream.h"  // JS::ReadableStreamUnderlyingSource
+#include "builtin/streams/ReadableStream.h"             // js::ReadableStream
+#include "builtin/streams/ReadableStreamBYOBRequest.h"  // js::ReadableStreamBYOBRequest
+#include "builtin/streams/StreamController.h"           // js::StreamController
+#include "js/Class.h"       // JSClass, js::ClassSpec
+#include "js/RootingAPI.h"  // JS::Handle
+#include "js/Stream.h"      // JS::ReadableStreamUnderlyingSource
 #include "js/Value.h"  // JS::Value, JS::{Number,Object,Private,Undefined}Value, JS::UndefinedHandleValue
 #include "vm/List.h"   // js::ListObject
 #include "vm/NativeObject.h"  // js::NativeObject
@@ -25,6 +27,7 @@
 namespace js {
 
 class PromiseObject;
+class ReadableStreamBYOBRequest;
 
 class ReadableStreamController : public StreamController {
  public:
@@ -200,18 +203,32 @@ class ReadableByteStreamController : public ReadableStreamController {
     SlotCount
   };
 
+  bool hasByobRequest() const {
+    return !getFixedSlot(Slot_BYOBRequest).isNullOrUndefined();
+  }
   JS::Value byobRequest() const { return getFixedSlot(Slot_BYOBRequest); }
-  void clearBYOBRequest() {
-    setFixedSlot(Slot_BYOBRequest, JS::UndefinedValue());
+  void setByobRequest(ReadableStreamBYOBRequest* byobRequest) {
+    setFixedSlot(Slot_BYOBRequest, JS::ObjectValue(*byobRequest));
+  }
+  void clearByobRequest() {
+    setFixedSlot(Slot_BYOBRequest, JS::NullValue());
   }
   ListObject* pendingPullIntos() const {
     return &getFixedSlot(Slot_PendingPullIntos).toObject().as<ListObject>();
   }
-  JS::Value autoAllocateChunkSize() const {
-    return getFixedSlot(Slot_AutoAllocateSize);
+  void setAutoAllocateChunkSize(uint64_t chunkSize) {
+    MOZ_ASSERT(chunkSize > 0);
+    setFixedSlot(Slot_AutoAllocateSize, JS::NumberValue(chunkSize));
   }
-  void setAutoAllocateChunkSize(const JS::Value& size) {
-    setFixedSlot(Slot_AutoAllocateSize, size);
+  void clearAutoAllocateChunkSize() {
+    setFixedSlot(Slot_AutoAllocateSize, JS::UndefinedValue());
+  }
+  mozilla::Maybe<uint64_t> autoAllocateChunkSize() {
+    if (getFixedSlot(Slot_AutoAllocateSize).isNumber()) {
+      return mozilla::Some(getFixedSlot(Slot_AutoAllocateSize).toNumber());
+    } else {
+      return mozilla::Nothing();
+    }
   }
 
   static bool constructor(JSContext* cx, unsigned argc, JS::Value* vp);
@@ -219,6 +236,29 @@ class ReadableByteStreamController : public ReadableStreamController {
   static const JSClass class_;
   static const ClassSpec protoClassSpec_;
   static const JSClass protoClass_;
+};
+
+class ByteStreamChunk : public NativeObject {
+ private:
+  enum Slots { Slot_Buffer = 0, Slot_ByteOffset, Slot_ByteLength, SlotCount };
+
+ public:
+  static const JSClass class_;
+
+  ArrayBufferObject* buffer() {
+    return &getFixedSlot(Slot_Buffer).toObject().as<ArrayBufferObject>();
+  }
+  uint32_t byteOffset() { return getFixedSlot(Slot_ByteOffset).toInt32(); }
+  void setByteOffset(uint32_t offset) {
+    setFixedSlot(Slot_ByteOffset, Int32Value(offset));
+  }
+  uint32_t byteLength() { return getFixedSlot(Slot_ByteLength).toInt32(); }
+  void setByteLength(uint32_t length) {
+    setFixedSlot(Slot_ByteLength, Int32Value(length));
+  }
+
+  static ByteStreamChunk* create(JSContext* cx, HandleObject buffer,
+                                 uint32_t byteOffset, uint32_t byteLength);
 };
 
 [[nodiscard]] extern bool CheckReadableStreamControllerCanCloseOrEnqueue(
@@ -229,16 +269,39 @@ class ReadableByteStreamController : public ReadableStreamController {
     JSContext* cx, JS::Handle<ReadableStreamController*> unwrappedController,
     JS::Handle<JS::Value> reason);
 
-extern PromiseObject* ReadableStreamDefaultControllerPullSteps(
+[[nodiscard]] extern PromiseObject* ReadableStreamDefaultControllerPullSteps(
     JSContext* cx,
     JS::Handle<ReadableStreamDefaultController*> unwrappedController);
 
-extern bool ReadableStreamControllerStartHandler(JSContext* cx, unsigned argc,
-                                                 JS::Value* vp);
+[[nodiscard]] extern bool ReadableStreamControllerStartHandler(JSContext* cx,
+                                                               unsigned argc,
+                                                               JS::Value* vp);
 
-extern bool ReadableStreamControllerStartFailedHandler(JSContext* cx,
-                                                       unsigned argc,
-                                                       JS::Value* vp);
+[[nodiscard]] extern bool ReadableStreamControllerStartFailedHandler(
+    JSContext* cx, unsigned argc, JS::Value* vp);
+
+[[nodiscard]] extern bool ReadableByteStreamControllerClearPendingPullIntos(
+    JSContext* cx,
+    JS::Handle<ReadableByteStreamController*> unwrappedController);
+
+[[nodiscard]] extern bool ReadableByteStreamControllerClose(
+    JSContext* cx,
+    JS::Handle<ReadableByteStreamController*> unwrappedController);
+
+[[nodiscard]] extern PromiseObject* ReadableByteStreamControllerPullSteps(
+    JSContext* cx,
+    JS::Handle<ReadableByteStreamController*> unwrappedController);
+
+[[nodiscard]] extern PromiseObject* ReadableByteStreamControllerPullIntoSteps(
+    JSContext* cx,
+    JS::Handle<ReadableByteStreamController*> unwrappedController);
+
+[[nodiscard]] extern bool ReadableByteStreamControllerInvalidateBYOBRequest(
+    JSContext* cx, Handle<ReadableByteStreamController*> unwrappedController);
+
+[[nodiscard]] extern bool ReadableByteStreamControllerHandleQueueDrain(
+    JSContext* cx,
+    JS::Handle<ReadableByteStreamController*> unwrappedController);
 
 }  // namespace js
 
@@ -259,6 +322,22 @@ inline ReadableStreamController* ReadableStream::controller() const {
 inline void ReadableStream::setController(
     ReadableStreamController* controller) {
   setFixedSlot(Slot_Controller, JS::ObjectValue(*controller));
+}
+
+inline ReadableByteStreamController* ReadableStreamBYOBRequest::controller()
+    const {
+  return &getFixedSlot(Slot_Controller)
+              .toObject()
+              .as<ReadableByteStreamController>();
+}
+
+inline void ReadableStreamBYOBRequest::setController(
+    ReadableByteStreamController* controller) {
+  setFixedSlot(Slot_Controller, JS::ObjectValue(*controller));
+}
+
+inline bool ReadableStreamBYOBRequest::hasController() {
+  return !getFixedSlot(Slot_Controller).isNullOrUndefined();
 }
 
 }  // namespace js

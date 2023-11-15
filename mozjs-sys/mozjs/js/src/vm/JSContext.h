@@ -45,6 +45,7 @@ namespace js {
 class AutoAllocInAtomsZone;
 class AutoMaybeLeaveAtomsZone;
 class AutoRealm;
+struct PortableBaselineStack;
 
 namespace jit {
 class ICScript;
@@ -141,10 +142,11 @@ bool CurrentThreadIsParseThread();
 #endif
 
 enum class InterruptReason : uint32_t {
-  GC = 1 << 0,
-  AttachIonCompilations = 1 << 1,
-  CallbackUrgent = 1 << 2,
-  CallbackCanWait = 1 << 3,
+  MinorGC = 1 << 0,
+  MajorGC = 1 << 1,
+  AttachIonCompilations = 1 << 2,
+  CallbackUrgent = 1 << 3,
+  CallbackCanWait = 1 << 4,
 };
 
 enum class ShouldCaptureStack { Maybe, Always };
@@ -161,6 +163,10 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
   ~JSContext();
 
   bool init(js::ContextKind kind);
+
+  static JSContext* from(JS::RootingContext* rcx) {
+    return static_cast<JSContext*>(rcx);
+  }
 
  private:
   js::UnprotectedData<JSRuntime*> runtime_;
@@ -339,12 +345,8 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
   JS::Zone* zone() const {
     MOZ_ASSERT_IF(!realm() && zone_, inAtomsZone());
     MOZ_ASSERT_IF(realm(), js::GetRealmZone(realm()) == zone_);
-    return zoneRaw();
+    return zoneUnchecked();
   }
-
-  // For use when the context's zone is being read by another thread and the
-  // compartment and zone pointers might not be in sync.
-  JS::Zone* zoneRaw() const { return zone_; }
 
   // For JIT use.
   static size_t offsetOfZone() { return offsetof(JSContext, zone_); }
@@ -385,8 +387,6 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
   friend void js::ReportOversizedAllocation(JSContext*, const unsigned);
 
  public:
-  inline JS::Result<> boolToResult(bool ok);
-
   /**
    * Intentionally awkward signpost method that is stationed on the
    * boundary between Result-using and non-Result-using code.
@@ -454,6 +454,11 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
   js::InterpreterStack& interpreterStack() {
     return runtime()->interpreterStack();
   }
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  js::PortableBaselineStack& portableBaselineStack() {
+    return runtime()->portableBaselineStack();
+  }
+#endif
 
  private:
   // Base address of the native stack for the current thread.
@@ -746,7 +751,6 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
       jsbytecode** pc = nullptr,
       AllowCrossRealm allowCrossRealm = AllowCrossRealm::DontAllow) const;
 
-  inline js::Nursery& nursery();
   inline void minorGC(JS::GCReason reason);
 
  public:
@@ -854,12 +858,21 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
   bool hasPendingInterrupt(js::InterruptReason reason) const {
     return interruptBits_ & uint32_t(reason);
   }
+  void clearPendingInterrupt(js::InterruptReason reason);
 
   // For JIT use. Points to the inlined ICScript for a baseline script
   // being invoked as part of a trial inlining.  Contains nullptr at
   // all times except for the brief moment between being set in the
   // caller and read in the callee's prologue.
   js::ContextData<js::jit::ICScript*> inlinedICScript_;
+
+  // The following two fields are a pair of associated scripts. If they are
+  // non-null, the child has been inlined into the parent, and we have bailed
+  // out due to a MonomorphicInlinedStubFolding bailout. If it wasn't
+  // trial-inlined, we need to track for the parent if we attach a new case to
+  // the corresponding folded stub which belongs to the child.
+  js::ContextData<JSScript*> lastStubFoldingBailoutChild_;
+  js::ContextData<JSScript*> lastStubFoldingBailoutParent_;
 
  public:
   void* addressOfInterruptBits() { return &interruptBits_; }
@@ -951,15 +964,6 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
   js::ContextData<js::Debugger*> insideDebuggerEvaluationWithOnNativeCallHook;
 
 }; /* struct JSContext */
-
-inline JS::Result<> JSContext::boolToResult(bool ok) {
-  if (MOZ_LIKELY(ok)) {
-    MOZ_ASSERT(!isExceptionPending());
-    MOZ_ASSERT(!isPropagatingForcedReturn());
-    return JS::Ok();
-  }
-  return JS::Result<>(JS::Error());
-}
 
 inline JSContext* JSRuntime::mainContextFromOwnThread() {
   MOZ_ASSERT(mainContextFromAnyThread() == js::TlsContext.get());
@@ -1135,5 +1139,65 @@ class MOZ_RAII AutoUnsafeCallWithABI {
 #define CHECK_THREAD(cx)                            \
   MOZ_ASSERT_IF(cx, !cx->isHelperThreadContext() && \
                         js::CurrentThreadCanAccessRuntime(cx->runtime()))
+
+/**
+ * [SMDOC] JS::Result transitional macros
+ *
+ * ## Checking Results when your return type is not Result
+ *
+ * This header defines alternatives to MOZ_TRY and MOZ_TRY_VAR for when you
+ * need to call a `Result` function from a function that uses false or nullptr
+ * to indicate errors:
+ *
+ *     JS_TRY_OR_RETURN_FALSE(cx, DefenestrateObject(cx, obj));
+ *     JS_TRY_VAR_OR_RETURN_FALSE(cx, v, GetObjectThrug(cx, obj));
+ *
+ *     JS_TRY_VAR_OR_RETURN_NULL(cx, v, GetObjectThrug(cx, obj));
+ *
+ * When TRY is not what you want, because you need to do some cleanup or
+ * recovery on error, use this idiom:
+ *
+ *     if (!cx->resultToBool(expr_that_is_a_Result)) {
+ *         ... your recovery code here ...
+ *     }
+ *
+ * In place of a tail call, you can use one of these methods:
+ *
+ *     return cx->resultToBool(expr);  // false on error
+ *     return cx->resultToPtr(expr);  // null on error
+ *
+ * Once we are using `Result` everywhere, including in public APIs, all of
+ * these will go away.
+ */
+
+/**
+ * JS_TRY_OR_RETURN_FALSE(cx, expr) runs expr to compute a Result value.
+ * On success, nothing happens; on error, it returns false immediately.
+ *
+ * Implementation note: this involves cx because this may eventually
+ * do the work of setting a pending exception or reporting OOM.
+ */
+#define JS_TRY_OR_RETURN_FALSE(cx, expr)                           \
+  do {                                                             \
+    auto tmpResult_ = (expr);                                      \
+    if (tmpResult_.isErr()) return (cx)->resultToBool(tmpResult_); \
+  } while (0)
+
+#define JS_TRY_VAR_OR_RETURN_FALSE(cx, target, expr)               \
+  do {                                                             \
+    auto tmpResult_ = (expr);                                      \
+    if (tmpResult_.isErr()) return (cx)->resultToBool(tmpResult_); \
+    (target) = tmpResult_.unwrap();                                \
+  } while (0)
+
+#define JS_TRY_VAR_OR_RETURN_NULL(cx, target, expr)     \
+  do {                                                  \
+    auto tmpResult_ = (expr);                           \
+    if (tmpResult_.isErr()) {                           \
+      MOZ_ALWAYS_FALSE((cx)->resultToBool(tmpResult_)); \
+      return nullptr;                                   \
+    }                                                   \
+    (target) = tmpResult_.unwrap();                     \
+  } while (0)
 
 #endif /* vm_JSContext_h */

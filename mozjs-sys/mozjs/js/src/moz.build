@@ -159,6 +159,7 @@ EXPORTS.js += [
     "../public/Id.h",
     "../public/Initialization.h",
     "../public/Interrupt.h",
+    "../public/Iterator.h",
     "../public/JitCodeAPI.h",
     "../public/JSON.h",
     "../public/LocaleSensitive.h",
@@ -378,6 +379,7 @@ UNIFIED_SOURCES += [
     "vm/Initialization.cpp",
     "vm/InternalThreadPool.cpp",
     "vm/Iteration.cpp",
+    "vm/Iterator.cpp",
     "vm/JitActivation.cpp",
     "vm/JSAtom.cpp",
     "vm/JSContext.cpp",
@@ -439,13 +441,16 @@ UNIFIED_SOURCES += [
 
 if CONFIG["MOZ_JS_STREAMS"]:
     UNIFIED_SOURCES += [
-        "builtin/Stream.cpp",
         "builtin/streams/MiscellaneousOperations.cpp",
+        "builtin/streams/PipeToState.cpp",
         "builtin/streams/PullIntoDescriptor.cpp",
         "builtin/streams/QueueingStrategies.cpp",
         "builtin/streams/QueueWithSizes.cpp",
+        "builtin/streams/ReadableByteStreamController.cpp",
+        "builtin/streams/ReadableByteStreamControllerOperations.cpp",
         "builtin/streams/ReadableStream.cpp",
         "builtin/streams/ReadableStreamBYOBReader.cpp",
+        "builtin/streams/ReadableStreamBYOBRequest.cpp",
         "builtin/streams/ReadableStreamDefaultController.cpp",
         "builtin/streams/ReadableStreamDefaultControllerOperations.cpp",
         "builtin/streams/ReadableStreamDefaultReader.cpp",
@@ -454,6 +459,12 @@ if CONFIG["MOZ_JS_STREAMS"]:
         "builtin/streams/ReadableStreamReader.cpp",
         "builtin/streams/StreamAPI.cpp",
         "builtin/streams/TeeState.cpp",
+        "builtin/streams/WritableStream.cpp",
+        "builtin/streams/WritableStreamDefaultController.cpp",
+        "builtin/streams/WritableStreamDefaultControllerOperations.cpp",
+        "builtin/streams/WritableStreamDefaultWriter.cpp",
+        "builtin/streams/WritableStreamOperations.cpp",
+        "builtin/streams/WritableStreamWriterOperations.cpp",
     ]
 
 # builtin/RegExp.cpp cannot be built in unified mode because it causes huge
@@ -469,6 +480,11 @@ SOURCES += [
     "vm/ProfilingStack.cpp",
 ]
 
+if CONFIG["ENABLE_PORTABLE_BASELINE_INTERP"]:
+    SOURCES += [
+        "vm/PortableBaselineInterpret.cpp",
+    ]
+
 if CONFIG["ENABLE_RECORD_TUPLE"]:
     UNIFIED_SOURCES += [
         "builtin/RecordObject.cpp",
@@ -483,7 +499,6 @@ if CONFIG["JS_HAS_INTL_API"]:
         "builtin/intl/Collator.cpp",
         "builtin/intl/CommonFunctions.cpp",
         "builtin/intl/DateTimeFormat.cpp",
-        "builtin/intl/DecimalNumber.cpp",
         "builtin/intl/DisplayNames.cpp",
         "builtin/intl/IntlObject.cpp",
         "builtin/intl/LanguageTag.cpp",
@@ -549,6 +564,9 @@ if CONFIG["MOZ_VTUNE"]:
             SOURCES["vtune/ittnotify_static.c"].flags += ["-Wno-stringop-truncation"]
 
 DIRS += ["build", "debugger", "frontend", "gc", "irregexp", "jit", "util", "wasm"]
+
+if CONFIG["JS_HAS_TEMPORAL_API"]:
+    DIRS += ["builtin/temporal"]
 
 # Bug 1739321 - clang 13+ only emits debuginfo for classes that are actually
 # constructed, and we cheat in a number of cases. The flag exists at least

@@ -6589,6 +6589,9 @@ static bool HasOptimizableLastIndexSlot(RegExpObject* regexp, JSContext* cx) {
 // Returns the RegExp stub used by the optimized code path for this intrinsic.
 // We store a pointer to this in the IC stub to ensure GC doesn't discard it.
 static JitCode* GetOrCreateRegExpStub(JSContext* cx, InlinableNative native) {
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  return nullptr;
+#else
   JitCode* code;
   switch (native) {
     case InlinableNative::IntrinsicRegExpBuiltinExecForTest:
@@ -6609,10 +6612,12 @@ static JitCode* GetOrCreateRegExpStub(JSContext* cx, InlinableNative native) {
       MOZ_CRASH("Unexpected native");
   }
   if (!code) {
-    cx->recoverFromOutOfMemory();
+    MOZ_ASSERT(cx->isThrowingOutOfMemory() || cx->isThrowingOverRecursed());
+    cx->clearPendingException();
     return nullptr;
   }
   return code;
+#endif
 }
 
 static void EmitGuardLastIndexIsNonNegativeInt32(CacheIRWriter& writer,
@@ -7975,7 +7980,7 @@ AttachDecision InlinableNativeIRGenerator::tryAttachMathFunction(
   }
 
   if (math_use_fdlibm_for_sin_cos_tan() ||
-      callee_->realm()->behaviors().shouldResistFingerprinting()) {
+      callee_->realm()->creationOptions().alwaysUseFdlibm()) {
     switch (fun) {
       case UnaryMathFunction::SinNative:
         fun = UnaryMathFunction::SinFdlibm;

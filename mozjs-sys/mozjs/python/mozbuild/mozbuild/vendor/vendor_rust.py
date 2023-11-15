@@ -107,6 +107,8 @@ TOLERATED_DUPES = {
     # and hasn't been updated in 1.5 years (an hypothetical update is
     # expected to remove the dependency on time altogether).
     "time": 2,
+    # Transition is underway from syn 1.x to 2.x. (bug 1835053)
+    "syn": 2,
 }
 
 
@@ -315,7 +317,9 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
             "mach",
             "qlog",
         ],
-        "BSD-3-Clause": [],
+        "BSD-3-Clause": [
+            "subtle",
+        ],
     }
 
     # ICU4X is distributed as individual crates that all share the same LICENSE
@@ -556,7 +560,7 @@ license file's hash.
         for path in Path(self.topsrcdir).glob("build/rust/**/Cargo.toml"):
             with open(path) as fh:
                 cargo_toml = toml.load(fh)
-                path = path.relative_to(self.topsrcdir)
+                relative_path = path.relative_to(self.topsrcdir)
                 package = cargo_toml["package"]
                 key = (package["name"], package["version"])
                 if key in crates:
@@ -565,21 +569,21 @@ license file's hash.
                         "build_rust",
                         {
                             "path": crates[key],
-                            "path2": path,
+                            "path2": relative_path,
                             "crate": key[0],
                             "version": key[1],
                         },
                         "{path} and {path2} both contain {crate} {version}",
                     )
                     ret = False
-                crates[key] = path
+                crates[key] = relative_path
 
         for package in cargo_lock["package"]:
             key = (package["name"], package["version"])
             if key in crates and "source" not in package:
                 crates.pop(key)
 
-        for ((name, version), path) in crates.items():
+        for (name, version), path in crates.items():
             self.log(
                 logging.ERROR,
                 "build_rust",
@@ -589,9 +593,7 @@ license file's hash.
             ret = False
         return ret
 
-    def vendor(
-        self, ignore_modified=False, build_peers_said_large_imports_were_ok=False
-    ):
+    def vendor(self, ignore_modified=False, force=False):
         from mozbuild.mach_commands import cargo_vet
 
         self.populate_logger()
@@ -831,7 +833,7 @@ license file's hash.
 
         # If we failed when checking the crates list and/or running `cargo vet`,
         # stop before invoking `cargo vendor`.
-        if failed:
+        if failed and not force:
             return False
 
         res = subprocess.run(
@@ -887,7 +889,7 @@ license file's hash.
                 )
             )
 
-        if not self._check_licenses(vendor_dir):
+        if not self._check_licenses(vendor_dir) and not force:
             self.log(
                 logging.ERROR,
                 "license_check_failed",
@@ -916,7 +918,7 @@ license file's hash.
 
         # Forcefully complain about large files being added, as history has
         # shown that large-ish files typically are not needed.
-        if large_files and not build_peers_said_large_imports_were_ok:
+        if large_files:
             self.log(
                 logging.ERROR,
                 "filesize_check",
@@ -939,7 +941,8 @@ The changes from `mach vendor rust` will NOT be added to version control.
             )
             self.repository.forget_add_remove_files(vendor_dir)
             self.repository.clean_directory(vendor_dir)
-            return False
+            if not force:
+                return False
 
         # Only warn for large imports, since we may just have large code
         # drops from time to time (e.g. importing features into m-c).

@@ -131,6 +131,7 @@ class BaseTimeDuration {
     return FromMilliseconds(aMicroseconds / 1000.0);
   }
 
+  static constexpr BaseTimeDuration Zero() { return BaseTimeDuration(); }
   static constexpr BaseTimeDuration Forever() { return FromTicks(INT64_MAX); }
 
   BaseTimeDuration operator+(const BaseTimeDuration& aOther) const {
@@ -368,6 +369,20 @@ typedef BaseTimeDuration<TimeDurationValueCalculator> TimeDuration;
  *
  * Note that, since TimeStamp objects are small, prefer to pass them by value
  * unless there is a specific reason not to do so.
+ */
+#if defined(XP_WIN)
+// If this static_assert fails then possibly the warning comment below is no
+// longer valid and should be removed.
+static_assert(sizeof(TimeStampValue) > 8);
+#endif
+/*
+ * WARNING: On Windows, each TimeStamp is represented internally by two
+ * different raw values (one from GTC and one from QPC) and which value gets
+ * used for a given operation depends on whether both operands have QPC values
+ * or not. This duality of values can lead to some surprising results when
+ * mixing TimeStamps with and without QPC values, such as comparisons being
+ * non-transitive (ie, a > b > c might not imply a > c). See bug 1829983 for
+ * more details/an example.
  */
 class TimeStamp {
  public:

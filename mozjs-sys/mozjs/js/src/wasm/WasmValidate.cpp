@@ -1113,10 +1113,10 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
           }
 
 #  ifdef ENABLE_WASM_RELAXED_SIMD
-          case uint32_t(SimdOp::F32x4RelaxedFma):
-          case uint32_t(SimdOp::F32x4RelaxedFnma):
-          case uint32_t(SimdOp::F64x2RelaxedFma):
-          case uint32_t(SimdOp::F64x2RelaxedFnma):
+          case uint32_t(SimdOp::F32x4RelaxedMadd):
+          case uint32_t(SimdOp::F32x4RelaxedNmadd):
+          case uint32_t(SimdOp::F64x2RelaxedMadd):
+          case uint32_t(SimdOp::F64x2RelaxedNmadd):
           case uint32_t(SimdOp::I8x16RelaxedLaneSelect):
           case uint32_t(SimdOp::I16x8RelaxedLaneSelect):
           case uint32_t(SimdOp::I32x4RelaxedLaneSelect):
@@ -1748,11 +1748,19 @@ static bool DecodeTypeSection(Decoder& d, ModuleEnvironment* env) {
       uint8_t form;
       const TypeDef* superTypeDef = nullptr;
 
+      // By default, all types are final unless the sub keyword is specified.
+      bool finalTypeFlag = true;
+
       // Decode an optional declared super type index, if the GC proposal is
       // enabled.
       if (env->gcEnabled() && d.peekByte(&form) &&
-          form == (uint8_t)TypeCode::SubType) {
-        // Skip over the `sub` prefix byte we peeked.
+          (form == (uint8_t)TypeCode::SubNoFinalType ||
+           form == (uint8_t)TypeCode::SubFinalType)) {
+        if (form == (uint8_t)TypeCode::SubNoFinalType) {
+          finalTypeFlag = false;
+        }
+
+        // Skip over the `sub` or `final` prefix byte we peeked.
         d.uncheckedReadFixedU8();
 
         // Decode the number of super types, which is currently limited to at
@@ -1817,6 +1825,7 @@ static bool DecodeTypeSection(Decoder& d, ModuleEnvironment* env) {
           return d.fail("expected type form");
       }
 
+      typeDef->setFinal(finalTypeFlag);
       if (superTypeDef) {
         // Check that we aren't creating too deep of a subtyping chain
         if (superTypeDef->subTypingDepth() >= MaxSubTypingDepth) {

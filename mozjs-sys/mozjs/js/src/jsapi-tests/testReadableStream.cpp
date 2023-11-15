@@ -161,7 +161,7 @@ static JSObject* GetReadChunk(JSContext* cx, HandleObject readRequest) {
   return &chunkVal.toObject();
 }
 
-struct StreamTestFixture : public JSAPITest {
+struct StreamTestFixture : public JSAPIRuntimeTest {
   virtual ~StreamTestFixture() {}
 };
 

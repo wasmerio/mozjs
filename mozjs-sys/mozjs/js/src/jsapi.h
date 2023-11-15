@@ -825,6 +825,8 @@ extern JS_PUBLIC_API void JS_SetOffthreadIonCompilationEnabled(JSContext* cx,
   Register(INLINING_BYTECODE_MAX_LENGTH, "inlining.bytecode-max-length") \
   Register(BASELINE_INTERPRETER_ENABLE, "blinterp.enable") \
   Register(BASELINE_ENABLE, "baseline.enable") \
+  Register(PORTABLE_BASELINE_ENABLE, "pbl.enable") \
+  Register(PORTABLE_BASELINE_WARMUP_THRESHOLD, "pbl.warmup.threshold") \
   Register(OFFTHREAD_COMPILATION_ENABLE, "offthread-compilation.enable")  \
   Register(FULL_DEBUG_CHECKS, "jit.full-debug-checks") \
   Register(JUMP_THRESHOLD, "jump-threshold") \
@@ -836,6 +838,7 @@ extern JS_PUBLIC_API void JS_SetOffthreadIonCompilationEnabled(JSContext* cx,
   Register(SPECTRE_STRING_MITIGATIONS, "spectre.string-mitigations") \
   Register(SPECTRE_VALUE_MASKING, "spectre.value-masking") \
   Register(SPECTRE_JIT_TO_CXX_CALLS, "spectre.jit-to-cxx-calls") \
+  Register(WRITE_PROTECT_CODE, "write-protect-code") \
   Register(WATCHTOWER_MEGAMORPHIC, "watchtower.megamorphic") \
   Register(WASM_FOLD_OFFSETS, "wasm.fold-offsets") \
   Register(WASM_DELAY_TIER2, "wasm.delay-tier2") \

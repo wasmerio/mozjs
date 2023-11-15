@@ -28,6 +28,7 @@
 #include "jit/AtomicOperations.h"
 #include "jit/InlinableNatives.h"
 #include "jit/MacroAssembler.h"
+#include "jit/ProcessExecutableMemory.h"
 #include "jit/Simulator.h"
 #include "js/experimental/JitInfo.h"  // JSJitInfo
 #include "js/friend/ErrorMessages.h"  // js::GetErrorMessage, JSMSG_*
@@ -1829,6 +1830,8 @@ bool wasm::EnsureBuiltinThunksInitialized() {
     return false;
   }
 
+  AutoMarkJitCodeWritableForThread writable;
+
   masm.executableCopy(thunks->codeBase);
   memset(thunks->codeBase + masm.bytesNeeded(), 0,
          allocSize - masm.bytesNeeded());
@@ -1936,11 +1939,11 @@ void* wasm::MaybeGetBuiltinThunk(JSFunction* f, const FuncType& funcType) {
 
   const BuiltinThunks& thunks = *builtinThunks;
 
-  // If this function should resist fingerprinting first try to lookup
+  // If this function must use the fdlibm implementation first try to lookup
   // the fdlibm version. If that version doesn't exist we still fallback to
   // the normal native.
   if (math_use_fdlibm_for_sin_cos_tan() ||
-      f->realm()->behaviors().shouldResistFingerprinting()) {
+      f->realm()->creationOptions().alwaysUseFdlibm()) {
     TypedNative typedNative(f->jitInfo()->inlinableNative, *abiType,
                             TypedNative::FdlibmImpl::Yes);
     auto p =

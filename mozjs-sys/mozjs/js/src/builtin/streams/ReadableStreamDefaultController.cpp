@@ -225,8 +225,8 @@ static bool ReadableStreamDefaultController_close(JSContext* cx, unsigned argc,
 
   // Step 2: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(this) is
   //         false, throw a TypeError exception.
-  if (!CheckReadableStreamControllerCanCloseOrEnqueue(cx, unwrappedController,
-                                                      "close")) {
+  if (!js::CheckReadableStreamControllerCanCloseOrEnqueue(
+          cx, unwrappedController, "close")) {
     return false;
   }
 
@@ -256,8 +256,8 @@ static bool ReadableStreamDefaultController_enqueue(JSContext* cx,
 
   // Step 2: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(this) is
   //         false, throw a TypeError exception.
-  if (!CheckReadableStreamControllerCanCloseOrEnqueue(cx, unwrappedController,
-                                                      "enqueue")) {
+  if (!js::CheckReadableStreamControllerCanCloseOrEnqueue(
+          cx, unwrappedController, "enqueue")) {
     return false;
   }
 
@@ -303,8 +303,8 @@ static const JSFunctionSpec ReadableStreamDefaultController_methods[] = {
     JS_FN("enqueue", ReadableStreamDefaultController_enqueue, 1, 0),
     JS_FN("error", ReadableStreamDefaultController_error, 1, 0), JS_FS_END};
 
-JS_STREAMS_CLASS_SPEC(ReadableStreamDefaultController, 0, SlotCount,
-                      ClassSpec::DontDefineConstructor, 0, JS_NULL_CLASS_OPS);
+JS_STREAMS_CLASS_SPEC(ReadableStreamDefaultController, 0, SlotCount, 0, 0,
+                      JS_NULL_CLASS_OPS);
 
 /**
  * Unified implementation of ReadableStream controllers' [[CancelSteps]]
@@ -396,6 +396,25 @@ JS_STREAMS_CLASS_SPEC(ReadableStreamDefaultController, 0, SlotCount,
     if (unwrappedCancelMethod.isUndefined()) {
       // CreateAlgorithmFromUnderlyingMethod step 7.
       result = PromiseResolvedWithUndefined(cx);
+      if (unwrappedController->is<ReadableByteStreamController>()) {
+        Rooted<ReadableByteStreamController*> controller(
+            cx, &unwrappedController->as<ReadableByteStreamController>());
+
+        // https://streams.spec.whatwg.org/#rbs-controller-private-cancel
+        // Perform ! ReadableByteStreamControllerClearPendingPullIntos(this).
+        if (!ReadableByteStreamControllerClearPendingPullIntos(cx, controller)) {
+          return nullptr;
+        }
+
+        // Perform ! ResetQueue(this).
+        // (already done above)
+
+        // Let result be the result of performing this.[[cancelAlgorithm]],
+        // passing in reason.
+        // Return result.
+      } else {
+        // CreateAlgorithmFromUnderlyingMethod step 7.
+      }
     } else {
       // CreateAlgorithmFromUnderlyingMethod steps 6.c.i-ii.
       {

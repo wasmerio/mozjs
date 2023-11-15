@@ -89,9 +89,7 @@ inline bool ValidFD(T fd) {
       }                                                        \
       if (ValidFD(fd) && fd->mFile) {                          \
         nsCOMPtr<nsIFile> file = fd->mFile.GetBaseFile();      \
-        if (file) {                                            \
-          file->GetNativeLeafName(mmapScopeFilename);          \
-        }                                                      \
+        file->GetNativeLeafName(mmapScopeFilename);            \
       }                                                        \
       MmapAccessScope mmapScope(mmapScopeBuf, mmapScopeBufLen, \
                                 mmapScopeFilename.get());      \

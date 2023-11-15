@@ -39,6 +39,7 @@
 #include "js/shadow/Zone.h"
 #include "js/ShadowRealmCallbacks.h"
 #include "js/Stack.h"
+#include "js/Stream.h" // JS::AbortSignalIsAborted
 #include "js/StreamConsumer.h"
 #include "js/Symbol.h"
 #include "js/UniquePtr.h"
@@ -260,20 +261,20 @@ class Metrics {
   // values so take care not to redefine the value of enum values. In the
   // future, these should become Glean Labeled Counter metrics.
   struct Enumeration {
-    using SourceType = int;
+    using SourceType = unsigned int;
     static uint32_t convert(SourceType sample) {
-      MOZ_ASSERT(sample >= 0 && sample <= 100);
+      MOZ_ASSERT(sample <= 100);
       return static_cast<uint32_t>(sample);
     }
   };
 
-  // Record a percentage distribution which is an integer in the range 0 to 100.
-  // In the future, this will be a Glean Custom Distribution unless they add a
-  // better match.
+  // Record a percentage distribution in the range 0 to 100. This takes a double
+  // and converts it to an integer. In the future, this will be a Glean Custom
+  // Distribution unless they add a better match.
   struct Percentage {
-    using SourceType = int;
+    using SourceType = double;
     static uint32_t convert(SourceType sample) {
-      MOZ_ASSERT(sample >= 0 && sample <= 100);
+      MOZ_ASSERT(sample >= 0.0 && sample <= 100.0);
       return static_cast<uint32_t>(sample);
     }
   };
@@ -306,8 +307,16 @@ struct JSRuntime {
   /* Space for interpreter frames. */
   js::MainThreadData<js::InterpreterStack> interpreterStack_;
 
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  /* Space for portable baseline interpreter frames. */
+  js::MainThreadData<js::PortableBaselineStack> portableBaselineStack_;
+#endif
+
  public:
   js::InterpreterStack& interpreterStack() { return interpreterStack_.ref(); }
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  js::PortableBaselineStack& portableBaselineStack() { return portableBaselineStack_.ref(); }
+#endif
 
   /*
    * If non-null, another runtime guaranteed to outlive this one and whose
@@ -534,6 +543,30 @@ struct JSRuntime {
  public:
   const JSClass* maybeWindowProxyClass() const { return windowProxyClass_; }
   void setWindowProxyClass(const JSClass* clasp) { windowProxyClass_ = clasp; }
+
+ private:
+  js::WriteOnceData<const JSClass*> abortSignalClass_;
+  js::WriteOnceData<JS::AbortSignalIsAborted> abortSignalIsAborted_;
+
+ public:
+  void initPipeToHandling(const JSClass* abortSignalClass,
+                          JS::AbortSignalIsAborted isAborted) {
+    MOZ_ASSERT(abortSignalClass != nullptr,
+               "doesn't make sense for an embedder to provide a null class "
+               "when specifying pipeTo handling");
+    MOZ_ASSERT(isAborted != nullptr, "must pass a valid function pointer");
+
+    abortSignalClass_ = abortSignalClass;
+    abortSignalIsAborted_ = isAborted;
+  }
+
+  const JSClass* maybeAbortSignalClass() const { return abortSignalClass_; }
+
+  bool abortSignalIsAborted(JSObject* obj) {
+    MOZ_ASSERT(abortSignalIsAborted_ != nullptr,
+               "must call initPipeToHandling first");
+    return abortSignalIsAborted_(obj);
+  }
 
  private:
   // List of non-ephemeron weak containers to sweep during

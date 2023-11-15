@@ -63,7 +63,6 @@ static const size_t MaxCodeBytesPerBuffer = MaxCodeBytesPerProcess;
 static const size_t ExecutableCodePageSize = 64 * 1024;
 
 enum class ProtectionSetting {
-  Protected,  // Not readable, writable, or executable.
   Writable,
   Executable,
 };
@@ -102,6 +101,36 @@ extern size_t LikelyAvailableExecutableMemory();
 
 // Returns whether |p| is stored in the executable code buffer.
 extern bool AddressIsInExecutableMemory(const void* p);
+
+// RWX page permissions are not supported on Apple Silicon. We have to use this
+// RAII class to temporarily mark JIT memory as writable for the current thread
+// with pthread_jit_write_protect_np. This class is a no-op on other platforms
+// (except for some debug assertions).
+class MOZ_RAII AutoMarkJitCodeWritableForThread {
+#ifdef DEBUG
+  void checkConstructor();
+  void checkDestructor();
+#else
+  void checkConstructor() {}
+  void checkDestructor() {}
+#endif
+
+#ifdef JS_USE_APPLE_FAST_WX
+  void markExecutable(bool executable);
+#else
+  void markExecutable(bool executable) {}
+#endif
+
+ public:
+  AutoMarkJitCodeWritableForThread() {
+    markExecutable(false);
+    checkConstructor();
+  }
+  ~AutoMarkJitCodeWritableForThread() {
+    markExecutable(true);
+    checkDestructor();
+  }
+};
 
 }  // namespace jit
 }  // namespace js

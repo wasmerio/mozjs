@@ -568,11 +568,7 @@ JSObject* PromiseObject::allocationSite() {
 JSObject* PromiseObject::resolutionSite() {
   auto debugInfo = PromiseDebugInfo::FromPromise(this);
   if (debugInfo) {
-    JSObject* site = debugInfo->resolutionSite();
-    if (site && !JS_IsDeadWrapper(site)) {
-      MOZ_ASSERT(UncheckedUnwrap(site)->is<SavedFrame>());
-      return site;
-    }
+    return debugInfo->resolutionSite();
   }
   return nullptr;
 }

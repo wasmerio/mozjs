@@ -129,6 +129,16 @@ DefaultJitOptions::DefaultJitOptions() {
   // Whether the Baseline Interpreter is enabled.
   SET_DEFAULT(baselineInterpreter, true);
 
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  // Whether the Portable Baseline Interpreter is enabled.
+  SET_DEFAULT(portableBaselineInterpreter, false);
+#endif
+
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP_FORCE
+  SET_DEFAULT(portableBaselineInterpreter, true);
+  SET_DEFAULT(portableBaselineInterpreterWarmUpThreshold, 0);
+#endif
+
   // Emit baseline interpreter and interpreter entry frames to distinguish which
   // JSScript is being interpreted by external profilers.
   // Enabled by default under --enable-perf, otherwise disabled.
@@ -173,6 +183,12 @@ DefaultJitOptions::DefaultJitOptions() {
   // How many invocations or loop iterations are needed before functions
   // enter the Baseline Interpreter.
   SET_DEFAULT(baselineInterpreterWarmUpThreshold, 10);
+
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  // How many invocations or loop iterations are needed before functions
+  // enter the Porable Baseline Interpreter.
+  SET_DEFAULT(portableBaselineInterpreterWarmUpThreshold, 10);
+#endif
 
   // How many invocations or loop iterations are needed before functions
   // are compiled with the baseline compiler.
@@ -280,6 +296,15 @@ DefaultJitOptions::DefaultJitOptions() {
   SET_DEFAULT(spectreJitToCxxCalls, true);
 #endif
 
+  // Whether the W^X policy is enforced to mark JIT code pages as either
+  // writable or executable but never both at the same time. On Apple Silicon
+  // this must always be false because we use pthread_jit_write_protect_np.
+#ifdef JS_USE_APPLE_FAST_WX
+  SET_DEFAULT(writeProtectCode, false);
+#else
+  SET_DEFAULT(writeProtectCode, true);
+#endif
+
   // This is set to its actual value in InitializeJit.
   SET_DEFAULT(supportsUnalignedAccesses, false);
 
@@ -379,6 +404,12 @@ bool DefaultJitOptions::isSmallFunction(JSScript* script) const {
 
 void DefaultJitOptions::enableGvn(bool enable) { disableGvn = !enable; }
 
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+void DefaultJitOptions::setEagerPortableBaselineInterpreter() {
+  portableBaselineInterpreterWarmUpThreshold = 0;
+}
+#endif
+
 void DefaultJitOptions::setEagerBaselineCompilation() {
   baselineInterpreterWarmUpThreshold = 0;
   baselineJitWarmUpThreshold = 0;
@@ -408,6 +439,15 @@ void DefaultJitOptions::setNormalIonWarmUpThreshold(uint32_t warmUpThreshold) {
 void DefaultJitOptions::resetNormalIonWarmUpThreshold() {
   jit::DefaultJitOptions defaultValues;
   setNormalIonWarmUpThreshold(defaultValues.normalIonWarmUpThreshold);
+}
+
+void DefaultJitOptions::maybeSetWriteProtectCode(bool val) {
+#ifdef JS_USE_APPLE_FAST_WX
+  // On Apple Silicon we always use pthread_jit_write_protect_np.
+  MOZ_ASSERT(!writeProtectCode);
+#else
+  writeProtectCode = val;
+#endif
 }
 
 }  // namespace jit

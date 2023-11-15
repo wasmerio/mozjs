@@ -22,6 +22,10 @@ namespace js {
 
 class PropertyName;
 
+[[nodiscard]] extern JSObject* TransferArrayBuffer(JSContext* aCx, JS::Handle<JSObject*> aObject);
+
+[[nodiscard]] extern bool CanTransferArrayBuffer(JSContext* aCx, JS::Handle<JSObject*> aObject);
+
 [[nodiscard]] extern PromiseObject* PromiseRejectedWithPendingError(
     JSContext* cx);
 
@@ -65,8 +69,8 @@ class PropertyName;
  * Streams spec, 6.3.7. ValidateAndNormalizeHighWaterMark ( highWaterMark )
  */
 [[nodiscard]] extern bool ValidateAndNormalizeHighWaterMark(
-    JSContext* cx, JS::Handle<JS::Value> highWaterMarkVal,
-    double* highWaterMark);
+    JSContext* cx, Handle<Value> highWaterMarkVal, double* highWaterMark,
+    double defaultHighWaterMark);
 
 /**
  * Streams spec, 6.3.8. MakeSizeAlgorithmFromSizeFunction ( size )

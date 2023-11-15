@@ -472,22 +472,26 @@ static bool ProcessTryNotesBaseline(JSContext* cx, const JSJitFrameIter& frame,
         script->resetWarmUpCounterToDelayIonCompilation();
 
         // Resume at the start of the catch block.
-        const BaselineInterpreter& interp =
-            cx->runtime()->jitRuntime()->baselineInterpreter();
         frame.baselineFrame()->setInterpreterFields(*pc);
         rfe->kind = ExceptionResumeKind::Catch;
-        rfe->target = interp.interpretOpAddr().value;
+        if (IsBaselineInterpreterEnabled()) {
+          const BaselineInterpreter& interp =
+              cx->runtime()->jitRuntime()->baselineInterpreter();
+          rfe->target = interp.interpretOpAddr().value;
+        }
         return true;
       }
 
       case TryNoteKind::Finally: {
         SettleOnTryNote(cx, tn, frame, ei, rfe, pc);
 
-        const BaselineInterpreter& interp =
-            cx->runtime()->jitRuntime()->baselineInterpreter();
         frame.baselineFrame()->setInterpreterFields(*pc);
         rfe->kind = ExceptionResumeKind::Finally;
-        rfe->target = interp.interpretOpAddr().value;
+        if (IsBaselineInterpreterEnabled()) {
+          const BaselineInterpreter& interp =
+              cx->runtime()->jitRuntime()->baselineInterpreter();
+          rfe->target = interp.interpretOpAddr().value;
+        }
 
         // Drop the exception instead of leaking cross compartment data.
         if (!cx->getPendingException(
@@ -667,7 +671,9 @@ void HandleException(ResumeFromException* rfe) {
   JSContext* cx = TlsContext.get();
 
 #ifdef DEBUG
-  cx->runtime()->jitRuntime()->clearDisallowArbitraryCode();
+  if (IsBaselineInterpreterEnabled()) {
+    cx->runtime()->jitRuntime()->clearDisallowArbitraryCode();
+  }
 
   // Reset the counter when we bailed after MDebugEnterGCUnsafeRegion, but
   // before the matching MDebugLeaveGCUnsafeRegion.
@@ -677,9 +683,11 @@ void HandleException(ResumeFromException* rfe) {
 #endif
 
   auto resetProfilerFrame = mozilla::MakeScopeExit([=] {
-    if (!cx->runtime()->jitRuntime()->isProfilerInstrumentationEnabled(
-            cx->runtime())) {
-      return;
+    if (IsBaselineInterpreterEnabled()) {
+      if (!cx->runtime()->jitRuntime()->isProfilerInstrumentationEnabled(
+              cx->runtime())) {
+        return;
+      }
     }
 
     MOZ_ASSERT(cx->jitActivation == cx->profilingActivation());

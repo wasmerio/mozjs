@@ -1,0 +1,14 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+browser.jar:
+    content/browser/shopping/shopping.html (content/shopping.html)
+    content/browser/shopping/shopping.css (content/shopping.css)
+    content/browser/shopping/shopping.mjs (content/shopping.mjs)
+    content/browser/shopping/ShoppingUtils.sys.mjs (content/ShoppingUtils.sys.mjs)
+    content/browser/shopping/highlights.mjs (content/highlights.mjs)
+    content/browser/shopping/highlight-item.css (content/highlight-item.css)
+    content/browser/shopping/highlight-item.mjs (content/highlight-item.mjs)
+    content/browser/shopping/shopping-card.css (content/shopping-card.css)
+    content/browser/shopping/shopping-card.mjs (content/shopping-card.mjs)

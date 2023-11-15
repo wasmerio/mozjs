@@ -70,6 +70,7 @@
 #include "vm/JSObject.h"
 #include "vm/JSONPrinter.h"  // JSONPrinter
 #include "vm/Opcodes.h"
+#include "vm/PortableBaselineInterpret.h"
 #include "vm/Scope.h"  // Scope
 #include "vm/SharedImmutableStringsCache.h"
 #include "vm/StencilEnums.h"  // TryNote, TryNoteKind, ScopeNote
@@ -413,14 +414,8 @@ void js::FillImmutableFlagsFromCompileOptionsForFunction(
 
 // Check if flags matches to compile options for flags set by
 // FillImmutableFlagsFromCompileOptionsForTopLevel above.
-//
-// If isMultiDecode is true, this check minimal set of CompileOptions that is
-// shared across multiple scripts in JS::DecodeMultiStencilsOffThread.
-// Other options should be checked when getting the decoded script from the
-// cache.
 bool js::CheckCompileOptionsMatch(const ReadOnlyCompileOptions& options,
-                                  ImmutableScriptFlags flags,
-                                  bool isMultiDecode) {
+                                  ImmutableScriptFlags flags) {
   using ImmutableFlags = ImmutableScriptFlagsEnum;
 
   bool selfHosted = !!(flags & uint32_t(ImmutableFlags::SelfHosted));
@@ -433,13 +428,13 @@ bool js::CheckCompileOptionsMatch(const ReadOnlyCompileOptions& options,
   return options.selfHostingMode == selfHosted &&
          options.noScriptRval == noScriptRval &&
          options.isRunOnce == treatAsRunOnce &&
-         (isMultiDecode || (options.forceStrictMode() == forceStrict &&
-                            options.nonSyntacticScope == hasNonSyntacticScope));
+         options.forceStrictMode() == forceStrict &&
+         options.nonSyntacticScope == hasNonSyntacticScope;
 }
 
 JS_PUBLIC_API bool JS::CheckCompileOptionsMatch(
     const ReadOnlyCompileOptions& options, JSScript* script) {
-  return js::CheckCompileOptionsMatch(options, script->immutableFlags(), false);
+  return js::CheckCompileOptionsMatch(options, script->immutableFlags());
 }
 
 bool JSScript::initScriptCounts(JSContext* cx) {
@@ -1884,7 +1879,7 @@ bool ScriptSource::initFromOptions(FrontendContext* fc,
   if (options.hasIntroductionInfo) {
     MOZ_ASSERT(options.introductionType != nullptr);
     const char* filename =
-        options.filename() ? options.filename() : "<unknown>";
+        options.filename() ? options.filename().c_str() : "<unknown>";
     UniqueChars formatted = FormatIntroducedFilename(
         filename, options.introductionLineno, options.introductionType);
     if (!formatted) {
@@ -1895,13 +1890,13 @@ bool ScriptSource::initFromOptions(FrontendContext* fc,
       return false;
     }
   } else if (options.filename()) {
-    if (!setFilename(fc, options.filename())) {
+    if (!setFilename(fc, options.filename().c_str())) {
       return false;
     }
   }
 
   if (options.introducerFilename()) {
-    if (!setIntroducerFilename(fc, options.introducerFilename())) {
+    if (!setIntroducerFilename(fc, options.introducerFilename().c_str())) {
       return false;
     }
   }
@@ -3188,6 +3183,12 @@ BaseScript* BaseScript::CreateRawLazy(JSContext* cx, uint32_t ngcthings,
   return lazy;
 }
 
+// This is an arbitrary non-null pointer that we use as a placeholder
+// for scripts that can be run in PBL: the rest of the engine expects
+// a "non-null jitcode pointer" but we'll never actually call it. We
+// have to ensure alignment to keep GC happy.
+static uint8_t* const PBLJitCodePtr = reinterpret_cast<uint8_t*>(8);
+
 void JSScript::updateJitCodeRaw(JSRuntime* rt) {
   MOZ_ASSERT(rt);
   if (hasBaselineScript() && baselineScript()->hasPendingIonCompileTask()) {
@@ -3210,10 +3211,24 @@ void JSScript::updateJitCodeRaw(JSRuntime* rt) {
     if (!usingEntryTrampoline) {
       setJitCodeRaw(rt->jitRuntime()->baselineInterpreter().codeRaw());
     }
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  } else if (hasJitScript() &&
+             js::jit::IsPortableBaselineInterpreterEnabled()) {
+    // The portable baseline interpreter does not dispatch on this
+    // pointer, but it needs to be non-null to trigger the appropriate
+    // code-paths, so we set it to a placeholder value here.
+    setJitCodeRaw(PBLJitCodePtr);
+#endif  // ENABLE_PORTABLE_BASELINE_INTERP
+  } else if (!js::jit::IsBaselineInterpreterEnabled()) {
+    setJitCodeRaw(nullptr);
   } else {
     setJitCodeRaw(rt->jitRuntime()->interpreterStub().value);
   }
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  MOZ_ASSERT_IF(!js::jit::IsPortableBaselineInterpreterEnabled(), jitCodeRaw());
+#else
   MOZ_ASSERT(jitCodeRaw());
+#endif
 }
 
 bool JSScript::hasLoops() {

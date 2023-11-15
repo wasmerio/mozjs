@@ -17,7 +17,8 @@
 #include "js/Class.h"       // JSClass, js::ClassSpec
 #include "js/RootingAPI.h"  // JS::Handle
 #include "js/Stream.h"      // JS::ReadableStream{Mode,UnderlyingSource}
-#include "js/Value.h"  // JS::Int32Value, JS::ObjectValue, JS::UndefinedValue
+#include "js/Value.h"     // JS::Int32Value, JS::ObjectValue, JS::UndefinedValue
+#include "vm/JSObject.h"  // JSObject::is
 #include "vm/NativeObject.h"  // js::NativeObject
 
 class JS_PUBLIC_API JSObject;
@@ -105,11 +106,15 @@ class ReadableStream : public NativeObject {
     setFixedSlot(Slot_Controller, JS::UndefinedValue());
   }
 
-  bool hasReader() const { return !getFixedSlot(Slot_Reader).isUndefined(); }
+  bool hasReader() const {
+    return !getFixedSlot(Slot_Reader).isUndefined();
+  }
   void setReader(JSObject* reader) {
     setFixedSlot(Slot_Reader, JS::ObjectValue(*reader));
   }
-  void clearReader() { setFixedSlot(Slot_Reader, JS::UndefinedValue()); }
+  void clearReader() {
+    setFixedSlot(Slot_Reader, JS::UndefinedValue());
+  }
 
   JS::Value storedError() const { return getFixedSlot(Slot_StoredError); }
   void setStoredError(JS::Handle<JS::Value> value) {

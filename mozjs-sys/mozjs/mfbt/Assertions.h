@@ -13,6 +13,9 @@
     !defined(__wasi__)
 #  define MOZ_DUMP_ASSERTION_STACK
 #endif
+#if defined(XP_WIN) && (defined(DEBUG) || defined(FUZZING))
+#  define MOZ_BUFFER_STDERR
+#endif
 
 #include "mozilla/Attributes.h"
 #include "mozilla/Compiler.h"
@@ -105,7 +108,14 @@ MOZ_ReportAssertionFailure(const char* aStr, const char* aFilename,
                             /* aMaxFrames */ 0);
 #  endif
 #else
+#  if defined(MOZ_BUFFER_STDERR)
+  char msg[1024] = "";
+  snprintf(msg, sizeof(msg) - 1, "Assertion failure: %s, at %s:%d\n", aStr,
+           aFilename, aLine);
+  fputs(msg, stderr);
+#  else
   fprintf(stderr, "Assertion failure: %s, at %s:%d\n", aStr, aFilename, aLine);
+#  endif
 #  if defined(MOZ_DUMP_ASSERTION_STACK)
   MozWalkTheStack(stderr, CallerPC(), /* aMaxFrames */ 0);
 #  endif
@@ -120,7 +130,14 @@ MOZ_MAYBE_UNUSED static MOZ_COLD MOZ_NEVER_INLINE void MOZ_ReportCrash(
   __android_log_print(ANDROID_LOG_FATAL, "MOZ_CRASH",
                       "Hit MOZ_CRASH(%s) at %s:%d\n", aStr, aFilename, aLine);
 #else
+#  if defined(MOZ_BUFFER_STDERR)
+  char msg[1024] = "";
+  snprintf(msg, sizeof(msg) - 1, "Hit MOZ_CRASH(%s) at %s:%d\n", aStr,
+           aFilename, aLine);
+  fputs(msg, stderr);
+#  else
   fprintf(stderr, "Hit MOZ_CRASH(%s) at %s:%d\n", aStr, aFilename, aLine);
+#  endif
 #  if defined(MOZ_DUMP_ASSERTION_STACK)
   MozWalkTheStack(stderr, CallerPC(), /* aMaxFrames */ 0);
 #  endif
@@ -630,8 +647,9 @@ struct AssertionConditionType {
 #  define MOZ_ASSERT_UNLESS_FUZZING(...) MOZ_ASSERT(__VA_ARGS__)
 #endif
 
-#undef MOZ_DUMP_ASSERTION_STACK
+#undef MOZ_BUFFER_STDERR
 #undef MOZ_CRASH_CRASHREPORT
+#undef MOZ_DUMP_ASSERTION_STACK
 
 /*
  * This is only used by Array and nsTArray classes, therefore it is not
@@ -642,6 +660,33 @@ namespace mozilla::detail {
 MFBT_API MOZ_NORETURN MOZ_COLD void InvalidArrayIndex_CRASH(size_t aIndex,
                                                             size_t aLength);
 }  // namespace mozilla::detail
+#endif  // __cplusplus
+
+/*
+ * Provide a fake default value to be used when a value is required but none can
+ * sensibily be provided without adding undefined behavior or security issues.
+ *
+ * This function asserts and aborts if it ever executed.
+ *
+ * Example usage:
+ *
+ *   class Trooper {
+ *     const Droid& lookFor;
+ *     Trooper() : lookFor(MakeCompilerAssumeUnreachableFakeValue<
+                           const Droid&>()) {
+ *       // The class might be instantiated due to existing caller
+ *       // but this never happens in practice.
+ *     }
+ *   };
+ *
+ */
+#ifdef __cplusplus
+namespace mozilla {
+template <typename T>
+static inline T MakeCompilerAssumeUnreachableFakeValue() {
+  MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE();
+}
+}  // namespace mozilla
 #endif  // __cplusplus
 
 #endif /* mozilla_Assertions_h */

@@ -13,6 +13,7 @@
 #include "jsfriendapi.h"
 
 #include "frontend/FrontendContext.h"  // AutoReportFrontendContext
+#include "js/CharacterEncoding.h"      // JS::ConstUTF8CharsZ
 #include "js/friend/ErrorMessages.h"   // js::GetErrorMessage, JSMSG_*
 #include "js/Printf.h"                 // JS_vsmprintf
 #include "js/Warnings.h"               // JS::WarningReporter
@@ -34,16 +35,16 @@ void js::CallWarningReporter(JSContext* cx, JSErrorReport* reportp) {
   }
 }
 
-bool js::CompileError::throwError(JSContext* cx) {
+void js::CompileError::throwError(JSContext* cx) {
   if (isWarning()) {
     CallWarningReporter(cx, this);
-    return true;
+    return;
   }
 
   // If there's a runtime exception type associated with this error
-  // number, set that as the pending exception.  For errors occurring at
+  // number, set that as the pending exception.  For errors occuring at
   // compile time, this is very likely to be a JSEXN_SYNTAXERR.
-  return ErrorToException(cx, this, nullptr, nullptr);
+  ErrorToException(cx, this, nullptr, nullptr);
 }
 
 bool js::ReportExceptionClosure::operator()(JSContext* cx) {
@@ -63,7 +64,7 @@ bool js::ReportCompileWarning(FrontendContext* fc, ErrorMetadata&& metadata,
   err.isWarning_ = true;
   err.errorNumber = errorNumber;
 
-  err.filename = metadata.filename;
+  err.filename = JS::ConstUTF8CharsZ(metadata.filename);
   err.lineno = metadata.lineNumber;
   err.column = metadata.columnNumber;
   err.isMuted = metadata.isMuted;
@@ -92,7 +93,7 @@ static void ReportCompileErrorImpl(FrontendContext* fc,
   err.isWarning_ = false;
   err.errorNumber = errorNumber;
 
-  err.filename = metadata.filename;
+  err.filename = JS::ConstUTF8CharsZ(metadata.filename);
   err.lineno = metadata.lineNumber;
   err.column = metadata.columnNumber;
   err.isMuted = metadata.isMuted;
@@ -137,16 +138,16 @@ void js::ReportErrorToGlobal(JSContext* cx, Handle<GlobalObject*> global,
   PrepareScriptEnvironmentAndInvoke(cx, global, report);
 }
 
-static bool ReportError(JSContext* cx, JSErrorReport* reportp,
+static void ReportError(JSContext* cx, JSErrorReport* reportp,
                         JSErrorCallback callback, void* userRef) {
   if (reportp->isWarning()) {
     CallWarningReporter(cx, reportp);
-    return true;
+    return;
   }
 
   // Check the error report, and set a JavaScript-catchable exception
   // if the error is defined to have an associated exception.
-  return ErrorToException(cx, reportp, callback, userRef);
+  ErrorToException(cx, reportp, callback, userRef);
 }
 
 /*
@@ -168,7 +169,7 @@ static void PopulateReportBlame(JSContext* cx, JSErrorReport* report) {
     return;
   }
 
-  report->filename = iter.filename();
+  report->filename = JS::ConstUTF8CharsZ(iter.filename());
   if (iter.hasScript()) {
     report->sourceId = iter.script()->scriptSource()->id();
   }
@@ -460,9 +461,7 @@ bool js::ReportErrorNumberVA(JSContext* cx, IsWarning isWarning,
     return false;
   }
 
-  if (!ReportError(cx, &report, callback, userRef)) {
-    return false;
-  }
+  ReportError(cx, &report, callback, userRef);
 
   return report.isWarning();
 }
@@ -503,9 +502,7 @@ static bool ReportErrorNumberArray(JSContext* cx, IsWarning isWarning,
     return false;
   }
 
-  if (!ReportError(cx, &report, callback, userRef)) {
-    return false;
-  }
+  ReportError(cx, &report, callback, userRef);
 
   return report.isWarning();
 }
@@ -554,9 +551,7 @@ bool js::ReportErrorVA(JSContext* cx, IsWarning isWarning, const char* format,
   }
   PopulateReportBlame(cx, &report);
 
-  if (!ReportError(cx, &report, nullptr, nullptr)) {
-    return false;
-  }
+  ReportError(cx, &report, nullptr, nullptr);
 
   return report.isWarning();
 }

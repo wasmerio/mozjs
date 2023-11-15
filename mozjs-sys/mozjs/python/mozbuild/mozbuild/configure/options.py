@@ -18,14 +18,16 @@ _ALL_CATEGORIES = (HELP_OPTIONS_CATEGORY,)
 
 
 def _infer_option_category(define_depth):
-    stack_frame = inspect.stack(0)[3 + define_depth]
+    stack_frame = inspect.currentframe()
+    for _ in range(3 + define_depth):
+        stack_frame = stack_frame.f_back
     try:
-        path = os.path.relpath(stack_frame[0].f_code.co_filename)
+        path = os.path.relpath(stack_frame.f_code.co_filename)
     except ValueError:
         # If this call fails, it means the relative path couldn't be determined
         # (e.g. because this file is on a different drive than the cwd on a
         # Windows machine). That's fine, just use the absolute filename.
-        path = stack_frame[0].f_code.co_filename
+        path = stack_frame.f_code.co_filename
     return "Options from " + path
 
 
@@ -176,8 +178,9 @@ class Option(object):
       more).
     - `default` can be used to give a default value to the option. When the
       `name` of the option starts with '--enable-' or '--with-', the implied
-      default is an empty PositiveOptionValue. When it starts with '--disable-'
-      or '--without-', the implied default is a NegativeOptionValue.
+      default is a NegativeOptionValue (disabled). When it starts with
+      '--disable-' or '--without-', the implied default is an empty
+      PositiveOptionValue (enabled).
     - `choices` restricts the set of values that can be given to the option.
     - `help` is the option description for use in the --help output.
     - `possible_origins` is a tuple of strings that are origins accepted for

@@ -20,6 +20,7 @@ class PromiseObject;
 class ReadableStream;
 class ReadableStreamDefaultController;
 class TeeState;
+class WritableStream;
 
 [[nodiscard]] extern PromiseObject* ReadableStreamTee_Pull(
     JSContext* cx, JS::Handle<TeeState*> unwrappedTeeState);
@@ -33,6 +34,11 @@ class TeeState;
     JSContext* cx, JS::Handle<ReadableStream*> unwrappedStream,
     bool cloneForBranch2, JS::MutableHandle<ReadableStream*> branch1Stream,
     JS::MutableHandle<ReadableStream*> branch2Stream);
+
+[[nodiscard]] extern PromiseObject* ReadableStreamPipeTo(
+    JSContext* cx, JS::Handle<ReadableStream*> unwrappedSource,
+    JS::Handle<WritableStream*> unwrappedDest, bool preventClose,
+    bool preventAbort, bool preventCancel, JS::Handle<JSObject*> signal);
 
 }  // namespace js
 
