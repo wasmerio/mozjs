@@ -655,8 +655,10 @@ pub unsafe extern "C" fn report_warning(_cx: *mut JSContext, report: *mut JSErro
     }
 
     let fnptr = (*report)._base.filename;
-    let fname = if !fnptr.data_.is_null() {
-        let c_str = CStr::from_ptr(fnptr.data_);
+    #[cfg(not(target_vendor = "wasmer"))]
+    let fnptr = fnptr.data_;
+    let fname = if !fnptr.is_null() {
+        let c_str = CStr::from_ptr(fnptr);
         latin1_to_string(c_str.to_bytes())
     } else {
         "none".to_string()

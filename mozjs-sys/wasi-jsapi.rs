@@ -91,15 +91,14 @@ pub mod root {
     #[allow(unused_imports)]
     use self::super::root;
     pub type FILE = ::libc::FILE;
-    pub const JS_64BIT: u32 = 1;
-    pub const JS_CODEGEN_ARM64: u32 = 1;
+    pub const JS_CODEGEN_NONE: u32 = 1;
     pub const JS_DEFAULT_JITREPORT_GRANULARITY: u32 = 3;
-    pub const JS_HAS_INTL_API: u32 = 1;
-    pub const JS_PUNBOX64: u32 = 1;
+    pub const JS_JITSPEW: u32 = 1;
+    pub const JS_NUNBOX32: u32 = 1;
     pub const JS_STANDALONE: u32 = 1;
-    pub const JS_USE_APPLE_FAST_WX: u32 = 1;
+    pub const JS_STRUCTURED_SPEW: u32 = 1;
     pub const JS_WITHOUT_NSPR: u32 = 1;
-    pub const JS_BITS_PER_WORD: u32 = 64;
+    pub const JS_BITS_PER_WORD: u32 = 32;
     pub const JS_STRUCTURED_CLONE_VERSION: u32 = 8;
     pub const JS_SCERR_RECURSION: u32 = 0;
     pub const JS_SCERR_TRANSFERABLE: u32 = 1;
@@ -131,22 +130,6 @@ pub mod root {
         pub type underlying_type_t = u8;
         pub type make_signed_t = u8;
         pub type make_unsigned_t = u8;
-        #[repr(i32)]
-        #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-        pub enum float_round_style {
-            round_indeterminate = -1,
-            round_toward_zero = 0,
-            round_to_nearest = 1,
-            round_toward_infinity = 2,
-            round_toward_neg_infinity = 3,
-        }
-        #[repr(i32)]
-        #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-        pub enum float_denorm_style {
-            denorm_indeterminate = -1,
-            denorm_absent = 0,
-            denorm_present = 1,
-        }
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
         pub struct numeric_limits {
@@ -263,10 +246,6 @@ pub mod root {
         pub struct tuple__BothImplicitlyConvertible {
             pub _address: u8,
         }
-        pub mod __fs {
-            #[allow(unused_imports)]
-            use self::super::super::super::root;
-        }
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
         pub struct atomic {
@@ -279,318 +258,18 @@ pub mod root {
             #[allow(unused_imports)]
             use self::super::super::super::root;
         }
+        pub mod __fs {
+            #[allow(unused_imports)]
+            use self::super::super::super::root;
+        }
     }
     pub type uint_fast8_t = u8;
-    pub type __int64_t = ::std::os::raw::c_longlong;
-    pub type __darwin_va_list = root::__builtin_va_list;
-    pub type __darwin_off_t = root::__int64_t;
-    pub type va_list = root::__darwin_va_list;
-    pub type fpos_t = root::__darwin_off_t;
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
-    pub struct __sbuf {
-        pub _base: *mut ::std::os::raw::c_uchar,
-        pub _size: ::std::os::raw::c_int,
-    }
-    #[test]
-    fn bindgen_test_layout___sbuf() {
-        const UNINIT: ::std::mem::MaybeUninit<__sbuf> = ::std::mem::MaybeUninit::uninit();
-        let ptr = UNINIT.as_ptr();
-        assert_eq!(
-            ::std::mem::size_of::<__sbuf>(),
-            16usize,
-            concat!("Size of: ", stringify!(__sbuf))
-        );
-        assert_eq!(
-            ::std::mem::align_of::<__sbuf>(),
-            8usize,
-            concat!("Alignment of ", stringify!(__sbuf))
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._base) as usize - ptr as usize },
-            0usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sbuf),
-                "::",
-                stringify!(_base)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._size) as usize - ptr as usize },
-            8usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sbuf),
-                "::",
-                stringify!(_size)
-            )
-        );
-    }
-    #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
-    pub struct __sFILEX {
+    pub struct _IO_FILE {
         _unused: [u8; 0],
     }
-    #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
-    pub struct __sFILE {
-        pub _p: *mut ::std::os::raw::c_uchar,
-        pub _r: ::std::os::raw::c_int,
-        pub _w: ::std::os::raw::c_int,
-        pub _flags: ::std::os::raw::c_short,
-        pub _file: ::std::os::raw::c_short,
-        pub _bf: root::__sbuf,
-        pub _lbfsize: ::std::os::raw::c_int,
-        pub _cookie: *mut ::std::os::raw::c_void,
-        pub _close: ::std::option::Option<
-            unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void) -> ::std::os::raw::c_int,
-        >,
-        pub _read: ::std::option::Option<
-            unsafe extern "C" fn(
-                arg1: *mut ::std::os::raw::c_void,
-                arg2: *mut ::std::os::raw::c_char,
-                arg3: ::std::os::raw::c_int,
-            ) -> ::std::os::raw::c_int,
-        >,
-        pub _seek: ::std::option::Option<
-            unsafe extern "C" fn(
-                arg1: *mut ::std::os::raw::c_void,
-                arg2: root::fpos_t,
-                arg3: ::std::os::raw::c_int,
-            ) -> root::fpos_t,
-        >,
-        pub _write: ::std::option::Option<
-            unsafe extern "C" fn(
-                arg1: *mut ::std::os::raw::c_void,
-                arg2: *const ::std::os::raw::c_char,
-                arg3: ::std::os::raw::c_int,
-            ) -> ::std::os::raw::c_int,
-        >,
-        pub _ub: root::__sbuf,
-        pub _extra: *mut root::__sFILEX,
-        pub _ur: ::std::os::raw::c_int,
-        pub _ubuf: [::std::os::raw::c_uchar; 3usize],
-        pub _nbuf: [::std::os::raw::c_uchar; 1usize],
-        pub _lb: root::__sbuf,
-        pub _blksize: ::std::os::raw::c_int,
-        pub _offset: root::fpos_t,
-    }
-    #[test]
-    fn bindgen_test_layout___sFILE() {
-        const UNINIT: ::std::mem::MaybeUninit<__sFILE> = ::std::mem::MaybeUninit::uninit();
-        let ptr = UNINIT.as_ptr();
-        assert_eq!(
-            ::std::mem::size_of::<__sFILE>(),
-            152usize,
-            concat!("Size of: ", stringify!(__sFILE))
-        );
-        assert_eq!(
-            ::std::mem::align_of::<__sFILE>(),
-            8usize,
-            concat!("Alignment of ", stringify!(__sFILE))
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._p) as usize - ptr as usize },
-            0usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_p)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._r) as usize - ptr as usize },
-            8usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_r)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._w) as usize - ptr as usize },
-            12usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_w)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._flags) as usize - ptr as usize },
-            16usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_flags)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._file) as usize - ptr as usize },
-            18usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_file)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._bf) as usize - ptr as usize },
-            24usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_bf)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._lbfsize) as usize - ptr as usize },
-            40usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_lbfsize)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._cookie) as usize - ptr as usize },
-            48usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_cookie)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._close) as usize - ptr as usize },
-            56usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_close)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._read) as usize - ptr as usize },
-            64usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_read)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._seek) as usize - ptr as usize },
-            72usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_seek)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._write) as usize - ptr as usize },
-            80usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_write)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._ub) as usize - ptr as usize },
-            88usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_ub)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._extra) as usize - ptr as usize },
-            104usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_extra)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._ur) as usize - ptr as usize },
-            112usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_ur)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._ubuf) as usize - ptr as usize },
-            116usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_ubuf)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._nbuf) as usize - ptr as usize },
-            119usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_nbuf)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._lb) as usize - ptr as usize },
-            120usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_lb)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._blksize) as usize - ptr as usize },
-            136usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_blksize)
-            )
-        );
-        assert_eq!(
-            unsafe { ::std::ptr::addr_of!((*ptr)._offset) as usize - ptr as usize },
-            144usize,
-            concat!(
-                "Offset of field: ",
-                stringify!(__sFILE),
-                "::",
-                stringify!(_offset)
-            )
-        );
-    }
+    pub type va_list = root::__builtin_va_list;
     pub mod mozilla {
         #[allow(unused_imports)]
         use self::super::super::root;
@@ -688,8 +367,7 @@ pub mod root {
                 );
             }
             #[test]
-            fn __bindgen_test_layout_AllowDeprecatedAbsFixed_open0_long_long_close0_instantiation()
-            {
+            fn __bindgen_test_layout_AllowDeprecatedAbsFixed_open0_long_close0_instantiation() {
                 assert_eq!(
                     ::std::mem::size_of::<root::mozilla::detail::AllowDeprecatedAbsFixed>(),
                     1usize,
@@ -1627,7 +1305,6 @@ pub mod root {
         pub struct CorruptionCanaryForStatics {
             pub mValue: usize,
         }
-        pub const CorruptionCanaryForStatics_kCanarySet: usize = 252382987;
         #[test]
         fn bindgen_test_layout_CorruptionCanaryForStatics() {
             const UNINIT: ::std::mem::MaybeUninit<CorruptionCanaryForStatics> =
@@ -1635,12 +1312,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<CorruptionCanaryForStatics>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(CorruptionCanaryForStatics))
             );
             assert_eq!(
                 ::std::mem::align_of::<CorruptionCanaryForStatics>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(CorruptionCanaryForStatics))
             );
             assert_eq!(
@@ -1664,12 +1341,12 @@ pub mod root {
         fn bindgen_test_layout_CorruptionCanary() {
             assert_eq!(
                 ::std::mem::size_of::<CorruptionCanary>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(CorruptionCanary))
             );
             assert_eq!(
                 ::std::mem::align_of::<CorruptionCanary>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(CorruptionCanary))
             );
         }
@@ -2303,12 +1980,12 @@ pub mod root {
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<ProxyDataLayout>(),
-                    16usize,
+                    8usize,
                     concat!("Size of: ", stringify!(ProxyDataLayout))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<ProxyDataLayout>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(ProxyDataLayout))
                 );
                 assert_eq!(
@@ -2323,7 +2000,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).handler) as usize - ptr as usize },
-                    8usize,
+                    4usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(ProxyDataLayout),
@@ -2527,12 +2204,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<TempAllocPolicy>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(TempAllocPolicy))
             );
             assert_eq!(
                 ::std::mem::align_of::<TempAllocPolicy>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(TempAllocPolicy))
             );
             assert_eq!(
@@ -2598,6 +2275,7 @@ pub mod root {
                 _unused: [u8; 0],
             }
             #[repr(C)]
+            #[repr(align(8))]
             #[derive(Debug, Copy, Clone)]
             pub struct ChunkBase {
                 pub storeBuffer: *mut root::js::gc::StoreBuffer,
@@ -2610,7 +2288,7 @@ pub mod root {
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<ChunkBase>(),
-                    16usize,
+                    8usize,
                     concat!("Size of: ", stringify!(ChunkBase))
                 );
                 assert_eq!(
@@ -2630,7 +2308,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).runtime) as usize - ptr as usize },
-                    8usize,
+                    4usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(ChunkBase),
@@ -2654,12 +2332,12 @@ pub mod root {
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<TenuredChunkInfo>(),
-                    24usize,
+                    16usize,
                     concat!("Size of: ", stringify!(TenuredChunkInfo))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<TenuredChunkInfo>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(TenuredChunkInfo))
                 );
                 assert_eq!(
@@ -2674,7 +2352,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).prev) as usize - ptr as usize },
-                    8usize,
+                    4usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(TenuredChunkInfo),
@@ -2684,7 +2362,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).numArenasFree) as usize - ptr as usize },
-                    16usize,
+                    8usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(TenuredChunkInfo),
@@ -2696,7 +2374,7 @@ pub mod root {
                     unsafe {
                         ::std::ptr::addr_of!((*ptr).numArenasFreeCommitted) as usize - ptr as usize
                     },
-                    20usize,
+                    12usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(TenuredChunkInfo),
@@ -2706,7 +2384,7 @@ pub mod root {
                 );
             }
             #[doc = " Atomic<T> implementation for integral types.\n\n In addition to atomic store and load operations, compound assignment and\n increment/decrement operators are implemented which perform the\n corresponding read-modify-write operation atomically.  Finally, an atomic\n swap method is provided."]
-            pub type MarkBitmapWord = u64;
+            pub type MarkBitmapWord = u32;
             #[repr(u32)]
             #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
             pub enum ColorBit {
@@ -2722,9 +2400,8 @@ pub mod root {
             #[repr(C)]
             #[derive(Debug, Copy, Clone)]
             pub struct MarkBitmap {
-                pub bitmap: [root::js::gc::MarkBitmapWord; 2016usize],
+                pub bitmap: [root::js::gc::MarkBitmapWord; 4032usize],
             }
-            pub const MarkBitmap_WordCount: usize = 2016;
             #[test]
             fn bindgen_test_layout_MarkBitmap() {
                 const UNINIT: ::std::mem::MaybeUninit<MarkBitmap> =
@@ -2737,7 +2414,7 @@ pub mod root {
                 );
                 assert_eq!(
                     ::std::mem::align_of::<MarkBitmap>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(MarkBitmap))
                 );
                 assert_eq!(
@@ -2752,7 +2429,7 @@ pub mod root {
                 );
             }
             #[doc = " An object like std::bitset but which provides access to the underlying\n storage.\n\n The limited API is due to expedience only; feel free to flesh out any\n std::bitset-like members."]
-            pub type ChunkPageBitmap = [u32; 2usize];
+            pub type ChunkPageBitmap = [u32; 8usize];
             #[doc = " An object like std::bitset but which provides access to the underlying\n storage.\n\n The limited API is due to expedience only; feel free to flesh out any\n std::bitset-like members."]
             pub type ChunkArenaBitmap = [u32; 8usize];
             #[repr(C)]
@@ -2771,7 +2448,7 @@ pub mod root {
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<TenuredChunkBase>(),
-                    16208usize,
+                    16216usize,
                     concat!("Size of: ", stringify!(TenuredChunkBase))
                 );
                 assert_eq!(
@@ -2781,7 +2458,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).info) as usize - ptr as usize },
-                    16usize,
+                    8usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(TenuredChunkBase),
@@ -2791,7 +2468,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).markBits) as usize - ptr as usize },
-                    40usize,
+                    24usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(TenuredChunkBase),
@@ -2803,7 +2480,7 @@ pub mod root {
                     unsafe {
                         ::std::ptr::addr_of!((*ptr).freeCommittedArenas) as usize - ptr as usize
                     },
-                    16168usize,
+                    16152usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(TenuredChunkBase),
@@ -2815,7 +2492,7 @@ pub mod root {
                     unsafe {
                         ::std::ptr::addr_of!((*ptr).decommittedPages) as usize - ptr as usize
                     },
-                    16200usize,
+                    16184usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(TenuredChunkBase),
@@ -2958,12 +2635,12 @@ pub mod root {
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<SharedMemoryUse>(),
-                    16usize,
+                    8usize,
                     concat!("Size of: ", stringify!(SharedMemoryUse))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<SharedMemoryUse>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(SharedMemoryUse))
                 );
                 assert_eq!(
@@ -2978,7 +2655,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).nbytes) as usize - ptr as usize },
-                    8usize,
+                    4usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(SharedMemoryUse),
@@ -3017,16 +2694,16 @@ pub mod root {
             #[link_name = "\u{1}_ZN2js32UnsafeTraceManuallyBarrieredEdgeEP8JSTracerPP8JSObjectPKc"]
             pub fn UnsafeTraceManuallyBarrieredEdge(
                 trc: *mut root::JSTracer,
-                thingp: *mut *mut root::JSObject,
+                edgep: *mut *mut root::JSObject,
                 name: *const ::std::os::raw::c_char,
             );
         }
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
         pub struct ProfilingStackFrame {
-            pub label_: u64,
-            pub dynamicString_: u64,
-            pub spOrScript: u64,
+            pub label_: u32,
+            pub dynamicString_: u32,
+            pub spOrScript: u32,
             pub realmID_: u64,
             pub pcOffsetIfJS_: u32,
             pub flagsAndCategoryPair_: u32,
@@ -3059,7 +2736,7 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ProfilingStackFrame>(),
-                40usize,
+                32usize,
                 concat!("Size of: ", stringify!(ProfilingStackFrame))
             );
             assert_eq!(
@@ -3079,7 +2756,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).dynamicString_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ProfilingStackFrame),
@@ -3089,7 +2766,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).spOrScript) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ProfilingStackFrame),
@@ -3099,7 +2776,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).realmID_) as usize - ptr as usize },
-                24usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ProfilingStackFrame),
@@ -3109,7 +2786,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).pcOffsetIfJS_) as usize - ptr as usize },
-                32usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ProfilingStackFrame),
@@ -3121,7 +2798,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).flagsAndCategoryPair_) as usize - ptr as usize
                 },
-                36usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ProfilingStackFrame),
@@ -3181,12 +2858,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<GeckoProfilerThread>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(GeckoProfilerThread))
             );
             assert_eq!(
                 ::std::mem::align_of::<GeckoProfilerThread>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(GeckoProfilerThread))
             );
             assert_eq!(
@@ -3203,7 +2880,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).profilingStackIfEnabled_) as usize - ptr as usize
                 },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(GeckoProfilerThread),
@@ -3566,12 +3243,12 @@ pub mod root {
         fn bindgen_test_layout_VirtualTraceable() {
             assert_eq!(
                 ::std::mem::size_of::<VirtualTraceable>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(VirtualTraceable))
             );
             assert_eq!(
                 ::std::mem::align_of::<VirtualTraceable>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(VirtualTraceable))
             );
         }
@@ -3588,12 +3265,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<StackRootedBase>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(StackRootedBase))
             );
             assert_eq!(
                 ::std::mem::align_of::<StackRootedBase>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(StackRootedBase))
             );
             assert_eq!(
@@ -3608,7 +3285,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).prev) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(StackRootedBase),
@@ -3626,12 +3303,12 @@ pub mod root {
         fn bindgen_test_layout_PersistentRootedBase() {
             assert_eq!(
                 ::std::mem::size_of::<PersistentRootedBase>(),
-                24usize,
+                12usize,
                 concat!("Size of: ", stringify!(PersistentRootedBase))
             );
             assert_eq!(
                 ::std::mem::align_of::<PersistentRootedBase>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(PersistentRootedBase))
             );
         }
@@ -3645,12 +3322,12 @@ pub mod root {
         fn bindgen_test_layout_StackRootedTraceableBase() {
             assert_eq!(
                 ::std::mem::size_of::<StackRootedTraceableBase>(),
-                24usize,
+                12usize,
                 concat!("Size of: ", stringify!(StackRootedTraceableBase))
             );
             assert_eq!(
                 ::std::mem::align_of::<StackRootedTraceableBase>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(StackRootedTraceableBase))
             );
         }
@@ -3664,12 +3341,12 @@ pub mod root {
         fn bindgen_test_layout_PersistentRootedTraceableBase() {
             assert_eq!(
                 ::std::mem::size_of::<PersistentRootedTraceableBase>(),
-                32usize,
+                16usize,
                 concat!("Size of: ", stringify!(PersistentRootedTraceableBase))
             );
             assert_eq!(
                 ::std::mem::align_of::<PersistentRootedTraceableBase>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(PersistentRootedTraceableBase))
             );
         }
@@ -3792,7 +3469,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[link_name = "\u{1}_ZN2js11ToInt64SlowEP9JSContextN2JS6HandleINS2_5ValueEEEPx"]
+            #[link_name = "\u{1}_ZN2js11ToInt64SlowEP9JSContextN2JS6HandleINS2_5ValueEEEPl"]
             pub fn ToInt64Slow(
                 cx: *mut root::JSContext,
                 v: root::JS::HandleValue,
@@ -3840,11 +3517,6 @@ pub mod root {
                     stringify!(root::js::BarrierMethods)
                 )
             );
-        }
-        extern "C" {
-            #[doc = " In memory reporting, we have concept of \"sundries\", line items which are too\n small to be worth reporting individually.  Under some circumstances, a memory\n reporter gets tossed into the sundries bucket if it's smaller than\n MemoryReportingSundriesThreshold() bytes.\n\n We need to define this value here, rather than in the code which actually\n generates the memory reports, because NotableStringInfo uses this value."]
-            #[link_name = "\u{1}_ZN2js32MemoryReportingSundriesThresholdEv"]
-            pub fn MemoryReportingSundriesThreshold() -> usize;
         }
         #[doc = " This hash policy avoids flattening ropes (which perturbs the site being\n measured and requires a JSContext) at the expense of doing a FULL ROPE COPY\n on every hash and match! Beware."]
         #[repr(C)]
@@ -3957,12 +3629,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ElementAdder>(),
-                40usize,
+                24usize,
                 concat!("Size of: ", stringify!(ElementAdder))
             );
             assert_eq!(
                 ::std::mem::align_of::<ElementAdder>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ElementAdder))
             );
             assert_eq!(
@@ -3977,7 +3649,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).vp_) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ElementAdder),
@@ -3987,7 +3659,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).index_) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ElementAdder),
@@ -3997,7 +3669,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).getBehavior_) as usize - ptr as usize },
-                36usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ElementAdder),
@@ -4051,12 +3723,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ClassSpec>(),
-                64usize,
+                32usize,
                 concat!("Size of: ", stringify!(ClassSpec))
             );
             assert_eq!(
                 ::std::mem::align_of::<ClassSpec>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ClassSpec))
             );
             assert_eq!(
@@ -4071,7 +3743,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).createPrototype) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassSpec),
@@ -4083,7 +3755,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).constructorFunctions) as usize - ptr as usize
                 },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassSpec),
@@ -4095,7 +3767,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).constructorProperties) as usize - ptr as usize
                 },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassSpec),
@@ -4105,7 +3777,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).prototypeFunctions) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassSpec),
@@ -4115,7 +3787,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).prototypeProperties) as usize - ptr as usize },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassSpec),
@@ -4125,7 +3797,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).finishInit) as usize - ptr as usize },
-                48usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassSpec),
@@ -4135,7 +3807,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).flags) as usize - ptr as usize },
-                56usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassSpec),
@@ -4157,12 +3829,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ClassExtension>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(ClassExtension))
             );
             assert_eq!(
                 ::std::mem::align_of::<ClassExtension>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ClassExtension))
             );
             assert_eq!(
@@ -4195,12 +3867,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ObjectOps>(),
-                72usize,
+                36usize,
                 concat!("Size of: ", stringify!(ObjectOps))
             );
             assert_eq!(
                 ::std::mem::align_of::<ObjectOps>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ObjectOps))
             );
             assert_eq!(
@@ -4215,7 +3887,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).defineProperty) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ObjectOps),
@@ -4225,7 +3897,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).hasProperty) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ObjectOps),
@@ -4235,7 +3907,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).getProperty) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ObjectOps),
@@ -4245,7 +3917,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).setProperty) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ObjectOps),
@@ -4257,7 +3929,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).getOwnPropertyDescriptor) as usize - ptr as usize
                 },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ObjectOps),
@@ -4267,7 +3939,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).deleteProperty) as usize - ptr as usize },
-                48usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ObjectOps),
@@ -4277,7 +3949,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).getElements) as usize - ptr as usize },
-                56usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ObjectOps),
@@ -4287,7 +3959,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).funToString) as usize - ptr as usize },
-                64usize,
+                32usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ObjectOps),
@@ -4370,17 +4042,17 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<BaseProxyHandler>(),
-                24usize,
+                12usize,
                 concat!("Size of: ", stringify!(BaseProxyHandler))
             );
             assert_eq!(
                 ::std::mem::align_of::<BaseProxyHandler>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(BaseProxyHandler))
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).mFamily) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(BaseProxyHandler),
@@ -4390,7 +4062,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).mHasPrototype) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(BaseProxyHandler),
@@ -4400,7 +4072,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).mHasSecurityPolicy) as usize - ptr as usize },
-                17usize,
+                9usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(BaseProxyHandler),
@@ -4425,12 +4097,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ProxyOptions>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(ProxyOptions))
             );
             assert_eq!(
                 ::std::mem::align_of::<ProxyOptions>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ProxyOptions))
             );
             assert_eq!(
@@ -4445,7 +4117,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).clasp_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ProxyOptions),
@@ -4490,17 +4162,17 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoEnterPolicy>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(AutoEnterPolicy))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoEnterPolicy>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoEnterPolicy))
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).allow) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoEnterPolicy),
@@ -4510,7 +4182,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).rv) as usize - ptr as usize },
-                9usize,
+                5usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoEnterPolicy),
@@ -4578,7 +4250,7 @@ pub mod root {
         #[repr(C)]
         #[derive(Debug)]
         pub struct SharedArrayRawBufferRefs {
-            pub refs_: [u64; 3usize],
+            pub refs_: [u32; 3usize],
         }
         #[test]
         fn bindgen_test_layout_SharedArrayRawBufferRefs() {
@@ -4587,12 +4259,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<SharedArrayRawBufferRefs>(),
-                24usize,
+                12usize,
                 concat!("Size of: ", stringify!(SharedArrayRawBufferRefs))
             );
             assert_eq!(
                 ::std::mem::align_of::<SharedArrayRawBufferRefs>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(SharedArrayRawBufferRefs))
             );
             assert_eq!(
@@ -4619,7 +4291,7 @@ pub mod root {
         #[repr(C)]
         #[derive(Debug)]
         pub struct AtomicRefCounted {
-            pub mRefCnt: u64,
+            pub mRefCnt: u32,
         }
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
@@ -4649,7 +4321,7 @@ pub mod root {
         #[derive(Debug, Copy, Clone)]
         pub struct WrapperOptions {
             pub _base: root::js::ProxyOptions,
-            pub proto_: [u64; 4usize],
+            pub proto_: [u32; 4usize],
         }
         #[test]
         fn bindgen_test_layout_WrapperOptions() {
@@ -4658,17 +4330,17 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<WrapperOptions>(),
-                48usize,
+                24usize,
                 concat!("Size of: ", stringify!(WrapperOptions))
             );
             assert_eq!(
                 ::std::mem::align_of::<WrapperOptions>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(WrapperOptions))
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).proto_) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(WrapperOptions),
@@ -4686,12 +4358,12 @@ pub mod root {
         fn bindgen_test_layout_ForwardingProxyHandler() {
             assert_eq!(
                 ::std::mem::size_of::<ForwardingProxyHandler>(),
-                24usize,
+                12usize,
                 concat!("Size of: ", stringify!(ForwardingProxyHandler))
             );
             assert_eq!(
                 ::std::mem::align_of::<ForwardingProxyHandler>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ForwardingProxyHandler))
             );
         }
@@ -4731,17 +4403,17 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<Wrapper>(),
-                24usize,
+                16usize,
                 concat!("Size of: ", stringify!(Wrapper))
             );
             assert_eq!(
                 ::std::mem::align_of::<Wrapper>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(Wrapper))
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).mFlags) as usize - ptr as usize },
-                20usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(Wrapper),
@@ -4768,12 +4440,12 @@ pub mod root {
         fn bindgen_test_layout_CrossCompartmentWrapper() {
             assert_eq!(
                 ::std::mem::size_of::<CrossCompartmentWrapper>(),
-                24usize,
+                16usize,
                 concat!("Size of: ", stringify!(CrossCompartmentWrapper))
             );
             assert_eq!(
                 ::std::mem::align_of::<CrossCompartmentWrapper>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(CrossCompartmentWrapper))
             );
         }
@@ -4791,12 +4463,12 @@ pub mod root {
         fn bindgen_test_layout_OpaqueCrossCompartmentWrapper() {
             assert_eq!(
                 ::std::mem::size_of::<OpaqueCrossCompartmentWrapper>(),
-                24usize,
+                16usize,
                 concat!("Size of: ", stringify!(OpaqueCrossCompartmentWrapper))
             );
             assert_eq!(
                 ::std::mem::align_of::<OpaqueCrossCompartmentWrapper>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(OpaqueCrossCompartmentWrapper))
             );
         }
@@ -5116,7 +4788,7 @@ pub mod root {
             pub interrupted: bool,
         }
         pub type SliceBudget_InterruptRequestFlag = u8;
-        pub const SliceBudget_UnlimitedCounter: isize = isize::MAX;
+        pub const SliceBudget_UnlimitedCounter: isize = 2147483647;
         pub const SliceBudget_StepsPerExpensiveCheck: isize = 1000;
         #[test]
         fn bindgen_test_layout_SliceBudget() {
@@ -5262,17 +4934,12 @@ pub mod root {
             pub fn StopDrainingJobQueue(cx: *mut root::JSContext);
         }
         extern "C" {
-            #[link_name = "\u{1}_ZN2js7RunJobsEP9JSContext"]
-            pub fn RunJobs(cx: *mut root::JSContext);
-        }
-        extern "C" {
             #[link_name = "\u{1}_ZN2js14HasJobsPendingEP9JSContext"]
             pub fn HasJobsPending(cx: *mut root::JSContext) -> bool;
         }
         extern "C" {
-            #[doc = " Reset the seed for Math.random().\n\n Enables embedders to reset the seed at controlled points, e.g. after\n resuming execution from an instance snapshot of SpiderMonkey's VM."]
-            #[link_name = "\u{1}_ZN2js19ResetMathRandomSeedEP9JSContext"]
-            pub fn ResetMathRandomSeed(cx: *mut root::JSContext);
+            #[link_name = "\u{1}_ZN2js7RunJobsEP9JSContext"]
+            pub fn RunJobs(cx: *mut root::JSContext);
         }
         extern "C" {
             #[link_name = "\u{1}_ZN2js12GetRealmZoneEPN2JS5RealmE"]
@@ -5310,17 +4977,17 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<WeakMapTracer>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(WeakMapTracer))
             );
             assert_eq!(
                 ::std::mem::align_of::<WeakMapTracer>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(WeakMapTracer))
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).runtime) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(WeakMapTracer),
@@ -5535,12 +5202,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<JSDOMCallbacks>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(JSDOMCallbacks))
             );
             assert_eq!(
                 ::std::mem::align_of::<JSDOMCallbacks>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(JSDOMCallbacks))
             );
             assert_eq!(
@@ -5603,12 +5270,12 @@ pub mod root {
         fn bindgen_test_layout_CompartmentFilter() {
             assert_eq!(
                 ::std::mem::size_of::<CompartmentFilter>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(CompartmentFilter))
             );
             assert_eq!(
                 ::std::mem::align_of::<CompartmentFilter>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(CompartmentFilter))
             );
         }
@@ -5621,12 +5288,12 @@ pub mod root {
         fn bindgen_test_layout_AllCompartments() {
             assert_eq!(
                 ::std::mem::size_of::<AllCompartments>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(AllCompartments))
             );
             assert_eq!(
                 ::std::mem::align_of::<AllCompartments>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AllCompartments))
             );
         }
@@ -5643,17 +5310,17 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<SingleCompartment>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(SingleCompartment))
             );
             assert_eq!(
                 ::std::mem::align_of::<SingleCompartment>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(SingleCompartment))
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).ours) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(SingleCompartment),
@@ -5723,12 +5390,12 @@ pub mod root {
         fn bindgen_test_layout_ScriptEnvironmentPreparer_Closure() {
             assert_eq!(
                 ::std::mem::size_of::<ScriptEnvironmentPreparer_Closure>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(ScriptEnvironmentPreparer_Closure))
             );
             assert_eq!(
                 ::std::mem::align_of::<ScriptEnvironmentPreparer_Closure>(),
-                8usize,
+                4usize,
                 concat!(
                     "Alignment of ",
                     stringify!(ScriptEnvironmentPreparer_Closure)
@@ -5739,12 +5406,12 @@ pub mod root {
         fn bindgen_test_layout_ScriptEnvironmentPreparer() {
             assert_eq!(
                 ::std::mem::size_of::<ScriptEnvironmentPreparer>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(ScriptEnvironmentPreparer))
             );
             assert_eq!(
                 ::std::mem::align_of::<ScriptEnvironmentPreparer>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ScriptEnvironmentPreparer))
             );
         }
@@ -5774,12 +5441,12 @@ pub mod root {
         fn bindgen_test_layout_AllocationMetadataBuilder() {
             assert_eq!(
                 ::std::mem::size_of::<AllocationMetadataBuilder>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(AllocationMetadataBuilder))
             );
             assert_eq!(
                 ::std::mem::align_of::<AllocationMetadataBuilder>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AllocationMetadataBuilder))
             );
         }
@@ -5845,12 +5512,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoAssertNoContentJS>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(AutoAssertNoContentJS))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoAssertNoContentJS>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoAssertNoContentJS))
             );
             assert_eq!(
@@ -5865,7 +5532,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).prevAllowContentJS_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoAssertNoContentJS),
@@ -5878,6 +5545,178 @@ pub mod root {
             #[doc = " This function reports memory used by a zone in bytes, this includes:\n  * The size of this JS GC zone.\n  * Malloc memory referred to from this zone.\n  * JIT memory for this zone.\n\n Note that malloc memory referred to from this zone can include\n SharedArrayBuffers which may also be referred to from other zones. Adding the\n memory usage of multiple zones may lead to an over-estimate."]
             #[link_name = "\u{1}_ZN2js21GetMemoryUsageForZoneEPN2JS4ZoneE"]
             pub fn GetMemoryUsageForZone(zone: *mut root::JS::Zone) -> u64;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS12NewMapObjectEP9JSContext"]
+            pub fn NewMapObject(cx: *mut root::JSContext) -> *mut root::JSObject;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS7MapSizeEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn MapSize(cx: *mut root::JSContext, obj: root::JS::HandleObject) -> u32;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS6MapGetEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEENS_13MutableHandleIS6_EE"]
+            pub fn MapGet(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                key: root::JS::HandleValue,
+                rval: root::JS::MutableHandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS6MapHasEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEEPb"]
+            pub fn MapHas(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                key: root::JS::HandleValue,
+                rval: *mut bool,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS6MapSetEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEES7_"]
+            pub fn MapSet(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                key: root::JS::HandleValue,
+                val: root::JS::HandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS9MapDeleteEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEEPb"]
+            pub fn MapDelete(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                key: root::JS::HandleValue,
+                rval: *mut bool,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS8MapClearEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn MapClear(cx: *mut root::JSContext, obj: root::JS::HandleObject) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS7MapKeysEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
+            pub fn MapKeys(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                rval: root::JS::MutableHandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS9MapValuesEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
+            pub fn MapValues(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                rval: root::JS::MutableHandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS10MapEntriesEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
+            pub fn MapEntries(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                rval: root::JS::MutableHandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS10MapForEachEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEES7_"]
+            pub fn MapForEach(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                callbackFn: root::JS::HandleValue,
+                thisVal: root::JS::HandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS12NewSetObjectEP9JSContext"]
+            pub fn NewSetObject(cx: *mut root::JSContext) -> *mut root::JSObject;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS7SetSizeEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn SetSize(cx: *mut root::JSContext, obj: root::JS::HandleObject) -> u32;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS6SetHasEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEEPb"]
+            pub fn SetHas(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                key: root::JS::HandleValue,
+                rval: *mut bool,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS9SetDeleteEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEEPb"]
+            pub fn SetDelete(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                key: root::JS::HandleValue,
+                rval: *mut bool,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS6SetAddEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEE"]
+            pub fn SetAdd(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                key: root::JS::HandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS8SetClearEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn SetClear(cx: *mut root::JSContext, obj: root::JS::HandleObject) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS7SetKeysEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
+            pub fn SetKeys(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                rval: root::JS::MutableHandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS9SetValuesEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
+            pub fn SetValues(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                rval: root::JS::MutableHandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS10SetEntriesEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
+            pub fn SetEntries(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                rval: root::JS::MutableHandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS10SetForEachEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEES7_"]
+            pub fn SetForEach(
+                cx: *mut root::JSContext,
+                obj: root::JS::HandleObject,
+                callbackFn: root::JS::HandleValue,
+                thisVal: root::JS::HandleValue,
+            ) -> bool;
+        }
+        #[doc = " If a large allocation fails when calling pod_{calloc,realloc}CanGC, the JS\n engine may call the large-allocation-failure callback, if set, to allow the\n embedding to flush caches, possibly perform shrinking GCs, etc. to make some\n room. The allocation will then be retried (and may still fail.) This callback\n can be called on any thread and must be set at most once in a process."]
+        pub type LargeAllocationFailureCallback = ::std::option::Option<unsafe extern "C" fn()>;
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS40SetProcessLargeAllocationFailureCallbackEPFvvE"]
+            pub fn SetProcessLargeAllocationFailureCallback(
+                afc: root::JS::LargeAllocationFailureCallback,
+            );
+        }
+        #[doc = " Unlike the error reporter, which is only called if the exception for an OOM\n bubbles up and is not caught, the OutOfMemoryCallback is called immediately\n at the OOM site to allow the embedding to capture the current state of heap\n allocation before anything is freed. If the large-allocation-failure callback\n is called at all (not all allocation sites call the large-allocation-failure\n callback on failure), it is called before the out-of-memory callback; the\n out-of-memory callback is only called if the allocation still fails after the\n large-allocation-failure callback has returned."]
+        pub type OutOfMemoryCallback = ::std::option::Option<
+            unsafe extern "C" fn(arg1: *mut root::JSContext, arg2: *mut ::std::os::raw::c_void),
+        >;
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS22SetOutOfMemoryCallbackEP9JSContextPFvS1_PvES2_"]
+            pub fn SetOutOfMemoryCallback(
+                cx: *mut root::JSContext,
+                cb: root::JS::OutOfMemoryCallback,
+                data: *mut ::std::os::raw::c_void,
+            );
         }
         #[repr(u8)]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -5906,12 +5745,12 @@ pub mod root {
         fn bindgen_test_layout_CompartmentTransplantCallback() {
             assert_eq!(
                 ::std::mem::size_of::<CompartmentTransplantCallback>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(CompartmentTransplantCallback))
             );
             assert_eq!(
                 ::std::mem::align_of::<CompartmentTransplantCallback>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(CompartmentTransplantCallback))
             );
         }
@@ -6045,7 +5884,7 @@ pub mod root {
         pub type PersistentRootedFunction = u8;
         pub type PersistentRootedId = u8;
         #[doc = " A copyable, assignable global GC root type with arbitrary lifetime, an\n infallible constructor, and automatic unrooting on destruction.\n\n These roots can be used in heap-allocated data structures, so they are not\n associated with any particular JSContext or stack. They are registered with\n the JSRuntime itself, without locking. Initialization may take place on\n construction, or in two phases if the no-argument constructor is called\n followed by init().\n\n Note that you must not use an PersistentRooted in an object owned by a JS\n object:\n\n Whenever one object whose lifetime is decided by the GC refers to another\n such object, that edge must be traced only if the owning JS object is traced.\n This applies not only to JS objects (which obviously are managed by the GC)\n but also to C++ objects owned by JS objects.\n\n If you put a PersistentRooted in such a C++ object, that is almost certainly\n a leak. When a GC begins, the referent of the PersistentRooted is treated as\n live, unconditionally (because a PersistentRooted is a *root*), even if the\n JS object that owns it is unreachable. If there is any path from that\n referent back to the JS object, then the C++ object containing the\n PersistentRooted will not be destructed, and the whole blob of objects will\n not be freed, even if there are no references to them from the outside.\n\n In the context of Firefox, this is a severe restriction: almost everything in\n Firefox is owned by some JS object or another, so using PersistentRooted in\n such objects would introduce leaks. For these kinds of edges, Heap<T> or\n TenuredHeap<T> would be better types. It's up to the implementor of the type\n containing Heap<T> or TenuredHeap<T> members to make sure their referents get\n marked when the object itself is marked."]
-        pub type PersistentRootedObject = [u64; 4usize];
+        pub type PersistentRootedObject = [u32; 4usize];
         pub type PersistentRootedScript = u8;
         pub type PersistentRootedString = u8;
         pub type PersistentRootedSymbol = u8;
@@ -6234,12 +6073,12 @@ pub mod root {
             pub type Int64Limits = u8;
             pub type Uint64Limits = u8;
             extern "C" {
-                #[link_name = "\u{1}_ZN2JS6detail15BigIntFromInt64EP9JSContextx"]
+                #[link_name = "\u{1}_ZN2JS6detail15BigIntFromInt64EP9JSContextl"]
                 pub fn BigIntFromInt64(cx: *mut root::JSContext, num: i64)
                     -> *mut root::JS::BigInt;
             }
             extern "C" {
-                #[link_name = "\u{1}_ZN2JS6detail16BigIntFromUint64EP9JSContexty"]
+                #[link_name = "\u{1}_ZN2JS6detail16BigIntFromUint64EP9JSContextm"]
                 pub fn BigIntFromUint64(
                     cx: *mut root::JSContext,
                     num: u64,
@@ -6275,12 +6114,12 @@ pub mod root {
                 );
             }
             extern "C" {
-                #[link_name = "\u{1}_ZN2JS6detail13BigIntIsInt64EPKNS_6BigIntEPx"]
-                pub fn BigIntIsInt64(bi: *const root::JS::BigInt, result: *mut i64) -> bool;
+                #[link_name = "\u{1}_ZN2JS6detail13BigIntIsInt64EPNS_6BigIntEPl"]
+                pub fn BigIntIsInt64(bi: *mut root::JS::BigInt, result: *mut i64) -> bool;
             }
             extern "C" {
-                #[link_name = "\u{1}_ZN2JS6detail14BigIntIsUint64EPKNS_6BigIntEPy"]
-                pub fn BigIntIsUint64(bi: *const root::JS::BigInt, result: *mut u64) -> bool;
+                #[link_name = "\u{1}_ZN2JS6detail14BigIntIsUint64EPNS_6BigIntEPm"]
+                pub fn BigIntIsUint64(bi: *mut root::JS::BigInt, result: *mut u64) -> bool;
             }
             #[repr(C)]
             #[derive(Debug, Copy, Clone)]
@@ -6432,10 +6271,10 @@ pub mod root {
         }
         extern "C" {
             #[doc = " Create a BigInt by parsing a string consisting of an optional sign character\n followed by one or more alphanumeric ASCII digits in the provided radix.\n\n If the radix is not in the range [2, 36], or the string fails to parse, this\n function returns null and throws an exception."]
-            #[link_name = "\u{1}_ZN2JS20SimpleStringToBigIntEP9JSContextN7mozilla4SpanIKcLm4294967295EEEh"]
+            #[link_name = "\u{1}_ZN2JS20SimpleStringToBigIntEP9JSContextN7mozilla4SpanIKcLm18446744073709551615EEEh"]
             pub fn SimpleStringToBigInt(
                 cx: *mut root::JSContext,
-                chars: [u32; 2usize],
+                chars: [u64; 2usize],
                 radix: u8,
             ) -> *mut root::JS::BigInt;
         }
@@ -6449,28 +6288,28 @@ pub mod root {
         }
         extern "C" {
             #[doc = " Convert the given BigInt, modulo 2**64, to a signed 64-bit integer."]
-            #[link_name = "\u{1}_ZN2JS10ToBigInt64EPKNS_6BigIntE"]
-            pub fn ToBigInt64(bi: *const root::JS::BigInt) -> i64;
+            #[link_name = "\u{1}_ZN2JS10ToBigInt64EPNS_6BigIntE"]
+            pub fn ToBigInt64(bi: *mut root::JS::BigInt) -> i64;
         }
         extern "C" {
             #[doc = " Convert the given BigInt, modulo 2**64, to an unsigned 64-bit integer."]
-            #[link_name = "\u{1}_ZN2JS11ToBigUint64EPKNS_6BigIntE"]
-            pub fn ToBigUint64(bi: *const root::JS::BigInt) -> u64;
+            #[link_name = "\u{1}_ZN2JS11ToBigUint64EPNS_6BigIntE"]
+            pub fn ToBigUint64(bi: *mut root::JS::BigInt) -> u64;
         }
         extern "C" {
             #[doc = " Convert the given BigInt to a Number value as if calling the Number\n constructor on it\n (https://tc39.es/ecma262/#sec-number-constructor-number-value). The value\n may be rounded if it doesn't fit without loss of precision."]
-            #[link_name = "\u{1}_ZN2JS14BigIntToNumberEPKNS_6BigIntE"]
-            pub fn BigIntToNumber(bi: *const root::JS::BigInt) -> f64;
+            #[link_name = "\u{1}_ZN2JS14BigIntToNumberEPNS_6BigIntE"]
+            pub fn BigIntToNumber(bi: *mut root::JS::BigInt) -> f64;
         }
         extern "C" {
             #[doc = " Return true if the given BigInt is negative."]
-            #[link_name = "\u{1}_ZN2JS16BigIntIsNegativeEPKNS_6BigIntE"]
-            pub fn BigIntIsNegative(bi: *const root::JS::BigInt) -> bool;
+            #[link_name = "\u{1}_ZN2JS16BigIntIsNegativeEPNS_6BigIntE"]
+            pub fn BigIntIsNegative(bi: *mut root::JS::BigInt) -> bool;
         }
         extern "C" {
             #[doc = " Same as BigIntFits(), but checks if the value fits inside a JS Number value."]
-            #[link_name = "\u{1}_ZN2JS16BigIntFitsNumberEPKNS_6BigIntEPd"]
-            pub fn BigIntFitsNumber(bi: *const root::JS::BigInt, out: *mut f64) -> bool;
+            #[link_name = "\u{1}_ZN2JS16BigIntFitsNumberEPNS_6BigIntEPd"]
+            pub fn BigIntFitsNumber(bi: *mut root::JS::BigInt, out: *mut f64) -> bool;
         }
         extern "C" {
             #[doc = " Convert the given BigInt to a String value as if toString() were called on\n it.\n\n If the radix is not in the range [2, 36], then this function returns null and\n throws an exception."]
@@ -6498,7 +6337,7 @@ pub mod root {
         pub struct Error {
             pub kind: root::JS::Error_ErrorKind,
         }
-        #[repr(u64)]
+        #[repr(u32)]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
         pub enum Error_ErrorKind {
             Unspecified = 2,
@@ -6510,12 +6349,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<Error>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(Error))
             );
             assert_eq!(
                 ::std::mem::align_of::<Error>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(Error))
             );
             assert_eq!(
@@ -6538,12 +6377,12 @@ pub mod root {
         fn bindgen_test_layout_OOM() {
             assert_eq!(
                 ::std::mem::size_of::<OOM>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(OOM))
             );
             assert_eq!(
                 ::std::mem::align_of::<OOM>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(OOM))
             );
         }
@@ -7218,7 +7057,7 @@ pub mod root {
                 concat!("Alignment of ", stringify!(FreePolicy))
             );
         }
-        pub type UniqueChars = u64;
+        pub type UniqueChars = u32;
         pub type UniqueTwoByteChars = u8;
         pub type UniqueLatin1Chars = u8;
         pub type UniqueWideChars = u8;
@@ -7229,6 +7068,7 @@ pub mod root {
             #[derive(Copy, Clone)]
             pub struct String {
                 pub flags_: usize,
+                pub length_: u32,
                 pub __bindgen_anon_1: root::JS::shadow::String__bindgen_ty_1,
                 pub externalCallbacks: *const root::JSExternalStringCallbacks,
             }
@@ -7247,12 +7087,12 @@ pub mod root {
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<String__bindgen_ty_1>(),
-                    8usize,
+                    4usize,
                     concat!("Size of: ", stringify!(String__bindgen_ty_1))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<String__bindgen_ty_1>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(String__bindgen_ty_1))
                 );
                 assert_eq!(
@@ -7304,25 +7144,18 @@ pub mod root {
                     )
                 );
             }
-            pub const String_ATOM_BIT: u32 = 8;
-            pub const String_LINEAR_BIT: u32 = 16;
-            pub const String_INLINE_CHARS_BIT: u32 = 64;
-            pub const String_LATIN1_CHARS_BIT: u32 = 512;
-            pub const String_EXTERNAL_FLAGS: u32 = 272;
-            pub const String_TYPE_FLAGS_MASK: u32 = 504;
-            pub const String_PERMANENT_ATOM_MASK: u32 = 264;
             #[test]
             fn bindgen_test_layout_String() {
                 const UNINIT: ::std::mem::MaybeUninit<String> = ::std::mem::MaybeUninit::uninit();
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<String>(),
-                    24usize,
+                    16usize,
                     concat!("Size of: ", stringify!(String))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<String>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(String))
                 );
                 assert_eq!(
@@ -7336,10 +7169,20 @@ pub mod root {
                     )
                 );
                 assert_eq!(
+                    unsafe { ::std::ptr::addr_of!((*ptr).length_) as usize - ptr as usize },
+                    4usize,
+                    concat!(
+                        "Offset of field: ",
+                        stringify!(String),
+                        "::",
+                        stringify!(length_)
+                    )
+                );
+                assert_eq!(
                     unsafe {
                         ::std::ptr::addr_of!((*ptr).externalCallbacks) as usize - ptr as usize
                     },
-                    16usize,
+                    12usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(String),
@@ -7354,19 +7197,18 @@ pub mod root {
                 pub _1: *mut ::std::os::raw::c_void,
                 pub code_: u32,
             }
-            pub const Symbol_WellKnownAPILimit: u32 = 2147483648;
             #[test]
             fn bindgen_test_layout_Symbol() {
                 const UNINIT: ::std::mem::MaybeUninit<Symbol> = ::std::mem::MaybeUninit::uninit();
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<Symbol>(),
-                    16usize,
+                    8usize,
                     concat!("Size of: ", stringify!(Symbol))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<Symbol>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(Symbol))
                 );
                 assert_eq!(
@@ -7381,7 +7223,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).code_) as usize - ptr as usize },
-                    8usize,
+                    4usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(Symbol),
@@ -7427,12 +7269,12 @@ pub mod root {
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<Zone>(),
-                    32usize,
+                    20usize,
                     concat!("Size of: ", stringify!(Zone))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<Zone>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(Zone))
                 );
                 assert_eq!(
@@ -7447,7 +7289,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).barrierTracer_) as usize - ptr as usize },
-                    8usize,
+                    4usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(Zone),
@@ -7460,7 +7302,7 @@ pub mod root {
                         ::std::ptr::addr_of!((*ptr).needsIncrementalBarrier_) as usize
                             - ptr as usize
                     },
-                    16usize,
+                    8usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(Zone),
@@ -7470,7 +7312,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).gcState_) as usize - ptr as usize },
-                    20usize,
+                    12usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(Zone),
@@ -7480,7 +7322,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).kind_) as usize - ptr as usize },
-                    24usize,
+                    16usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(Zone),
@@ -7500,12 +7342,12 @@ pub mod root {
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<Realm>(),
-                    8usize,
+                    4usize,
                     concat!("Size of: ", stringify!(Realm))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<Realm>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(Realm))
                 );
                 assert_eq!(
@@ -7532,12 +7374,12 @@ pub mod root {
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<BaseShape>(),
-                    16usize,
+                    8usize,
                     concat!("Size of: ", stringify!(BaseShape))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<BaseShape>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(BaseShape))
                 );
                 assert_eq!(
@@ -7552,7 +7394,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).realm) as usize - ptr as usize },
-                    8usize,
+                    4usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(BaseShape),
@@ -7575,22 +7417,18 @@ pub mod root {
                 Proxy = 0,
                 WasmGC = 2,
             }
-            pub const Shape_KIND_SHIFT: u32 = 4;
-            pub const Shape_KIND_MASK: u32 = 3;
-            pub const Shape_FIXED_SLOTS_SHIFT: u32 = 6;
-            pub const Shape_FIXED_SLOTS_MASK: u32 = 1984;
             #[test]
             fn bindgen_test_layout_Shape() {
                 const UNINIT: ::std::mem::MaybeUninit<Shape> = ::std::mem::MaybeUninit::uninit();
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<Shape>(),
-                    16usize,
+                    8usize,
                     concat!("Size of: ", stringify!(Shape))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<Shape>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(Shape))
                 );
                 assert_eq!(
@@ -7605,7 +7443,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).immutableFlags) as usize - ptr as usize },
-                    8usize,
+                    4usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(Shape),
@@ -7619,22 +7457,22 @@ pub mod root {
             #[derive(Debug, Copy, Clone)]
             pub struct Object {
                 pub shape: *mut root::JS::shadow::Shape,
+                pub padding_: u32,
                 pub slots: *mut root::JS::Value,
                 pub _1: *mut ::std::os::raw::c_void,
             }
-            pub const Object_MAX_FIXED_SLOTS: usize = 16;
             #[test]
             fn bindgen_test_layout_Object() {
                 const UNINIT: ::std::mem::MaybeUninit<Object> = ::std::mem::MaybeUninit::uninit();
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<Object>(),
-                    24usize,
+                    16usize,
                     concat!("Size of: ", stringify!(Object))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<Object>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(Object))
                 );
                 assert_eq!(
@@ -7645,6 +7483,16 @@ pub mod root {
                         stringify!(Object),
                         "::",
                         stringify!(shape)
+                    )
+                );
+                assert_eq!(
+                    unsafe { ::std::ptr::addr_of!((*ptr).padding_) as usize - ptr as usize },
+                    4usize,
+                    concat!(
+                        "Offset of field: ",
+                        stringify!(Object),
+                        "::",
+                        stringify!(padding_)
                     )
                 );
                 assert_eq!(
@@ -7659,7 +7507,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr)._1) as usize - ptr as usize },
-                    16usize,
+                    12usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(Object),
@@ -7695,12 +7543,12 @@ pub mod root {
             fn bindgen_test_layout_Function() {
                 assert_eq!(
                     ::std::mem::size_of::<Function>(),
-                    24usize,
+                    16usize,
                     concat!("Size of: ", stringify!(Function))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<Function>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(Function))
                 );
             }
@@ -7713,10 +7561,6 @@ pub mod root {
             MajorCollecting = 2,
             MinorCollecting = 3,
             CycleCollecting = 4,
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS16RuntimeHeapStateEv"]
-            pub fn RuntimeHeapState() -> root::JS::HeapState;
         }
         #[repr(u32)]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -7738,12 +7582,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<GCCellPtr>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(GCCellPtr))
             );
             assert_eq!(
                 ::std::mem::align_of::<GCCellPtr>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(GCCellPtr))
             );
             assert_eq!(
@@ -7903,12 +7747,12 @@ pub mod root {
         fn bindgen_test_layout_TracingContext_Functor() {
             assert_eq!(
                 ::std::mem::size_of::<TracingContext_Functor>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(TracingContext_Functor))
             );
             assert_eq!(
                 ::std::mem::align_of::<TracingContext_Functor>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(TracingContext_Functor))
             );
         }
@@ -7923,12 +7767,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<TracingContext>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(TracingContext))
             );
             assert_eq!(
                 ::std::mem::align_of::<TracingContext>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(TracingContext))
             );
             assert_eq!(
@@ -7943,7 +7787,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).functor_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TracingContext),
@@ -7961,12 +7805,12 @@ pub mod root {
         fn bindgen_test_layout_CallbackTracer() {
             assert_eq!(
                 ::std::mem::size_of::<CallbackTracer>(),
-                48usize,
+                28usize,
                 concat!("Size of: ", stringify!(CallbackTracer))
             );
             assert_eq!(
                 ::std::mem::align_of::<CallbackTracer>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(CallbackTracer))
             );
         }
@@ -7982,12 +7826,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoTracingIndex>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(AutoTracingIndex))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoTracingIndex>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoTracingIndex))
             );
             assert_eq!(
@@ -8013,12 +7857,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoTracingDetails>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(AutoTracingDetails))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoTracingDetails>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoTracingDetails))
             );
             assert_eq!(
@@ -8045,12 +7889,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoClearTracingContext>(),
-                24usize,
+                12usize,
                 concat!("Size of: ", stringify!(AutoClearTracingContext))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoClearTracingContext>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoClearTracingContext))
             );
             assert_eq!(
@@ -8065,7 +7909,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).prev_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoClearTracingContext),
@@ -8711,12 +8555,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ProfilingCategoryPairInfo>(),
-                16usize,
+                12usize,
                 concat!("Size of: ", stringify!(ProfilingCategoryPairInfo))
             );
             assert_eq!(
                 ::std::mem::align_of::<ProfilingCategoryPairInfo>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ProfilingCategoryPairInfo))
             );
             assert_eq!(
@@ -8919,12 +8763,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoHoldPrincipals>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(AutoHoldPrincipals))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoHoldPrincipals>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoHoldPrincipals))
             );
             assert_eq!(
@@ -8939,7 +8783,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).principals_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoHoldPrincipals),
@@ -9016,12 +8860,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<FirstSubsumedFrame>(),
-                24usize,
+                12usize,
                 concat!("Size of: ", stringify!(FirstSubsumedFrame))
             );
             assert_eq!(
                 ::std::mem::align_of::<FirstSubsumedFrame>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(FirstSubsumedFrame))
             );
             assert_eq!(
@@ -9036,7 +8880,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).principals) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(FirstSubsumedFrame),
@@ -9046,7 +8890,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).ignoreSelfHosted) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(FirstSubsumedFrame),
@@ -9056,7 +8900,7 @@ pub mod root {
             );
         }
         #[doc = " # mozilla::Variant\n\n A variant / tagged union / heterogenous disjoint union / sum-type template\n class. Similar in concept to (but not derived from) `boost::variant`.\n\n Sometimes, you may wish to use a C union with non-POD types. However, this is\n forbidden in C++ because it is not clear which type in the union should have\n its constructor and destructor run on creation and deletion\n respectively. This is the problem that `mozilla::Variant` solves.\n\n ## Usage\n\n A `mozilla::Variant` instance is constructed (via move or copy) from one of\n its variant types (ignoring const and references). It does *not* support\n construction from subclasses of variant types or types that coerce to one of\n the variant types.\n\n     Variant<char, uint32_t> v1('a');\n     Variant<UniquePtr<A>, B, C> v2(MakeUnique<A>());\n     Variant<bool, char> v3(VariantType<char>, 0); // disambiguation needed\n     Variant<int, int> v4(VariantIndex<1>, 0); // 2nd int\n\n Because specifying the full type of a Variant value is often verbose,\n there are two easier ways to construct values:\n\n A. AsVariant() can be used to construct a Variant value using type inference\n in contexts such as expressions or when returning values from functions.\n Because AsVariant() must copy or move the value into a temporary and this\n cannot necessarily be elided by the compiler, it's mostly appropriate only\n for use with primitive or very small types.\n\n     Variant<char, uint32_t> Foo() { return AsVariant('x'); }\n     // ...\n     Variant<char, uint32_t> v1 = Foo();  // v1 holds char('x').\n\n B. Brace-construction with VariantType or VariantIndex; this also allows\n in-place construction with any number of arguments.\n\n     struct AB { AB(int, int){...} };\n     static Variant<AB, bool> foo()\n     {\n       return {VariantIndex<0>{}, 1, 2};\n     }\n     // ...\n     Variant<AB, bool> v0 = Foo();  // v0 holds AB(1,2).\n\n All access to the contained value goes through type-safe accessors.\n Either the stored type, or the type index may be provided.\n\n     void\n     Foo(Variant<A, B, C> v)\n     {\n       if (v.is<A>()) {\n         A& ref = v.as<A>();\n         ...\n       } else (v.is<1>()) { // Instead of v.is<B>.\n         ...\n       } else {\n         ...\n       }\n     }\n\n In some situation, a Variant may be constructed from templated types, in\n which case it is possible that the same type could be given multiple times by\n an external developer. Or seemingly-different types could be aliases.\n In this case, repeated types can only be accessed through their index, to\n prevent ambiguous access by type.\n\n    // Bad!\n    template <typename T>\n    struct ResultOrError\n    {\n      Variant<T, int> m;\n      ResultOrError() : m(int(0)) {} // Error '0' by default\n      ResultOrError(const T& r) : m(r) {}\n      bool IsResult() const { return m.is<T>(); }\n      bool IsError() const { return m.is<int>(); }\n    };\n    // Now instantiante with the result being an int too:\n    ResultOrError<int> myResult(123); // Fail!\n    // In Variant<int, int>, which 'int' are we refering to, from inside\n    // ResultOrError functions?\n\n    // Good!\n    template <typename T>\n    struct ResultOrError\n    {\n      Variant<T, int> m;\n      ResultOrError() : m(VariantIndex<1>{}, 0) {} // Error '0' by default\n      ResultOrError(const T& r) : m(VariantIndex<0>{}, r) {}\n      bool IsResult() const { return m.is<0>(); } // 0 -> T\n      bool IsError() const { return m.is<1>(); } // 1 -> int\n    };\n    // Now instantiante with the result being an int too:\n    ResultOrError<int> myResult(123); // It now works!\n\n Attempting to use the contained value as type `T1` when the `Variant`\n instance contains a value of type `T2` causes an assertion failure.\n\n     A a;\n     Variant<A, B, C> v(a);\n     v.as<B>(); // <--- Assertion failure!\n\n Trying to use a `Variant<Ts...>` instance as some type `U` that is not a\n member of the set of `Ts...` is a compiler error.\n\n     A a;\n     Variant<A, B, C> v(a);\n     v.as<SomeRandomType>(); // <--- Compiler error!\n\n Additionally, you can turn a `Variant` that `is<T>` into a `T` by moving it\n out of the containing `Variant` instance with the `extract<T>` method:\n\n     Variant<UniquePtr<A>, B, C> v(MakeUnique<A>());\n     auto ptr = v.extract<UniquePtr<A>>();\n\n Finally, you can exhaustively match on the contained variant and branch into\n different code paths depending on which type is contained. This is preferred\n to manually checking every variant type T with is<T>() because it provides\n compile-time checking that you handled every type, rather than runtime\n assertion failures.\n\n     // Bad!\n     char* foo(Variant<A, B, C, D>& v) {\n       if (v.is<A>()) {\n         return ...;\n       } else if (v.is<B>()) {\n         return ...;\n       } else {\n         return doSomething(v.as<C>()); // Forgot about case D!\n       }\n     }\n\n     // Instead, a single function object (that can deal with all possible\n     // options) may be provided:\n     struct FooMatcher\n     {\n       // The return type of all matchers must be identical.\n       char* operator()(A& a) { ... }\n       char* operator()(B& b) { ... }\n       char* operator()(C& c) { ... }\n       char* operator()(D& d) { ... } // Compile-time error to forget D!\n     }\n     char* foo(Variant<A, B, C, D>& v) {\n       return v.match(FooMatcher());\n     }\n\n     // In some situations, a single generic lambda may also be appropriate:\n     char* foo(Variant<A, B, C, D>& v) {\n       return v.match([](auto&) {...});\n     }\n\n     // Alternatively, multiple function objects may be provided, each one\n     // corresponding to an option, in the same order:\n     char* foo(Variant<A, B, C, D>& v) {\n       return v.match([](A&) { ... },\n                      [](B&) { ... },\n                      [](C&) { ... },\n                      [](D&) { ... });\n     }\n\n     // In rare cases, the index of the currently-active alternative is\n     // needed, it may be obtained by adding a first parameter in the matcner\n     // callback, which will receive the index in its most compact type (just\n     // use `size_t` if the exact type is not important), e.g.:\n     char* foo(Variant<A, B, C, D>& v) {\n       return v.match([](auto aIndex, auto& aAlternative) {...});\n       // --OR--\n       return v.match([](size_t aIndex, auto& aAlternative) {...});\n     }\n\n ## Examples\n\n A tree is either an empty leaf, or a node with a value and two children:\n\n     struct Leaf { };\n\n     template<typename T>\n     struct Node\n     {\n       T value;\n       Tree<T>* left;\n       Tree<T>* right;\n     };\n\n     template<typename T>\n     using Tree = Variant<Leaf, Node<T>>;\n\n A copy-on-write string is either a non-owning reference to some existing\n string, or an owning reference to our copy:\n\n     class CopyOnWriteString\n     {\n       Variant<const char*, UniquePtr<char[]>> string;\n\n       ...\n     };\n\n Because Variant must be aligned suitable to hold any value stored within it,\n and because |alignas| requirements don't affect platform ABI with respect to\n how parameters are laid out in memory, Variant can't be used as the type of a\n function parameter.  Pass Variant to functions by pointer or reference\n instead."]
-        pub type StackCapture = [u64; 4usize];
+        pub type StackCapture = [u32; 4usize];
         extern "C" {
             #[doc = " Capture the current call stack as a chain of SavedFrame JSObjects, and set\n |stackp| to the SavedFrame for the youngest stack frame, or nullptr if there\n are no JS frames on the stack.\n\n The |capture| parameter describes the portion of the JS stack to capture:\n\n   * |JS::AllFrames|: Capture all frames on the stack.\n\n   * |JS::MaxFrames|: Capture no more than |JS::MaxFrames::maxFrames| from the\n      stack.\n\n   * |JS::FirstSubsumedFrame|: Capture the first frame whose principals are\n     subsumed by |JS::FirstSubsumedFrame::principals|. By default, do not\n     consider self-hosted frames; this can be controlled via the\n     |JS::FirstSubsumedFrame::ignoreSelfHosted| flag. Do not capture any async\n     stack."]
             #[link_name = "\u{1}_ZN2JS19CaptureCurrentStackEP9JSContextNS_13MutableHandleIP8JSObjectEEON7mozilla7VariantIJNS_9AllFramesENS_9MaxFramesENS_18FirstSubsumedFrameEEEE"]
@@ -9197,9 +9041,9 @@ pub mod root {
             Limit = 3,
         }
         #[doc = " EnumeratedArray is a fixed-size array container for use when an\n array is indexed by a specific enum class.\n\n This provides type safety by guarding at compile time against accidentally\n indexing such arrays with unrelated values. This also removes the need\n for manual casting when using a typed enum value to index arrays.\n\n Aside from the typing of indices, EnumeratedArray is similar to Array.\n\n Example:\n\n   enum class AnimalSpecies {\n     Cow,\n     Sheep,\n     Count\n   };\n\n   EnumeratedArray<AnimalSpecies, AnimalSpecies::Count, int> headCount;\n\n   headCount[AnimalSpecies::Cow] = 17;\n   headCount[AnimalSpecies::Sheep] = 30;\n"]
-        pub type RootedListHeads = [u64; 15usize];
+        pub type RootedListHeads = [u32; 15usize];
         #[doc = " EnumeratedArray is a fixed-size array container for use when an\n array is indexed by a specific enum class.\n\n This provides type safety by guarding at compile time against accidentally\n indexing such arrays with unrelated values. This also removes the need\n for manual casting when using a typed enum value to index arrays.\n\n Aside from the typing of indices, EnumeratedArray is similar to Array.\n\n Example:\n\n   enum class AnimalSpecies {\n     Cow,\n     Sheep,\n     Count\n   };\n\n   EnumeratedArray<AnimalSpecies, AnimalSpecies::Count, int> headCount;\n\n   headCount[AnimalSpecies::Cow] = 17;\n   headCount[AnimalSpecies::Sheep] = 30;\n"]
-        pub type AutoRooterListHeads = [u64; 3usize];
+        pub type AutoRooterListHeads = [u32; 3usize];
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
         pub struct RootingContext {
@@ -9210,6 +9054,7 @@ pub mod root {
             pub zone_: *mut root::JS::Zone,
             pub realm_: *mut root::JS::Realm,
             pub nativeStackLimit: [root::JS::NativeStackLimit; 3usize],
+            pub wasiRecursionDepth: u32,
         }
         #[test]
         fn bindgen_test_layout_RootingContext() {
@@ -9218,12 +9063,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<RootingContext>(),
-                208usize,
+                108usize,
                 concat!("Size of: ", stringify!(RootingContext))
             );
             assert_eq!(
                 ::std::mem::align_of::<RootingContext>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(RootingContext))
             );
             assert_eq!(
@@ -9238,7 +9083,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).autoGCRooters_) as usize - ptr as usize },
-                120usize,
+                60usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RootingContext),
@@ -9248,7 +9093,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).geckoProfiler_) as usize - ptr as usize },
-                144usize,
+                72usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RootingContext),
@@ -9258,7 +9103,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).nursery_) as usize - ptr as usize },
-                160usize,
+                80usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RootingContext),
@@ -9268,7 +9113,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).zone_) as usize - ptr as usize },
-                168usize,
+                84usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RootingContext),
@@ -9278,7 +9123,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).realm_) as usize - ptr as usize },
-                176usize,
+                88usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RootingContext),
@@ -9288,12 +9133,22 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).nativeStackLimit) as usize - ptr as usize },
-                184usize,
+                92usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RootingContext),
                     "::",
                     stringify!(nativeStackLimit)
+                )
+            );
+            assert_eq!(
+                unsafe { ::std::ptr::addr_of!((*ptr).wasiRecursionDepth) as usize - ptr as usize },
+                104usize,
+                concat!(
+                    "Offset of field: ",
+                    stringify!(RootingContext),
+                    "::",
+                    stringify!(wasiRecursionDepth)
                 )
             );
         }
@@ -9311,12 +9166,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoGCRooter>(),
-                24usize,
+                12usize,
                 concat!("Size of: ", stringify!(AutoGCRooter))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoGCRooter>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoGCRooter))
             );
             assert_eq!(
@@ -9331,7 +9186,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).stackTop) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoGCRooter),
@@ -9341,7 +9196,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).kind_) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoGCRooter),
@@ -9363,12 +9218,12 @@ pub mod root {
         fn bindgen_test_layout_CustomAutoRooter() {
             assert_eq!(
                 ::std::mem::size_of::<CustomAutoRooter>(),
-                32usize,
+                16usize,
                 concat!("Size of: ", stringify!(CustomAutoRooter))
             );
             assert_eq!(
                 ::std::mem::align_of::<CustomAutoRooter>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(CustomAutoRooter))
             );
         }
@@ -10028,7 +9883,7 @@ pub mod root {
         pub struct Value {
             pub asBits_: u64,
         }
-        pub type Value_PayloadType = u64;
+        pub type Value_PayloadType = u32;
         #[test]
         fn bindgen_test_layout_Value() {
             const UNINIT: ::std::mem::MaybeUninit<Value> = ::std::mem::MaybeUninit::uninit();
@@ -10221,7 +10076,7 @@ pub mod root {
             unsafe extern "C" fn(arg1: f64, arg2: *mut root::JSContext) -> f64,
         >;
         extern "C" {
-            #[link_name = "\u{1}_ZN2JS41SetReduceMicrosecondTimePrecisionCallbackEPFddP9JSContextE"]
+            #[link_name = "\u{1}_ZN2JS41SetReduceMicrosecondTimePrecisionCallbackEPFddbP9JSContextE"]
             pub fn SetReduceMicrosecondTimePrecisionCallback(
                 callback: root::JS::ReduceMicrosecondTimePrecisionCallback,
             );
@@ -10282,7 +10137,7 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ForOfIterator>(),
-                64usize,
+                40usize,
                 concat!("Size of: ", stringify!(ForOfIterator))
             );
             assert_eq!(
@@ -10302,7 +10157,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).iterator) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ForOfIterator),
@@ -10312,7 +10167,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).nextMethod) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ForOfIterator),
@@ -10322,7 +10177,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).index) as usize - ptr as usize },
-                56usize,
+                32usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ForOfIterator),
@@ -10349,12 +10204,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<PropertyKey>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(PropertyKey))
             );
             assert_eq!(
                 ::std::mem::align_of::<PropertyKey>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(PropertyKey))
             );
             assert_eq!(
@@ -10421,6 +10276,7 @@ pub mod root {
             ) -> bool,
         >;
         extern "C" {
+            // #[link_name = "\u{1}_ZN2JS18InitSelfHostedCodeEP9JSContextN7mozilla4SpanIKhLm18446744073709551615EEEPFbS1_S5_E"]
             #[link_name = "\u{1}_ZN2JS18InitSelfHostedCodeEP9JSContextN7mozilla4SpanIKhLm4294967295EEEPFbS1_S5_E"]
             pub fn InitSelfHostedCode(
                 cx: *mut root::JSContext,
@@ -10431,6 +10287,10 @@ pub mod root {
         extern "C" {
             #[link_name = "\u{1}_ZN2JS17DisableJitBackendEv"]
             pub fn DisableJitBackend();
+        }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS13SetAVXEnabledEb"]
+            pub fn SetAVXEnabled(enabled: bool);
         }
         extern "C" {
             #[doc = " An API akin to JS_Stringify but with the goal of not having observable\n side-effects when the stringification is performed.  This means it does not\n allow a replacer or a custom space and has the following constraints on its\n input:\n\n 1) The input must be a plain object or array, not an abitrary value.\n 2) Every value in the graph reached by the algorithm starting with this\n    object must be one of the following: null, undefined, a string (NOT a\n    string object!), a boolean, a finite number (i.e. no NaN or Infinity or\n    -Infinity), a plain object with no accessor properties, or an Array with\n    no holes.\n\n The actual behavior differs from JS_Stringify only in asserting the above and\n NOT attempting to get the \"toJSON\" property from things, since that could\n clearly have side-effects."]
@@ -10485,12 +10345,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<TabSizes>(),
-                32usize,
+                16usize,
                 concat!("Size of: ", stringify!(TabSizes))
             );
             assert_eq!(
                 ::std::mem::align_of::<TabSizes>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(TabSizes))
             );
             assert_eq!(
@@ -10505,7 +10365,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).strings_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TabSizes),
@@ -10515,7 +10375,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).private_) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TabSizes),
@@ -10525,7 +10385,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).other_) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TabSizes),
@@ -10562,12 +10422,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ServoSizes>(),
-                48usize,
+                24usize,
                 concat!("Size of: ", stringify!(ServoSizes))
             );
             assert_eq!(
                 ::std::mem::align_of::<ServoSizes>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ServoSizes))
             );
             assert_eq!(
@@ -10582,7 +10442,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).gcHeapUnused) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ServoSizes),
@@ -10592,7 +10452,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).gcHeapAdmin) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ServoSizes),
@@ -10602,7 +10462,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).gcHeapDecommitted) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ServoSizes),
@@ -10612,7 +10472,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).mallocHeap) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ServoSizes),
@@ -10622,7 +10482,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).nonHeap) as usize - ptr as usize },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ServoSizes),
@@ -10653,12 +10513,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ClassInfo>(),
-                96usize,
+                48usize,
                 concat!("Size of: ", stringify!(ClassInfo))
             );
             assert_eq!(
                 ::std::mem::align_of::<ClassInfo>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ClassInfo))
             );
             assert_eq!(
@@ -10675,7 +10535,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).objectsMallocHeapSlots) as usize - ptr as usize
                 },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassInfo),
@@ -10688,7 +10548,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).objectsMallocHeapElementsNormal) as usize
                         - ptr as usize
                 },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassInfo),
@@ -10701,7 +10561,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).objectsMallocHeapElementsAsmJS) as usize
                         - ptr as usize
                 },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassInfo),
@@ -10713,7 +10573,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).objectsMallocHeapGlobalData) as usize - ptr as usize
                 },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassInfo),
@@ -10726,7 +10586,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).objectsMallocHeapGlobalVarNamesSet) as usize
                         - ptr as usize
                 },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassInfo),
@@ -10738,7 +10598,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).objectsMallocHeapMisc) as usize - ptr as usize
                 },
-                48usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassInfo),
@@ -10751,7 +10611,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).objectsNonHeapElementsNormal) as usize
                         - ptr as usize
                 },
-                56usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassInfo),
@@ -10764,7 +10624,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).objectsNonHeapElementsShared) as usize
                         - ptr as usize
                 },
-                64usize,
+                32usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassInfo),
@@ -10776,7 +10636,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).objectsNonHeapElementsWasm) as usize - ptr as usize
                 },
-                72usize,
+                36usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassInfo),
@@ -10789,7 +10649,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).objectsNonHeapElementsWasmShared) as usize
                         - ptr as usize
                 },
-                80usize,
+                40usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassInfo),
@@ -10801,7 +10661,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).objectsNonHeapCodeWasm) as usize - ptr as usize
                 },
-                88usize,
+                44usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ClassInfo),
@@ -10824,12 +10684,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ShapeInfo>(),
-                32usize,
+                16usize,
                 concat!("Size of: ", stringify!(ShapeInfo))
             );
             assert_eq!(
                 ::std::mem::align_of::<ShapeInfo>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ShapeInfo))
             );
             assert_eq!(
@@ -10844,7 +10704,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).shapesGCHeapDict) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ShapeInfo),
@@ -10854,7 +10714,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).shapesGCHeapBase) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ShapeInfo),
@@ -10866,7 +10726,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).shapesMallocHeapCache) as usize - ptr as usize
                 },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ShapeInfo),
@@ -10889,17 +10749,17 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<NotableClassInfo>(),
-                104usize,
+                52usize,
                 concat!("Size of: ", stringify!(NotableClassInfo))
             );
             assert_eq!(
                 ::std::mem::align_of::<NotableClassInfo>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(NotableClassInfo))
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).className_) as usize - ptr as usize },
-                96usize,
+                48usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(NotableClassInfo),
@@ -10924,12 +10784,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<CodeSizes>(),
-                40usize,
+                20usize,
                 concat!("Size of: ", stringify!(CodeSizes))
             );
             assert_eq!(
                 ::std::mem::align_of::<CodeSizes>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(CodeSizes))
             );
             assert_eq!(
@@ -10944,7 +10804,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).baseline) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(CodeSizes),
@@ -10954,7 +10814,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).regexp) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(CodeSizes),
@@ -10964,7 +10824,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).other) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(CodeSizes),
@@ -10974,7 +10834,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).unused) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(CodeSizes),
@@ -11004,12 +10864,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<GCSizes>(),
-                80usize,
+                40usize,
                 concat!("Size of: ", stringify!(GCSizes))
             );
             assert_eq!(
                 ::std::mem::align_of::<GCSizes>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(GCSizes))
             );
             assert_eq!(
@@ -11024,7 +10884,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).nurseryCommitted) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(GCSizes),
@@ -11036,7 +10896,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).nurseryMallocedBuffers) as usize - ptr as usize
                 },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(GCSizes),
@@ -11048,7 +10908,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).nurseryMallocedBlockCache) as usize - ptr as usize
                 },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(GCSizes),
@@ -11060,7 +10920,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).nurseryTrailerBlockSets) as usize - ptr as usize
                 },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(GCSizes),
@@ -11070,7 +10930,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).storeBufferVals) as usize - ptr as usize },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(GCSizes),
@@ -11080,7 +10940,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).storeBufferCells) as usize - ptr as usize },
-                48usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(GCSizes),
@@ -11090,7 +10950,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).storeBufferSlots) as usize - ptr as usize },
-                56usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(GCSizes),
@@ -11102,7 +10962,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).storeBufferWholeCells) as usize - ptr as usize
                 },
-                64usize,
+                32usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(GCSizes),
@@ -11112,7 +10972,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).storeBufferGenerics) as usize - ptr as usize },
-                72usize,
+                36usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(GCSizes),
@@ -11137,12 +10997,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<StringInfo>(),
-                40usize,
+                20usize,
                 concat!("Size of: ", stringify!(StringInfo))
             );
             assert_eq!(
                 ::std::mem::align_of::<StringInfo>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(StringInfo))
             );
             assert_eq!(
@@ -11157,7 +11017,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).gcHeapTwoByte) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(StringInfo),
@@ -11167,7 +11027,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).mallocHeapLatin1) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(StringInfo),
@@ -11177,7 +11037,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).mallocHeapTwoByte) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(StringInfo),
@@ -11187,7 +11047,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).numCopies) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(StringInfo),
@@ -11204,7 +11064,6 @@ pub mod root {
             pub buffer: root::JS::UniqueChars,
             pub length: usize,
         }
-        pub const NotableStringInfo_MAX_SAVED_CHARS: usize = 1024;
         #[test]
         fn bindgen_test_layout_NotableStringInfo() {
             const UNINIT: ::std::mem::MaybeUninit<NotableStringInfo> =
@@ -11212,17 +11071,17 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<NotableStringInfo>(),
-                56usize,
+                28usize,
                 concat!("Size of: ", stringify!(NotableStringInfo))
             );
             assert_eq!(
                 ::std::mem::align_of::<NotableStringInfo>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(NotableStringInfo))
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).buffer) as usize - ptr as usize },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(NotableStringInfo),
@@ -11232,7 +11091,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).length) as usize - ptr as usize },
-                48usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(NotableStringInfo),
@@ -11255,12 +11114,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ScriptSourceInfo>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(ScriptSourceInfo))
             );
             assert_eq!(
                 ::std::mem::align_of::<ScriptSourceInfo>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ScriptSourceInfo))
             );
             assert_eq!(
@@ -11275,7 +11134,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).numScripts) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ScriptSourceInfo),
@@ -11298,17 +11157,17 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<NotableScriptSourceInfo>(),
-                24usize,
+                12usize,
                 concat!("Size of: ", stringify!(NotableScriptSourceInfo))
             );
             assert_eq!(
                 ::std::mem::align_of::<NotableScriptSourceInfo>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(NotableScriptSourceInfo))
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).filename_) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(NotableScriptSourceInfo),
@@ -11335,12 +11194,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<HelperThreadStats>(),
-                48usize,
+                28usize,
                 concat!("Size of: ", stringify!(HelperThreadStats))
             );
             assert_eq!(
                 ::std::mem::align_of::<HelperThreadStats>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(HelperThreadStats))
             );
             assert_eq!(
@@ -11355,7 +11214,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).parseTask) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(HelperThreadStats),
@@ -11365,7 +11224,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).ionCompileTask) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(HelperThreadStats),
@@ -11375,7 +11234,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).wasmCompile) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(HelperThreadStats),
@@ -11385,7 +11244,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).contexts) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(HelperThreadStats),
@@ -11395,7 +11254,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).idleThreadCount) as usize - ptr as usize },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(HelperThreadStats),
@@ -11405,7 +11264,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).activeThreadCount) as usize - ptr as usize },
-                44usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(HelperThreadStats),
@@ -11427,12 +11286,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<GlobalStats>(),
-                56usize,
+                32usize,
                 concat!("Size of: ", stringify!(GlobalStats))
             );
             assert_eq!(
                 ::std::mem::align_of::<GlobalStats>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(GlobalStats))
             );
             assert_eq!(
@@ -11447,7 +11306,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).mallocSizeOf_) as usize - ptr as usize },
-                48usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(GlobalStats),
@@ -11477,7 +11336,7 @@ pub mod root {
             pub scriptSourceInfo: root::JS::ScriptSourceInfo,
             pub gc: root::JS::GCSizes,
             pub allScriptSources: [u64; 4usize],
-            pub notableScriptSources: [u64; 3usize],
+            pub notableScriptSources: [u32; 3usize],
         }
         pub type RuntimeSizes_ScriptSourcesHashMap = [u64; 3usize];
         #[test]
@@ -11486,7 +11345,7 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<RuntimeSizes>(),
-                264usize,
+                152usize,
                 concat!("Size of: ", stringify!(RuntimeSizes))
             );
             assert_eq!(
@@ -11506,7 +11365,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).atomsTable) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11516,7 +11375,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).atomsMarkBitmaps) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11526,7 +11385,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).selfHostStencil) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11536,7 +11395,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).contexts) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11546,7 +11405,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).temporary) as usize - ptr as usize },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11556,7 +11415,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).interpreterStack) as usize - ptr as usize },
-                48usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11568,7 +11427,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).sharedImmutableStringsCache) as usize - ptr as usize
                 },
-                56usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11578,7 +11437,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).sharedIntlData) as usize - ptr as usize },
-                64usize,
+                32usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11590,7 +11449,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).uncompressedSourceCache) as usize - ptr as usize
                 },
-                72usize,
+                36usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11600,7 +11459,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).scriptData) as usize - ptr as usize },
-                80usize,
+                40usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11610,7 +11469,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).wasmRuntime) as usize - ptr as usize },
-                88usize,
+                44usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11620,7 +11479,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).wasmGuardPages) as usize - ptr as usize },
-                96usize,
+                48usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11630,7 +11489,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).jitLazyLink) as usize - ptr as usize },
-                104usize,
+                52usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11640,7 +11499,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).scriptSourceInfo) as usize - ptr as usize },
-                112usize,
+                56usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11650,7 +11509,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).gc) as usize - ptr as usize },
-                128usize,
+                64usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11660,7 +11519,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).allScriptSources) as usize - ptr as usize },
-                208usize,
+                104usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11672,7 +11531,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).notableScriptSources) as usize - ptr as usize
                 },
-                240usize,
+                136usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeSizes),
@@ -11704,12 +11563,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<UnusedGCThingSizes>(),
-                96usize,
+                48usize,
                 concat!("Size of: ", stringify!(UnusedGCThingSizes))
             );
             assert_eq!(
                 ::std::mem::align_of::<UnusedGCThingSizes>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(UnusedGCThingSizes))
             );
             assert_eq!(
@@ -11724,7 +11583,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).script) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(UnusedGCThingSizes),
@@ -11734,7 +11593,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).shape) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(UnusedGCThingSizes),
@@ -11744,7 +11603,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).baseShape) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(UnusedGCThingSizes),
@@ -11754,7 +11613,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).getterSetter) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(UnusedGCThingSizes),
@@ -11764,7 +11623,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).propMap) as usize - ptr as usize },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(UnusedGCThingSizes),
@@ -11774,7 +11633,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).string) as usize - ptr as usize },
-                48usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(UnusedGCThingSizes),
@@ -11784,7 +11643,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).symbol) as usize - ptr as usize },
-                56usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(UnusedGCThingSizes),
@@ -11794,7 +11653,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).bigInt) as usize - ptr as usize },
-                64usize,
+                32usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(UnusedGCThingSizes),
@@ -11804,7 +11663,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).jitcode) as usize - ptr as usize },
-                72usize,
+                36usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(UnusedGCThingSizes),
@@ -11814,7 +11673,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).scope) as usize - ptr as usize },
-                80usize,
+                40usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(UnusedGCThingSizes),
@@ -11824,7 +11683,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).regExpShared) as usize - ptr as usize },
-                88usize,
+                44usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(UnusedGCThingSizes),
@@ -11867,7 +11726,7 @@ pub mod root {
             pub code: root::JS::CodeSizes,
             pub extra: *mut ::std::os::raw::c_void,
             pub allStrings: [u64; 4usize],
-            pub notableStrings: [u64; 3usize],
+            pub notableStrings: [u32; 3usize],
             pub isTotals: bool,
         }
         pub type ZoneStats_StringsHashMap = [u64; 3usize];
@@ -11877,7 +11736,7 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ZoneStats>(),
-                480usize,
+                256usize,
                 concat!("Size of: ", stringify!(ZoneStats))
             );
             assert_eq!(
@@ -11897,7 +11756,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).bigIntsGCHeap) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -11907,7 +11766,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).bigIntsMallocHeap) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -11917,7 +11776,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).gcHeapArenaAdmin) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -11927,7 +11786,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).jitCodesGCHeap) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -11937,7 +11796,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).getterSettersGCHeap) as usize - ptr as usize },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -11949,7 +11808,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).compactPropMapsGCHeap) as usize - ptr as usize
                 },
-                48usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -11961,7 +11820,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).normalPropMapsGCHeap) as usize - ptr as usize
                 },
-                56usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -11971,7 +11830,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).dictPropMapsGCHeap) as usize - ptr as usize },
-                64usize,
+                32usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -11981,7 +11840,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).propMapChildren) as usize - ptr as usize },
-                72usize,
+                36usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -11991,7 +11850,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).propMapTables) as usize - ptr as usize },
-                80usize,
+                40usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12001,7 +11860,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).scopesGCHeap) as usize - ptr as usize },
-                88usize,
+                44usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12011,7 +11870,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).scopesMallocHeap) as usize - ptr as usize },
-                96usize,
+                48usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12021,7 +11880,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).regExpSharedsGCHeap) as usize - ptr as usize },
-                104usize,
+                52usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12033,7 +11892,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).regExpSharedsMallocHeap) as usize - ptr as usize
                 },
-                112usize,
+                56usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12043,7 +11902,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).regexpZone) as usize - ptr as usize },
-                120usize,
+                60usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12053,7 +11912,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).jitZone) as usize - ptr as usize },
-                128usize,
+                64usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12065,7 +11924,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).baselineStubsOptimized) as usize - ptr as usize
                 },
-                136usize,
+                68usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12075,7 +11934,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).uniqueIdMap) as usize - ptr as usize },
-                144usize,
+                72usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12085,7 +11944,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).initialPropMapTable) as usize - ptr as usize },
-                152usize,
+                76usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12095,7 +11954,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).shapeTables) as usize - ptr as usize },
-                160usize,
+                80usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12105,7 +11964,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).compartmentObjects) as usize - ptr as usize },
-                168usize,
+                84usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12118,7 +11977,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).crossCompartmentWrappersTables) as usize
                         - ptr as usize
                 },
-                176usize,
+                88usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12130,7 +11989,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).compartmentsPrivateData) as usize - ptr as usize
                 },
-                184usize,
+                92usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12140,7 +11999,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).scriptCountsMap) as usize - ptr as usize },
-                192usize,
+                96usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12150,7 +12009,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).unusedGCThings) as usize - ptr as usize },
-                200usize,
+                100usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12160,7 +12019,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).stringInfo) as usize - ptr as usize },
-                296usize,
+                148usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12170,7 +12029,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).shapeInfo) as usize - ptr as usize },
-                336usize,
+                168usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12180,7 +12039,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).code) as usize - ptr as usize },
-                368usize,
+                184usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12190,7 +12049,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).extra) as usize - ptr as usize },
-                408usize,
+                204usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12200,7 +12059,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).allStrings) as usize - ptr as usize },
-                416usize,
+                208usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12210,7 +12069,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).notableStrings) as usize - ptr as usize },
-                448usize,
+                240usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12220,7 +12079,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).isTotals) as usize - ptr as usize },
-                472usize,
+                252usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ZoneStats),
@@ -12249,7 +12108,7 @@ pub mod root {
             pub classInfo: root::JS::ClassInfo,
             pub extra: *mut ::std::os::raw::c_void,
             pub allClasses: [u64; 4usize],
-            pub notableClasses: [u64; 3usize],
+            pub notableClasses: [u32; 3usize],
             pub isTotals: bool,
         }
         pub type RealmStats_ClassesHashMap = [u64; 3usize];
@@ -12259,7 +12118,7 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<RealmStats>(),
-                280usize,
+                160usize,
                 concat!("Size of: ", stringify!(RealmStats))
             );
             assert_eq!(
@@ -12279,7 +12138,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).scriptsGCHeap) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12291,7 +12150,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).scriptsMallocHeapData) as usize - ptr as usize
                 },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12301,7 +12160,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).baselineData) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12313,7 +12172,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).baselineStubsFallback) as usize - ptr as usize
                 },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12323,7 +12182,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).ionData) as usize - ptr as usize },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12333,7 +12192,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).jitScripts) as usize - ptr as usize },
-                48usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12343,7 +12202,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).realmObject) as usize - ptr as usize },
-                56usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12353,7 +12212,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).realmTables) as usize - ptr as usize },
-                64usize,
+                32usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12363,7 +12222,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).innerViewsTable) as usize - ptr as usize },
-                72usize,
+                36usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12373,7 +12232,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).objectMetadataTable) as usize - ptr as usize },
-                80usize,
+                40usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12383,7 +12242,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).savedStacksSet) as usize - ptr as usize },
-                88usize,
+                44usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12396,7 +12255,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).nonSyntacticLexicalScopesTable) as usize
                         - ptr as usize
                 },
-                96usize,
+                48usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12406,7 +12265,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).jitRealm) as usize - ptr as usize },
-                104usize,
+                52usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12416,7 +12275,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).classInfo) as usize - ptr as usize },
-                112usize,
+                56usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12426,7 +12285,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).extra) as usize - ptr as usize },
-                208usize,
+                104usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12436,7 +12295,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).allClasses) as usize - ptr as usize },
-                216usize,
+                112usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12446,7 +12305,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).notableClasses) as usize - ptr as usize },
-                248usize,
+                144usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12456,7 +12315,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).isTotals) as usize - ptr as usize },
-                272usize,
+                156usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmStats),
@@ -12465,8 +12324,8 @@ pub mod root {
                 )
             );
         }
-        pub type RealmStatsVector = [u64; 3usize];
-        pub type ZoneStatsVector = [u64; 3usize];
+        pub type RealmStatsVector = [u32; 3usize];
+        pub type ZoneStatsVector = [u32; 3usize];
         #[repr(C)]
         pub struct RuntimeStats__bindgen_vtable(::std::os::raw::c_void);
         #[repr(C)]
@@ -12493,7 +12352,7 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<RuntimeStats>(),
-                1144usize,
+                632usize,
                 concat!("Size of: ", stringify!(RuntimeStats))
             );
             assert_eq!(
@@ -12503,7 +12362,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).gcHeapChunkTotal) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12515,7 +12374,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).gcHeapDecommittedPages) as usize - ptr as usize
                 },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12525,7 +12384,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).gcHeapUnusedChunks) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12535,7 +12394,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).gcHeapUnusedArenas) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12545,7 +12404,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).gcHeapChunkAdmin) as usize - ptr as usize },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12555,7 +12414,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).gcHeapGCThings) as usize - ptr as usize },
-                48usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12565,7 +12424,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).runtime) as usize - ptr as usize },
-                56usize,
+                32usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12575,7 +12434,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).realmTotals) as usize - ptr as usize },
-                320usize,
+                184usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12585,7 +12444,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).zTotals) as usize - ptr as usize },
-                600usize,
+                344usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12595,7 +12454,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).realmStatsVector) as usize - ptr as usize },
-                1080usize,
+                600usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12605,7 +12464,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).zoneStatsVector) as usize - ptr as usize },
-                1104usize,
+                612usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12615,7 +12474,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).currZoneStats) as usize - ptr as usize },
-                1128usize,
+                624usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12625,7 +12484,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).mallocSizeOf_) as usize - ptr as usize },
-                1136usize,
+                628usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RuntimeStats),
@@ -12655,17 +12514,17 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ObjectPrivateVisitor>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(ObjectPrivateVisitor))
             );
             assert_eq!(
                 ::std::mem::align_of::<ObjectPrivateVisitor>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ObjectPrivateVisitor))
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).getISupports_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ObjectPrivateVisitor),
@@ -12674,6 +12533,207 @@ pub mod root {
                 )
             );
         }
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone)]
+        pub struct Latin1Chars {
+            pub _base: root::mozilla::Range<root::JS::Latin1Char>,
+        }
+        pub type Latin1Chars_Base = root::mozilla::Range<root::JS::Latin1Char>;
+        pub type Latin1Chars_CharT = root::JS::Latin1Char;
+        #[test]
+        fn bindgen_test_layout_Latin1Chars() {
+            assert_eq!(
+                ::std::mem::size_of::<Latin1Chars>(),
+                8usize,
+                concat!("Size of: ", stringify!(Latin1Chars))
+            );
+            assert_eq!(
+                ::std::mem::align_of::<Latin1Chars>(),
+                4usize,
+                concat!("Alignment of ", stringify!(Latin1Chars))
+            );
+        }
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone)]
+        pub struct ConstLatin1Chars {
+            pub _base: root::mozilla::Range<root::JS::Latin1Char>,
+        }
+        pub type ConstLatin1Chars_Base = root::mozilla::Range<root::JS::Latin1Char>;
+        pub type ConstLatin1Chars_CharT = root::JS::Latin1Char;
+        #[test]
+        fn bindgen_test_layout_ConstLatin1Chars() {
+            assert_eq!(
+                ::std::mem::size_of::<ConstLatin1Chars>(),
+                8usize,
+                concat!("Size of: ", stringify!(ConstLatin1Chars))
+            );
+            assert_eq!(
+                ::std::mem::align_of::<ConstLatin1Chars>(),
+                4usize,
+                concat!("Alignment of ", stringify!(ConstLatin1Chars))
+            );
+        }
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone)]
+        pub struct Latin1CharsZ {
+            pub _base: root::mozilla::RangedPtr<root::JS::Latin1Char>,
+        }
+        pub type Latin1CharsZ_Base = root::mozilla::RangedPtr<root::JS::Latin1Char>;
+        pub type Latin1CharsZ_CharT = root::JS::Latin1Char;
+        #[test]
+        fn bindgen_test_layout_Latin1CharsZ() {
+            assert_eq!(
+                ::std::mem::size_of::<Latin1CharsZ>(),
+                4usize,
+                concat!("Size of: ", stringify!(Latin1CharsZ))
+            );
+            assert_eq!(
+                ::std::mem::align_of::<Latin1CharsZ>(),
+                4usize,
+                concat!("Alignment of ", stringify!(Latin1CharsZ))
+            );
+        }
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone)]
+        pub struct UTF8Chars {
+            pub _base: root::mozilla::Range<::std::os::raw::c_uchar>,
+        }
+        pub type UTF8Chars_Base = root::mozilla::Range<::std::os::raw::c_uchar>;
+        pub type UTF8Chars_CharT = ::std::os::raw::c_uchar;
+        #[test]
+        fn bindgen_test_layout_UTF8Chars() {
+            assert_eq!(
+                ::std::mem::size_of::<UTF8Chars>(),
+                8usize,
+                concat!("Size of: ", stringify!(UTF8Chars))
+            );
+            assert_eq!(
+                ::std::mem::align_of::<UTF8Chars>(),
+                4usize,
+                concat!("Alignment of ", stringify!(UTF8Chars))
+            );
+        }
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone)]
+        pub struct UTF8CharsZ {
+            pub _base: root::mozilla::RangedPtr<::std::os::raw::c_uchar>,
+        }
+        pub type UTF8CharsZ_Base = root::mozilla::RangedPtr<::std::os::raw::c_uchar>;
+        pub type UTF8CharsZ_CharT = ::std::os::raw::c_uchar;
+        #[test]
+        fn bindgen_test_layout_UTF8CharsZ() {
+            assert_eq!(
+                ::std::mem::size_of::<UTF8CharsZ>(),
+                4usize,
+                concat!("Size of: ", stringify!(UTF8CharsZ))
+            );
+            assert_eq!(
+                ::std::mem::align_of::<UTF8CharsZ>(),
+                4usize,
+                concat!("Alignment of ", stringify!(UTF8CharsZ))
+            );
+        }
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone)]
+        pub struct ConstUTF8CharsZ {
+            pub data_: *const ::std::os::raw::c_char,
+        }
+        pub type ConstUTF8CharsZ_CharT = ::std::os::raw::c_uchar;
+        #[test]
+        fn bindgen_test_layout_ConstUTF8CharsZ() {
+            const UNINIT: ::std::mem::MaybeUninit<ConstUTF8CharsZ> =
+                ::std::mem::MaybeUninit::uninit();
+            let ptr = UNINIT.as_ptr();
+            assert_eq!(
+                ::std::mem::size_of::<ConstUTF8CharsZ>(),
+                4usize,
+                concat!("Size of: ", stringify!(ConstUTF8CharsZ))
+            );
+            assert_eq!(
+                ::std::mem::align_of::<ConstUTF8CharsZ>(),
+                4usize,
+                concat!("Alignment of ", stringify!(ConstUTF8CharsZ))
+            );
+            assert_eq!(
+                unsafe { ::std::ptr::addr_of!((*ptr).data_) as usize - ptr as usize },
+                0usize,
+                concat!(
+                    "Offset of field: ",
+                    stringify!(ConstUTF8CharsZ),
+                    "::",
+                    stringify!(data_)
+                )
+            );
+        }
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone)]
+        pub struct TwoByteChars {
+            pub _base: root::mozilla::Range<u16>,
+        }
+        pub type TwoByteChars_Base = root::mozilla::Range<u16>;
+        pub type TwoByteChars_CharT = u16;
+        #[test]
+        fn bindgen_test_layout_TwoByteChars() {
+            assert_eq!(
+                ::std::mem::size_of::<TwoByteChars>(),
+                8usize,
+                concat!("Size of: ", stringify!(TwoByteChars))
+            );
+            assert_eq!(
+                ::std::mem::align_of::<TwoByteChars>(),
+                4usize,
+                concat!("Alignment of ", stringify!(TwoByteChars))
+            );
+        }
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone)]
+        pub struct TwoByteCharsZ {
+            pub _base: root::mozilla::RangedPtr<u16>,
+        }
+        pub type TwoByteCharsZ_Base = root::mozilla::RangedPtr<u16>;
+        pub type TwoByteCharsZ_CharT = u16;
+        #[test]
+        fn bindgen_test_layout_TwoByteCharsZ() {
+            assert_eq!(
+                ::std::mem::size_of::<TwoByteCharsZ>(),
+                4usize,
+                concat!("Size of: ", stringify!(TwoByteCharsZ))
+            );
+            assert_eq!(
+                ::std::mem::align_of::<TwoByteCharsZ>(),
+                4usize,
+                concat!("Alignment of ", stringify!(TwoByteCharsZ))
+            );
+        }
+        pub type ConstCharPtr = root::mozilla::RangedPtr<u16>;
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone)]
+        pub struct ConstTwoByteChars {
+            pub _base: root::mozilla::Range<u16>,
+        }
+        pub type ConstTwoByteChars_Base = root::mozilla::Range<u16>;
+        pub type ConstTwoByteChars_CharT = u16;
+        #[test]
+        fn bindgen_test_layout_ConstTwoByteChars() {
+            assert_eq!(
+                ::std::mem::size_of::<ConstTwoByteChars>(),
+                8usize,
+                concat!("Size of: ", stringify!(ConstTwoByteChars))
+            );
+            assert_eq!(
+                ::std::mem::align_of::<ConstTwoByteChars>(),
+                4usize,
+                concat!("Alignment of ", stringify!(ConstTwoByteChars))
+            );
+        }
+        #[repr(i32)]
+        #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+        pub enum SmallestEncoding {
+            ASCII = 0,
+            Latin1 = 1,
+            UTF16 = 2,
+        }
+        pub type FrontendContext = root::js::FrontendContext;
         extern "C" {
             #[link_name = "\u{1}_ZN2JS18CollectGlobalStatsEPNS_11GlobalStatsE"]
             pub fn CollectGlobalStats(gStats: *mut root::JS::GlobalStats) -> bool;
@@ -12726,330 +12786,6 @@ pub mod root {
                 sizes: *mut root::JS::ServoSizes,
             ) -> bool;
         }
-        #[repr(C)]
-        #[derive(Debug, Copy, Clone)]
-        pub struct Latin1Chars {
-            pub _base: root::mozilla::Range<root::JS::Latin1Char>,
-        }
-        pub type Latin1Chars_Base = root::mozilla::Range<root::JS::Latin1Char>;
-        pub type Latin1Chars_CharT = root::JS::Latin1Char;
-        #[test]
-        fn bindgen_test_layout_Latin1Chars() {
-            assert_eq!(
-                ::std::mem::size_of::<Latin1Chars>(),
-                16usize,
-                concat!("Size of: ", stringify!(Latin1Chars))
-            );
-            assert_eq!(
-                ::std::mem::align_of::<Latin1Chars>(),
-                8usize,
-                concat!("Alignment of ", stringify!(Latin1Chars))
-            );
-        }
-        #[repr(C)]
-        #[derive(Debug, Copy, Clone)]
-        pub struct ConstLatin1Chars {
-            pub _base: root::mozilla::Range<root::JS::Latin1Char>,
-        }
-        pub type ConstLatin1Chars_Base = root::mozilla::Range<root::JS::Latin1Char>;
-        pub type ConstLatin1Chars_CharT = root::JS::Latin1Char;
-        #[test]
-        fn bindgen_test_layout_ConstLatin1Chars() {
-            assert_eq!(
-                ::std::mem::size_of::<ConstLatin1Chars>(),
-                16usize,
-                concat!("Size of: ", stringify!(ConstLatin1Chars))
-            );
-            assert_eq!(
-                ::std::mem::align_of::<ConstLatin1Chars>(),
-                8usize,
-                concat!("Alignment of ", stringify!(ConstLatin1Chars))
-            );
-        }
-        #[repr(C)]
-        #[derive(Debug, Copy, Clone)]
-        pub struct Latin1CharsZ {
-            pub _base: root::mozilla::RangedPtr<root::JS::Latin1Char>,
-        }
-        pub type Latin1CharsZ_Base = root::mozilla::RangedPtr<root::JS::Latin1Char>;
-        pub type Latin1CharsZ_CharT = root::JS::Latin1Char;
-        #[test]
-        fn bindgen_test_layout_Latin1CharsZ() {
-            assert_eq!(
-                ::std::mem::size_of::<Latin1CharsZ>(),
-                8usize,
-                concat!("Size of: ", stringify!(Latin1CharsZ))
-            );
-            assert_eq!(
-                ::std::mem::align_of::<Latin1CharsZ>(),
-                8usize,
-                concat!("Alignment of ", stringify!(Latin1CharsZ))
-            );
-        }
-        #[repr(C)]
-        #[derive(Debug, Copy, Clone)]
-        pub struct UTF8Chars {
-            pub _base: root::mozilla::Range<::std::os::raw::c_uchar>,
-        }
-        pub type UTF8Chars_Base = root::mozilla::Range<::std::os::raw::c_uchar>;
-        pub type UTF8Chars_CharT = ::std::os::raw::c_uchar;
-        #[test]
-        fn bindgen_test_layout_UTF8Chars() {
-            assert_eq!(
-                ::std::mem::size_of::<UTF8Chars>(),
-                16usize,
-                concat!("Size of: ", stringify!(UTF8Chars))
-            );
-            assert_eq!(
-                ::std::mem::align_of::<UTF8Chars>(),
-                8usize,
-                concat!("Alignment of ", stringify!(UTF8Chars))
-            );
-        }
-        #[repr(C)]
-        #[derive(Debug, Copy, Clone)]
-        pub struct UTF8CharsZ {
-            pub _base: root::mozilla::RangedPtr<::std::os::raw::c_uchar>,
-        }
-        pub type UTF8CharsZ_Base = root::mozilla::RangedPtr<::std::os::raw::c_uchar>;
-        pub type UTF8CharsZ_CharT = ::std::os::raw::c_uchar;
-        #[test]
-        fn bindgen_test_layout_UTF8CharsZ() {
-            assert_eq!(
-                ::std::mem::size_of::<UTF8CharsZ>(),
-                8usize,
-                concat!("Size of: ", stringify!(UTF8CharsZ))
-            );
-            assert_eq!(
-                ::std::mem::align_of::<UTF8CharsZ>(),
-                8usize,
-                concat!("Alignment of ", stringify!(UTF8CharsZ))
-            );
-        }
-        #[repr(C)]
-        #[derive(Debug, Copy, Clone)]
-        pub struct ConstUTF8CharsZ {
-            pub data_: *const ::std::os::raw::c_char,
-        }
-        pub type ConstUTF8CharsZ_CharT = ::std::os::raw::c_uchar;
-        #[test]
-        fn bindgen_test_layout_ConstUTF8CharsZ() {
-            const UNINIT: ::std::mem::MaybeUninit<ConstUTF8CharsZ> =
-                ::std::mem::MaybeUninit::uninit();
-            let ptr = UNINIT.as_ptr();
-            assert_eq!(
-                ::std::mem::size_of::<ConstUTF8CharsZ>(),
-                8usize,
-                concat!("Size of: ", stringify!(ConstUTF8CharsZ))
-            );
-            assert_eq!(
-                ::std::mem::align_of::<ConstUTF8CharsZ>(),
-                8usize,
-                concat!("Alignment of ", stringify!(ConstUTF8CharsZ))
-            );
-            assert_eq!(
-                unsafe { ::std::ptr::addr_of!((*ptr).data_) as usize - ptr as usize },
-                0usize,
-                concat!(
-                    "Offset of field: ",
-                    stringify!(ConstUTF8CharsZ),
-                    "::",
-                    stringify!(data_)
-                )
-            );
-        }
-        #[repr(C)]
-        #[derive(Debug, Copy, Clone)]
-        pub struct TwoByteChars {
-            pub _base: root::mozilla::Range<u16>,
-        }
-        pub type TwoByteChars_Base = root::mozilla::Range<u16>;
-        pub type TwoByteChars_CharT = u16;
-        #[test]
-        fn bindgen_test_layout_TwoByteChars() {
-            assert_eq!(
-                ::std::mem::size_of::<TwoByteChars>(),
-                16usize,
-                concat!("Size of: ", stringify!(TwoByteChars))
-            );
-            assert_eq!(
-                ::std::mem::align_of::<TwoByteChars>(),
-                8usize,
-                concat!("Alignment of ", stringify!(TwoByteChars))
-            );
-        }
-        #[repr(C)]
-        #[derive(Debug, Copy, Clone)]
-        pub struct TwoByteCharsZ {
-            pub _base: root::mozilla::RangedPtr<u16>,
-        }
-        pub type TwoByteCharsZ_Base = root::mozilla::RangedPtr<u16>;
-        pub type TwoByteCharsZ_CharT = u16;
-        #[test]
-        fn bindgen_test_layout_TwoByteCharsZ() {
-            assert_eq!(
-                ::std::mem::size_of::<TwoByteCharsZ>(),
-                8usize,
-                concat!("Size of: ", stringify!(TwoByteCharsZ))
-            );
-            assert_eq!(
-                ::std::mem::align_of::<TwoByteCharsZ>(),
-                8usize,
-                concat!("Alignment of ", stringify!(TwoByteCharsZ))
-            );
-        }
-        pub type ConstCharPtr = root::mozilla::RangedPtr<u16>;
-        #[repr(C)]
-        #[derive(Debug, Copy, Clone)]
-        pub struct ConstTwoByteChars {
-            pub _base: root::mozilla::Range<u16>,
-        }
-        pub type ConstTwoByteChars_Base = root::mozilla::Range<u16>;
-        pub type ConstTwoByteChars_CharT = u16;
-        #[test]
-        fn bindgen_test_layout_ConstTwoByteChars() {
-            assert_eq!(
-                ::std::mem::size_of::<ConstTwoByteChars>(),
-                16usize,
-                concat!("Size of: ", stringify!(ConstTwoByteChars))
-            );
-            assert_eq!(
-                ::std::mem::align_of::<ConstTwoByteChars>(),
-                8usize,
-                concat!("Alignment of ", stringify!(ConstTwoByteChars))
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS34LossyTwoByteCharsToNewLatin1CharsZEP9JSContextN7mozilla5RangeIKDsEE"]
-            pub fn LossyTwoByteCharsToNewLatin1CharsZ(
-                cx: *mut root::JSContext,
-                tbchars: root::mozilla::Range<u16>,
-            ) -> root::JS::Latin1CharsZ;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS17Utf8ToOneUcs4CharEPKhi"]
-            pub fn Utf8ToOneUcs4Char(
-                utf8Buffer: *const u8,
-                utf8Length: ::std::os::raw::c_int,
-            ) -> u32;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS27UTF8CharsToNewTwoByteCharsZEP9JSContextNS_9UTF8CharsEPmm"]
-            pub fn UTF8CharsToNewTwoByteCharsZ(
-                cx: *mut root::JSContext,
-                utf8: root::JS::UTF8Chars,
-                outlen: *mut usize,
-                destArenaId: root::arena_id_t,
-            ) -> root::JS::TwoByteCharsZ;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS27UTF8CharsToNewTwoByteCharsZEP9JSContextRKNS_15ConstUTF8CharsZEPmm"]
-            pub fn UTF8CharsToNewTwoByteCharsZ1(
-                cx: *mut root::JSContext,
-                utf8: *const root::JS::ConstUTF8CharsZ,
-                outlen: *mut usize,
-                destArenaId: root::arena_id_t,
-            ) -> root::JS::TwoByteCharsZ;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS32LossyUTF8CharsToNewTwoByteCharsZEP9JSContextNS_9UTF8CharsEPmm"]
-            pub fn LossyUTF8CharsToNewTwoByteCharsZ(
-                cx: *mut root::JSContext,
-                utf8: root::JS::UTF8Chars,
-                outlen: *mut usize,
-                destArenaId: root::arena_id_t,
-            ) -> root::JS::TwoByteCharsZ;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS32LossyUTF8CharsToNewTwoByteCharsZEP9JSContextRKNS_15ConstUTF8CharsZEPmm"]
-            pub fn LossyUTF8CharsToNewTwoByteCharsZ1(
-                cx: *mut root::JSContext,
-                utf8: *const root::JS::ConstUTF8CharsZ,
-                outlen: *mut usize,
-                destArenaId: root::arena_id_t,
-            ) -> root::JS::TwoByteCharsZ;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS27GetDeflatedUTF8StringLengthEP14JSLinearString"]
-            pub fn GetDeflatedUTF8StringLength(s: *mut root::JSLinearString) -> usize;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS25DeflateStringToUTF8BufferEP14JSLinearStringN7mozilla4SpanIcLm18446744073709551615EEE"]
-            pub fn DeflateStringToUTF8Buffer(
-                src: *mut root::JSLinearString,
-                dst: [u64; 2usize],
-            ) -> usize;
-        }
-        #[repr(i32)]
-        #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-        pub enum SmallestEncoding {
-            ASCII = 0,
-            Latin1 = 1,
-            UTF16 = 2,
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS20FindSmallestEncodingENS_9UTF8CharsE"]
-            pub fn FindSmallestEncoding(utf8: root::JS::UTF8Chars) -> root::JS::SmallestEncoding;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS26UTF8CharsToNewLatin1CharsZEP9JSContextNS_9UTF8CharsEPmm"]
-            pub fn UTF8CharsToNewLatin1CharsZ(
-                cx: *mut root::JSContext,
-                utf8: root::JS::UTF8Chars,
-                outlen: *mut usize,
-                destArenaId: root::arena_id_t,
-            ) -> root::JS::Latin1CharsZ;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS31LossyUTF8CharsToNewLatin1CharsZEP9JSContextNS_9UTF8CharsEPmm"]
-            pub fn LossyUTF8CharsToNewLatin1CharsZ(
-                cx: *mut root::JSContext,
-                utf8: root::JS::UTF8Chars,
-                outlen: *mut usize,
-                destArenaId: root::arena_id_t,
-            ) -> root::JS::Latin1CharsZ;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS13StringIsASCIIEPKc"]
-            pub fn StringIsASCII(s: *const ::std::os::raw::c_char) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS13StringIsASCIIEN7mozilla4SpanIKcLm18446744073709551615EEE"]
-            pub fn StringIsASCII1(s: [u64; 2usize]) -> bool;
-        }
-        extern "C" {
-            #[doc = " Encode a narrow multibyte character string to a UTF-8 string.\n\n NOTE: Should only be used when interacting with POSIX/OS functions and not\n       for encoding ASCII/Latin-1/etc. strings to UTF-8."]
-            #[link_name = "\u{1}_ZN2JS18EncodeNarrowToUtf8EP9JSContextPKc"]
-            pub fn EncodeNarrowToUtf8(
-                cx: *mut root::JSContext,
-                chars: *const ::std::os::raw::c_char,
-            ) -> root::JS::UniqueChars;
-        }
-        extern "C" {
-            #[doc = " Encode a wide string to a UTF-8 string.\n\n NOTE: Should only be used when interacting with Windows API functions."]
-            #[link_name = "\u{1}_ZN2JS16EncodeWideToUtf8EP9JSContextPKw"]
-            pub fn EncodeWideToUtf8(
-                cx: *mut root::JSContext,
-                chars: *const u32,
-            ) -> root::JS::UniqueChars;
-        }
-        extern "C" {
-            #[doc = " Encode a UTF-8 string to a narrow multibyte character string.\n\n NOTE: Should only be used when interacting with POSIX/OS functions and not\n       for encoding UTF-8 to ASCII/Latin-1/etc. strings."]
-            #[link_name = "\u{1}_ZN2JS18EncodeUtf8ToNarrowEP9JSContextPKc"]
-            pub fn EncodeUtf8ToNarrow(
-                cx: *mut root::JSContext,
-                chars: *const ::std::os::raw::c_char,
-            ) -> root::JS::UniqueChars;
-        }
-        extern "C" {
-            #[doc = " Encode a UTF-8 string to a wide string.\n\n NOTE: Should only be used when interacting with Windows API functions."]
-            #[link_name = "\u{1}_ZN2JS16EncodeUtf8ToWideEP9JSContextPKc"]
-            pub fn EncodeUtf8ToWide(
-                cx: *mut root::JSContext,
-                chars: *const ::std::os::raw::c_char,
-            ) -> root::JS::UniqueWideChars;
-        }
-        pub type FrontendContext = root::js::FrontendContext;
         #[repr(u8)]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
         pub enum AsmJSOption {
@@ -13111,12 +12847,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<TransitiveCompileOptions>(),
-                72usize,
+                52usize,
                 concat!("Size of: ", stringify!(TransitiveCompileOptions))
             );
             assert_eq!(
                 ::std::mem::align_of::<TransitiveCompileOptions>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(TransitiveCompileOptions))
             );
             assert_eq!(
@@ -13131,7 +12867,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).introducerFilename_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13141,7 +12877,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).sourceMapURL_) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13151,7 +12887,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).mutedErrors_) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13161,7 +12897,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).forceStrictMode_) as usize - ptr as usize },
-                25usize,
+                13usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13171,7 +12907,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).alwaysUseFdlibm_) as usize - ptr as usize },
-                26usize,
+                14usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13181,7 +12917,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).sourcePragmas_) as usize - ptr as usize },
-                27usize,
+                15usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13193,7 +12929,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).skipFilenameValidation_) as usize - ptr as usize
                 },
-                28usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13205,7 +12941,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).hideScriptFromDebugger_) as usize - ptr as usize
                 },
-                29usize,
+                17usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13215,7 +12951,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).deferDebugMetadata_) as usize - ptr as usize },
-                30usize,
+                18usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13228,7 +12964,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).eagerDelazificationStrategy_) as usize
                         - ptr as usize
                 },
-                31usize,
+                19usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13238,7 +12974,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).selfHostingMode) as usize - ptr as usize },
-                32usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13248,7 +12984,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).asmJSOption) as usize - ptr as usize },
-                33usize,
+                21usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13261,7 +12997,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).throwOnAsmJSValidationFailureOption) as usize
                         - ptr as usize
                 },
-                34usize,
+                22usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13271,7 +13007,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).forceAsync) as usize - ptr as usize },
-                35usize,
+                23usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13281,7 +13017,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).discardSource) as usize - ptr as usize },
-                36usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13291,7 +13027,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).sourceIsLazy) as usize - ptr as usize },
-                37usize,
+                25usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13301,7 +13037,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).allowHTMLComments) as usize - ptr as usize },
-                38usize,
+                26usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13311,7 +13047,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).nonSyntacticScope) as usize - ptr as usize },
-                39usize,
+                27usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13321,7 +13057,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).topLevelAwait) as usize - ptr as usize },
-                40usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13331,7 +13067,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).importAssertions) as usize - ptr as usize },
-                41usize,
+                29usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13341,7 +13077,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).borrowBuffer) as usize - ptr as usize },
-                42usize,
+                30usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13351,7 +13087,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).usePinnedBytecode) as usize - ptr as usize },
-                43usize,
+                31usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13364,7 +13100,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).allocateInstantiationStorage) as usize
                         - ptr as usize
                 },
-                44usize,
+                32usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13376,7 +13112,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).deoptimizeModuleGlobalVars) as usize - ptr as usize
                 },
-                45usize,
+                33usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13386,7 +13122,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).introductionType) as usize - ptr as usize },
-                48usize,
+                36usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13396,7 +13132,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).introductionLineno) as usize - ptr as usize },
-                56usize,
+                40usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13406,7 +13142,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).introductionOffset) as usize - ptr as usize },
-                60usize,
+                44usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13416,7 +13152,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).hasIntroductionInfo) as usize - ptr as usize },
-                64usize,
+                48usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TransitiveCompileOptions),
@@ -13443,17 +13179,17 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ReadOnlyCompileOptions>(),
-                88usize,
+                68usize,
                 concat!("Size of: ", stringify!(ReadOnlyCompileOptions))
             );
             assert_eq!(
                 ::std::mem::align_of::<ReadOnlyCompileOptions>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ReadOnlyCompileOptions))
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).lineno) as usize - ptr as usize },
-                68usize,
+                52usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ReadOnlyCompileOptions),
@@ -13463,7 +13199,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).column) as usize - ptr as usize },
-                72usize,
+                56usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ReadOnlyCompileOptions),
@@ -13473,7 +13209,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).scriptSourceOffset) as usize - ptr as usize },
-                76usize,
+                60usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ReadOnlyCompileOptions),
@@ -13483,7 +13219,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).isRunOnce) as usize - ptr as usize },
-                80usize,
+                64usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ReadOnlyCompileOptions),
@@ -13493,7 +13229,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).noScriptRval) as usize - ptr as usize },
-                81usize,
+                65usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ReadOnlyCompileOptions),
@@ -13508,40 +13244,16 @@ pub mod root {
         pub struct OwningCompileOptions {
             pub _base: root::JS::ReadOnlyCompileOptions,
         }
-        #[repr(C)]
-        #[derive(Debug, Copy, Clone)]
-        pub struct OwningCompileOptions_ForFrontendContext {
-            pub _address: u8,
-        }
-        #[test]
-        fn bindgen_test_layout_OwningCompileOptions_ForFrontendContext() {
-            assert_eq!(
-                ::std::mem::size_of::<OwningCompileOptions_ForFrontendContext>(),
-                1usize,
-                concat!(
-                    "Size of: ",
-                    stringify!(OwningCompileOptions_ForFrontendContext)
-                )
-            );
-            assert_eq!(
-                ::std::mem::align_of::<OwningCompileOptions_ForFrontendContext>(),
-                1usize,
-                concat!(
-                    "Alignment of ",
-                    stringify!(OwningCompileOptions_ForFrontendContext)
-                )
-            );
-        }
         #[test]
         fn bindgen_test_layout_OwningCompileOptions() {
             assert_eq!(
                 ::std::mem::size_of::<OwningCompileOptions>(),
-                88usize,
+                68usize,
                 concat!("Size of: ", stringify!(OwningCompileOptions))
             );
             assert_eq!(
                 ::std::mem::align_of::<OwningCompileOptions>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(OwningCompileOptions))
             );
         }
@@ -13576,12 +13288,12 @@ pub mod root {
         fn bindgen_test_layout_CompileOptions() {
             assert_eq!(
                 ::std::mem::size_of::<CompileOptions>(),
-                88usize,
+                68usize,
                 concat!("Size of: ", stringify!(CompileOptions))
             );
             assert_eq!(
                 ::std::mem::align_of::<CompileOptions>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(CompileOptions))
             );
         }
@@ -13663,12 +13375,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<DecodeOptions>(),
-                32usize,
+                20usize,
                 concat!("Size of: ", stringify!(DecodeOptions))
             );
             assert_eq!(
                 ::std::mem::align_of::<DecodeOptions>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(DecodeOptions))
             );
             assert_eq!(
@@ -13716,7 +13428,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).introducerFilename) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(DecodeOptions),
@@ -13726,7 +13438,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).introductionType) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(DecodeOptions),
@@ -13736,7 +13448,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).introductionLineno) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(DecodeOptions),
@@ -13746,7 +13458,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).introductionOffset) as usize - ptr as usize },
-                28usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(DecodeOptions),
@@ -13984,10 +13696,6 @@ pub mod root {
             #[link_name = "\u{1}_ZN2JS22ClearModuleEnvironmentEP8JSObject"]
             pub fn ClearModuleEnvironment(moduleObj: *mut root::JSObject);
         }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS20AssertModuleUnlinkedEP8JSObject"]
-            pub fn AssertModuleUnlinked(moduleObj: *mut root::JSObject);
-        }
         #[doc = " Per ES6, the [[DefineOwnProperty]] internal method has three different\n possible outcomes:\n\n -   It can throw an exception (which we indicate by returning false).\n\n -   It can return true, indicating unvarnished success.\n\n -   It can return false, indicating \"strict failure\". The property could\n     not be defined. It's an error, but no exception was thrown.\n\n It's not just [[DefineOwnProperty]]: all the mutating internal methods have\n the same three outcomes. (The other affected internal methods are [[Set]],\n [[Delete]], [[SetPrototypeOf]], and [[PreventExtensions]].)\n\n If you think this design is awful, you're not alone.  But as it's the\n standard, we must represent these boolean \"success\" values somehow.\n ObjectOpSuccess is the class for this. It's like a bool, but when it's false\n it also stores an error code.\n\n Typical usage:\n\n     ObjectOpResult result;\n     if (!DefineProperty(cx, obj, id, ..., result)) {\n         return false;\n     }\n     if (!result) {\n         return result.reportError(cx, obj, id);\n     }\n\n Users don't have to call `result.report()`; another possible ending is:\n\n     argv.rval().setBoolean(result.ok());\n     return true;"]
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
@@ -13995,11 +13703,11 @@ pub mod root {
             #[doc = " code_ is either one of the special codes OkCode or Uninitialized, or an\n error code. For now the error codes are JS friend API and are defined in\n js/public/friend/ErrorNumbers.msg.\n\n code_ is uintptr_t (rather than uint32_t) for the convenience of the\n JITs, which would otherwise have to deal with either padding or stack\n alignment on 64-bit platforms."]
             pub code_: usize,
         }
-        #[repr(u64)]
+        #[repr(u32)]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
         pub enum ObjectOpResult_SpecialCodes {
             OkCode = 0,
-            Uninitialized = 18446744073709551615,
+            Uninitialized = 4294967295,
         }
         #[test]
         fn bindgen_test_layout_ObjectOpResult() {
@@ -14008,12 +13716,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ObjectOpResult>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(ObjectOpResult))
             );
             assert_eq!(
                 ::std::mem::align_of::<ObjectOpResult>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ObjectOpResult))
             );
             assert_eq!(
@@ -14056,12 +13764,12 @@ pub mod root {
         fn bindgen_test_layout_JobQueue_SavedJobQueue() {
             assert_eq!(
                 ::std::mem::size_of::<JobQueue_SavedJobQueue>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(JobQueue_SavedJobQueue))
             );
             assert_eq!(
                 ::std::mem::align_of::<JobQueue_SavedJobQueue>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(JobQueue_SavedJobQueue))
             );
         }
@@ -14069,12 +13777,12 @@ pub mod root {
         fn bindgen_test_layout_JobQueue() {
             assert_eq!(
                 ::std::mem::size_of::<JobQueue>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(JobQueue))
             );
             assert_eq!(
                 ::std::mem::align_of::<JobQueue>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(JobQueue))
             );
         }
@@ -14088,7 +13796,7 @@ pub mod root {
         #[derive(Debug)]
         pub struct AutoDebuggerJobQueueInterruption {
             pub cx: *mut root::JSContext,
-            pub saved: u64,
+            pub saved: u32,
         }
         #[test]
         fn bindgen_test_layout_AutoDebuggerJobQueueInterruption() {
@@ -14097,12 +13805,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoDebuggerJobQueueInterruption>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(AutoDebuggerJobQueueInterruption))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoDebuggerJobQueueInterruption>(),
-                8usize,
+                4usize,
                 concat!(
                     "Alignment of ",
                     stringify!(AutoDebuggerJobQueueInterruption)
@@ -14120,7 +13828,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).saved) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoDebuggerJobQueueInterruption),
@@ -14350,12 +14058,12 @@ pub mod root {
         fn bindgen_test_layout_Dispatchable() {
             assert_eq!(
                 ::std::mem::size_of::<Dispatchable>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(Dispatchable))
             );
             assert_eq!(
                 ::std::mem::align_of::<Dispatchable>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(Dispatchable))
             );
         }
@@ -14421,7 +14129,7 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<PropertyDescriptor>(),
-                32usize,
+                24usize,
                 concat!("Size of: ", stringify!(PropertyDescriptor))
             );
             assert_eq!(
@@ -14431,7 +14139,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).getter_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(PropertyDescriptor),
@@ -14441,7 +14149,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).setter_) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(PropertyDescriptor),
@@ -14451,7 +14159,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).value_) as usize - ptr as usize },
-                24usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(PropertyDescriptor),
@@ -14795,14 +14503,12 @@ pub mod root {
         pub const RegExpFlag_DotAll: u8 = 32;
         #[doc = " Use Unicode semantics, i.e. /u."]
         pub const RegExpFlag_Unicode: u8 = 16;
-        #[doc = " Use Unicode Sets semantics, i.e. /v."]
-        pub const RegExpFlag_UnicodeSets: u8 = 128;
         #[doc = " Only match starting from <regular expression>.lastIndex, i.e. /y."]
         pub const RegExpFlag_Sticky: u8 = 8;
         #[doc = " No regular expression flags."]
         pub const RegExpFlag_NoFlags: u8 = 0;
         #[doc = " All regular expression flags."]
-        pub const RegExpFlag_AllFlags: u8 = 255;
+        pub const RegExpFlag_AllFlags: u8 = 127;
         #[test]
         fn bindgen_test_layout_RegExpFlag() {
             assert_eq!(
@@ -15118,12 +14824,12 @@ pub mod root {
         fn bindgen_test_layout_ReadableStreamUnderlyingSource() {
             assert_eq!(
                 ::std::mem::size_of::<ReadableStreamUnderlyingSource>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(ReadableStreamUnderlyingSource))
             );
             assert_eq!(
                 ::std::mem::align_of::<ReadableStreamUnderlyingSource>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ReadableStreamUnderlyingSource))
             );
         }
@@ -15149,7 +14855,7 @@ pub mod root {
             ) -> *mut root::JSObject;
         }
         extern "C" {
-            #[doc = " Returns the embedding-provided underlying source of the given |stream|.\n\n Can be used to optimize operations if both the underlying source and the\n intended sink are embedding-provided. In that case it might be\n preferrable to pipe data directly from source to sink without interacting\n with the stream at all.\n\n Locks the stream until ReadableStreamReleaseExternalUnderlyingSource is\n called.\n\n Throws an exception if the stream is locked, i.e. if a reader has been\n acquired for the stream, or if ReadableStreamGetExternalUnderlyingSource\n has been used previously without releasing the external source again.\n\n Throws an exception if the stream isn't readable, i.e if it is errored or\n closed. This is different from ReadableStreamGetReader because we don't\n have a Promise to resolve/reject, which a reader provides.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not.\n\n Asserts that the stream has an embedding-provided underlying source."]
+            #[doc = " Returns the embedding-provided underlying source of the given |stream|.\n\n Can be used to optimize operations if both the underlying source and the\n intended sink are embedding-provided. In that case it might be\n preferrable to pipe data directly from source to sink without interacting\n with the stream at all.\n\n Locks the stream until ReadableStreamReleaseExternalUnderlyingSource is\n called.\n\n Throws an exception if the stream is locked, i.e. if a reader has been\n acquired for the stream, or if ReadableStreamGetExternalUnderlyingSource\n has been used previously without releasing the external source again.\n\n Throws an exception if the stream isn't readable, i.e if it is errored or\n closed. This is different from ReadableStreamGetReader because we don't\n have a Promise to resolve/reject, which a reader provides.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one.\n\n Asserts that the stream has an embedding-provided underlying source."]
             #[link_name = "\u{1}_ZN2JS41ReadableStreamGetExternalUnderlyingSourceEP9JSContextNS_6HandleIP8JSObjectEEPPNS_30ReadableStreamUnderlyingSourceE"]
             pub fn ReadableStreamGetExternalUnderlyingSource(
                 cx: *mut root::JSContext,
@@ -15158,7 +14864,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[doc = " Releases the embedding-provided underlying source of the given |stream|,\n returning the stream into an unlocked state.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not.\n\n Checks if the stream was locked through\n ReadableStreamGetExternalUnderlyingSource and throws an error if not.\n\n Checks if the stream has an embedding-provided underlying source and\n throws an error if not."]
+            #[doc = " Releases the embedding-provided underlying source of the given |stream|,\n returning the stream into an unlocked state.\n\n Asserts that the stream was locked through\n ReadableStreamGetExternalUnderlyingSource.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one.\n\n Asserts that the stream has an embedding-provided underlying source."]
             #[link_name = "\u{1}_ZN2JS45ReadableStreamReleaseExternalUnderlyingSourceEP9JSContextNS_6HandleIP8JSObjectEE"]
             pub fn ReadableStreamReleaseExternalUnderlyingSource(
                 cx: *mut root::JSContext,
@@ -15166,7 +14872,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[doc = " Update the amount of data available at the underlying source of the given\n |stream|.\n\n Can only be used for streams with an embedding-provided underlying source.\n The JS engine will use the given value to satisfy read requests for the\n stream by invoking the writeIntoReadRequestBuffer method.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[doc = " Update the amount of data available at the underlying source of the given\n |stream|.\n\n Can only be used for streams with an embedding-provided underlying source.\n The JS engine will use the given value to satisfy read requests for the\n stream by invoking the writeIntoReadRequestBuffer method.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS43ReadableStreamUpdateDataAvailableFromSourceEP9JSContextNS_6HandleIP8JSObjectEEj"]
             pub fn ReadableStreamUpdateDataAvailableFromSource(
                 cx: *mut root::JSContext,
@@ -15185,11 +14891,6 @@ pub mod root {
             pub fn IsReadableStream(obj: *mut root::JSObject) -> bool;
         }
         extern "C" {
-            #[doc = " Returns true if the given object is a ReadableStreamBYOBReader object\n or an unwrappable wrapper for one, false otherwise."]
-            #[link_name = "\u{1}_ZN2JS26IsReadableStreamBYOBReaderEP8JSObject"]
-            pub fn IsReadableStreamBYOBReader(obj: *mut root::JSObject) -> bool;
-        }
-        extern "C" {
             #[doc = " Returns true if the given object is a ReadableStreamDefaultReader or\n ReadableStreamBYOBReader object or an unwrappable wrapper for one, false\n otherwise."]
             #[link_name = "\u{1}_ZN2JS22IsReadableStreamReaderEP8JSObject"]
             pub fn IsReadableStreamReader(obj: *mut root::JSObject) -> bool;
@@ -15199,11 +14900,6 @@ pub mod root {
             #[link_name = "\u{1}_ZN2JS29IsReadableStreamDefaultReaderEP8JSObject"]
             pub fn IsReadableStreamDefaultReader(obj: *mut root::JSObject) -> bool;
         }
-        extern "C" {
-            #[doc = " Returns true if the given object is a ReadableStreamDefaultController or\n ReadableByteStreamController object or an unwrappable wrapper for one,\n false otherwise."]
-            #[link_name = "\u{1}_ZN2JS26IsReadableStreamControllerEP8JSObject"]
-            pub fn IsReadableStreamController(obj: *mut root::JSObject) -> bool;
-        }
         #[repr(i32)]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
         pub enum ReadableStreamMode {
@@ -15212,7 +14908,7 @@ pub mod root {
             ExternalSource = 2,
         }
         extern "C" {
-            #[doc = " Returns the stream's ReadableStreamMode. If the mode is |Byte| or\n |ExternalSource|, it's possible to acquire a BYOB reader for more optimized\n operations.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[doc = " Returns the stream's ReadableStreamMode. If the mode is |Byte| or\n |ExternalSource|, it's possible to acquire a BYOB reader for more optimized\n operations.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS21ReadableStreamGetModeEP9JSContextNS_6HandleIP8JSObjectEEPNS_18ReadableStreamModeE"]
             pub fn ReadableStreamGetMode(
                 cx: *mut root::JSContext,
@@ -15227,15 +14923,7 @@ pub mod root {
             Byob = 1,
         }
         extern "C" {
-            #[doc = " Returns the stream's stored error.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
-            #[link_name = "\u{1}_ZN2JS28ReadableStreamGetStoredErrorEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn ReadableStreamGetStoredError(
-                cx: *mut root::JSContext,
-                stream: root::JS::HandleObject,
-            ) -> root::JS::Value;
-        }
-        extern "C" {
-            #[doc = " Returns true if the given ReadableStream is readable, false if not.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[doc = " Returns true if the given ReadableStream is readable, false if not.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS24ReadableStreamIsReadableEP9JSContextNS_6HandleIP8JSObjectEEPb"]
             pub fn ReadableStreamIsReadable(
                 cx: *mut root::JSContext,
@@ -15244,7 +14932,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[doc = " Returns true if the given ReadableStream is locked, false if not.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[doc = " Returns true if the given ReadableStream is locked, false if not.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS22ReadableStreamIsLockedEP9JSContextNS_6HandleIP8JSObjectEEPb"]
             pub fn ReadableStreamIsLocked(
                 cx: *mut root::JSContext,
@@ -15253,7 +14941,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[doc = " Returns true if the given ReadableStream is disturbed, false if not.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[doc = " Returns true if the given ReadableStream is disturbed, false if not.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS25ReadableStreamIsDisturbedEP9JSContextNS_6HandleIP8JSObjectEEPb"]
             pub fn ReadableStreamIsDisturbed(
                 cx: *mut root::JSContext,
@@ -15262,16 +14950,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[doc = " Returns true if the given ReadableStream is errored, false if not.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
-            #[link_name = "\u{1}_ZN2JS23ReadableStreamIsErroredEP9JSContextNS_6HandleIP8JSObjectEEPb"]
-            pub fn ReadableStreamIsErrored(
-                cx: *mut root::JSContext,
-                stream: root::JS::HandleObject,
-                result: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Cancels the given ReadableStream with the given reason and returns a\n Promise resolved according to the result.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[doc = " Cancels the given ReadableStream with the given reason and returns a\n Promise resolved according to the result.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS20ReadableStreamCancelEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEE"]
             pub fn ReadableStreamCancel(
                 cx: *mut root::JSContext,
@@ -15280,7 +14959,7 @@ pub mod root {
             ) -> *mut root::JSObject;
         }
         extern "C" {
-            #[doc = " Creates a reader of the type specified by the mode option and locks the\n stream to the new reader.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not. The returned object will always be\n created in the current cx compartment."]
+            #[doc = " Creates a reader of the type specified by the mode option and locks the\n stream to the new reader.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one. The returned object will always be created in the\n current cx compartment."]
             #[link_name = "\u{1}_ZN2JS23ReadableStreamGetReaderEP9JSContextNS_6HandleIP8JSObjectEENS_24ReadableStreamReaderModeE"]
             pub fn ReadableStreamGetReader(
                 cx: *mut root::JSContext,
@@ -15289,41 +14968,7 @@ pub mod root {
             ) -> *mut root::JSObject;
         }
         extern "C" {
-            #[doc = " Returns the controller associated with the given ReadableStream.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
-            #[link_name = "\u{1}_ZN2JS27ReadableStreamGetControllerEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn ReadableStreamGetController(
-                cx: *mut root::JSContext,
-                stream: root::JS::HandleObject,
-            ) -> *mut root::JSObject;
-        }
-        extern "C" {
-            #[doc = " Returns the underlying source associated with the given\n ReadableStreamController.\n\n Checks if |controller| is a ReadableStreamController object or an\n unwrappable wrapper for one and throws an error if not. The returned\n object will always be created in the current cx compartment.\n\n Note: this is different from ReadableStreamGetExternalUnderlyingSource in\n that it only works for ReadableStreams with a mode of Default or Byte,\n returns a Value, and doesn't lock the stream."]
-            #[link_name = "\u{1}_ZN2JS43ReadableStreamControllerGetUnderlyingSourceEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
-            pub fn ReadableStreamControllerGetUnderlyingSource(
-                cx: *mut root::JSContext,
-                controller: root::JS::HandleObject,
-                source: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Results in true if the stream associated with the given controller\n is readable, and the closeRequested flag on the controller is false,\n and throws an error and returns false if not.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
-            #[link_name = "\u{1}_ZN2JS46CheckReadableStreamControllerCanCloseOrEnqueueEP9JSContextNS_6HandleIP8JSObjectEEPKc"]
-            pub fn CheckReadableStreamControllerCanCloseOrEnqueue(
-                cx: *mut root::JSContext,
-                controller: root::JS::HandleObject,
-                action: *const ::std::os::raw::c_char,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " The WHATWG Streams spec algorithm ReadableStreamControllerShouldCallPull.\n\n Asserts that |controller| is a ReadableStreamController object or an\n unwrappable wrapper for one."]
-            #[link_name = "\u{1}_ZN2JS38ReadableStreamControllerShouldCallPullEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn ReadableStreamControllerShouldCallPull(
-                cx: *mut root::JSContext,
-                controller: root::JS::HandleObject,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Tees the given ReadableStream and stores the two resulting streams in\n outparams. Returns false if the operation fails, e.g. because the stream is\n locked.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not. The returned objects will always be\n created in the current cx compartment."]
+            #[doc = " Tees the given ReadableStream and stores the two resulting streams in\n outparams. Returns false if the operation fails, e.g. because the stream is\n locked.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS17ReadableStreamTeeEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleIS4_EES7_"]
             pub fn ReadableStreamTee(
                 cx: *mut root::JSContext,
@@ -15333,7 +14978,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[doc = " Retrieves the desired combined size of additional chunks to fill the given\n ReadableStream's queue. Stores the result in |value| and sets |hasValue| to\n true on success, returns false on failure.\n\n If the stream is errored, the call will succeed but no value will be stored\n in |value| and |hasValue| will be set to false.\n\n Note: This is semantically equivalent to the |desiredSize| getter on\n the stream controller's prototype in JS. We expose it with the stream\n itself as a target for simplicity.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[doc = " Retrieves the desired combined size of additional chunks to fill the given\n ReadableStream's queue. Stores the result in |value| and sets |hasValue| to\n true on success, returns false on failure.\n\n If the stream is errored, the call will succeed but no value will be stored\n in |value| and |hasValue| will be set to false.\n\n Note: This is semantically equivalent to the |desiredSize| getter on\n the stream controller's prototype in JS. We expose it with the stream\n itself as a target for simplicity.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS28ReadableStreamGetDesiredSizeEP9JSContextP8JSObjectPbPd"]
             pub fn ReadableStreamGetDesiredSize(
                 cx: *mut root::JSContext,
@@ -15343,7 +14988,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[doc = " Close the given ReadableStream. This is equivalent to `controller.close()`\n in JS.\n\n This can fail with or without an exception pending under a variety of\n circumstances. On failure, the stream may or may not be closed, and\n downstream consumers may or may not have been notified.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[doc = " Close the given ReadableStream. This is equivalent to `controller.close()`\n in JS.\n\n This can fail with or without an exception pending under a variety of\n circumstances. On failure, the stream may or may not be closed, and\n downstream consumers may or may not have been notified.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS19ReadableStreamCloseEP9JSContextNS_6HandleIP8JSObjectEE"]
             pub fn ReadableStreamClose(
                 cx: *mut root::JSContext,
@@ -15351,7 +14996,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[doc = " Returns true if the given ReadableStream reader is closed, false otherwise.\n\n checks |reader| is a ReadableStreamDefaultReader or\n ReadableStreamBYOBReader object or an unwrappable wrapper for one and\n throws an error if not."]
+            #[doc = " Returns true if the given ReadableStream reader is locked, false otherwise.\n\n Asserts that |reader| is a ReadableStreamDefaultReader or\n ReadableStreamBYOBReader object or an unwrappable wrapper for one."]
             #[link_name = "\u{1}_ZN2JS28ReadableStreamReaderIsClosedEP9JSContextNS_6HandleIP8JSObjectEEPb"]
             pub fn ReadableStreamReaderIsClosed(
                 cx: *mut root::JSContext,
@@ -15360,7 +15005,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[doc = " Enqueues the given chunk in the given ReadableStream.\n\n Throws a TypeError and returns false if the enqueing operation fails.\n\n Note: This is semantically equivalent to the |enqueue| method on\n the stream controller's prototype in JS. We expose it with the stream\n itself as a target for simplicity.\n\n If the ReadableStream has an underlying byte source, the given chunk must\n be a typed array or a DataView. Consider using\n ReadableByteStreamEnqueueBuffer.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[doc = " Enqueues the given chunk in the given ReadableStream.\n\n Throws a TypeError and returns false if the enqueing operation fails.\n\n Note: This is semantically equivalent to the |enqueue| method on\n the stream controller's prototype in JS. We expose it with the stream\n itself as a target for simplicity.\n\n If the ReadableStream has an underlying byte source, the given chunk must\n be a typed array or a DataView. Consider using\n ReadableByteStreamEnqueueBuffer.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS21ReadableStreamEnqueueEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEE"]
             pub fn ReadableStreamEnqueue(
                 cx: *mut root::JSContext,
@@ -15369,7 +15014,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[doc = " Errors the given ReadableStream, causing all future interactions to fail\n with the given error value.\n\n Throws a TypeError and returns false if the erroring operation fails.\n\n Note: This is semantically equivalent to the |error| method on\n the stream controller's prototype in JS. We expose it with the stream\n itself as a target for simplicity.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[doc = " Errors the given ReadableStream, causing all future interactions to fail\n with the given error value.\n\n Throws a TypeError and returns false if the erroring operation fails.\n\n Note: This is semantically equivalent to the |error| method on\n the stream controller's prototype in JS. We expose it with the stream\n itself as a target for simplicity.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS19ReadableStreamErrorEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEE"]
             pub fn ReadableStreamError(
                 cx: *mut root::JSContext,
@@ -15395,37 +15040,12 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[doc = " C++ equivalent of the `reader.read()` method on byob readers\n (<https://streams.spec.whatwg.org/#default-reader-read>).\n\n The result is a new Promise object, or null on OOM.\n\n `reader` must be the result of calling `JS::ReadableStreamGetReader` with\n `ReadableStreamReaderMode::Default` mode, or an unwrappable wrapper for such\n a reader."]
-            #[link_name = "\u{1}_ZN2JS28ReadableStreamBYOBReaderReadEP9JSContextNS_6HandleIP8JSObjectEES5_"]
-            pub fn ReadableStreamBYOBReaderRead(
-                cx: *mut root::JSContext,
-                reader: root::JS::HandleObject,
-                view: root::JS::HandleObject,
-            ) -> *mut root::JSObject;
-        }
-        extern "C" {
             #[doc = " C++ equivalent of the `reader.read()` method on default readers\n (<https://streams.spec.whatwg.org/#default-reader-read>).\n\n The result is a new Promise object, or null on OOM.\n\n `reader` must be the result of calling `JS::ReadableStreamGetReader` with\n `ReadableStreamReaderMode::Default` mode, or an unwrappable wrapper for such\n a reader."]
             #[link_name = "\u{1}_ZN2JS31ReadableStreamDefaultReaderReadEP9JSContextNS_6HandleIP8JSObjectEE"]
             pub fn ReadableStreamDefaultReaderRead(
                 cx: *mut root::JSContext,
                 reader: root::JS::HandleObject,
             ) -> *mut root::JSObject;
-        }
-        extern "C" {
-            #[doc = " Returns a new instance of the WritableStream builtin class in the current\n compartment, configured as a default stream.\n If a |proto| is passed, that gets set as the instance's [[Prototype]]\n instead of the original value of |WritableStream.prototype|."]
-            #[link_name = "\u{1}_ZN2JS30NewWritableDefaultStreamObjectEP9JSContextNS_6HandleIP8JSObjectEENS2_IP10JSFunctionEEdS5_"]
-            pub fn NewWritableDefaultStreamObject(
-                cx: *mut root::JSContext,
-                underlyingSink: root::JS::HandleObject,
-                size: root::JS::HandleFunction,
-                highWaterMark: f64,
-                proto: root::JS::HandleObject,
-            ) -> *mut root::JSObject;
-        }
-        extern "C" {
-            #[doc = " Returns true if the given object is a WritableStream object or an\n unwrappable wrapper for one, false otherwise."]
-            #[link_name = "\u{1}_ZN2JS16IsWritableStreamEP8JSObject"]
-            pub fn IsWritableStream(obj: *mut root::JSObject) -> bool;
         }
         #[repr(i32)]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -15434,68 +15054,6 @@ pub mod root {
             Closed = 1,
             Erroring = 2,
             Errored = 3,
-        }
-        extern "C" {
-            #[doc = " Returns the given WritableStream's state.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one."]
-            #[link_name = "\u{1}_ZN2JS22WritableStreamGetStateEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn WritableStreamGetState(
-                cx: *mut root::JSContext,
-                stream: root::JS::HandleObject,
-            ) -> root::JS::WritableStreamState;
-        }
-        extern "C" {
-            #[doc = " Returns true if the given WritableStream is locked, false if not.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one."]
-            #[link_name = "\u{1}_ZN2JS22WritableStreamIsLockedEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn WritableStreamIsLocked(
-                cx: *mut root::JSContext,
-                stream: root::JS::HandleObject,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Returns true if the given object is a WritableStreamDefaultWriter or\n WritableStreamBYOBWriter object or an unwrappable wrapper for one, false\n otherwise."]
-            #[link_name = "\u{1}_ZN2JS22IsWritableStreamWriterEP8JSObject"]
-            pub fn IsWritableStreamWriter(obj: *mut root::JSObject) -> bool;
-        }
-        extern "C" {
-            #[doc = " Creates a WritableStreamDefaultWriter and locks the stream to the new\n writer.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one. The returned object will always be created in the\n current cx compartment."]
-            #[link_name = "\u{1}_ZN2JS23WritableStreamGetWriterEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn WritableStreamGetWriter(
-                cx: *mut root::JSContext,
-                stream: root::JS::HandleObject,
-            ) -> *mut root::JSObject;
-        }
-        extern "C" {
-            #[doc = " Returns the controller associated with the given WritableStream.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one."]
-            #[link_name = "\u{1}_ZN2JS27WritableStreamGetControllerEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn WritableStreamGetController(
-                cx: *mut root::JSContext,
-                stream: root::JS::HandleObject,
-            ) -> *mut root::JSObject;
-        }
-        extern "C" {
-            #[doc = " Returns the underlying sink associated with the given\n WritableStreamDefaultController.\n\n Asserts that |controller| is a WritableStreamDefaultController object or an\n unwrappable wrapper for one."]
-            #[link_name = "\u{1}_ZN2JS41WritableStreamControllerGetUnderlyingSinkEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn WritableStreamControllerGetUnderlyingSink(
-                cx: *mut root::JSContext,
-                controller: root::JS::HandleObject,
-            ) -> root::JS::Value;
-        }
-        extern "C" {
-            #[doc = " Errors the given WritableStream, causing all future interactions to fail\n with the given error value.\n\n Throws a TypeError and returns false if the erroring operation fails.\n\n Note: This is semantically equivalent to the |error| method on\n the stream controller's prototype in JS. We expose it with the stream\n itself as a target for simplicity.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one."]
-            #[link_name = "\u{1}_ZN2JS19WritableStreamErrorEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEE"]
-            pub fn WritableStreamError(
-                cx: *mut root::JSContext,
-                stream: root::JS::HandleObject,
-                error: root::JS::HandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[doc = " Returns the stream's stored error.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one."]
-            #[link_name = "\u{1}_ZN2JS28WritableStreamGetStoredErrorEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn WritableStreamGetStoredError(
-                cx: *mut root::JSContext,
-                stream: root::JS::HandleObject,
-            ) -> root::JS::Value;
         }
         #[repr(C)]
         pub struct WritableStreamUnderlyingSink__bindgen_vtable(::std::os::raw::c_void);
@@ -15508,27 +15066,18 @@ pub mod root {
         fn bindgen_test_layout_WritableStreamUnderlyingSink() {
             assert_eq!(
                 ::std::mem::size_of::<WritableStreamUnderlyingSink>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(WritableStreamUnderlyingSink))
             );
             assert_eq!(
                 ::std::mem::align_of::<WritableStreamUnderlyingSink>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(WritableStreamUnderlyingSink))
             );
         }
         #[doc = " The signature of a function that, when passed an |AbortSignal| instance, will\n return the value of its \"aborted\" flag.\n\n This function will be called while |signal|'s realm has been entered."]
         pub type AbortSignalIsAborted =
             ::std::option::Option<unsafe extern "C" fn(signal: *mut root::JSObject) -> bool>;
-        extern "C" {
-            #[doc = " Dictate embedder-specific details necessary to implement certain aspects of\n the |ReadableStream.prototype.pipeTo| function.  This should be performed\n exactly once, for a single context associated with a |JSRuntime|.\n\n The |ReadableStream.prototype.pipeTo| function accepts a |signal| argument\n that may be used to abort the piping operation.  This argument must be either\n |undefined| (in other words, the piping operation can't be aborted) or an\n |AbortSignal| instance (that may be aborted using the signal's associated\n |AbortController|).  |AbortSignal| is defined by WebIDL and the DOM in the\n web embedding.  Therefore, embedders must use this function to specify how\n such objects can be recognized and how to perform various essential actions\n upon them.\n\n The provided |isAborted| function will be called with an unwrapped\n |AbortSignal| instance, while that instance's realm has been entered.\n\n If this function isn't called, and a situation arises where an \"is this an\n |AbortSignal|?\" question must be asked, that question will simply be answered\n \"no\"."]
-            #[link_name = "\u{1}_ZN2JS18InitPipeToHandlingEPK7JSClassPFbP8JSObjectEP9JSContext"]
-            pub fn InitPipeToHandling(
-                abortSignalClass: *const root::JSClass,
-                isAborted: root::JS::AbortSignalIsAborted,
-                cx: *mut root::JSContext,
-            );
-        }
         #[repr(u32)]
         #[doc = " Indicates the \"scope of validity\" of serialized data.\n\n Writing plain JS data produces an array of bytes that can be copied and\n read in another process or whatever. The serialized data is Plain Old Data.\n However, HTML also supports `Transferable` objects, which, when cloned, can\n be moved from the source object into the clone, like when you take a\n photograph of someone and it steals their soul.\n See <https://developer.mozilla.org/en-US/docs/Web/API/Transferable>.\n We support cloning and transferring objects of many types.\n\n For example, when we transfer an ArrayBuffer (within a process), we \"detach\"\n the ArrayBuffer, embed the raw buffer pointer in the serialized data, and\n later install it in a new ArrayBuffer in the destination realm. Ownership\n of that buffer memory is transferred from the original ArrayBuffer to the\n serialized data and then to the clone.\n\n This only makes sense within a single address space. When we transfer an\n ArrayBuffer to another process, the contents of the buffer must be copied\n into the serialized data. (The original ArrayBuffer is still detached,\n though, for consistency; in some cases the caller shouldn't know or care if\n the recipient is in the same process.)\n\n ArrayBuffers are actually a lucky case; some objects (like MessagePorts)\n can't reasonably be stored by value in serialized data -- it's pointers or\n nothing.\n\n So there is a tradeoff between scope of validity -- how far away the\n serialized data may be sent and still make sense -- and efficiency or\n features. The read and write algorithms therefore take an argument of this\n type, allowing the user to control those trade-offs."]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -15667,12 +15216,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoSuppressWarningReporter>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(AutoSuppressWarningReporter))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoSuppressWarningReporter>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoSuppressWarningReporter))
             );
             assert_eq!(
@@ -15687,7 +15236,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).prevReporter_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoSuppressWarningReporter),
@@ -15709,12 +15258,12 @@ pub mod root {
         fn bindgen_test_layout_WasmModule() {
             assert_eq!(
                 ::std::mem::size_of::<WasmModule>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(WasmModule))
             );
             assert_eq!(
                 ::std::mem::align_of::<WasmModule>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(WasmModule))
             );
         }
@@ -15770,12 +15319,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<TranscodeSource>(),
-                32usize,
+                16usize,
                 concat!("Size of: ", stringify!(TranscodeSource))
             );
             assert_eq!(
                 ::std::mem::align_of::<TranscodeSource>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(TranscodeSource))
             );
             assert_eq!(
@@ -15790,7 +15339,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).filename) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TranscodeSource),
@@ -15800,7 +15349,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).lineno) as usize - ptr as usize },
-                24usize,
+                12usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(TranscodeSource),
@@ -15809,6 +15358,7 @@ pub mod root {
                 )
             );
         }
+        pub type TranscodeSources = u8;
         #[repr(u8)]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
         pub enum TranscodeResult {
@@ -15852,12 +15402,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<InstantiationStorage>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(InstantiationStorage))
             );
             assert_eq!(
                 ::std::mem::align_of::<InstantiationStorage>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(InstantiationStorage))
             );
             assert_eq!(
@@ -16012,10 +15562,6 @@ pub mod root {
                 token: *mut root::JS::OffThreadToken,
             );
         }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS22IsLargeArrayBufferViewEP8JSObject"]
-            pub fn IsLargeArrayBufferView(obj: *mut root::JSObject) -> bool;
-        }
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
         pub struct ArrayBufferOrView {
@@ -16029,12 +15575,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ArrayBufferOrView>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(ArrayBufferOrView))
             );
             assert_eq!(
                 ::std::mem::align_of::<ArrayBufferOrView>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ArrayBufferOrView))
             );
             assert_eq!(
@@ -16053,24 +15599,16 @@ pub mod root {
         pub struct ArrayBuffer {
             pub _base: root::JS::ArrayBufferOrView,
         }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS11ArrayBuffer13UnsharedClassE"]
-            pub static ArrayBuffer_UnsharedClass: *const root::JSClass;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS11ArrayBuffer11SharedClassE"]
-            pub static ArrayBuffer_SharedClass: *const root::JSClass;
-        }
         #[test]
         fn bindgen_test_layout_ArrayBuffer() {
             assert_eq!(
                 ::std::mem::size_of::<ArrayBuffer>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(ArrayBuffer))
             );
             assert_eq!(
                 ::std::mem::align_of::<ArrayBuffer>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ArrayBuffer))
             );
         }
@@ -16083,12 +15621,12 @@ pub mod root {
         fn bindgen_test_layout_ArrayBufferView() {
             assert_eq!(
                 ::std::mem::size_of::<ArrayBufferView>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(ArrayBufferView))
             );
             assert_eq!(
                 ::std::mem::align_of::<ArrayBufferView>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ArrayBufferView))
             );
         }
@@ -16097,20 +15635,16 @@ pub mod root {
         pub struct DataView {
             pub _base: root::JS::ArrayBufferView,
         }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS8DataView8ClassPtrE"]
-            pub static DataView_ClassPtr: *const root::JSClass;
-        }
         #[test]
         fn bindgen_test_layout_DataView() {
             assert_eq!(
                 ::std::mem::size_of::<DataView>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(DataView))
             );
             assert_eq!(
                 ::std::mem::align_of::<DataView>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(DataView))
             );
         }
@@ -16119,39 +15653,31 @@ pub mod root {
         pub struct TypedArray_base {
             pub _base: root::JS::ArrayBufferView,
         }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS15TypedArray_base7classesE"]
-            pub static TypedArray_base_classes: *const root::JSClass;
-        }
         #[test]
         fn bindgen_test_layout_TypedArray_base() {
             assert_eq!(
                 ::std::mem::size_of::<TypedArray_base>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(TypedArray_base))
             );
             assert_eq!(
                 ::std::mem::align_of::<TypedArray_base>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(TypedArray_base))
             );
         }
         pub type TypedArray_DataType = root::JS::detail::ExternalTypeOf_t;
-        extern "C" {
-            #[link_name = "\u{1}Scalar"]
-            pub static TypedArray_Scalar: root::JS::Scalar::Type;
-        }
-        pub type Int8Array = u64;
-        pub type Uint8Array = u64;
-        pub type Int16Array = u64;
-        pub type Uint16Array = u64;
-        pub type Int32Array = u64;
-        pub type Uint32Array = u64;
-        pub type Float32Array = u64;
-        pub type Float64Array = u64;
-        pub type Uint8ClampedArray = u64;
-        pub type BigInt64Array = u64;
-        pub type BigUint64Array = u64;
+        pub type Int8Array = u32;
+        pub type Uint8Array = u32;
+        pub type Int16Array = u32;
+        pub type Uint16Array = u32;
+        pub type Int32Array = u32;
+        pub type Uint32Array = u32;
+        pub type Float32Array = u32;
+        pub type Float64Array = u32;
+        pub type Uint8ClampedArray = u32;
+        pub type BigInt64Array = u32;
+        pub type BigUint64Array = u32;
         #[repr(C)]
         pub struct ExpandoAndGeneration {
             pub expando: root::JS::Heap<root::JS::Value>,
@@ -16210,14 +15736,6 @@ pub mod root {
                 arg3: root::JS::Handle<root::JS::PropertyKey>,
             ) -> root::JS::DOMProxyShadowsResult,
         >;
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS22SetDOMProxyInformationEPKvPFNS_21DOMProxyShadowsResultEP9JSContextNS_6HandleIP8JSObjectEENS5_INS_11PropertyKeyEEEES1_"]
-            pub fn SetDOMProxyInformation(
-                domProxyHandlerFamily: *const ::std::os::raw::c_void,
-                domProxyShadowsCheck: root::JS::DOMProxyShadowsCheck,
-                domRemoteProxyHandlerFamily: *const ::std::os::raw::c_void,
-            );
-        }
         pub type GCVector_ElementType<T> = T;
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
@@ -16250,12 +15768,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<HandleValueArray>(),
-                16usize,
+                8usize,
                 concat!("Size of: ", stringify!(HandleValueArray))
             );
             assert_eq!(
                 ::std::mem::align_of::<HandleValueArray>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(HandleValueArray))
             );
             assert_eq!(
@@ -16270,7 +15788,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).elements_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(HandleValueArray),
@@ -16434,84 +15952,6 @@ pub mod root {
             NO_REASON = 99,
             NUM_REASONS = 100,
         }
-        extern "C" {
-            #[doc = " Get a statically allocated C string explaining the given GC reason."]
-            #[link_name = "\u{1}_ZN2JS15ExplainGCReasonENS_8GCReasonE"]
-            pub fn ExplainGCReason(reason: root::JS::GCReason) -> *const ::std::os::raw::c_char;
-        }
-        extern "C" {
-            #[doc = " Return true if the GC reason is internal to the JS engine."]
-            #[link_name = "\u{1}_ZN2JS16InternalGCReasonENS_8GCReasonE"]
-            pub fn InternalGCReason(reason: root::JS::GCReason) -> bool;
-        }
-        extern "C" {
-            #[doc = " Schedule the given zone to be collected as part of the next GC."]
-            #[link_name = "\u{1}_ZN2JS16PrepareZoneForGCEP9JSContextPNS_4ZoneE"]
-            pub fn PrepareZoneForGC(cx: *mut root::JSContext, zone: *mut root::JS::Zone);
-        }
-        extern "C" {
-            #[doc = " Schedule all zones to be collected in the next GC."]
-            #[link_name = "\u{1}_ZN2JS16PrepareForFullGCEP9JSContext"]
-            pub fn PrepareForFullGC(cx: *mut root::JSContext);
-        }
-        extern "C" {
-            #[doc = " When performing an incremental GC, the zones that were selected for the\n previous incremental slice must be selected in subsequent slices as well.\n This function selects those slices automatically."]
-            #[link_name = "\u{1}_ZN2JS23PrepareForIncrementalGCEP9JSContext"]
-            pub fn PrepareForIncrementalGC(cx: *mut root::JSContext);
-        }
-        extern "C" {
-            #[doc = " Returns true if any zone in the system has been scheduled for GC with one of\n the functions above or by the JS engine."]
-            #[link_name = "\u{1}_ZN2JS13IsGCScheduledEP9JSContext"]
-            pub fn IsGCScheduled(cx: *mut root::JSContext) -> bool;
-        }
-        extern "C" {
-            #[doc = " Undoes the effect of the Prepare methods above. The given zone will not be\n collected in the next GC."]
-            #[link_name = "\u{1}_ZN2JS13SkipZoneForGCEP9JSContextPNS_4ZoneE"]
-            pub fn SkipZoneForGC(cx: *mut root::JSContext, zone: *mut root::JS::Zone);
-        }
-        extern "C" {
-            #[doc = " Performs a non-incremental collection of all selected zones."]
-            #[link_name = "\u{1}_ZN2JS16NonIncrementalGCEP9JSContextNS_9GCOptionsENS_8GCReasonE"]
-            pub fn NonIncrementalGC(
-                cx: *mut root::JSContext,
-                options: root::JS::GCOptions,
-                reason: root::JS::GCReason,
-            );
-        }
-        extern "C" {
-            #[doc = " Begin an incremental collection and perform one slice worth of work. When\n this function returns, the collection may not be complete.\n IncrementalGCSlice() must be called repeatedly until\n !IsIncrementalGCInProgress(cx).\n\n Note: SpiderMonkey's GC is not realtime. Slices in practice may be longer or\n       shorter than the requested interval."]
-            #[link_name = "\u{1}_ZN2JS18StartIncrementalGCEP9JSContextNS_9GCOptionsENS_8GCReasonERKN2js11SliceBudgetE"]
-            pub fn StartIncrementalGC(
-                cx: *mut root::JSContext,
-                options: root::JS::GCOptions,
-                reason: root::JS::GCReason,
-                budget: *const root::js::SliceBudget,
-            );
-        }
-        extern "C" {
-            #[doc = " Perform a slice of an ongoing incremental collection. When this function\n returns, the collection may not be complete. It must be called repeatedly\n until !IsIncrementalGCInProgress(cx).\n\n Note: SpiderMonkey's GC is not realtime. Slices in practice may be longer or\n       shorter than the requested interval."]
-            #[link_name = "\u{1}_ZN2JS18IncrementalGCSliceEP9JSContextNS_8GCReasonERKN2js11SliceBudgetE"]
-            pub fn IncrementalGCSlice(
-                cx: *mut root::JSContext,
-                reason: root::JS::GCReason,
-                budget: *const root::js::SliceBudget,
-            );
-        }
-        extern "C" {
-            #[doc = " Return whether an incremental GC has work to do on the foreground thread and\n would make progress if a slice was run now. If this returns false then the GC\n is waiting for background threads to finish their work and a slice started\n now would return immediately."]
-            #[link_name = "\u{1}_ZN2JS30IncrementalGCHasForegroundWorkEP9JSContext"]
-            pub fn IncrementalGCHasForegroundWork(cx: *mut root::JSContext) -> bool;
-        }
-        extern "C" {
-            #[doc = " If IsIncrementalGCInProgress(cx), this call finishes the ongoing collection\n by performing an arbitrarily long slice. If !IsIncrementalGCInProgress(cx),\n this is equivalent to NonIncrementalGC. When this function returns,\n IsIncrementalGCInProgress(cx) will always be false."]
-            #[link_name = "\u{1}_ZN2JS19FinishIncrementalGCEP9JSContextNS_8GCReasonE"]
-            pub fn FinishIncrementalGC(cx: *mut root::JSContext, reason: root::JS::GCReason);
-        }
-        extern "C" {
-            #[doc = " If IsIncrementalGCInProgress(cx), this call aborts the ongoing collection and\n performs whatever work needs to be done to return the collector to its idle\n state. This may take an arbitrarily long time. When this function returns,\n IsIncrementalGCInProgress(cx) will always be false."]
-            #[link_name = "\u{1}_ZN2JS18AbortIncrementalGCEP9JSContext"]
-            pub fn AbortIncrementalGC(cx: *mut root::JSContext);
-        }
         pub mod dbg {
             #[allow(unused_imports)]
             use self::super::super::super::root;
@@ -16521,7 +15961,7 @@ pub mod root {
                 pub majorGCNumber_: u64,
                 pub reason: *const ::std::os::raw::c_char,
                 pub nonincrementalReason: *const ::std::os::raw::c_char,
-                pub collections: [u64; 3usize],
+                pub collections: [u32; 3usize],
             }
             #[repr(C)]
             #[derive(Debug, Copy, Clone)]
@@ -16576,7 +16016,7 @@ pub mod root {
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<GarbageCollectionEvent>(),
-                    48usize,
+                    32usize,
                     concat!("Size of: ", stringify!(GarbageCollectionEvent))
                 );
                 assert_eq!(
@@ -16608,7 +16048,7 @@ pub mod root {
                     unsafe {
                         ::std::ptr::addr_of!((*ptr).nonincrementalReason) as usize - ptr as usize
                     },
-                    16usize,
+                    12usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(GarbageCollectionEvent),
@@ -16618,7 +16058,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).collections) as usize - ptr as usize },
-                    24usize,
+                    16usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(GarbageCollectionEvent),
@@ -16626,35 +16066,6 @@ pub mod root {
                         stringify!(collections)
                     )
                 );
-            }
-            extern "C" {
-                #[link_name = "\u{1}_ZN2JS3dbg23SetDebuggerMallocSizeOfEP9JSContextPFmPKvE"]
-                pub fn SetDebuggerMallocSizeOf(
-                    cx: *mut root::JSContext,
-                    mallocSizeOf: root::mozilla::MallocSizeOf,
-                );
-            }
-            extern "C" {
-                #[link_name = "\u{1}_ZN2JS3dbg23GetDebuggerMallocSizeOfEP9JSContext"]
-                pub fn GetDebuggerMallocSizeOf(
-                    cx: *mut root::JSContext,
-                ) -> root::mozilla::MallocSizeOf;
-            }
-            extern "C" {
-                #[link_name = "\u{1}_ZN2JS3dbg35FireOnGarbageCollectionHookRequiredEP9JSContext"]
-                pub fn FireOnGarbageCollectionHookRequired(cx: *mut root::JSContext) -> bool;
-            }
-            extern "C" {
-                #[link_name = "\u{1}_ZN2JS3dbg10IsDebuggerER8JSObject"]
-                pub fn IsDebugger(obj: *mut root::JSObject) -> bool;
-            }
-            extern "C" {
-                #[link_name = "\u{1}_ZN2JS3dbg18GetDebuggeeGlobalsEP9JSContextR8JSObjectNS_13MutableHandleINS_13StackGCVectorIPS3_N2js15TempAllocPolicyEEEEE"]
-                pub fn GetDebuggeeGlobals(
-                    cx: *mut root::JSContext,
-                    dbgObj: *mut root::JSObject,
-                    vector: root::JS::MutableHandleObjectVector,
-                ) -> bool;
             }
             #[repr(C)]
             pub struct AutoEntryMonitor__bindgen_vtable(::std::os::raw::c_void);
@@ -16672,17 +16083,17 @@ pub mod root {
                 let ptr = UNINIT.as_ptr();
                 assert_eq!(
                     ::std::mem::size_of::<AutoEntryMonitor>(),
-                    24usize,
+                    12usize,
                     concat!("Size of: ", stringify!(AutoEntryMonitor))
                 );
                 assert_eq!(
                     ::std::mem::align_of::<AutoEntryMonitor>(),
-                    8usize,
+                    4usize,
                     concat!("Alignment of ", stringify!(AutoEntryMonitor))
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).cx_) as usize - ptr as usize },
-                    8usize,
+                    4usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(AutoEntryMonitor),
@@ -16692,7 +16103,7 @@ pub mod root {
                 );
                 assert_eq!(
                     unsafe { ::std::ptr::addr_of!((*ptr).savedMonitor_) as usize - ptr as usize },
-                    16usize,
+                    8usize,
                     concat!(
                         "Offset of field: ",
                         stringify!(AutoEntryMonitor),
@@ -16774,10 +16185,6 @@ pub mod root {
                 )
             );
         }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS13MinorGcToJSONEP9JSContext"]
-            pub fn MinorGcToJSON(cx: *mut root::JSContext) -> root::JS::UniqueChars;
-        }
         pub type GCSliceCallback = ::std::option::Option<
             unsafe extern "C" fn(
                 cx: *mut root::JSContext,
@@ -16785,14 +16192,6 @@ pub mod root {
                 desc: *const root::JS::GCDescription,
             ),
         >;
-        extern "C" {
-            #[doc = " The GC slice callback is called at the beginning and end of each slice. This\n callback may be used for GC notifications as well as to perform additional\n marking."]
-            #[link_name = "\u{1}_ZN2JS18SetGCSliceCallbackEP9JSContextPFvS1_NS_10GCProgressERKNS_13GCDescriptionEE"]
-            pub fn SetGCSliceCallback(
-                cx: *mut root::JSContext,
-                callback: root::JS::GCSliceCallback,
-            ) -> root::JS::GCSliceCallback;
-        }
         #[repr(i32)]
         #[doc = " Describes the progress of an observed nursery collection."]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -16810,60 +16209,11 @@ pub mod root {
                 reason: root::JS::GCReason,
             ),
         >;
-        extern "C" {
-            #[doc = " Set the nursery collection callback for the given runtime. When set, it will\n be called at the start and end of every nursery collection."]
-            #[link_name = "\u{1}_ZN2JS30SetGCNurseryCollectionCallbackEP9JSContextPFvS1_NS_17GCNurseryProgressENS_8GCReasonEE"]
-            pub fn SetGCNurseryCollectionCallback(
-                cx: *mut root::JSContext,
-                callback: root::JS::GCNurseryCollectionCallback,
-            ) -> root::JS::GCNurseryCollectionCallback;
-        }
         pub type DoCycleCollectionCallback =
             ::std::option::Option<unsafe extern "C" fn(cx: *mut root::JSContext)>;
-        extern "C" {
-            #[doc = " The purge gray callback is called after any COMPARTMENT_REVIVED GC in which\n the majority of compartments have been marked gray."]
-            #[link_name = "\u{1}_ZN2JS28SetDoCycleCollectionCallbackEP9JSContextPFvS1_E"]
-            pub fn SetDoCycleCollectionCallback(
-                cx: *mut root::JSContext,
-                callback: root::JS::DoCycleCollectionCallback,
-            ) -> root::JS::DoCycleCollectionCallback;
-        }
         pub type CreateSliceBudgetCallback = ::std::option::Option<
             unsafe extern "C" fn(reason: root::JS::GCReason, millis: i64) -> root::js::SliceBudget,
         >;
-        extern "C" {
-            #[doc = " Called when generating a GC slice budget. It allows the embedding to control\n the duration of slices and potentially check an interrupt flag as well. For\n internally triggered GCs, the given millis parameter is the JS engine's\n internal scheduling decision, which the embedding can choose to ignore.\n (Otherwise, it will be the value that was passed to eg\n JS::IncrementalGCSlice())."]
-            #[link_name = "\u{1}_ZN2JS30SetCreateGCSliceBudgetCallbackEP9JSContextPFN2js11SliceBudgetENS_8GCReasonExE"]
-            pub fn SetCreateGCSliceBudgetCallback(
-                cx: *mut root::JSContext,
-                cb: root::JS::CreateSliceBudgetCallback,
-            );
-        }
-        extern "C" {
-            #[doc = " Incremental GC defaults to enabled, but may be disabled for testing or in\n embeddings that have not yet implemented barriers on their native classes.\n There is not currently a way to re-enable incremental GC once it has been\n disabled on the runtime."]
-            #[link_name = "\u{1}_ZN2JS20DisableIncrementalGCEP9JSContext"]
-            pub fn DisableIncrementalGC(cx: *mut root::JSContext);
-        }
-        extern "C" {
-            #[doc = " Returns true if incremental GC is enabled. Simply having incremental GC\n enabled is not sufficient to ensure incremental collections are happening.\n See the comment \"Incremental GC\" above for reasons why incremental GC may be\n suppressed. Inspection of the \"nonincremental reason\" field of the\n GCDescription returned by GCSliceCallback may help narrow down the cause if\n collections are not happening incrementally when expected."]
-            #[link_name = "\u{1}_ZN2JS22IsIncrementalGCEnabledEP9JSContext"]
-            pub fn IsIncrementalGCEnabled(cx: *mut root::JSContext) -> bool;
-        }
-        extern "C" {
-            #[doc = " Returns true while an incremental GC is ongoing, both when actively\n collecting and between slices."]
-            #[link_name = "\u{1}_ZN2JS25IsIncrementalGCInProgressEP9JSContext"]
-            pub fn IsIncrementalGCInProgress(cx: *mut root::JSContext) -> bool;
-        }
-        extern "C" {
-            #[doc = " Returns true while an incremental GC is ongoing, both when actively\n collecting and between slices."]
-            #[link_name = "\u{1}_ZN2JS25IsIncrementalGCInProgressEP9JSRuntime"]
-            pub fn IsIncrementalGCInProgress1(rt: *mut root::JSRuntime) -> bool;
-        }
-        extern "C" {
-            #[doc = " Returns true if the most recent GC ran incrementally."]
-            #[link_name = "\u{1}_ZN2JS16WasIncrementalGCEP9JSRuntime"]
-            pub fn WasIncrementalGC(rt: *mut root::JSRuntime) -> bool;
-        }
         #[doc = " Ensure that generational GC is disabled within some scope.\n\n This evicts the nursery and discards JIT code so it is not a lightweight\n operation."]
         #[repr(C)]
         #[derive(Debug)]
@@ -16877,12 +16227,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoDisableGenerationalGC>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(AutoDisableGenerationalGC))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoDisableGenerationalGC>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoDisableGenerationalGC))
             );
             assert_eq!(
@@ -16895,16 +16245,6 @@ pub mod root {
                     stringify!(cx)
                 )
             );
-        }
-        extern "C" {
-            #[doc = " Returns true if generational allocation and collection is currently enabled\n on the given runtime."]
-            #[link_name = "\u{1}_ZN2JS23IsGenerationalGCEnabledEP9JSRuntime"]
-            pub fn IsGenerationalGCEnabled(rt: *mut root::JSRuntime) -> bool;
-        }
-        extern "C" {
-            #[doc = " Enable or disable support for pretenuring allocations based on their\n allocation site."]
-            #[link_name = "\u{1}_ZN2JS30SetSiteBasedPretenuringEnabledEb"]
-            pub fn SetSiteBasedPretenuringEnabled(enable: bool);
         }
         #[doc = " Pass a subclass of this \"abstract\" class to callees to require that they\n never GC. Subclasses can use assertions or the hazard analysis to ensure no\n GC happens."]
         #[repr(C)]
@@ -16938,12 +16278,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoAssertNoGC>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(AutoAssertNoGC))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoAssertNoGC>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoAssertNoGC))
             );
             assert_eq!(
@@ -17012,47 +16352,6 @@ pub mod root {
                 concat!("Alignment of ", stringify!(AutoCheckCannotGC))
             );
         }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS17SetLowMemoryStateEP9JSContextb"]
-            pub fn SetLowMemoryState(cx: *mut root::JSContext, newState: bool);
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS20NotifyGCRootsRemovedEP9JSContext"]
-            pub fn NotifyGCRootsRemoved(cx: *mut root::JSContext);
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS16WantEagerMinorGCEP9JSRuntime"]
-            pub fn WantEagerMinorGC(rt: *mut root::JSRuntime) -> root::JS::GCReason;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS16WantEagerMajorGCEP9JSRuntime"]
-            pub fn WantEagerMajorGC(rt: *mut root::JSRuntime) -> root::JS::GCReason;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS25MaybeRunNurseryCollectionEP9JSRuntimeNS_8GCReasonE"]
-            pub fn MaybeRunNurseryCollection(rt: *mut root::JSRuntime, reason: root::JS::GCReason);
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS42SetHostCleanupFinalizationRegistryCallbackEP9JSContextPFvP10JSFunctionP8JSObjectPvES6_"]
-            pub fn SetHostCleanupFinalizationRegistryCallback(
-                cx: *mut root::JSContext,
-                cb: root::JSHostCleanupFinalizationRegistryCallback,
-                data: *mut ::std::os::raw::c_void,
-            );
-        }
-        extern "C" {
-            #[doc = " Clear kept alive objects in JS WeakRef.\n https://tc39.es/proposal-weakrefs/#sec-clear-kept-objects"]
-            #[link_name = "\u{1}_ZN2JS16ClearKeptObjectsEP9JSContext"]
-            pub fn ClearKeptObjects(cx: *mut root::JSContext);
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS21AtomsZoneIsCollectingEP9JSRuntime"]
-            pub fn AtomsZoneIsCollecting(runtime: *mut root::JSRuntime) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS11IsAtomsZoneEPNS_4ZoneE"]
-            pub fn IsAtomsZone(zone: *mut root::JS::Zone) -> bool;
-        }
         #[repr(C)]
         pub struct ErrorReportBuilder {
             pub reportp: *mut root::JSErrorReport,
@@ -17075,12 +16374,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ErrorReportBuilder>(),
-                144usize,
+                80usize,
                 concat!("Size of: ", stringify!(ErrorReportBuilder))
             );
             assert_eq!(
                 ::std::mem::align_of::<ErrorReportBuilder>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(ErrorReportBuilder))
             );
             assert_eq!(
@@ -17095,7 +16394,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).ownedReport) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ErrorReportBuilder),
@@ -17105,7 +16404,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).exnObject) as usize - ptr as usize },
-                96usize,
+                56usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ErrorReportBuilder),
@@ -17115,7 +16414,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).filename) as usize - ptr as usize },
-                120usize,
+                68usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ErrorReportBuilder),
@@ -17125,7 +16424,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).toStringResult_) as usize - ptr as usize },
-                128usize,
+                72usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ErrorReportBuilder),
@@ -17137,29 +16436,13 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).toStringResultBytesStorage) as usize - ptr as usize
                 },
-                136usize,
+                76usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ErrorReportBuilder),
                     "::",
                     stringify!(toStringResultBytesStorage)
                 )
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS10PrintErrorEP7__sFILEP13JSErrorReportb"]
-            pub fn PrintError(
-                file: *mut root::FILE,
-                report: *mut root::JSErrorReport,
-                reportWarnings: bool,
-            );
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS10PrintErrorEP7__sFILERKNS_18ErrorReportBuilderEb"]
-            pub fn PrintError1(
-                file: *mut root::FILE,
-                builder: *const root::JS::ErrorReportBuilder,
-                reportWarnings: bool,
             );
         }
         #[repr(u8)]
@@ -17189,7 +16472,7 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<ExceptionStack>(),
-                48usize,
+                32usize,
                 concat!("Size of: ", stringify!(ExceptionStack))
             );
             assert_eq!(
@@ -17209,7 +16492,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).stack_) as usize - ptr as usize },
-                24usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(ExceptionStack),
@@ -17233,7 +16516,7 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoSaveExceptionState>(),
-                64usize,
+                40usize,
                 concat!("Size of: ", stringify!(AutoSaveExceptionState))
             );
             assert_eq!(
@@ -17253,7 +16536,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).status) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoSaveExceptionState),
@@ -17263,7 +16546,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).exceptionValue) as usize - ptr as usize },
-                16usize,
+                8usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoSaveExceptionState),
@@ -17273,7 +16556,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).exceptionStack) as usize - ptr as usize },
-                40usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoSaveExceptionState),
@@ -17325,178 +16608,12 @@ pub mod root {
             FireOnNewGlobalHook = 0,
             DontFireOnNewGlobalHook = 1,
         }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS12NewMapObjectEP9JSContext"]
-            pub fn NewMapObject(cx: *mut root::JSContext) -> *mut root::JSObject;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS7MapSizeEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn MapSize(cx: *mut root::JSContext, obj: root::JS::HandleObject) -> u32;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS6MapGetEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEENS_13MutableHandleIS6_EE"]
-            pub fn MapGet(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                key: root::JS::HandleValue,
-                rval: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS6MapHasEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEEPb"]
-            pub fn MapHas(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                key: root::JS::HandleValue,
-                rval: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS6MapSetEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEES7_"]
-            pub fn MapSet(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                key: root::JS::HandleValue,
-                val: root::JS::HandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS9MapDeleteEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEEPb"]
-            pub fn MapDelete(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                key: root::JS::HandleValue,
-                rval: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS8MapClearEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn MapClear(cx: *mut root::JSContext, obj: root::JS::HandleObject) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS7MapKeysEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
-            pub fn MapKeys(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                rval: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS9MapValuesEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
-            pub fn MapValues(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                rval: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS10MapEntriesEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
-            pub fn MapEntries(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                rval: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS10MapForEachEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEES7_"]
-            pub fn MapForEach(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                callbackFn: root::JS::HandleValue,
-                thisVal: root::JS::HandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS12NewSetObjectEP9JSContext"]
-            pub fn NewSetObject(cx: *mut root::JSContext) -> *mut root::JSObject;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS7SetSizeEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn SetSize(cx: *mut root::JSContext, obj: root::JS::HandleObject) -> u32;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS6SetHasEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEEPb"]
-            pub fn SetHas(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                key: root::JS::HandleValue,
-                rval: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS9SetDeleteEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEEPb"]
-            pub fn SetDelete(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                key: root::JS::HandleValue,
-                rval: *mut bool,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS6SetAddEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEE"]
-            pub fn SetAdd(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                key: root::JS::HandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS8SetClearEP9JSContextNS_6HandleIP8JSObjectEE"]
-            pub fn SetClear(cx: *mut root::JSContext, obj: root::JS::HandleObject) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS7SetKeysEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
-            pub fn SetKeys(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                rval: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS9SetValuesEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
-            pub fn SetValues(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                rval: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS10SetEntriesEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
-            pub fn SetEntries(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                rval: root::JS::MutableHandleValue,
-            ) -> bool;
-        }
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS10SetForEachEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEES7_"]
-            pub fn SetForEach(
-                cx: *mut root::JSContext,
-                obj: root::JS::HandleObject,
-                callbackFn: root::JS::HandleValue,
-                thisVal: root::JS::HandleValue,
-            ) -> bool;
-        }
         #[doc = " If a large allocation fails when calling pod_{calloc,realloc}CanGC, the JS\n engine may call the large-allocation-failure callback, if set, to allow the\n embedding to flush caches, possibly perform shrinking GCs, etc. to make some\n room. The allocation will then be retried (and may still fail.) This callback\n can be called on any thread and must be set at most once in a process."]
         pub type LargeAllocationFailureCallback = ::std::option::Option<unsafe extern "C" fn()>;
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS40SetProcessLargeAllocationFailureCallbackEPFvvE"]
-            pub fn SetProcessLargeAllocationFailureCallback(
-                afc: root::JS::LargeAllocationFailureCallback,
-            );
-        }
         #[doc = " Unlike the error reporter, which is only called if the exception for an OOM\n bubbles up and is not caught, the OutOfMemoryCallback is called immediately\n at the OOM site to allow the embedding to capture the current state of heap\n allocation before anything is freed. If the large-allocation-failure callback\n is called at all (not all allocation sites call the large-allocation-failure\n callback on failure), it is called before the out-of-memory callback; the\n out-of-memory callback is only called if the allocation still fails after the\n large-allocation-failure callback has returned."]
         pub type OutOfMemoryCallback = ::std::option::Option<
             unsafe extern "C" fn(arg1: *mut root::JSContext, arg2: *mut ::std::os::raw::c_void),
         >;
-        extern "C" {
-            #[link_name = "\u{1}_ZN2JS22SetOutOfMemoryCallbackEP9JSContextPFvS1_PvES2_"]
-            pub fn SetOutOfMemoryCallback(
-                cx: *mut root::JSContext,
-                cb: root::JS::OutOfMemoryCallback,
-                data: *mut ::std::os::raw::c_void,
-            );
-        }
         #[repr(u8)]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
         pub enum MemoryUse {
@@ -17637,12 +16754,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<RealmCreationOptions__bindgen_ty_1>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(RealmCreationOptions__bindgen_ty_1))
             );
             assert_eq!(
                 ::std::mem::align_of::<RealmCreationOptions__bindgen_ty_1>(),
-                8usize,
+                4usize,
                 concat!(
                     "Alignment of ",
                     stringify!(RealmCreationOptions__bindgen_ty_1)
@@ -17676,7 +16793,7 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<RealmCreationOptions>(),
-                56usize,
+                48usize,
                 concat!("Size of: ", stringify!(RealmCreationOptions))
             );
             assert_eq!(
@@ -17696,7 +16813,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).compSpec_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17706,7 +16823,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).profilerRealmID_) as usize - ptr as usize },
-                24usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17716,7 +16833,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).weakRefs_) as usize - ptr as usize },
-                32usize,
+                24usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17728,7 +16845,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).invisibleToDebugger_) as usize - ptr as usize
                 },
-                36usize,
+                28usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17738,7 +16855,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).preserveJitCode_) as usize - ptr as usize },
-                37usize,
+                29usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17750,7 +16867,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).sharedMemoryAndAtomics_) as usize - ptr as usize
                 },
-                38usize,
+                30usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17763,7 +16880,7 @@ pub mod root {
                     ::std::ptr::addr_of!((*ptr).defineSharedArrayBufferConstructor_) as usize
                         - ptr as usize
                 },
-                39usize,
+                31usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17773,7 +16890,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).coopAndCoep_) as usize - ptr as usize },
-                40usize,
+                32usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17783,7 +16900,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).streams_) as usize - ptr as usize },
-                41usize,
+                33usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17793,7 +16910,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).toSource_) as usize - ptr as usize },
-                42usize,
+                34usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17805,7 +16922,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).propertyErrorMessageFix_) as usize - ptr as usize
                 },
-                43usize,
+                35usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17815,7 +16932,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).iteratorHelpers_) as usize - ptr as usize },
-                44usize,
+                36usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17825,7 +16942,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).shadowRealms_) as usize - ptr as usize },
-                45usize,
+                37usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17835,7 +16952,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).arrayGrouping_) as usize - ptr as usize },
-                46usize,
+                38usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17847,7 +16964,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).wellFormedUnicodeStrings_) as usize - ptr as usize
                 },
-                47usize,
+                39usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17857,7 +16974,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).arrayFromAsync_) as usize - ptr as usize },
-                48usize,
+                40usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17867,7 +16984,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).changeArrayByCopy_) as usize - ptr as usize },
-                49usize,
+                41usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17877,7 +16994,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).secureContext_) as usize - ptr as usize },
-                50usize,
+                42usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17887,7 +17004,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).freezeBuiltins_) as usize - ptr as usize },
-                51usize,
+                43usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17897,7 +17014,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).forceUTC_) as usize - ptr as usize },
-                52usize,
+                44usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -17907,7 +17024,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).alwaysUseFdlibm_) as usize - ptr as usize },
-                53usize,
+                45usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmCreationOptions),
@@ -18021,7 +17138,7 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<RealmOptions>(),
-                64usize,
+                56usize,
                 concat!("Size of: ", stringify!(RealmOptions))
             );
             assert_eq!(
@@ -18041,7 +17158,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).behaviors_) as usize - ptr as usize },
-                56usize,
+                48usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(RealmOptions),
@@ -18115,12 +17232,12 @@ pub mod root {
         fn bindgen_test_layout_OptimizedEncodingListener() {
             assert_eq!(
                 ::std::mem::size_of::<OptimizedEncodingListener>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(OptimizedEncodingListener))
             );
             assert_eq!(
                 ::std::mem::align_of::<OptimizedEncodingListener>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(OptimizedEncodingListener))
             );
         }
@@ -18135,12 +17252,12 @@ pub mod root {
         fn bindgen_test_layout_StreamConsumer() {
             assert_eq!(
                 ::std::mem::size_of::<StreamConsumer>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(StreamConsumer))
             );
             assert_eq!(
                 ::std::mem::align_of::<StreamConsumer>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(StreamConsumer))
             );
         }
@@ -18439,12 +17556,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoSetAsyncStackForNewCalls>(),
-                48usize,
+                24usize,
                 concat!("Size of: ", stringify!(AutoSetAsyncStackForNewCalls))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoSetAsyncStackForNewCalls>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoSetAsyncStackForNewCalls))
             );
             assert_eq!(
@@ -18459,7 +17576,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).oldAsyncStack) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoSetAsyncStackForNewCalls),
@@ -18469,7 +17586,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).oldAsyncCause) as usize - ptr as usize },
-                32usize,
+                16usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoSetAsyncStackForNewCalls),
@@ -18481,7 +17598,7 @@ pub mod root {
                 unsafe {
                     ::std::ptr::addr_of!((*ptr).oldAsyncCallIsExplicit) as usize - ptr as usize
                 },
-                40usize,
+                20usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoSetAsyncStackForNewCalls),
@@ -18514,7 +17631,7 @@ pub mod root {
         #[derive(Debug)]
         pub struct AutoFilename {
             pub ss_: *mut root::js::ScriptSource,
-            pub filename_: [u64; 2usize],
+            pub filename_: [u32; 2usize],
         }
         #[test]
         fn bindgen_test_layout_AutoFilename() {
@@ -18522,12 +17639,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoFilename>(),
-                24usize,
+                12usize,
                 concat!("Size of: ", stringify!(AutoFilename))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoFilename>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoFilename))
             );
             assert_eq!(
@@ -18542,7 +17659,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).filename_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(AutoFilename),
@@ -18586,12 +17703,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<AutoHideScriptedCaller>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(AutoHideScriptedCaller))
             );
             assert_eq!(
                 ::std::mem::align_of::<AutoHideScriptedCaller>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(AutoHideScriptedCaller))
             );
             assert_eq!(
@@ -18668,12 +17785,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<CallArgs>(),
-                16usize,
+                12usize,
                 concat!("Size of: ", stringify!(CallArgs))
             );
             assert_eq!(
                 ::std::mem::align_of::<CallArgs>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(CallArgs))
             );
             assert_eq!(
@@ -18688,7 +17805,7 @@ pub mod root {
             );
             assert_eq!(
                 unsafe { ::std::ptr::addr_of!((*ptr).argc_) as usize - ptr as usize },
-                8usize,
+                4usize,
                 concat!(
                     "Offset of field: ",
                     stringify!(CallArgs),
@@ -18752,12 +17869,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<MutableHandleIdVector>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(MutableHandleIdVector))
             );
             assert_eq!(
                 ::std::mem::align_of::<MutableHandleIdVector>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(MutableHandleIdVector))
             );
             assert_eq!(
@@ -18784,12 +17901,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<HandleObjectVector>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(HandleObjectVector))
             );
             assert_eq!(
                 ::std::mem::align_of::<HandleObjectVector>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(HandleObjectVector))
             );
             assert_eq!(
@@ -18816,12 +17933,12 @@ pub mod root {
             let ptr = UNINIT.as_ptr();
             assert_eq!(
                 ::std::mem::size_of::<MutableHandleObjectVector>(),
-                8usize,
+                4usize,
                 concat!("Size of: ", stringify!(MutableHandleObjectVector))
             );
             assert_eq!(
                 ::std::mem::align_of::<MutableHandleObjectVector>(),
-                8usize,
+                4usize,
                 concat!("Alignment of ", stringify!(MutableHandleObjectVector))
             );
             assert_eq!(
@@ -18856,6 +17973,14 @@ pub mod root {
         }
     }
     pub type jsid = root::JS::PropertyKey;
+    pub mod __pstl {
+        #[allow(unused_imports)]
+        use self::super::super::root;
+        pub mod execution {
+            #[allow(unused_imports)]
+            use self::super::super::super::root;
+        }
+    }
     #[doc = " already_AddRefed cooperates with reference counting smart pointers to enable\n you to assign in a pointer _without_ |AddRef|ing it.  You might want to use\n this as a return type from a function that returns an already |AddRef|ed\n pointer.\n\n TODO Move already_AddRefed to namespace mozilla.  This has not yet been done\n because of the sheer number of usages of already_AddRefed.\n\n When should you use already_AddRefed<>?\n * Ensure a consumer takes ownership of a reference\n * Pass ownership without calling AddRef/Release (sometimes required in\n   off-main-thread code)\n * The ref pointer type you're using doesn't support move construction\n\n Otherwise, use std::move(RefPtr/nsCOMPtr/etc)."]
     #[repr(C)]
     #[derive(Debug)]
@@ -18971,43 +18096,26 @@ pub mod root {
         JSProto_AsyncFunction = 61,
         JSProto_GeneratorFunction = 62,
         JSProto_AsyncGeneratorFunction = 63,
-        JSProto_WebAssembly = 64,
-        JSProto_WasmModule = 65,
-        JSProto_WasmInstance = 66,
-        JSProto_WasmMemory = 67,
-        JSProto_WasmTable = 68,
-        JSProto_WasmGlobal = 69,
-        JSProto_WasmTag = 70,
-        JSProto_WasmFunction = 71,
-        JSProto_WasmException = 72,
-        JSProto_FinalizationRegistry = 73,
-        JSProto_WeakRef = 74,
-        JSProto_Iterator = 75,
-        JSProto_AsyncIterator = 76,
-        JSProto_Temporal = 77,
-        JSProto_Calendar = 78,
-        JSProto_Duration = 79,
-        JSProto_Instant = 80,
-        JSProto_PlainDate = 81,
-        JSProto_PlainDateTime = 82,
-        JSProto_PlainMonthDay = 83,
-        JSProto_PlainYearMonth = 84,
-        JSProto_PlainTime = 85,
-        JSProto_TemporalNow = 86,
-        JSProto_TimeZone = 87,
-        JSProto_ZonedDateTime = 88,
-        JSProto_ReadableStream = 89,
-        JSProto_ReadableStreamBYOBReader = 90,
-        JSProto_ReadableStreamBYOBRequest = 91,
-        JSProto_ReadableStreamDefaultReader = 92,
-        JSProto_ReadableStreamDefaultController = 93,
-        JSProto_ReadableByteStreamController = 94,
-        JSProto_WritableStream = 95,
-        JSProto_WritableStreamDefaultController = 96,
-        JSProto_WritableStreamDefaultWriter = 97,
-        JSProto_ByteLengthQueuingStrategy = 98,
-        JSProto_CountQueuingStrategy = 99,
-        JSProto_LIMIT = 100,
+        JSProto_ReadableStream = 64,
+        JSProto_ReadableStreamDefaultReader = 65,
+        JSProto_ReadableStreamDefaultController = 66,
+        JSProto_ReadableByteStreamController = 67,
+        JSProto_ByteLengthQueuingStrategy = 68,
+        JSProto_CountQueuingStrategy = 69,
+        JSProto_WebAssembly = 70,
+        JSProto_WasmModule = 71,
+        JSProto_WasmInstance = 72,
+        JSProto_WasmMemory = 73,
+        JSProto_WasmTable = 74,
+        JSProto_WasmGlobal = 75,
+        JSProto_WasmTag = 76,
+        JSProto_WasmFunction = 77,
+        JSProto_WasmException = 78,
+        JSProto_FinalizationRegistry = 79,
+        JSProto_WeakRef = 80,
+        JSProto_Iterator = 81,
+        JSProto_AsyncIterator = 82,
+        JSProto_LIMIT = 83,
     }
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
@@ -19057,17 +18165,17 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSTracer>(),
-            48usize,
+            28usize,
             concat!("Size of: ", stringify!(JSTracer))
         );
         assert_eq!(
             ::std::mem::align_of::<JSTracer>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSTracer))
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).runtime_) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSTracer),
@@ -19077,7 +18185,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).kind_) as usize - ptr as usize },
-            16usize,
+            8usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSTracer),
@@ -19087,7 +18195,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).options_) as usize - ptr as usize },
-            20usize,
+            12usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSTracer),
@@ -19097,7 +18205,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).context_) as usize - ptr as usize },
-            32usize,
+            20usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSTracer),
@@ -19110,7 +18218,7 @@ pub mod root {
     #[derive(Debug)]
     pub struct ProfilingStack {
         pub capacity: u32,
-        pub frames: u64,
+        pub frames: u32,
         pub stackPointer: u32,
     }
     #[test]
@@ -19119,12 +18227,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<ProfilingStack>(),
-            24usize,
+            12usize,
             concat!("Size of: ", stringify!(ProfilingStack))
         );
         assert_eq!(
             ::std::mem::align_of::<ProfilingStack>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(ProfilingStack))
         );
         assert_eq!(
@@ -19139,7 +18247,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).frames) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(ProfilingStack),
@@ -19149,7 +18257,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).stackPointer) as usize - ptr as usize },
-            16usize,
+            8usize,
             concat!(
                 "Offset of field: ",
                 stringify!(ProfilingStack),
@@ -19170,12 +18278,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSAutoRealm>(),
-            16usize,
+            8usize,
             concat!("Size of: ", stringify!(JSAutoRealm))
         );
         assert_eq!(
             ::std::mem::align_of::<JSAutoRealm>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSAutoRealm))
         );
         assert_eq!(
@@ -19190,7 +18298,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).oldRealm_) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSAutoRealm),
@@ -19212,12 +18320,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSAutoNullableRealm>(),
-            16usize,
+            8usize,
             concat!("Size of: ", stringify!(JSAutoNullableRealm))
         );
         assert_eq!(
             ::std::mem::align_of::<JSAutoNullableRealm>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSAutoNullableRealm))
         );
         assert_eq!(
@@ -19232,7 +18340,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).oldRealm_) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSAutoNullableRealm),
@@ -19255,17 +18363,17 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSPrincipals>(),
-            16usize,
+            8usize,
             concat!("Size of: ", stringify!(JSPrincipals))
         );
         assert_eq!(
             ::std::mem::align_of::<JSPrincipals>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSPrincipals))
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).refcount) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSPrincipals),
@@ -19308,12 +18416,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSSecurityCallbacks>(),
-            16usize,
+            8usize,
             concat!("Size of: ", stringify!(JSSecurityCallbacks))
         );
         assert_eq!(
             ::std::mem::align_of::<JSSecurityCallbacks>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSSecurityCallbacks))
         );
         assert_eq!(
@@ -19330,7 +18438,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).subsumes) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSSecurityCallbacks),
@@ -19452,32 +18560,17 @@ pub mod root {
     #[repr(u32)]
     #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
     pub enum JSValueTag {
-        JSVAL_TAG_MAX_DOUBLE = 131056,
-        JSVAL_TAG_INT32 = 131057,
-        JSVAL_TAG_UNDEFINED = 131059,
-        JSVAL_TAG_NULL = 131060,
-        JSVAL_TAG_BOOLEAN = 131058,
-        JSVAL_TAG_MAGIC = 131061,
-        JSVAL_TAG_STRING = 131062,
-        JSVAL_TAG_SYMBOL = 131063,
-        JSVAL_TAG_PRIVATE_GCTHING = 131064,
-        JSVAL_TAG_BIGINT = 131065,
-        JSVAL_TAG_OBJECT = 131068,
-    }
-    #[repr(u64)]
-    #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-    pub enum JSValueShiftedTag {
-        JSVAL_SHIFTED_TAG_MAX_DOUBLE = 18444492278190833663,
-        JSVAL_SHIFTED_TAG_INT32 = 18444633011384221696,
-        JSVAL_SHIFTED_TAG_UNDEFINED = 18444914486360932352,
-        JSVAL_SHIFTED_TAG_NULL = 18445055223849287680,
-        JSVAL_SHIFTED_TAG_BOOLEAN = 18444773748872577024,
-        JSVAL_SHIFTED_TAG_MAGIC = 18445195961337643008,
-        JSVAL_SHIFTED_TAG_STRING = 18445336698825998336,
-        JSVAL_SHIFTED_TAG_SYMBOL = 18445477436314353664,
-        JSVAL_SHIFTED_TAG_PRIVATE_GCTHING = 18445618173802708992,
-        JSVAL_SHIFTED_TAG_BIGINT = 18445758911291064320,
-        JSVAL_SHIFTED_TAG_OBJECT = 18446181123756130304,
+        JSVAL_TAG_CLEAR = 4294967168,
+        JSVAL_TAG_INT32 = 4294967169,
+        JSVAL_TAG_UNDEFINED = 4294967171,
+        JSVAL_TAG_NULL = 4294967172,
+        JSVAL_TAG_BOOLEAN = 4294967170,
+        JSVAL_TAG_MAGIC = 4294967173,
+        JSVAL_TAG_STRING = 4294967174,
+        JSVAL_TAG_SYMBOL = 4294967175,
+        JSVAL_TAG_PRIVATE_GCTHING = 4294967176,
+        JSVAL_TAG_BIGINT = 4294967177,
+        JSVAL_TAG_OBJECT = 4294967180,
     }
     #[repr(u32)]
     #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -19508,14 +18601,10 @@ pub mod root {
         JS_MISSING_ARGUMENTS = 11,
         #[doc = " for local use"]
         JS_GENERIC_MAGIC = 12,
-        #[doc = " Write records queued up in WritableStreamDefaultController.[[queue]] in the\n spec are either \"close\" (a String) or Record { [[chunk]]: chunk }, where\n chunk is an arbitrary user-provided (and therefore non-magic) value.\n Represent \"close\" the String as this magic value; represent Record records\n as the |chunk| value within each of them."]
-        JS_WRITABLESTREAM_CLOSE_RECORD = 13,
-        #[doc = " The ReadableStream pipe-to operation concludes with a \"finalize\" operation\n that accepts an optional |error| argument.  In certain cases that optional\n |error| must be stored in a handler function, for use after a promise has\n settled.  We represent the argument not being provided, in those cases,\n using this magic value."]
-        JS_READABLESTREAM_PIPETO_FINALIZE_WITHOUT_ERROR = 14,
         #[doc = " When an error object is created without the error cause argument, we set\n the error's cause slot to this magic value."]
-        JS_ERROR_WITHOUT_CAUSE = 15,
+        JS_ERROR_WITHOUT_CAUSE = 13,
         #[doc = " When an error object is created without the error cause argument, we set\n the error's cause slot to this magic value."]
-        JS_WHY_MAGIC_COUNT = 16,
+        JS_WHY_MAGIC_COUNT = 14,
     }
     pub type JS_ICUAllocFn = ::std::option::Option<
         unsafe extern "C" fn(
@@ -19616,30 +18705,6 @@ pub mod root {
             reviver: root::JS::Handle<root::JS::Value>,
             vp: root::JS::MutableHandle<root::JS::Value>,
         ) -> bool;
-    }
-    extern "C" {
-        #[doc = " DEPRECATED\n\n Allocate memory sufficient to contain the characters of |str| truncated to\n Latin-1 and a trailing null terminator, fill the memory with the characters\n interpreted in that manner plus the null terminator, and return a pointer to\n the memory.\n\n This function *loses information* when it copies the characters of |str| if\n |str| contains code units greater than 0xFF.  Additionally, users that\n depend on null-termination will misinterpret the copied characters if |str|\n contains any nulls.  Avoid using this function if possible, because it will\n eventually be removed."]
-        #[link_name = "\u{1}_Z23JS_EncodeStringToLatin1P9JSContextP8JSString"]
-        pub fn JS_EncodeStringToLatin1(
-            cx: *mut root::JSContext,
-            str_: *mut root::JSString,
-        ) -> root::JS::UniqueChars;
-    }
-    extern "C" {
-        #[doc = " DEPRECATED\n\n Same behavior as JS_EncodeStringToLatin1(), but encode into a UTF-8 string.\n\n This function *loses information* when it copies the characters of |str| if\n |str| contains invalid UTF-16: U+FFFD REPLACEMENT CHARACTER will be copied\n instead.\n\n The returned string is also subject to misinterpretation if |str| contains\n any nulls (which are faithfully transcribed into the returned string, but\n which will implicitly truncate the string if it's passed to functions that\n expect null-terminated strings).\n\n Avoid using this function if possible, because we'll remove it once we can\n devise a better API for the task."]
-        #[link_name = "\u{1}_Z21JS_EncodeStringToUTF8P9JSContextN2JS6HandleIP8JSStringEE"]
-        pub fn JS_EncodeStringToUTF8(
-            cx: *mut root::JSContext,
-            str_: root::JS::Handle<*mut root::JSString>,
-        ) -> root::JS::UniqueChars;
-    }
-    extern "C" {
-        #[doc = " DEPRECATED\n\n Same behavior as JS_EncodeStringToLatin1(), but encode into an ASCII string.\n\n This function asserts in debug mode that the input string contains only\n ASCII characters.\n\n The returned string is also subject to misinterpretation if |str| contains\n any nulls (which are faithfully transcribed into the returned string, but\n which will implicitly truncate the string if it's passed to functions that\n expect null-terminated strings).\n\n Avoid using this function if possible, because we'll remove it once we can\n devise a better API for the task."]
-        #[link_name = "\u{1}_Z22JS_EncodeStringToASCIIP9JSContextP8JSString"]
-        pub fn JS_EncodeStringToASCII(
-            cx: *mut root::JSContext,
-            str_: *mut root::JSString,
-        ) -> root::JS::UniqueChars;
     }
     pub type JSNative = ::std::option::Option<
         unsafe extern "C" fn(
@@ -19777,12 +18842,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSClassOps>(),
-            80usize,
+            40usize,
             concat!("Size of: ", stringify!(JSClassOps))
         );
         assert_eq!(
             ::std::mem::align_of::<JSClassOps>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSClassOps))
         );
         assert_eq!(
@@ -19797,7 +18862,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).delProperty) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClassOps),
@@ -19807,7 +18872,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).enumerate) as usize - ptr as usize },
-            16usize,
+            8usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClassOps),
@@ -19817,7 +18882,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).newEnumerate) as usize - ptr as usize },
-            24usize,
+            12usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClassOps),
@@ -19827,7 +18892,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).resolve) as usize - ptr as usize },
-            32usize,
+            16usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClassOps),
@@ -19837,7 +18902,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).mayResolve) as usize - ptr as usize },
-            40usize,
+            20usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClassOps),
@@ -19847,7 +18912,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).finalize) as usize - ptr as usize },
-            48usize,
+            24usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClassOps),
@@ -19857,7 +18922,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).call) as usize - ptr as usize },
-            56usize,
+            28usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClassOps),
@@ -19867,7 +18932,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).construct) as usize - ptr as usize },
-            64usize,
+            32usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClassOps),
@@ -19877,7 +18942,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).trace) as usize - ptr as usize },
-            72usize,
+            36usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClassOps),
@@ -19891,6 +18956,7 @@ pub mod root {
         pub static JS_NULL_CLASS_OPS: *const root::JSClassOps;
     }
     #[repr(C)]
+    #[repr(align(8))]
     #[derive(Debug, Copy, Clone)]
     pub struct JSClass {
         pub name: *const ::std::os::raw::c_char,
@@ -19900,14 +18966,13 @@ pub mod root {
         pub ext: *const root::js::ClassExtension,
         pub oOps: *const root::js::ObjectOps,
     }
-    pub const JSClass_NON_NATIVE: u32 = 262144;
     #[test]
     fn bindgen_test_layout_JSClass() {
         const UNINIT: ::std::mem::MaybeUninit<JSClass> = ::std::mem::MaybeUninit::uninit();
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSClass>(),
-            48usize,
+            24usize,
             concat!("Size of: ", stringify!(JSClass))
         );
         assert_eq!(
@@ -19927,7 +18992,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).flags) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClass),
@@ -19937,7 +19002,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).cOps) as usize - ptr as usize },
-            16usize,
+            8usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClass),
@@ -19947,7 +19012,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).spec) as usize - ptr as usize },
-            24usize,
+            12usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClass),
@@ -19957,7 +19022,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).ext) as usize - ptr as usize },
-            32usize,
+            16usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClass),
@@ -19967,7 +19032,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).oOps) as usize - ptr as usize },
-            40usize,
+            20usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSClass),
@@ -19998,12 +19063,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSNativeWrapper>(),
-            16usize,
+            8usize,
             concat!("Size of: ", stringify!(JSNativeWrapper))
         );
         assert_eq!(
             ::std::mem::align_of::<JSNativeWrapper>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSNativeWrapper))
         );
         assert_eq!(
@@ -20018,7 +19083,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).info) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSNativeWrapper),
@@ -20049,12 +19114,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSPropertySpec_SelfHostedWrapper>(),
-            16usize,
+            8usize,
             concat!("Size of: ", stringify!(JSPropertySpec_SelfHostedWrapper))
         );
         assert_eq!(
             ::std::mem::align_of::<JSPropertySpec_SelfHostedWrapper>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of ",
                 stringify!(JSPropertySpec_SelfHostedWrapper)
@@ -20072,7 +19137,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).funname) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSPropertySpec_SelfHostedWrapper),
@@ -20192,12 +19257,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSPropertySpec_Accessor>(),
-            16usize,
+            8usize,
             concat!("Size of: ", stringify!(JSPropertySpec_Accessor))
         );
         assert_eq!(
             ::std::mem::align_of::<JSPropertySpec_Accessor>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSPropertySpec_Accessor))
         );
         assert_eq!(
@@ -20240,7 +19305,7 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSPropertySpec_AccessorsOrValue_Accessors>(),
-            32usize,
+            16usize,
             concat!(
                 "Size of: ",
                 stringify!(JSPropertySpec_AccessorsOrValue_Accessors)
@@ -20248,7 +19313,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<JSPropertySpec_AccessorsOrValue_Accessors>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of ",
                 stringify!(JSPropertySpec_AccessorsOrValue_Accessors)
@@ -20266,7 +19331,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).setter) as usize - ptr as usize },
-            16usize,
+            8usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSPropertySpec_AccessorsOrValue_Accessors),
@@ -20282,7 +19347,7 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSPropertySpec_AccessorsOrValue>(),
-            32usize,
+            16usize,
             concat!("Size of: ", stringify!(JSPropertySpec_AccessorsOrValue))
         );
         assert_eq!(
@@ -20311,6 +19376,69 @@ pub mod root {
             )
         );
     }
+    extern "C" {
+        #[doc = " Call a function, passing a this-value and arguments. This is the C++\n equivalent of `rval = Reflect.apply(fun, obj, args)`.\n\n Implements: ES6 7.3.12 Call(F, V, [argumentsList]).\n Use this function to invoke the [[Call]] internal method."]
+        #[link_name = "\u{1}_Z20JS_CallFunctionValueP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_5ValueEEERKNS1_16HandleValueArrayENS1_13MutableHandleIS6_EE"]
+        pub fn JS_CallFunctionValue(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            fval: root::JS::Handle<root::JS::Value>,
+            args: *const root::JS::HandleValueArray,
+            rval: root::JS::MutableHandle<root::JS::Value>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z15JS_CallFunctionP9JSContextN2JS6HandleIP8JSObjectEENS2_IP10JSFunctionEERKNS1_16HandleValueArrayENS1_13MutableHandleINS1_5ValueEEE"]
+        pub fn JS_CallFunction(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            fun: root::JS::Handle<*mut root::JSFunction>,
+            args: *const root::JS::HandleValueArray,
+            rval: root::JS::MutableHandle<root::JS::Value>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Perform the method call `rval = obj[name](args)`."]
+        #[link_name = "\u{1}_Z19JS_CallFunctionNameP9JSContextN2JS6HandleIP8JSObjectEEPKcRKNS1_16HandleValueArrayENS1_13MutableHandleINS1_5ValueEEE"]
+        pub fn JS_CallFunctionName(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+            name: *const ::std::os::raw::c_char,
+            args: *const root::JS::HandleValueArray,
+            rval: root::JS::MutableHandle<root::JS::Value>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z13JS_NewContextjP9JSRuntime"]
+        pub fn JS_NewContext(
+            maxbytes: u32,
+            parentRuntime: *mut root::JSRuntime,
+        ) -> *mut root::JSContext;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z17JS_DestroyContextP9JSContext"]
+        pub fn JS_DestroyContext(cx: *mut root::JSContext);
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z20JS_GetContextPrivateP9JSContext"]
+        pub fn JS_GetContextPrivate(cx: *mut root::JSContext) -> *mut ::std::os::raw::c_void;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z20JS_SetContextPrivateP9JSContextPv"]
+        pub fn JS_SetContextPrivate(cx: *mut root::JSContext, data: *mut ::std::os::raw::c_void);
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_GetParentRuntimeP9JSContext"]
+        pub fn JS_GetParentRuntime(cx: *mut root::JSContext) -> *mut root::JSRuntime;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z13JS_GetRuntimeP9JSContext"]
+        pub fn JS_GetRuntime(cx: *mut root::JSContext) -> *mut root::JSRuntime;
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z18JS_SetFutexCanWaitP9JSContext"]
+        pub fn JS_SetFutexCanWait(cx: *mut root::JSContext);
+    }
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub union JSPropertySpec_Name {
@@ -20324,12 +19452,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSPropertySpec_Name>(),
-            8usize,
+            4usize,
             concat!("Size of: ", stringify!(JSPropertySpec_Name))
         );
         assert_eq!(
             ::std::mem::align_of::<JSPropertySpec_Name>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSPropertySpec_Name))
         );
         assert_eq!(
@@ -20366,7 +19494,7 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSPropertySpec>(),
-            48usize,
+            24usize,
             concat!("Size of: ", stringify!(JSPropertySpec))
         );
         assert_eq!(
@@ -20386,7 +19514,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).attributes_) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSPropertySpec),
@@ -20396,7 +19524,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).kind_) as usize - ptr as usize },
-            9usize,
+            5usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSPropertySpec),
@@ -20406,7 +19534,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).u) as usize - ptr as usize },
-            16usize,
+            8usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSPropertySpec),
@@ -20431,12 +19559,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSFunctionSpec>(),
-            40usize,
+            20usize,
             concat!("Size of: ", stringify!(JSFunctionSpec))
         );
         assert_eq!(
             ::std::mem::align_of::<JSFunctionSpec>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSFunctionSpec))
         );
         assert_eq!(
@@ -20451,7 +19579,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).call) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSFunctionSpec),
@@ -20461,7 +19589,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).nargs) as usize - ptr as usize },
-            24usize,
+            12usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSFunctionSpec),
@@ -20471,7 +19599,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).flags) as usize - ptr as usize },
-            26usize,
+            14usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSFunctionSpec),
@@ -20481,7 +19609,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).selfHostedName) as usize - ptr as usize },
-            32usize,
+            16usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSFunctionSpec),
@@ -20489,6 +19617,30 @@ pub mod root {
                 stringify!(selfHostedName)
             )
         );
+    }
+    extern "C" {
+        #[doc = " DEPRECATED\n\n Allocate memory sufficient to contain the characters of |str| truncated to\n Latin-1 and a trailing null terminator, fill the memory with the characters\n interpreted in that manner plus the null terminator, and return a pointer to\n the memory.\n\n This function *loses information* when it copies the characters of |str| if\n |str| contains code units greater than 0xFF.  Additionally, users that\n depend on null-termination will misinterpret the copied characters if |str|\n contains any nulls.  Avoid using this function if possible, because it will\n eventually be removed."]
+        #[link_name = "\u{1}_Z23JS_EncodeStringToLatin1P9JSContextP8JSString"]
+        pub fn JS_EncodeStringToLatin1(
+            cx: *mut root::JSContext,
+            str_: *mut root::JSString,
+        ) -> root::JS::UniqueChars;
+    }
+    extern "C" {
+        #[doc = " DEPRECATED\n\n Same behavior as JS_EncodeStringToLatin1(), but encode into a UTF-8 string.\n\n This function *loses information* when it copies the characters of |str| if\n |str| contains invalid UTF-16: U+FFFD REPLACEMENT CHARACTER will be copied\n instead.\n\n The returned string is also subject to misinterpretation if |str| contains\n any nulls (which are faithfully transcribed into the returned string, but\n which will implicitly truncate the string if it's passed to functions that\n expect null-terminated strings).\n\n Avoid using this function if possible, because we'll remove it once we can\n devise a better API for the task."]
+        #[link_name = "\u{1}_Z21JS_EncodeStringToUTF8P9JSContextN2JS6HandleIP8JSStringEE"]
+        pub fn JS_EncodeStringToUTF8(
+            cx: *mut root::JSContext,
+            str_: root::JS::Handle<*mut root::JSString>,
+        ) -> root::JS::UniqueChars;
+    }
+    extern "C" {
+        #[doc = " DEPRECATED\n\n Same behavior as JS_EncodeStringToLatin1(), but encode into an ASCII string.\n\n This function asserts in debug mode that the input string contains only\n ASCII characters.\n\n The returned string is also subject to misinterpretation if |str| contains\n any nulls (which are faithfully transcribed into the returned string, but\n which will implicitly truncate the string if it's passed to functions that\n expect null-terminated strings).\n\n Avoid using this function if possible, because we'll remove it once we can\n devise a better API for the task."]
+        #[link_name = "\u{1}_Z22JS_EncodeStringToASCIIP9JSContextP8JSString"]
+        pub fn JS_EncodeStringToASCII(
+            cx: *mut root::JSContext,
+            str_: *mut root::JSString,
+        ) -> root::JS::UniqueChars;
     }
     extern "C" {
         #[link_name = "\u{1}_Z17JS_GetEmptyStringP9JSContext"]
@@ -20858,12 +20010,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSStructuredCloneCallbacks>(),
-            64usize,
+            32usize,
             concat!("Size of: ", stringify!(JSStructuredCloneCallbacks))
         );
         assert_eq!(
             ::std::mem::align_of::<JSStructuredCloneCallbacks>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSStructuredCloneCallbacks))
         );
         assert_eq!(
@@ -20878,7 +20030,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).write) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneCallbacks),
@@ -20888,7 +20040,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).reportError) as usize - ptr as usize },
-            16usize,
+            8usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneCallbacks),
@@ -20898,7 +20050,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).readTransfer) as usize - ptr as usize },
-            24usize,
+            12usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneCallbacks),
@@ -20908,7 +20060,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).writeTransfer) as usize - ptr as usize },
-            32usize,
+            16usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneCallbacks),
@@ -20918,7 +20070,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).freeTransfer) as usize - ptr as usize },
-            40usize,
+            20usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneCallbacks),
@@ -20928,7 +20080,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).canTransfer) as usize - ptr as usize },
-            48usize,
+            24usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneCallbacks),
@@ -20938,7 +20090,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).sabCloned) as usize - ptr as usize },
-            56usize,
+            28usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneCallbacks),
@@ -20968,9 +20120,8 @@ pub mod root {
         pub ownTransferables_: root::OwnTransferablePolicy,
         pub refsHeld_: root::js::SharedArrayRawBufferRefs,
     }
-    pub type JSStructuredCloneData_BufferList = [u64; 9usize];
+    pub type JSStructuredCloneData_BufferList = [u32; 9usize];
     pub type JSStructuredCloneData_Iterator = root::IterImpl;
-    pub const JSStructuredCloneData_kStandardCapacity: usize = 4096;
     #[test]
     fn bindgen_test_layout_JSStructuredCloneData() {
         const UNINIT: ::std::mem::MaybeUninit<JSStructuredCloneData> =
@@ -20978,12 +20129,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSStructuredCloneData>(),
-            128usize,
+            64usize,
             concat!("Size of: ", stringify!(JSStructuredCloneData))
         );
         assert_eq!(
             ::std::mem::align_of::<JSStructuredCloneData>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSStructuredCloneData))
         );
         assert_eq!(
@@ -20998,7 +20149,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).scope_) as usize - ptr as usize },
-            72usize,
+            36usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneData),
@@ -21008,7 +20159,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).callbacks_) as usize - ptr as usize },
-            80usize,
+            40usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneData),
@@ -21018,7 +20169,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).closure_) as usize - ptr as usize },
-            88usize,
+            44usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneData),
@@ -21028,7 +20179,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).ownTransferables_) as usize - ptr as usize },
-            96usize,
+            48usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneData),
@@ -21038,7 +20189,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).refsHeld_) as usize - ptr as usize },
-            104usize,
+            52usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSStructuredCloneData),
@@ -21106,12 +20257,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSAutoStructuredCloneBuffer>(),
-            136usize,
+            68usize,
             concat!("Size of: ", stringify!(JSAutoStructuredCloneBuffer))
         );
         assert_eq!(
             ::std::mem::align_of::<JSAutoStructuredCloneBuffer>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSAutoStructuredCloneBuffer))
         );
         assert_eq!(
@@ -21126,7 +20277,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).version_) as usize - ptr as usize },
-            128usize,
+            64usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSAutoStructuredCloneBuffer),
@@ -21229,12 +20380,12 @@ pub mod root {
     fn bindgen_test_layout_JSJitGetterCallArgs() {
         assert_eq!(
             ::std::mem::size_of::<JSJitGetterCallArgs>(),
-            8usize,
+            4usize,
             concat!("Size of: ", stringify!(JSJitGetterCallArgs))
         );
         assert_eq!(
             ::std::mem::align_of::<JSJitGetterCallArgs>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSJitGetterCallArgs))
         );
     }
@@ -21248,16 +20399,16 @@ pub mod root {
     fn bindgen_test_layout_JSJitSetterCallArgs() {
         assert_eq!(
             ::std::mem::size_of::<JSJitSetterCallArgs>(),
-            8usize,
+            4usize,
             concat!("Size of: ", stringify!(JSJitSetterCallArgs))
         );
         assert_eq!(
             ::std::mem::align_of::<JSJitSetterCallArgs>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSJitSetterCallArgs))
         );
     }
-    pub type JSJitMethodCallArgs_Base = [u64; 2usize];
+    pub type JSJitMethodCallArgs_Base = [u32; 3usize];
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
     pub struct JSJitMethodCallArgsTraits {
@@ -21368,12 +20519,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSJitInfo__bindgen_ty_1>(),
-            8usize,
+            4usize,
             concat!("Size of: ", stringify!(JSJitInfo__bindgen_ty_1))
         );
         assert_eq!(
             ::std::mem::align_of::<JSJitInfo__bindgen_ty_1>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSJitInfo__bindgen_ty_1))
         );
         assert_eq!(
@@ -21522,12 +20673,12 @@ pub mod root {
     fn bindgen_test_layout_JSJitInfo() {
         assert_eq!(
             ::std::mem::size_of::<JSJitInfo>(),
-            16usize,
+            12usize,
             concat!("Size of: ", stringify!(JSJitInfo))
         );
         assert_eq!(
             ::std::mem::align_of::<JSJitInfo>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSJitInfo))
         );
     }
@@ -21714,12 +20865,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSTypedMethodJitInfo>(),
-            24usize,
+            16usize,
             concat!("Size of: ", stringify!(JSTypedMethodJitInfo))
         );
         assert_eq!(
             ::std::mem::align_of::<JSTypedMethodJitInfo>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSTypedMethodJitInfo))
         );
         assert_eq!(
@@ -21734,7 +20885,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).argTypes) as usize - ptr as usize },
-            16usize,
+            12usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSTypedMethodJitInfo),
@@ -21755,7 +20906,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z25JS_NewInt8ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
+        #[link_name = "\u{1}_Z25JS_NewInt8ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
         pub fn JS_NewInt8ArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
@@ -21775,7 +20926,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z26JS_NewUint8ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
+        #[link_name = "\u{1}_Z26JS_NewUint8ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
         pub fn JS_NewUint8ArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
@@ -21795,7 +20946,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z26JS_NewInt16ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
+        #[link_name = "\u{1}_Z26JS_NewInt16ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
         pub fn JS_NewInt16ArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
@@ -21816,7 +20967,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z27JS_NewUint16ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
+        #[link_name = "\u{1}_Z27JS_NewUint16ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
         pub fn JS_NewUint16ArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
@@ -21836,7 +20987,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z26JS_NewInt32ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
+        #[link_name = "\u{1}_Z26JS_NewInt32ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
         pub fn JS_NewInt32ArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
@@ -21857,7 +21008,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z27JS_NewUint32ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
+        #[link_name = "\u{1}_Z27JS_NewUint32ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
         pub fn JS_NewUint32ArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
@@ -21880,7 +21031,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z28JS_NewFloat32ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
+        #[link_name = "\u{1}_Z28JS_NewFloat32ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
         pub fn JS_NewFloat32ArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
@@ -21903,7 +21054,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z28JS_NewFloat64ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
+        #[link_name = "\u{1}_Z28JS_NewFloat64ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
         pub fn JS_NewFloat64ArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
@@ -21926,7 +21077,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z33JS_NewUint8ClampedArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
+        #[link_name = "\u{1}_Z33JS_NewUint8ClampedArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
         pub fn JS_NewUint8ClampedArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
@@ -21949,7 +21100,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z29JS_NewBigInt64ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
+        #[link_name = "\u{1}_Z29JS_NewBigInt64ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
         pub fn JS_NewBigInt64ArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
@@ -21972,7 +21123,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z30JS_NewBigUint64ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
+        #[link_name = "\u{1}_Z30JS_NewBigUint64ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
         pub fn JS_NewBigUint64ArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
@@ -22077,7 +21228,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z27JS_GetObjectAsBigInt64ArrayP8JSObjectPmPbPPx"]
+        #[link_name = "\u{1}_Z27JS_GetObjectAsBigInt64ArrayP8JSObjectPmPbPPl"]
         pub fn JS_GetObjectAsBigInt64Array(
             maybeWrapped: *mut root::JSObject,
             length: *mut usize,
@@ -22086,7 +21237,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z28JS_GetObjectAsBigUint64ArrayP8JSObjectPmPbPPy"]
+        #[link_name = "\u{1}_Z28JS_GetObjectAsBigUint64ArrayP8JSObjectPmPbPS1_"]
         pub fn JS_GetObjectAsBigUint64Array(
             maybeWrapped: *mut root::JSObject,
             length: *mut usize,
@@ -23050,69 +22201,6 @@ pub mod root {
         JSMSG_TEMPORAL_PARSER_YEAR_MONTH_CALENDAR_NOT_ISO8601 = 782,
         JSErr_Limit = 783,
     }
-    extern "C" {
-        #[doc = " Call a function, passing a this-value and arguments. This is the C++\n equivalent of `rval = Reflect.apply(fun, obj, args)`.\n\n Implements: ES6 7.3.12 Call(F, V, [argumentsList]).\n Use this function to invoke the [[Call]] internal method."]
-        #[link_name = "\u{1}_Z20JS_CallFunctionValueP9JSContextN2JS6HandleIP8JSObjectEENS2_INS1_5ValueEEERKNS1_16HandleValueArrayENS1_13MutableHandleIS6_EE"]
-        pub fn JS_CallFunctionValue(
-            cx: *mut root::JSContext,
-            obj: root::JS::Handle<*mut root::JSObject>,
-            fval: root::JS::Handle<root::JS::Value>,
-            args: *const root::JS::HandleValueArray,
-            rval: root::JS::MutableHandle<root::JS::Value>,
-        ) -> bool;
-    }
-    extern "C" {
-        #[link_name = "\u{1}_Z15JS_CallFunctionP9JSContextN2JS6HandleIP8JSObjectEENS2_IP10JSFunctionEERKNS1_16HandleValueArrayENS1_13MutableHandleINS1_5ValueEEE"]
-        pub fn JS_CallFunction(
-            cx: *mut root::JSContext,
-            obj: root::JS::Handle<*mut root::JSObject>,
-            fun: root::JS::Handle<*mut root::JSFunction>,
-            args: *const root::JS::HandleValueArray,
-            rval: root::JS::MutableHandle<root::JS::Value>,
-        ) -> bool;
-    }
-    extern "C" {
-        #[doc = " Perform the method call `rval = obj[name](args)`."]
-        #[link_name = "\u{1}_Z19JS_CallFunctionNameP9JSContextN2JS6HandleIP8JSObjectEEPKcRKNS1_16HandleValueArrayENS1_13MutableHandleINS1_5ValueEEE"]
-        pub fn JS_CallFunctionName(
-            cx: *mut root::JSContext,
-            obj: root::JS::Handle<*mut root::JSObject>,
-            name: *const ::std::os::raw::c_char,
-            args: *const root::JS::HandleValueArray,
-            rval: root::JS::MutableHandle<root::JS::Value>,
-        ) -> bool;
-    }
-    extern "C" {
-        #[link_name = "\u{1}_Z13JS_NewContextjP9JSRuntime"]
-        pub fn JS_NewContext(
-            maxbytes: u32,
-            parentRuntime: *mut root::JSRuntime,
-        ) -> *mut root::JSContext;
-    }
-    extern "C" {
-        #[link_name = "\u{1}_Z17JS_DestroyContextP9JSContext"]
-        pub fn JS_DestroyContext(cx: *mut root::JSContext);
-    }
-    extern "C" {
-        #[link_name = "\u{1}_Z20JS_GetContextPrivateP9JSContext"]
-        pub fn JS_GetContextPrivate(cx: *mut root::JSContext) -> *mut ::std::os::raw::c_void;
-    }
-    extern "C" {
-        #[link_name = "\u{1}_Z20JS_SetContextPrivateP9JSContextPv"]
-        pub fn JS_SetContextPrivate(cx: *mut root::JSContext, data: *mut ::std::os::raw::c_void);
-    }
-    extern "C" {
-        #[link_name = "\u{1}_Z19JS_GetParentRuntimeP9JSContext"]
-        pub fn JS_GetParentRuntime(cx: *mut root::JSContext) -> *mut root::JSRuntime;
-    }
-    extern "C" {
-        #[link_name = "\u{1}_Z13JS_GetRuntimeP9JSContext"]
-        pub fn JS_GetRuntime(cx: *mut root::JSContext) -> *mut root::JSRuntime;
-    }
-    extern "C" {
-        #[link_name = "\u{1}_Z18JS_SetFutexCanWaitP9JSContext"]
-        pub fn JS_SetFutexCanWait(cx: *mut root::JSContext);
-    }
     #[repr(u32)]
     #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
     pub enum JSGCParamKey {
@@ -23276,12 +22364,12 @@ pub mod root {
     fn bindgen_test_layout_JSExternalStringCallbacks() {
         assert_eq!(
             ::std::mem::size_of::<JSExternalStringCallbacks>(),
-            8usize,
+            4usize,
             concat!("Size of: ", stringify!(JSExternalStringCallbacks))
         );
         assert_eq!(
             ::std::mem::align_of::<JSExternalStringCallbacks>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSExternalStringCallbacks))
         );
     }
@@ -23454,12 +22542,12 @@ pub mod root {
     fn bindgen_test_layout_JSErrorInterceptor() {
         assert_eq!(
             ::std::mem::size_of::<JSErrorInterceptor>(),
-            8usize,
+            4usize,
             concat!("Size of: ", stringify!(JSErrorInterceptor))
         );
         assert_eq!(
             ::std::mem::align_of::<JSErrorInterceptor>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSErrorInterceptor))
         );
     }
@@ -23522,12 +22610,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSErrorFormatString>(),
-            24usize,
+            12usize,
             concat!("Size of: ", stringify!(JSErrorFormatString))
         );
         assert_eq!(
             ::std::mem::align_of::<JSErrorFormatString>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSErrorFormatString))
         );
         assert_eq!(
@@ -23542,7 +22630,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).format) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorFormatString),
@@ -23552,7 +22640,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).argCount) as usize - ptr as usize },
-            16usize,
+            8usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorFormatString),
@@ -23562,7 +22650,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).exnType) as usize - ptr as usize },
-            18usize,
+            10usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorFormatString),
@@ -23582,7 +22670,7 @@ pub mod root {
     #[derive(Debug)]
     pub struct JSErrorBase {
         pub message_: root::JS::ConstUTF8CharsZ,
-        pub filename: root::JS::ConstUTF8CharsZ,
+        pub filename: *const ::std::os::raw::c_char,
         pub sourceId: ::std::os::raw::c_uint,
         pub lineno: ::std::os::raw::c_uint,
         pub column: ::std::os::raw::c_uint,
@@ -23590,7 +22678,15 @@ pub mod root {
         pub errorMessageName: *const ::std::os::raw::c_char,
         pub _bitfield_align_1: [u8; 0],
         pub _bitfield_1: root::__BindgenBitfieldUnit<[u8; 1usize]>,
-        pub __bindgen_padding_0: [u8; 7usize],
+        pub __bindgen_padding_0: [u8; 3usize],
+    }
+    extern "C" {
+        #[doc = " Freeze obj, and all objects it refers to, recursively. This will not recurse\n through non-extensible objects, on the assumption that those are already\n deep-frozen."]
+        #[link_name = "\u{1}_Z19JS_DeepFreezeObjectP9JSContextN2JS6HandleIP8JSObjectEE"]
+        pub fn JS_DeepFreezeObject(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+        ) -> bool;
     }
     #[test]
     fn bindgen_test_layout_JSErrorBase() {
@@ -23598,12 +22694,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSErrorBase>(),
-            48usize,
+            32usize,
             concat!("Size of: ", stringify!(JSErrorBase))
         );
         assert_eq!(
             ::std::mem::align_of::<JSErrorBase>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSErrorBase))
         );
         assert_eq!(
@@ -23618,7 +22714,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).filename) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorBase),
@@ -23628,7 +22724,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).sourceId) as usize - ptr as usize },
-            16usize,
+            8usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorBase),
@@ -23638,7 +22734,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).lineno) as usize - ptr as usize },
-            20usize,
+            12usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorBase),
@@ -23648,7 +22744,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).column) as usize - ptr as usize },
-            24usize,
+            16usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorBase),
@@ -23658,7 +22754,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).errorNumber) as usize - ptr as usize },
-            28usize,
+            20usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorBase),
@@ -23668,7 +22764,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).errorMessageName) as usize - ptr as usize },
-            32usize,
+            24usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorBase),
@@ -23704,7 +22800,17 @@ pub mod root {
     #[repr(C)]
     #[derive(Debug)]
     pub struct JSErrorNotes {
-        pub notes_: [u64; 4usize],
+        pub notes_: [u32; 4usize],
+    }
+    extern "C" {
+        #[doc = " If |obj| (underneath any functionally-transparent wrapper proxies) has as\n its [[GetPrototypeOf]] trap the ordinary [[GetPrototypeOf]] behavior defined\n for ordinary objects, set |*isOrdinary = true| and store |obj|'s prototype\n in |result|.  Otherwise set |*isOrdinary = false|.  In case of error, both\n outparams have unspecified value."]
+        #[link_name = "\u{1}_Z25JS_GetPrototypeIfOrdinaryP9JSContextN2JS6HandleIP8JSObjectEEPbNS1_13MutableHandleIS4_EE"]
+        pub fn JS_GetPrototypeIfOrdinary(
+            cx: *mut root::JSContext,
+            obj: root::JS::HandleObject,
+            isOrdinary: *mut bool,
+            result: root::JS::MutableHandleObject,
+        ) -> bool;
     }
     #[repr(C)]
     #[derive(Debug)]
@@ -23715,23 +22821,32 @@ pub mod root {
     fn bindgen_test_layout_JSErrorNotes_Note() {
         assert_eq!(
             ::std::mem::size_of::<JSErrorNotes_Note>(),
-            48usize,
+            32usize,
             concat!("Size of: ", stringify!(JSErrorNotes_Note))
         );
         assert_eq!(
             ::std::mem::align_of::<JSErrorNotes_Note>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSErrorNotes_Note))
         );
     }
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
     pub struct JSErrorNotes_iterator {
-        pub note_: *mut u64,
+        pub note_: *mut u32,
+    }
+    extern "C" {
+        #[doc = " Determine whether obj is extensible. Extensible objects can have new\n properties defined on them. Inextensible objects can't, and their\n [[Prototype]] slot is fixed as well.\n\n Implements: ES6 [[IsExtensible]] internal method."]
+        #[link_name = "\u{1}_Z15JS_IsExtensibleP9JSContextN2JS6HandleIP8JSObjectEEPb"]
+        pub fn JS_IsExtensible(
+            cx: *mut root::JSContext,
+            obj: root::JS::HandleObject,
+            extensible: *mut bool,
+        ) -> bool;
     }
     pub type JSErrorNotes_iterator_iterator_category = root::std::input_iterator_tag;
     #[doc = " UniquePtr is a smart pointer that wholly owns a resource.  Ownership may be\n transferred out of a UniquePtr through explicit action, but otherwise the\n resource is destroyed when the UniquePtr is destroyed.\n\n UniquePtr is similar to C++98's std::auto_ptr, but it improves upon auto_ptr\n in one crucial way: it's impossible to copy a UniquePtr.  Copying an auto_ptr\n obviously *can't* copy ownership of its singly-owned resource.  So what\n happens if you try to copy one?  Bizarrely, ownership is implicitly\n *transferred*, preserving single ownership but breaking code that assumes a\n copy of an object is identical to the original.  (This is why auto_ptr is\n prohibited in STL containers.)\n\n UniquePtr solves this problem by being *movable* rather than copyable.\n Instead of passing a |UniquePtr u| directly to the constructor or assignment\n operator, you pass |Move(u)|.  In doing so you indicate that you're *moving*\n ownership out of |u|, into the target of the construction/assignment.  After\n the transfer completes, |u| contains |nullptr| and may be safely destroyed.\n This preserves single ownership but also allows UniquePtr to be moved by\n algorithms that have been made move-safe.  (Note: if |u| is instead a\n temporary expression, don't use |Move()|: just pass the expression, because\n it's already move-ready.  For more information see Move.h.)\n\n UniquePtr is also better than std::auto_ptr in that the deletion operation is\n customizable.  An optional second template parameter specifies a class that\n (through its operator()(T*)) implements the desired deletion policy.  If no\n policy is specified, mozilla::DefaultDelete<T> is used -- which will either\n |delete| or |delete[]| the resource, depending whether the resource is an\n array.  Custom deletion policies ideally should be empty classes (no member\n fields, no member fields in base classes, no virtual methods/inheritance),\n because then UniquePtr can be just as efficient as a raw pointer.\n\n Use of UniquePtr proceeds like so:\n\n   UniquePtr<int> g1; // initializes to nullptr\n   g1.reset(new int); // switch resources using reset()\n   g1 = nullptr; // clears g1, deletes the int\n\n   UniquePtr<int> g2(new int); // owns that int\n   int* p = g2.release(); // g2 leaks its int -- still requires deletion\n   delete p; // now freed\n\n   struct S { int x; S(int x) : x(x) {} };\n   UniquePtr<S> g3, g4(new S(5));\n   g3 = std::move(g4); // g3 owns the S, g4 cleared\n   S* p = g3.get(); // g3 still owns |p|\n   assert(g3->x == 5); // operator-> works (if .get() != nullptr)\n   assert((*g3).x == 5); // also operator* (again, if not cleared)\n   std::swap(g3, g4); // g4 now owns the S, g3 cleared\n   g3.swap(g4);  // g3 now owns the S, g4 cleared\n   UniquePtr<S> g5(std::move(g3)); // g5 owns the S, g3 cleared\n   g5.reset(); // deletes the S, g5 cleared\n\n   struct FreePolicy { void operator()(void* p) { free(p); } };\n   UniquePtr<int, FreePolicy> g6(static_cast<int*>(malloc(sizeof(int))));\n   int* ptr = g6.get();\n   g6 = nullptr; // calls free(ptr)\n\n Now, carefully note a few things you *can't* do:\n\n   UniquePtr<int> b1;\n   b1 = new int; // BAD: can only assign another UniquePtr\n   int* ptr = b1; // BAD: no auto-conversion to pointer, use get()\n\n   UniquePtr<int> b2(b1); // BAD: can't copy a UniquePtr\n   UniquePtr<int> b3 = b1; // BAD: can't copy-assign a UniquePtr\n\n (Note that changing a UniquePtr to store a direct |new| expression is\n permitted, but usually you should use MakeUnique, defined at the end of this\n header.)\n\n A few miscellaneous notes:\n\n UniquePtr, when not instantiated for an array type, can be move-constructed\n and move-assigned, not only from itself but from \"derived\" UniquePtr<U, E>\n instantiations where U converts to T and E converts to D.  If you want to use\n this, you're going to have to specify a deletion policy for both UniquePtr\n instantations, and T pretty much has to have a virtual destructor.  In other\n words, this doesn't work:\n\n   struct Base { virtual ~Base() {} };\n   struct Derived : Base {};\n\n   UniquePtr<Base> b1;\n   // BAD: DefaultDelete<Base> and DefaultDelete<Derived> don't interconvert\n   UniquePtr<Derived> d1(std::move(b));\n\n   UniquePtr<Base> b2;\n   UniquePtr<Derived, DefaultDelete<Base>> d2(std::move(b2)); // okay\n\n UniquePtr is specialized for array types.  Specializing with an array type\n creates a smart-pointer version of that array -- not a pointer to such an\n array.\n\n   UniquePtr<int[]> arr(new int[5]);\n   arr[0] = 4;\n\n What else is different?  Deletion of course uses |delete[]|.  An operator[]\n is provided.  Functionality that doesn't make sense for arrays is removed.\n The constructors and mutating methods only accept array pointers (not T*, U*\n that converts to T*, or UniquePtr<U[]> or UniquePtr<U>) or |nullptr|.\n\n It's perfectly okay for a function to return a UniquePtr. This transfers\n the UniquePtr's sole ownership of the data, to the fresh UniquePtr created\n in the calling function, that will then solely own that data. Such functions\n can return a local variable UniquePtr, |nullptr|, |UniquePtr(ptr)| where\n |ptr| is a |T*|, or a UniquePtr |Move()|'d from elsewhere.\n\n UniquePtr will commonly be a member of a class, with lifetime equivalent to\n that of that class.  If you want to expose the related resource, you could\n expose a raw pointer via |get()|, but ownership of a raw pointer is\n inherently unclear.  So it's better to expose a |const UniquePtr&| instead.\n This prohibits mutation but still allows use of |get()| when needed (but\n operator-> is preferred).  Of course, you can only use this smart pointer as\n long as the enclosing class instance remains live -- no different than if you\n exposed the |get()| raw pointer.\n\n To pass a UniquePtr-managed resource as a pointer, use a |const UniquePtr&|\n argument.  To specify an inout parameter (where the method may or may not\n take ownership of the resource, or reset it), or to specify an out parameter\n (where simply returning a |UniquePtr| isn't possible), use a |UniquePtr&|\n argument.  To unconditionally transfer ownership of a UniquePtr\n into a method, use a |UniquePtr| argument.  To conditionally transfer\n ownership of a resource into a method, should the method want it, use a\n |UniquePtr&&| argument."]
-    pub type JSErrorNotes_iterator_value_type = u64;
+    pub type JSErrorNotes_iterator_value_type = u32;
     pub type JSErrorNotes_iterator_difference_type = isize;
     pub type JSErrorNotes_iterator_pointer = *mut root::JSErrorNotes_iterator_value_type;
     pub type JSErrorNotes_iterator_reference = *mut root::JSErrorNotes_iterator_value_type;
@@ -23742,12 +22857,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSErrorNotes_iterator>(),
-            8usize,
+            4usize,
             concat!("Size of: ", stringify!(JSErrorNotes_iterator))
         );
         assert_eq!(
             ::std::mem::align_of::<JSErrorNotes_iterator>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSErrorNotes_iterator))
         );
         assert_eq!(
@@ -23761,18 +22876,76 @@ pub mod root {
             )
         );
     }
+    extern "C" {
+        #[doc = " Freezes an object; see ES5's Object.freeze(obj) method."]
+        #[link_name = "\u{1}_Z15JS_FreezeObjectP9JSContextN2JS6HandleIP8JSObjectEE"]
+        pub fn JS_FreezeObject(
+            cx: *mut root::JSContext,
+            obj: root::JS::Handle<*mut root::JSObject>,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Get the prototype of |obj|, storing it in |proto|.\n\n Implements: ES6 [[GetPrototypeOf]] internal method."]
+        #[link_name = "\u{1}_Z15JS_GetPrototypeP9JSContextN2JS6HandleIP8JSObjectEENS1_13MutableHandleIS4_EE"]
+        pub fn JS_GetPrototype(
+            cx: *mut root::JSContext,
+            obj: root::JS::HandleObject,
+            result: root::JS::MutableHandleObject,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Change the prototype of obj.\n\n Implements: ES6 [[SetPrototypeOf]] internal method.\n\n In cases where ES6 [[SetPrototypeOf]] returns false without an exception,\n JS_SetPrototype throws a TypeError and returns false.\n\n Performance warning: JS_SetPrototype is very bad for performance. It may\n cause compiled jit-code to be invalidated. It also causes not only obj but\n all other objects in the same \"group\" as obj to be permanently deoptimized.\n It's better to create the object with the right prototype from the start."]
+        #[link_name = "\u{1}_Z15JS_SetPrototypeP9JSContextN2JS6HandleIP8JSObjectEES5_"]
+        pub fn JS_SetPrototype(
+            cx: *mut root::JSContext,
+            obj: root::JS::HandleObject,
+            proto: root::JS::HandleObject,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Attempt to make |obj| non-extensible.\n\n Not all failures are treated as errors. See the comment on\n JS::ObjectOpResult in js/public/Class.h.\n\n Implements: ES6 [[PreventExtensions]] internal method."]
+        #[link_name = "\u{1}_Z20JS_PreventExtensionsP9JSContextN2JS6HandleIP8JSObjectEERNS1_14ObjectOpResultE"]
+        pub fn JS_PreventExtensions(
+            cx: *mut root::JSContext,
+            obj: root::JS::HandleObject,
+            result: *mut root::JS::ObjectOpResult,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Attempt to make the [[Prototype]] of |obj| immutable, such that any attempt\n to modify it will fail.  If an error occurs during the attempt, return false\n (with a pending exception set, depending upon the nature of the error).  If\n no error occurs, return true with |*succeeded| set to indicate whether the\n attempt successfully made the [[Prototype]] immutable.\n\n This is a nonstandard internal method."]
+        #[link_name = "\u{1}_Z24JS_SetImmutablePrototypeP9JSContextN2JS6HandleIP8JSObjectEEPb"]
+        pub fn JS_SetImmutablePrototype(
+            cx: *mut root::JSContext,
+            obj: root::JS::HandleObject,
+            succeeded: *mut bool,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Equivalent to `Object.assign(target, src)`: Copies the properties from the\n `src` object (which must not be null) to `target` (which also must not be\n null)."]
+        #[link_name = "\u{1}_Z15JS_AssignObjectP9JSContextN2JS6HandleIP8JSObjectEES5_"]
+        pub fn JS_AssignObject(
+            cx: *mut root::JSContext,
+            target: root::JS::HandleObject,
+            src: root::JS::HandleObject,
+        ) -> bool;
+    }
+    extern "C" {
+        #[doc = " Assign 'undefined' to all of the object's non-reserved slots. Note: this is\n done for all slots, regardless of the associated property descriptor."]
+        #[link_name = "\u{1}_Z36JS_SetAllNonReservedSlotsToUndefinedN2JS6HandleIP8JSObjectEE"]
+        pub fn JS_SetAllNonReservedSlotsToUndefined(obj: root::JS::HandleObject);
+    }
     #[test]
     fn bindgen_test_layout_JSErrorNotes() {
         const UNINIT: ::std::mem::MaybeUninit<JSErrorNotes> = ::std::mem::MaybeUninit::uninit();
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSErrorNotes>(),
-            32usize,
+            16usize,
             concat!("Size of: ", stringify!(JSErrorNotes))
         );
         assert_eq!(
             ::std::mem::align_of::<JSErrorNotes>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSErrorNotes))
         );
         assert_eq!(
@@ -23794,11 +22967,11 @@ pub mod root {
         pub linebuf_: *const u16,
         pub linebufLength_: usize,
         pub tokenOffset_: usize,
-        pub notes: u64,
+        pub notes: u32,
         pub exnType: i16,
         pub _bitfield_align_1: [u8; 0],
         pub _bitfield_1: root::__BindgenBitfieldUnit<[u8; 1usize]>,
-        pub __bindgen_padding_0: [u8; 5usize],
+        pub __bindgen_padding_0: u8,
     }
     #[test]
     fn bindgen_test_layout_JSErrorReport() {
@@ -23806,17 +22979,17 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSErrorReport>(),
-            88usize,
+            52usize,
             concat!("Size of: ", stringify!(JSErrorReport))
         );
         assert_eq!(
             ::std::mem::align_of::<JSErrorReport>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSErrorReport))
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).linebuf_) as usize - ptr as usize },
-            48usize,
+            32usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorReport),
@@ -23826,7 +22999,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).linebufLength_) as usize - ptr as usize },
-            56usize,
+            36usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorReport),
@@ -23836,7 +23009,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).tokenOffset_) as usize - ptr as usize },
-            64usize,
+            40usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorReport),
@@ -23846,7 +23019,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).notes) as usize - ptr as usize },
-            72usize,
+            44usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorReport),
@@ -23856,7 +23029,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).exnType) as usize - ptr as usize },
-            80usize,
+            48usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSErrorReport),
@@ -23923,6 +23096,20 @@ pub mod root {
         }
     }
     extern "C" {
+        #[link_name = "\u{1}_Z18JS_SetReservedSlotP8JSObjectjRKN2JS5ValueE"]
+        pub fn JS_SetReservedSlot(obj: *mut root::JSObject, index: u32, v: *const root::JS::Value);
+    }
+    extern "C" {
+        #[link_name = "\u{1}_Z19JS_InitReservedSlotP8JSObjectjPvmN2JS9MemoryUseE"]
+        pub fn JS_InitReservedSlot(
+            obj: *mut root::JSObject,
+            index: u32,
+            ptr: *mut ::std::os::raw::c_void,
+            nbytes: usize,
+            use_: root::JS::MemoryUse,
+        );
+    }
+    extern "C" {
         #[doc = " Report an exception represented by the sprintf-like conversion of format\n and its arguments."]
         #[link_name = "\u{1}_Z19JS_ReportErrorASCIIP9JSContextPKcz"]
         pub fn JS_ReportErrorASCII(
@@ -23958,13 +23145,13 @@ pub mod root {
         );
     }
     extern "C" {
-        #[link_name = "\u{1}_Z27JS_ReportErrorNumberASCIIVAP9JSContextPFPK19JSErrorFormatStringPvjES4_jPc"]
+        #[link_name = "\u{1}_Z27JS_ReportErrorNumberASCIIVAP9JSContextPFPK19JSErrorFormatStringPvjES4_jP13__va_list_tag"]
         pub fn JS_ReportErrorNumberASCIIVA(
             cx: *mut root::JSContext,
             errorCallback: root::JSErrorCallback,
             userRef: *mut ::std::os::raw::c_void,
             errorNumber: ::std::os::raw::c_uint,
-            ap: root::va_list,
+            ap: *mut root::__va_list_tag,
         );
     }
     extern "C" {
@@ -23978,13 +23165,13 @@ pub mod root {
         );
     }
     extern "C" {
-        #[link_name = "\u{1}_Z28JS_ReportErrorNumberLatin1VAP9JSContextPFPK19JSErrorFormatStringPvjES4_jPc"]
+        #[link_name = "\u{1}_Z28JS_ReportErrorNumberLatin1VAP9JSContextPFPK19JSErrorFormatStringPvjES4_jP13__va_list_tag"]
         pub fn JS_ReportErrorNumberLatin1VA(
             cx: *mut root::JSContext,
             errorCallback: root::JSErrorCallback,
             userRef: *mut ::std::os::raw::c_void,
             errorNumber: ::std::os::raw::c_uint,
-            ap: root::va_list,
+            ap: *mut root::__va_list_tag,
         );
     }
     extern "C" {
@@ -23998,13 +23185,13 @@ pub mod root {
         );
     }
     extern "C" {
-        #[link_name = "\u{1}_Z26JS_ReportErrorNumberUTF8VAP9JSContextPFPK19JSErrorFormatStringPvjES4_jS4_"]
+        #[link_name = "\u{1}_Z26JS_ReportErrorNumberUTF8VAP9JSContextPFPK19JSErrorFormatStringPvjES4_jP13__va_list_tag"]
         pub fn JS_ReportErrorNumberUTF8VA(
             cx: *mut root::JSContext,
             errorCallback: root::JSErrorCallback,
             userRef: *mut ::std::os::raw::c_void,
             errorNumber: ::std::os::raw::c_uint,
-            ap: root::va_list,
+            ap: *mut root::__va_list_tag,
         );
     }
     extern "C" {
@@ -24921,25 +24108,6 @@ pub mod root {
             arg3: *mut root::JS::Compartment,
         ) -> root::JS::CompartmentIterResult,
     >;
-    extern "C" {
-        #[doc = " This function calls |compartmentCallback| on every compartment until either\n all compartments have been iterated or CompartmentIterResult::Stop is\n returned. Beware that there is no guarantee that the compartment will survive\n after the callback returns. Also, barriers are disabled via the TraceSession."]
-        #[link_name = "\u{1}_Z22JS_IterateCompartmentsP9JSContextPvPFN2JS21CompartmentIterResultES0_S1_PNS2_11CompartmentEE"]
-        pub fn JS_IterateCompartments(
-            cx: *mut root::JSContext,
-            data: *mut ::std::os::raw::c_void,
-            compartmentCallback: root::JSIterateCompartmentCallback,
-        );
-    }
-    extern "C" {
-        #[doc = " This function calls |compartmentCallback| on every compartment in the given\n zone until either all compartments have been iterated or\n CompartmentIterResult::Stop is returned. Beware that there is no guarantee\n that the compartment will survive after the callback returns. Also, barriers\n are disabled via the TraceSession."]
-        #[link_name = "\u{1}_Z28JS_IterateCompartmentsInZoneP9JSContextPN2JS4ZoneEPvPFNS1_21CompartmentIterResultES0_S4_PNS1_11CompartmentEE"]
-        pub fn JS_IterateCompartmentsInZone(
-            cx: *mut root::JSContext,
-            zone: *mut root::JS::Zone,
-            data: *mut ::std::os::raw::c_void,
-            compartmentCallback: root::JSIterateCompartmentCallback,
-        );
-    }
     #[doc = " Callback used to ask the embedding for the cross compartment wrapper handler\n that implements the desired prolicy for this kind of object in the\n destination compartment. |obj| is the object to be wrapped. If |existing| is\n non-nullptr, it will point to an existing wrapper object that should be\n re-used if possible. |existing| is guaranteed to be a cross-compartment\n wrapper with a lazily-defined prototype and the correct global. It is\n guaranteed not to wrap a function."]
     pub type JSWrapObjectCallback = ::std::option::Option<
         unsafe extern "C" fn(
@@ -24972,12 +24140,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSWrapObjectCallbacks>(),
-            16usize,
+            8usize,
             concat!("Size of: ", stringify!(JSWrapObjectCallbacks))
         );
         assert_eq!(
             ::std::mem::align_of::<JSWrapObjectCallbacks>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSWrapObjectCallbacks))
         );
         assert_eq!(
@@ -24992,7 +24160,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).preWrap) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSWrapObjectCallbacks),
@@ -25355,105 +24523,6 @@ pub mod root {
         #[link_name = "\u{1}_Z17JS_NewPlainObjectP9JSContext"]
         pub fn JS_NewPlainObject(cx: *mut root::JSContext) -> *mut root::JSObject;
     }
-    extern "C" {
-        #[doc = " Freeze obj, and all objects it refers to, recursively. This will not recurse\n through non-extensible objects, on the assumption that those are already\n deep-frozen."]
-        #[link_name = "\u{1}_Z19JS_DeepFreezeObjectP9JSContextN2JS6HandleIP8JSObjectEE"]
-        pub fn JS_DeepFreezeObject(
-            cx: *mut root::JSContext,
-            obj: root::JS::Handle<*mut root::JSObject>,
-        ) -> bool;
-    }
-    extern "C" {
-        #[doc = " Freezes an object; see ES5's Object.freeze(obj) method."]
-        #[link_name = "\u{1}_Z15JS_FreezeObjectP9JSContextN2JS6HandleIP8JSObjectEE"]
-        pub fn JS_FreezeObject(
-            cx: *mut root::JSContext,
-            obj: root::JS::Handle<*mut root::JSObject>,
-        ) -> bool;
-    }
-    extern "C" {
-        #[doc = " Get the prototype of |obj|, storing it in |proto|.\n\n Implements: ES6 [[GetPrototypeOf]] internal method."]
-        #[link_name = "\u{1}_Z15JS_GetPrototypeP9JSContextN2JS6HandleIP8JSObjectEENS1_13MutableHandleIS4_EE"]
-        pub fn JS_GetPrototype(
-            cx: *mut root::JSContext,
-            obj: root::JS::HandleObject,
-            result: root::JS::MutableHandleObject,
-        ) -> bool;
-    }
-    extern "C" {
-        #[doc = " If |obj| (underneath any functionally-transparent wrapper proxies) has as\n its [[GetPrototypeOf]] trap the ordinary [[GetPrototypeOf]] behavior defined\n for ordinary objects, set |*isOrdinary = true| and store |obj|'s prototype\n in |result|.  Otherwise set |*isOrdinary = false|.  In case of error, both\n outparams have unspecified value."]
-        #[link_name = "\u{1}_Z25JS_GetPrototypeIfOrdinaryP9JSContextN2JS6HandleIP8JSObjectEEPbNS1_13MutableHandleIS4_EE"]
-        pub fn JS_GetPrototypeIfOrdinary(
-            cx: *mut root::JSContext,
-            obj: root::JS::HandleObject,
-            isOrdinary: *mut bool,
-            result: root::JS::MutableHandleObject,
-        ) -> bool;
-    }
-    extern "C" {
-        #[doc = " Change the prototype of obj.\n\n Implements: ES6 [[SetPrototypeOf]] internal method.\n\n In cases where ES6 [[SetPrototypeOf]] returns false without an exception,\n JS_SetPrototype throws a TypeError and returns false.\n\n Performance warning: JS_SetPrototype is very bad for performance. It may\n cause compiled jit-code to be invalidated. It also causes not only obj but\n all other objects in the same \"group\" as obj to be permanently deoptimized.\n It's better to create the object with the right prototype from the start."]
-        #[link_name = "\u{1}_Z15JS_SetPrototypeP9JSContextN2JS6HandleIP8JSObjectEES5_"]
-        pub fn JS_SetPrototype(
-            cx: *mut root::JSContext,
-            obj: root::JS::HandleObject,
-            proto: root::JS::HandleObject,
-        ) -> bool;
-    }
-    extern "C" {
-        #[doc = " Determine whether obj is extensible. Extensible objects can have new\n properties defined on them. Inextensible objects can't, and their\n [[Prototype]] slot is fixed as well.\n\n Implements: ES6 [[IsExtensible]] internal method."]
-        #[link_name = "\u{1}_Z15JS_IsExtensibleP9JSContextN2JS6HandleIP8JSObjectEEPb"]
-        pub fn JS_IsExtensible(
-            cx: *mut root::JSContext,
-            obj: root::JS::HandleObject,
-            extensible: *mut bool,
-        ) -> bool;
-    }
-    extern "C" {
-        #[doc = " Attempt to make |obj| non-extensible.\n\n Not all failures are treated as errors. See the comment on\n JS::ObjectOpResult in js/public/Class.h.\n\n Implements: ES6 [[PreventExtensions]] internal method."]
-        #[link_name = "\u{1}_Z20JS_PreventExtensionsP9JSContextN2JS6HandleIP8JSObjectEERNS1_14ObjectOpResultE"]
-        pub fn JS_PreventExtensions(
-            cx: *mut root::JSContext,
-            obj: root::JS::HandleObject,
-            result: *mut root::JS::ObjectOpResult,
-        ) -> bool;
-    }
-    extern "C" {
-        #[doc = " Attempt to make the [[Prototype]] of |obj| immutable, such that any attempt\n to modify it will fail.  If an error occurs during the attempt, return false\n (with a pending exception set, depending upon the nature of the error).  If\n no error occurs, return true with |*succeeded| set to indicate whether the\n attempt successfully made the [[Prototype]] immutable.\n\n This is a nonstandard internal method."]
-        #[link_name = "\u{1}_Z24JS_SetImmutablePrototypeP9JSContextN2JS6HandleIP8JSObjectEEPb"]
-        pub fn JS_SetImmutablePrototype(
-            cx: *mut root::JSContext,
-            obj: root::JS::HandleObject,
-            succeeded: *mut bool,
-        ) -> bool;
-    }
-    extern "C" {
-        #[doc = " Equivalent to `Object.assign(target, src)`: Copies the properties from the\n `src` object (which must not be null) to `target` (which also must not be\n null)."]
-        #[link_name = "\u{1}_Z15JS_AssignObjectP9JSContextN2JS6HandleIP8JSObjectEES5_"]
-        pub fn JS_AssignObject(
-            cx: *mut root::JSContext,
-            target: root::JS::HandleObject,
-            src: root::JS::HandleObject,
-        ) -> bool;
-    }
-    extern "C" {
-        #[doc = " Assign 'undefined' to all of the object's non-reserved slots. Note: this is\n done for all slots, regardless of the associated property descriptor."]
-        #[link_name = "\u{1}_Z36JS_SetAllNonReservedSlotsToUndefinedN2JS6HandleIP8JSObjectEE"]
-        pub fn JS_SetAllNonReservedSlotsToUndefined(obj: root::JS::HandleObject);
-    }
-    extern "C" {
-        #[link_name = "\u{1}_Z18JS_SetReservedSlotP8JSObjectjRKN2JS5ValueE"]
-        pub fn JS_SetReservedSlot(obj: *mut root::JSObject, index: u32, v: *const root::JS::Value);
-    }
-    extern "C" {
-        #[link_name = "\u{1}_Z19JS_InitReservedSlotP8JSObjectjPvmN2JS9MemoryUseE"]
-        pub fn JS_InitReservedSlot(
-            obj: *mut root::JSObject,
-            index: u32,
-            ptr: *mut ::std::os::raw::c_void,
-            nbytes: usize,
-            use_: root::JS::MemoryUse,
-        );
-    }
     pub const JSFUN_CONSTRUCTOR: ::std::os::raw::c_uint = 1024;
     pub const JSFUN_FLAGS_MASK: ::std::os::raw::c_uint = 1024;
     extern "C" {
@@ -25792,12 +24861,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSFunctionSpecWithHelp>(),
-            48usize,
+            24usize,
             concat!("Size of: ", stringify!(JSFunctionSpecWithHelp))
         );
         assert_eq!(
             ::std::mem::align_of::<JSFunctionSpecWithHelp>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSFunctionSpecWithHelp))
         );
         assert_eq!(
@@ -25812,7 +24881,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).call) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSFunctionSpecWithHelp),
@@ -25822,7 +24891,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).nargs) as usize - ptr as usize },
-            16usize,
+            8usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSFunctionSpecWithHelp),
@@ -25832,7 +24901,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).flags) as usize - ptr as usize },
-            18usize,
+            10usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSFunctionSpecWithHelp),
@@ -25842,7 +24911,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).jitInfo) as usize - ptr as usize },
-            24usize,
+            12usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSFunctionSpecWithHelp),
@@ -25852,7 +24921,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).usage) as usize - ptr as usize },
-            32usize,
+            16usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSFunctionSpecWithHelp),
@@ -25862,7 +24931,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).help) as usize - ptr as usize },
-            40usize,
+            20usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSFunctionSpecWithHelp),
@@ -26141,12 +25210,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<JSJitMethodCallArgs>(),
-            16usize,
+            12usize,
             concat!("Size of: ", stringify!(JSJitMethodCallArgs))
         );
         assert_eq!(
             ::std::mem::align_of::<JSJitMethodCallArgs>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(JSJitMethodCallArgs))
         );
         assert_eq!(
@@ -26161,7 +25230,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).argc_) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(JSJitMethodCallArgs),
@@ -26211,12 +25280,75 @@ pub mod root {
             __bindgen_bitfield_unit
         }
     }
-    pub type __builtin_va_list = *mut ::std::os::raw::c_char;
+    pub type __builtin_va_list = [root::__va_list_tag; 1usize];
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct __va_list_tag {
+        pub gp_offset: ::std::os::raw::c_uint,
+        pub fp_offset: ::std::os::raw::c_uint,
+        pub overflow_arg_area: *mut ::std::os::raw::c_void,
+        pub reg_save_area: *mut ::std::os::raw::c_void,
+    }
+    #[test]
+    fn bindgen_test_layout___va_list_tag() {
+        const UNINIT: ::std::mem::MaybeUninit<__va_list_tag> = ::std::mem::MaybeUninit::uninit();
+        let ptr = UNINIT.as_ptr();
+        assert_eq!(
+            ::std::mem::size_of::<__va_list_tag>(),
+            24usize,
+            concat!("Size of: ", stringify!(__va_list_tag))
+        );
+        assert_eq!(
+            ::std::mem::align_of::<__va_list_tag>(),
+            8usize,
+            concat!("Alignment of ", stringify!(__va_list_tag))
+        );
+        assert_eq!(
+            unsafe { ::std::ptr::addr_of!((*ptr).gp_offset) as usize - ptr as usize },
+            0usize,
+            concat!(
+                "Offset of field: ",
+                stringify!(__va_list_tag),
+                "::",
+                stringify!(gp_offset)
+            )
+        );
+        assert_eq!(
+            unsafe { ::std::ptr::addr_of!((*ptr).fp_offset) as usize - ptr as usize },
+            4usize,
+            concat!(
+                "Offset of field: ",
+                stringify!(__va_list_tag),
+                "::",
+                stringify!(fp_offset)
+            )
+        );
+        assert_eq!(
+            unsafe { ::std::ptr::addr_of!((*ptr).overflow_arg_area) as usize - ptr as usize },
+            8usize,
+            concat!(
+                "Offset of field: ",
+                stringify!(__va_list_tag),
+                "::",
+                stringify!(overflow_arg_area)
+            )
+        );
+        assert_eq!(
+            unsafe { ::std::ptr::addr_of!((*ptr).reg_save_area) as usize - ptr as usize },
+            16usize,
+            concat!(
+                "Offset of field: ",
+                stringify!(__va_list_tag),
+                "::",
+                stringify!(reg_save_area)
+            )
+        );
+    }
     #[test]
     fn __bindgen_test_layout_Handle_open0_ptr_JSFunction_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSFunction>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSFunction>)
@@ -26224,7 +25356,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSFunction>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSFunction>)
@@ -26235,7 +25367,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_PropertyKey_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::PropertyKey>)
@@ -26243,7 +25375,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::PropertyKey>)
@@ -26254,7 +25386,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26262,7 +25394,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26273,7 +25405,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26281,7 +25413,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26292,7 +25424,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_ptr_JSFunction_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<*mut root::JSFunction>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSFunction>)
@@ -26300,7 +25432,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<*mut root::JSFunction>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSFunction>)
@@ -26311,7 +25443,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_PropertyKey_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::PropertyKey>)
@@ -26319,7 +25451,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::PropertyKey>)
@@ -26330,7 +25462,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_ptr_JSObject_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -26338,7 +25470,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -26349,7 +25481,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26357,7 +25489,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26368,21 +25500,21 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_StackGCVector_open1_PropertyKey_TempAllocPolicy_close1_close0_instantiation(
     ) {
         assert_eq!(
-            ::std::mem::size_of::<u64>(),
-            8usize,
-            concat!("Size of template specialization: ", stringify!(u64))
+            ::std::mem::size_of::<u32>(),
+            4usize,
+            concat!("Size of template specialization: ", stringify!(u32))
         );
         assert_eq!(
-            ::std::mem::align_of::<u64>(),
-            8usize,
-            concat!("Alignment of template specialization: ", stringify!(u64))
+            ::std::mem::align_of::<u32>(),
+            4usize,
+            concat!("Alignment of template specialization: ", stringify!(u32))
         );
     }
     #[test]
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26390,7 +25522,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26401,7 +25533,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_2() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26409,7 +25541,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26420,7 +25552,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_3() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26428,7 +25560,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26439,7 +25571,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_4() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26447,7 +25579,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26458,7 +25590,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_5() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26466,7 +25598,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26477,7 +25609,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_6() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26485,7 +25617,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26496,7 +25628,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_7() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26504,7 +25636,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26515,7 +25647,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_Latin1Char_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<root::JS::Latin1Char>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<root::JS::Latin1Char>)
@@ -26523,7 +25655,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<root::JS::Latin1Char>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<root::JS::Latin1Char>)
@@ -26534,7 +25666,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_const_char16_t_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<u16>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -26542,7 +25674,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -26553,7 +25685,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26561,7 +25693,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26591,7 +25723,7 @@ pub mod root {
     fn __bindgen_test_layout_GenericTracerImpl_open0_CallbackTracer_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::js::GenericTracerImpl>(),
-            48usize,
+            28usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::js::GenericTracerImpl)
@@ -26599,7 +25731,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::js::GenericTracerImpl>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::js::GenericTracerImpl)
@@ -26610,7 +25742,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_8() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26618,7 +25750,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26629,7 +25761,7 @@ pub mod root {
     fn __bindgen_test_layout_TenuredHeap_open0_ptr_JSObject_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::TenuredHeap>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::TenuredHeap)
@@ -26637,7 +25769,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::TenuredHeap>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::TenuredHeap)
@@ -26648,7 +25780,7 @@ pub mod root {
     fn __bindgen_test_layout_LinkedListElement_open0_PersistentRootedBase_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::LinkedListElement>(),
-            24usize,
+            12usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::LinkedListElement)
@@ -26656,7 +25788,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::LinkedListElement>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::LinkedListElement)
@@ -26665,14 +25797,14 @@ pub mod root {
     }
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
-    pub struct _bindgen_ty_9 {
+    pub struct _bindgen_ty_5 {
         pub _address: u8,
     }
     #[test]
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_9() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26680,7 +25812,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26691,7 +25823,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26699,7 +25831,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26710,7 +25842,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_2() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26718,7 +25850,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26729,7 +25861,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_3() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26737,7 +25869,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26748,7 +25880,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_4() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26756,7 +25888,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26767,7 +25899,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_5() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26775,7 +25907,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26786,7 +25918,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_6() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26794,7 +25926,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26805,7 +25937,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_10() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26813,7 +25945,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -26824,7 +25956,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_2() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26832,7 +25964,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26843,7 +25975,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_3() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26851,7 +25983,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26862,7 +25994,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_4() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26870,7 +26002,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26881,7 +26013,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_5() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26889,7 +26021,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26900,7 +26032,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_6() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26908,7 +26040,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26919,7 +26051,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_7() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26927,7 +26059,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26938,7 +26070,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_8() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26946,7 +26078,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -26957,7 +26089,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_7() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26965,7 +26097,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26976,7 +26108,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_8() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26984,7 +26116,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -26995,7 +26127,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_PropertyKey_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::PropertyKey>)
@@ -27003,7 +26135,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::PropertyKey>)
@@ -27014,7 +26146,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_PropertyKey_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::PropertyKey>)
@@ -27022,7 +26154,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::PropertyKey>)
@@ -27033,7 +26165,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_PropertyKey_close0_instantiation_2() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::PropertyKey>)
@@ -27041,7 +26173,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::PropertyKey>)
@@ -27052,7 +26184,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_PropertyKey_close0_instantiation_2() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::PropertyKey>)
@@ -27060,7 +26192,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::PropertyKey>)
@@ -27071,7 +26203,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_9() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27079,7 +26211,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27090,7 +26222,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_11() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27098,7 +26230,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27109,7 +26241,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_9() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27117,7 +26249,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27128,7 +26260,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_12() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27136,7 +26268,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27147,7 +26279,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_10() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27155,7 +26287,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27166,7 +26298,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_13() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27174,7 +26306,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27185,7 +26317,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_11() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27193,7 +26325,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27204,7 +26336,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_10() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27212,7 +26344,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27223,7 +26355,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_11() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27231,7 +26363,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27242,7 +26374,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_12() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27250,7 +26382,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27261,7 +26393,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_12() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27269,7 +26401,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27280,7 +26412,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_13() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27288,7 +26420,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27299,7 +26431,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_13() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27307,7 +26439,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27318,7 +26450,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_14() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27326,7 +26458,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -27337,7 +26469,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_Latin1Char_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<root::JS::Latin1Char>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<root::JS::Latin1Char>)
@@ -27345,7 +26477,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<root::JS::Latin1Char>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<root::JS::Latin1Char>)
@@ -27356,7 +26488,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_Latin1Char_close0_instantiation_2() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<root::JS::Latin1Char>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<root::JS::Latin1Char>)
@@ -27364,7 +26496,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<root::JS::Latin1Char>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<root::JS::Latin1Char>)
@@ -27375,7 +26507,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_Latin1Char_close0_instantiation_3() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<root::JS::Latin1Char>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<root::JS::Latin1Char>)
@@ -27383,7 +26515,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<root::JS::Latin1Char>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<root::JS::Latin1Char>)
@@ -27394,7 +26526,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_Latin1Char_close0_instantiation_4() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<root::JS::Latin1Char>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<root::JS::Latin1Char>)
@@ -27402,7 +26534,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<root::JS::Latin1Char>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<root::JS::Latin1Char>)
@@ -27413,7 +26545,7 @@ pub mod root {
     fn __bindgen_test_layout_RangedPtr_open0_Latin1Char_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::RangedPtr<root::JS::Latin1Char>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<root::JS::Latin1Char>)
@@ -27421,7 +26553,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::RangedPtr<root::JS::Latin1Char>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<root::JS::Latin1Char>)
@@ -27432,7 +26564,7 @@ pub mod root {
     fn __bindgen_test_layout_RangedPtr_open0_Latin1Char_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::RangedPtr<root::JS::Latin1Char>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<root::JS::Latin1Char>)
@@ -27440,7 +26572,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::RangedPtr<root::JS::Latin1Char>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<root::JS::Latin1Char>)
@@ -27451,7 +26583,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_unsigned_char_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<::std::os::raw::c_uchar>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<::std::os::raw::c_uchar>)
@@ -27459,7 +26591,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<::std::os::raw::c_uchar>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<::std::os::raw::c_uchar>)
@@ -27470,7 +26602,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_unsigned_char_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<::std::os::raw::c_uchar>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<::std::os::raw::c_uchar>)
@@ -27478,7 +26610,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<::std::os::raw::c_uchar>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<::std::os::raw::c_uchar>)
@@ -27489,7 +26621,7 @@ pub mod root {
     fn __bindgen_test_layout_RangedPtr_open0_unsigned_char_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::RangedPtr<::std::os::raw::c_uchar>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<::std::os::raw::c_uchar>)
@@ -27497,7 +26629,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::RangedPtr<::std::os::raw::c_uchar>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<::std::os::raw::c_uchar>)
@@ -27508,7 +26640,7 @@ pub mod root {
     fn __bindgen_test_layout_RangedPtr_open0_unsigned_char_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::RangedPtr<::std::os::raw::c_uchar>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<::std::os::raw::c_uchar>)
@@ -27516,7 +26648,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::RangedPtr<::std::os::raw::c_uchar>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<::std::os::raw::c_uchar>)
@@ -27527,7 +26659,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_char16_t_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<u16>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -27535,7 +26667,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -27546,7 +26678,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_char16_t_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<u16>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -27554,7 +26686,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -27565,7 +26697,7 @@ pub mod root {
     fn __bindgen_test_layout_RangedPtr_open0_char16_t_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::RangedPtr<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<u16>)
@@ -27573,7 +26705,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::RangedPtr<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<u16>)
@@ -27584,7 +26716,7 @@ pub mod root {
     fn __bindgen_test_layout_RangedPtr_open0_char16_t_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::RangedPtr<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<u16>)
@@ -27592,7 +26724,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::RangedPtr<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<u16>)
@@ -27603,7 +26735,7 @@ pub mod root {
     fn __bindgen_test_layout_RangedPtr_open0_const_char16_t_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::RangedPtr<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<u16>)
@@ -27611,7 +26743,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::RangedPtr<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::RangedPtr<u16>)
@@ -27622,7 +26754,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_const_char16_t_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<u16>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -27630,7 +26762,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -27641,7 +26773,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_const_char16_t_close0_instantiation_2() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<u16>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -27649,7 +26781,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -27660,7 +26792,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_const_char16_t_close0_instantiation_3() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<u16>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -27668,7 +26800,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -27679,7 +26811,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_14() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27687,7 +26819,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27698,7 +26830,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_14() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27706,7 +26838,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27717,7 +26849,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_15() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27725,7 +26857,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27736,7 +26868,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_15() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27744,7 +26876,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27755,7 +26887,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_16() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27763,7 +26895,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27774,7 +26906,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_16() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27782,7 +26914,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27793,7 +26925,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_17() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27801,7 +26933,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27812,7 +26944,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_18() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27820,7 +26952,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27831,7 +26963,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_17() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27839,7 +26971,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -27850,7 +26982,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_19() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27858,7 +26990,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27869,7 +27001,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_20() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27877,7 +27009,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27888,7 +27020,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_21() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27896,7 +27028,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27907,7 +27039,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_22() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27915,7 +27047,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27926,7 +27058,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_23() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27934,7 +27066,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27945,7 +27077,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_24() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27953,7 +27085,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27964,7 +27096,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_25() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27972,7 +27104,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27983,7 +27115,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_26() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -27991,7 +27123,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28002,7 +27134,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_27() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28010,7 +27142,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28021,7 +27153,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_28() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28029,7 +27161,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28040,7 +27172,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_29() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28048,7 +27180,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28059,7 +27191,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_30() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28067,7 +27199,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28078,7 +27210,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_31() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28086,7 +27218,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28097,7 +27229,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_32() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28105,7 +27237,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28173,7 +27305,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_33() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28181,7 +27313,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28192,7 +27324,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -28200,7 +27332,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -28211,7 +27343,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_34() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28219,7 +27351,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28230,7 +27362,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_35() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28238,7 +27370,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28249,7 +27381,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_36() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28257,7 +27389,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28268,7 +27400,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -28276,7 +27408,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -28287,7 +27419,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_ptr_JSObject_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -28295,7 +27427,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -28306,7 +27438,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_37() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28314,7 +27446,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28325,7 +27457,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_ptr_JSObject_close0_instantiation_2() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -28333,7 +27465,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -28344,7 +27476,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_38() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28352,7 +27484,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28363,7 +27495,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_ptr_JSObject_close0_instantiation_3() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -28371,7 +27503,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -28382,7 +27514,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_39() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28390,7 +27522,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28401,7 +27533,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_18() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -28409,7 +27541,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -28420,7 +27552,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_15() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -28428,7 +27560,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -28439,7 +27571,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_16() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -28447,7 +27579,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -28458,7 +27590,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_19() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -28466,7 +27598,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -28477,7 +27609,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_40() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28485,7 +27617,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28496,7 +27628,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_41() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28504,7 +27636,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28515,7 +27647,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_42() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28523,7 +27655,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28534,7 +27666,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_43() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28542,7 +27674,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28553,7 +27685,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_44() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28561,7 +27693,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28572,7 +27704,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_45() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28580,7 +27712,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28591,7 +27723,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_46() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28599,7 +27731,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28610,7 +27742,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_47() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28618,7 +27750,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28629,7 +27761,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_48() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28637,7 +27769,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28648,7 +27780,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_17() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -28656,7 +27788,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -28667,7 +27799,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_49() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28675,7 +27807,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28686,7 +27818,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_18() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -28694,7 +27826,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -28705,7 +27837,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_50() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28713,7 +27845,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28724,7 +27856,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_51() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28732,7 +27864,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28743,7 +27875,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_52() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28751,7 +27883,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28762,7 +27894,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_19() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -28770,7 +27902,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -28781,7 +27913,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_53() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28789,7 +27921,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28800,7 +27932,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_54() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28808,7 +27940,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28819,7 +27951,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_55() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28827,7 +27959,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28838,7 +27970,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_56() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28846,7 +27978,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28857,7 +27989,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_57() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28865,7 +27997,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28876,7 +28008,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_58() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28884,7 +28016,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28895,7 +28027,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_59() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28903,7 +28035,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28914,7 +28046,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_ptr_JSObject_close0_instantiation_4() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -28922,7 +28054,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -28933,7 +28065,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_60() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28941,7 +28073,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28952,7 +28084,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_ptr_JSObject_close0_instantiation_5() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -28960,7 +28092,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -28971,7 +28103,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_61() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28979,7 +28111,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28990,7 +28122,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_62() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -28998,7 +28130,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29009,7 +28141,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_char16_t_close0_instantiation_2() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<u16>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -29017,7 +28149,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<u16>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<u16>)
@@ -29028,7 +28160,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_63() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29036,7 +28168,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29047,7 +28179,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_64() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29055,7 +28187,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29076,12 +28208,12 @@ pub mod root {
         let ptr = UNINIT.as_ptr();
         assert_eq!(
             ::std::mem::size_of::<IterImpl>(),
-            32usize,
+            16usize,
             concat!("Size of: ", stringify!(IterImpl))
         );
         assert_eq!(
             ::std::mem::align_of::<IterImpl>(),
-            8usize,
+            4usize,
             concat!("Alignment of ", stringify!(IterImpl))
         );
         assert_eq!(
@@ -29096,7 +28228,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).mData) as usize - ptr as usize },
-            8usize,
+            4usize,
             concat!(
                 "Offset of field: ",
                 stringify!(IterImpl),
@@ -29106,7 +28238,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).mDataEnd) as usize - ptr as usize },
-            16usize,
+            8usize,
             concat!(
                 "Offset of field: ",
                 stringify!(IterImpl),
@@ -29116,7 +28248,7 @@ pub mod root {
         );
         assert_eq!(
             unsafe { ::std::ptr::addr_of!((*ptr).mAbsoluteOffset) as usize - ptr as usize },
-            24usize,
+            12usize,
             concat!(
                 "Offset of field: ",
                 stringify!(IterImpl),
@@ -29129,7 +28261,7 @@ pub mod root {
     fn __bindgen_test_layout_AtomicRefCounted_open0_WasmModule_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::js::AtomicRefCounted>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::js::AtomicRefCounted)
@@ -29137,7 +28269,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::js::AtomicRefCounted>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::js::AtomicRefCounted)
@@ -29148,7 +28280,7 @@ pub mod root {
     fn __bindgen_test_layout_Range_open0_uint8_t_close0_instantiation() {
         assert_eq!(
             ::std::mem::size_of::<root::mozilla::Range<u8>>(),
-            16usize,
+            8usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::mozilla::Range<u8>)
@@ -29156,7 +28288,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::mozilla::Range<u8>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::mozilla::Range<u8>)
@@ -29167,7 +28299,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_65() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29175,7 +28307,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29186,7 +28318,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_66() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29194,7 +28326,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29205,7 +28337,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_20() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -29213,7 +28345,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -29224,7 +28356,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_21() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -29232,7 +28364,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -29243,7 +28375,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_22() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -29251,7 +28383,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -29262,7 +28394,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_23() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -29270,7 +28402,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -29281,7 +28413,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_24() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -29289,7 +28421,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -29300,7 +28432,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_20() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -29308,7 +28440,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -29319,7 +28451,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_67() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29327,7 +28459,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29338,7 +28470,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_68() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29346,7 +28478,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29357,7 +28489,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_69() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29365,7 +28497,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29376,7 +28508,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_70() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29384,7 +28516,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29395,7 +28527,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_71() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29403,7 +28535,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29414,7 +28546,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_72() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29422,7 +28554,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29433,7 +28565,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_73() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29441,7 +28573,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29452,7 +28584,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_74() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29460,7 +28592,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29471,7 +28603,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_75() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29479,7 +28611,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29490,7 +28622,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_76() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29498,7 +28630,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29509,7 +28641,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_77() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29517,7 +28649,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29528,7 +28660,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_78() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29536,7 +28668,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29547,7 +28679,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_79() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29555,7 +28687,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29566,7 +28698,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_80() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29574,7 +28706,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29585,7 +28717,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_81() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29593,7 +28725,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29604,7 +28736,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_82() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29612,7 +28744,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29623,7 +28755,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_83() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29631,7 +28763,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29642,7 +28774,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_84() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29650,7 +28782,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29661,7 +28793,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_85() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29669,7 +28801,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29680,7 +28812,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_86() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29688,7 +28820,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29699,7 +28831,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_87() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29707,7 +28839,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29718,7 +28850,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_88() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29726,7 +28858,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29737,7 +28869,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_89() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29745,7 +28877,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29756,7 +28888,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_90() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29764,7 +28896,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29775,7 +28907,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_91() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29783,7 +28915,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29794,7 +28926,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_92() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29802,7 +28934,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29813,7 +28945,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_93() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29821,7 +28953,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29832,7 +28964,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_94() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29840,7 +28972,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29851,7 +28983,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_PropertyKey_close0_instantiation_3() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::PropertyKey>)
@@ -29859,7 +28991,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::PropertyKey>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::PropertyKey>)
@@ -29870,7 +29002,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_95() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29878,7 +29010,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29889,7 +29021,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_96() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29897,7 +29029,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29928,7 +29060,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_21() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -29936,7 +29068,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -29947,7 +29079,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_97() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29955,7 +29087,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -29966,7 +29098,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_22() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -29974,7 +29106,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -29985,7 +29117,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_25() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -29993,7 +29125,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30004,7 +29136,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_98() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30012,7 +29144,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30023,7 +29155,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSFunction_close0_instantiation_1() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSFunction>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSFunction>)
@@ -30031,7 +29163,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSFunction>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSFunction>)
@@ -30042,7 +29174,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_26() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30050,7 +29182,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30061,7 +29193,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_99() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30069,7 +29201,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30080,7 +29212,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_27() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30088,7 +29220,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30099,7 +29231,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_100() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30107,7 +29239,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30118,7 +29250,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSFunction_close0_instantiation_2() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSFunction>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSFunction>)
@@ -30126,7 +29258,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSFunction>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSFunction>)
@@ -30137,7 +29269,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_28() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30145,7 +29277,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30156,7 +29288,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_101() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30164,7 +29296,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30175,7 +29307,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_23() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30183,7 +29315,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30194,7 +29326,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_29() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30202,7 +29334,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30213,7 +29345,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_102() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30221,7 +29353,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30232,7 +29364,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_30() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30240,7 +29372,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30251,7 +29383,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_24() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30259,7 +29391,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30270,7 +29402,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_25() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30278,7 +29410,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30289,7 +29421,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_31() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30297,7 +29429,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30308,7 +29440,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_26() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30316,7 +29448,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30327,7 +29459,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_103() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30335,7 +29467,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30346,7 +29478,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_32() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30354,7 +29486,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -30365,7 +29497,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_27() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30373,7 +29505,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30384,7 +29516,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_104() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30392,7 +29524,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30403,7 +29535,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_ptr_JSObject_close0_instantiation_6() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -30411,7 +29543,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -30422,7 +29554,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_28() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30430,7 +29562,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30441,7 +29573,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_ptr_JSObject_close0_instantiation_7() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -30449,7 +29581,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -30574,7 +29706,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_105() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30582,7 +29714,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30593,7 +29725,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_2() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30601,7 +29733,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30612,7 +29744,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_106() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30620,7 +29752,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30631,7 +29763,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_3() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30639,7 +29771,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30650,7 +29782,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_107() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30658,7 +29790,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30669,7 +29801,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_4() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30677,7 +29809,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30688,7 +29820,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_29() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30696,7 +29828,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -30707,7 +29839,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_108() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30715,7 +29847,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30726,7 +29858,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_5() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30734,7 +29866,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30745,7 +29877,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_109() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30753,7 +29885,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30764,7 +29896,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_6() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30772,7 +29904,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30783,7 +29915,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_110() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30791,7 +29923,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30802,7 +29934,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_111() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30810,7 +29942,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30821,7 +29953,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_112() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30829,7 +29961,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30840,7 +29972,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_7() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30848,7 +29980,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30859,7 +29991,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_113() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30867,7 +29999,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30878,7 +30010,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_114() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30886,7 +30018,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30897,7 +30029,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_8() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30905,7 +30037,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30916,7 +30048,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_115() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30924,7 +30056,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30935,7 +30067,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_9() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30943,7 +30075,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30954,7 +30086,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_116() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30962,7 +30094,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -30973,7 +30105,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_10() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30981,7 +30113,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -30992,7 +30124,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_117() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31000,7 +30132,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31011,7 +30143,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_11() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -31019,7 +30151,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -31030,7 +30162,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_118() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31038,7 +30170,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31049,7 +30181,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_30() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -31057,7 +30189,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -31068,7 +30200,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_119() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31076,7 +30208,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31087,7 +30219,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_120() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31095,7 +30227,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31106,7 +30238,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_121() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31114,7 +30246,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31125,7 +30257,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_122() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31133,7 +30265,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31144,7 +30276,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_123() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31152,7 +30284,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31163,7 +30295,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_124() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31171,7 +30303,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31182,7 +30314,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_125() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31190,7 +30322,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31201,7 +30333,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_126() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31209,7 +30341,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31220,7 +30352,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_127() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31228,7 +30360,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31239,7 +30371,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_128() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31247,7 +30379,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31258,7 +30390,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_129() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31266,7 +30398,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31277,7 +30409,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_130() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31285,7 +30417,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31296,7 +30428,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_131() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31304,7 +30436,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31315,7 +30447,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_31() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -31323,7 +30455,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -31334,7 +30466,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_132() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31342,7 +30474,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31353,7 +30485,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_133() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31361,7 +30493,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31372,7 +30504,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_134() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31380,7 +30512,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31391,7 +30523,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_135() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31399,7 +30531,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31410,7 +30542,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_136() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31418,7 +30550,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31429,7 +30561,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_137() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31437,7 +30569,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31448,7 +30580,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_138() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31456,7 +30588,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31467,7 +30599,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_139() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31475,7 +30607,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31486,7 +30618,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_140() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31494,7 +30626,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31505,7 +30637,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_141() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31513,7 +30645,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31524,7 +30656,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_32() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -31532,7 +30664,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -31543,7 +30675,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_142() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31551,7 +30683,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31562,7 +30694,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_143() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31570,7 +30702,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31581,7 +30713,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_144() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31589,7 +30721,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31600,7 +30732,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_145() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31608,7 +30740,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31619,7 +30751,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_146() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31627,7 +30759,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31638,7 +30770,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_147() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31646,7 +30778,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31657,7 +30789,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_148() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31665,7 +30797,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31676,7 +30808,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_149() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31684,7 +30816,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31695,7 +30827,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_150() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31703,7 +30835,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31714,7 +30846,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_151() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31722,7 +30854,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31733,7 +30865,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_12() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -31741,7 +30873,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -31752,7 +30884,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_152() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31760,7 +30892,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31771,7 +30903,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_153() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31779,7 +30911,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31790,7 +30922,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_154() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31798,7 +30930,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31809,7 +30941,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_155() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31817,7 +30949,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31828,7 +30960,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_13() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -31836,7 +30968,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -31847,7 +30979,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_156() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31855,7 +30987,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31866,7 +30998,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_157() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31874,7 +31006,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31885,7 +31017,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_14() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -31893,7 +31025,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -31904,7 +31036,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_33() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -31912,7 +31044,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -31923,7 +31055,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_158() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31931,7 +31063,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31942,7 +31074,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_159() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31950,7 +31082,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31961,7 +31093,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_160() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31969,7 +31101,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -31980,7 +31112,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_15() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -31988,7 +31120,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -31999,7 +31131,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_161() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32007,7 +31139,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32018,7 +31150,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_162() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32026,7 +31158,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32037,7 +31169,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_163() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32045,7 +31177,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32056,7 +31188,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_164() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32064,7 +31196,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32075,7 +31207,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_16() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -32083,7 +31215,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -32094,7 +31226,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_34() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32102,7 +31234,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32113,7 +31245,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_35() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32121,7 +31253,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32132,7 +31264,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_165() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32140,7 +31272,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32151,7 +31283,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_17() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -32159,7 +31291,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -32170,7 +31302,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_36() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32178,7 +31310,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32189,7 +31321,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_166() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32197,7 +31329,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32208,7 +31340,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_37() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32216,7 +31348,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32227,7 +31359,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_167() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32235,7 +31367,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32246,7 +31378,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_38() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32254,7 +31386,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32265,7 +31397,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_168() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32273,7 +31405,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32284,7 +31416,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_39() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32292,7 +31424,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32303,7 +31435,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_169() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32311,7 +31443,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32322,7 +31454,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_170() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32330,7 +31462,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32341,7 +31473,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_171() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32349,7 +31481,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32360,7 +31492,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_172() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32368,7 +31500,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32379,7 +31511,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_173() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32387,7 +31519,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32398,7 +31530,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_174() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32406,7 +31538,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32417,7 +31549,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_175() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32425,7 +31557,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32436,7 +31568,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_18() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -32444,7 +31576,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -32455,7 +31587,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_176() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32463,7 +31595,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32474,7 +31606,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_177() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32482,7 +31614,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32493,7 +31625,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_178() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32501,7 +31633,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32512,7 +31644,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_179() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32520,7 +31652,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32531,7 +31663,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_180() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32539,7 +31671,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32550,7 +31682,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_181() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32558,7 +31690,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32569,7 +31701,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_182() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32577,7 +31709,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32588,7 +31720,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_183() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32596,7 +31728,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32607,7 +31739,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_184() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32615,7 +31747,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32626,7 +31758,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_185() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32634,7 +31766,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32645,7 +31777,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_19() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -32653,7 +31785,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -32664,7 +31796,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_186() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32672,7 +31804,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32683,7 +31815,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_187() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32691,7 +31823,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32702,7 +31834,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_188() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32710,7 +31842,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32721,7 +31853,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_189() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32729,7 +31861,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32740,7 +31872,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_190() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32748,7 +31880,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32759,7 +31891,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_191() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32767,7 +31899,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32778,7 +31910,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_192() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32786,7 +31918,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32797,7 +31929,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_jsid_close0_instantiation_20() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -32805,7 +31937,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::jsid>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::jsid>)
@@ -32816,7 +31948,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_193() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32824,7 +31956,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32835,7 +31967,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_40() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32843,7 +31975,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32854,7 +31986,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_41() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32862,7 +31994,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -32873,7 +32005,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_ptr_JSObject_close0_instantiation_8() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -32881,7 +32013,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -32892,7 +32024,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_ptr_JSObject_close0_instantiation_9() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -32900,7 +32032,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<*mut root::JSObject>)
@@ -32911,7 +32043,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_33() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -32919,7 +32051,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -32930,7 +32062,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_194() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32938,7 +32070,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32949,7 +32081,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_195() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32957,7 +32089,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32968,7 +32100,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_196() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32976,7 +32108,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32987,7 +32119,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_197() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -32995,7 +32127,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -33006,7 +32138,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_Value_close0_instantiation_42() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -33014,7 +32146,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<root::JS::Value>)
@@ -33025,7 +32157,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_198() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -33033,7 +32165,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -33044,7 +32176,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_199() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -33052,7 +32184,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -33063,7 +32195,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_200() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -33071,7 +32203,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -33082,7 +32214,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_201() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -33090,7 +32222,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -33101,7 +32233,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSFunction_close0_instantiation_3() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSFunction>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSFunction>)
@@ -33109,7 +32241,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSFunction>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSFunction>)
@@ -33120,7 +32252,7 @@ pub mod root {
     fn __bindgen_test_layout_Handle_open0_ptr_JSObject_close0_instantiation_202() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -33128,7 +32260,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::Handle<*mut root::JSObject>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::Handle<*mut root::JSObject>)
@@ -33139,7 +32271,7 @@ pub mod root {
     fn __bindgen_test_layout_MutableHandle_open0_Value_close0_instantiation_34() {
         assert_eq!(
             ::std::mem::size_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Size of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)
@@ -33147,7 +32279,7 @@ pub mod root {
         );
         assert_eq!(
             ::std::mem::align_of::<root::JS::MutableHandle<root::JS::Value>>(),
-            8usize,
+            4usize,
             concat!(
                 "Alignment of template specialization: ",
                 stringify!(root::JS::MutableHandle<root::JS::Value>)

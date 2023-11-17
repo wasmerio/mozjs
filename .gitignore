@@ -13,3 +13,4 @@
 # We are skipping the mozjs wasi dir
 mozjs-sys/obj-release
 mozjs-sys/mozjs-wasi
+mozjs-sys/mozconfig-release
