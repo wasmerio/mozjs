@@ -144,6 +144,7 @@ endif
 
 all: maybe-configure
 	$(MAKE) -f Makefile
+	'$(BASE_DIR)'/append-object-files.sh
 
 # Only touch and run configure if we need to, to avoid unnecessary rebuilds.
 # The second two time checks handle the case of configure.in and configure having

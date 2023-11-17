@@ -136,6 +136,8 @@ else ifeq ($(MSYSTEM),MINGW64)
 
 endif
 
+JSSRC := '$(BASE_DIR)'/mozjs-wasi/js/src
+
 .PHONY : all maybe-configure
 
 all: configure
@@ -144,10 +146,15 @@ all: configure
 configure:
 	cd $(BASE_DIR) && ./wasi-configure.sh
 
+	CC="$(CC)" CFLAGS="$(CFLAGS)" \
+	CPP="$(CPP)" CPPFLAGS="$(CPPFLAGS)" \
+	CXX="$(CXX)" CXXFLAGS="$(CXXFLAGS)" \
+	AS="$(AS)" AR="$(AR)" \
+	$(JSSRC)/configure $(strip $(CONFIGURE_FLAGS)) || (cat config.log && exit 1) ; \
+
 # Only touch and run configure if we need to, to avoid unnecessary rebuilds.
 # The second two time checks handle the case of configure.in and configure having
 # the same timestamp (e.g. after a git checkout)
-JSSRC := '$(SRC_DIR)'/js/src
 maybe-configure:
 	[[ $(JSSRC)/configure -ot $(JSSRC)/configure.in ]] && touch $(JSSRC)/configure || true
 	[[ $(JSSRC)/old-configure -ot $(JSSRC)/old-configure.in ]] && touch $(JSSRC)/old-configure || true

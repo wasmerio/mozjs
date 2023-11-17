@@ -37,4 +37,5 @@ libz-sys = "1.1"
 [build-dependencies]
 bindgen.workspace = true
 cc.workspace = true
+regex = "1.10.2"
 walkdir = "2"

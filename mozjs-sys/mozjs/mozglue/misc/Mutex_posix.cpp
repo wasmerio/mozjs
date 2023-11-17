@@ -65,7 +65,7 @@ mozilla::detail::MutexImpl::MutexImpl() {
   TRY_CALL_PTHREADS(pthread_mutexattr_settype(&attr, MUTEX_KIND),
                     "mozilla::detail::MutexImpl::MutexImpl: "
                     "pthread_mutexattr_settype failed");
-#  elif defined(POLICY_KIND)
+#  elif defined(POLICY_KIND) && !defined(MOZ_STATIC_JS)
   if (__builtin_available(macOS 10.14, *)) {
     TRY_CALL_PTHREADS(pthread_mutexattr_setpolicy_np(&attr, POLICY_KIND),
                       "mozilla::detail::MutexImpl::MutexImpl: "

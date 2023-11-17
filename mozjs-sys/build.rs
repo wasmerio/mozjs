@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use bindgen::Formatter;
+use std::collections::HashSet;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs;
@@ -144,12 +145,6 @@ fn cc_flags() -> Vec<&'static str> {
     result
 }
 
-fn copy_jsapi_bindings(build_dir: &Path) {
-    let contents = std::fs::read("wasi-jsapi.rs").unwrap();
-    let path = build_dir.join("jsapi.rs");
-    std::fs::write(path, contents).expect("Should write bindings to file OK");
-}
-
 #[cfg(windows)]
 fn cargo_target_dir() -> PathBuf {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -252,7 +247,8 @@ fn build_jsapi(build_dir: &Path) {
         cmd.env("CXXFLAGS", "-stdlib=libc++");
     }
     if target.contains("wasi") {
-        let wasi_sysroot = env::var("WASI_SYSROOT").expect("Please provide WASI_SYSROOT for WASI targets");
+        let wasi_sysroot =
+            env::var("WASI_SYSROOT").expect("Please provide WASI_SYSROOT for WASI targets");
         cmd.env("WASI_SYSROOT", wasi_sysroot);
     }
 
@@ -260,8 +256,7 @@ fn build_jsapi(build_dir: &Path) {
     let cargo_makefile = if target.contains("wasi") {
         // We use a special/simpler makefile for WASI
         cargo_manifest_dir.join("wasi-makefile.cargo")
-    }
-    else {
+    } else {
         cargo_manifest_dir.join("makefile.cargo")
     };
 
@@ -295,10 +290,15 @@ fn build_jsapi(build_dir: &Path) {
         }
     } else if target.contains("apple") || target.contains("freebsd") {
         println!("cargo:rustc-link-lib=c++");
+        println!(
+            "cargo:rustc-link-search=native={}/mozjs-libs",
+            build_dir.display()
+        );
+        println!("cargo:rustc-link-lib=static=js_static_extended");
     } else if target.contains("wasi") {
         // if we are in WASI
-        let wasi_sysroot_path =
-            env::var("WASI_SYSROOT").expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
+        let wasi_sysroot_path = env::var("WASI_SYSROOT")
+            .expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
         let wasi_sysroot = PathBuf::from(&wasi_sysroot_path);
 
         // js_static_extended (the extra functions)
@@ -319,21 +319,25 @@ fn build_jsapi(build_dir: &Path) {
         );
         if target.contains("wasix") {
             println!("cargo:rustc-link-lib=wasi-emulated-process-clocks");
-        }
-        else {
+        } else {
             println!("cargo:rustc-link-lib=wasi-emulated-getpid");
             println!(
                 "cargo:rustc-link-search=native={}/lib/wasm32-wasi",
                 wasi_sysroot.display()
-            );    
+            );
         }
-        
+
         println!("cargo:rustc-link-lib=c++");
         println!("cargo:rustc-link-lib=c++abi");
 
         println!("cargo:rustc-link-lib=clang_rt.builtins-wasm32");
     } else {
         println!("cargo:rustc-link-lib=stdc++");
+        println!(
+            "cargo:rustc-link-search=native={}/mozjs-libs",
+            build_dir.display()
+        );
+        println!("cargo:rustc-link-lib=static=js_static_extended");
     }
 }
 
@@ -344,8 +348,8 @@ fn build_jsglue(build_dir: &Path) {
     let target = env::var("TARGET").unwrap();
     if target.contains("wasi") {
         build.compiler("clang");
-        let wasi_sysroot_path =
-            env::var("WASI_SYSROOT").expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
+        let wasi_sysroot_path = env::var("WASI_SYSROOT")
+            .expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
         build.flag(&format!("--sysroot={}", wasi_sysroot_path));
         build.cpp_set_stdlib(None);
     }
@@ -415,8 +419,8 @@ fn build_jsapi_bindings(build_dir: &Path) {
     }
     let target = env::var("TARGET").unwrap();
     if target.contains("wasi") {
-        let wasi_sysroot_path =
-            env::var("WASI_SYSROOT").expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
+        let wasi_sysroot_path = env::var("WASI_SYSROOT")
+            .expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
         builder = builder.clang_arg(&format!("--sysroot={}", wasi_sysroot_path));
     }
 
@@ -626,4 +630,70 @@ fn ignore(path: &Path) -> bool {
             .iter()
             .any(|&ignored| extension == ignored)
     })
+}
+
+fn copy_jsapi_bindings(build_dir: &Path) {
+    let contents = std::fs::read_to_string("wasi-jsapi.rs").unwrap();
+
+    if std::env::var("WASI_VALIDATE_SYMBOLS").is_ok() {
+        let binding_symbols = get_binding_symbols(contents.as_str());
+        let build_symbols = get_build_symbols(build_dir);
+
+        for s in build_symbols
+            .iter()
+            .filter(|s| !binding_symbols.contains(*s))
+        {
+            println!(
+            "cargo:warning=Symbol {s} exists in the build but is missing from the WASIX bindings"
+        );
+        }
+
+        let mut bad_binding_symbols = vec![];
+
+        for s in binding_symbols
+            .iter()
+            .filter(|s| !build_symbols.contains(*s))
+        {
+            bad_binding_symbols.push(s.clone());
+        }
+
+        if !bad_binding_symbols.is_empty() {
+            panic!(
+                "The following symbols from wasi-jsapi.rs are missing from the built artifact:\n{}",
+                bad_binding_symbols.join("\n")
+            );
+        }
+    }
+
+    let path = build_dir.join("jsapi.rs");
+    std::fs::write(path, contents).expect("Should write bindings to file OK");
+}
+
+fn get_binding_symbols(bindings_file_contents: &str) -> HashSet<String> {
+    let rx = regex::RegexBuilder::new(r##"^\s*#\[link_name = "\\u\{1\}(.*)"\]$"##)
+        .build()
+        .unwrap();
+
+    bindings_file_contents
+        .lines()
+        .filter_map(|l| rx.captures(l))
+        .map(|m| m.get(1).unwrap().as_str().to_string())
+        .collect()
+}
+
+fn get_build_symbols(build_dir: &Path) -> HashSet<String> {
+    let rx = regex::RegexBuilder::new(r##"^[0-9a-zA-Z]*\s*T (.*)$"##)
+        .build()
+        .unwrap();
+    let cmd_output = std::process::Command::new("llvm-nm")
+        .arg(build_dir.join("mozjs-libs/libjs_static_extended.a"))
+        .output()
+        .unwrap()
+        .stdout;
+    String::from_utf8(cmd_output)
+        .unwrap()
+        .lines()
+        .filter_map(|l| rx.captures(l))
+        .map(|m| m.get(1).unwrap().as_str().to_string())
+        .collect()
 }
