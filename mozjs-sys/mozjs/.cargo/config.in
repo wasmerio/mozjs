@@ -20,6 +20,11 @@ git = "https://github.com/chris-zen/coremidi.git"
 rev = "fc68464b5445caf111e41f643a2e69ccce0b4f83"
 replace-with = "vendored-sources"
 
+[source."git+https://github.com/franziskuskiefer/cose-rust?rev=43c22248d136c8b38fe42ea709d08da6355cf04b"]
+git = "https://github.com/franziskuskiefer/cose-rust"
+rev = "43c22248d136c8b38fe42ea709d08da6355cf04b"
+replace-with = "vendored-sources"
+
 [source."git+https://github.com/gfx-rs/d3d12-rs?rev=b940b1d71"]
 git = "https://github.com/gfx-rs/d3d12-rs"
 rev = "b940b1d71"
@@ -50,9 +55,9 @@ git = "https://github.com/hsivonen/chardetng_c"
 rev = "ed8a4c6f900a90d4dbc1d64b856e61490a1c3570"
 replace-with = "vendored-sources"
 
-[source."git+https://github.com/hsivonen/packed_simd?rev=e588ceb568878e1a3156ea9ce551d5b63ef0cdc4"]
+[source."git+https://github.com/hsivonen/packed_simd?rev=412f9a0aa556611de021bde89dee8fefe6e0fbbd"]
 git = "https://github.com/hsivonen/packed_simd"
-rev = "e588ceb568878e1a3156ea9ce551d5b63ef0cdc4"
+rev = "412f9a0aa556611de021bde89dee8fefe6e0fbbd"
 replace-with = "vendored-sources"
 
 [source."git+https://github.com/jfkthame/mapped_hyph.git?rev=c7651a0cffff41996ad13c44f689bd9cd2192c01"]

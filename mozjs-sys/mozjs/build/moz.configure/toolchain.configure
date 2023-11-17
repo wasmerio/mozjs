@@ -59,12 +59,7 @@ with only_when(target_is_osx):
         # underlying platform to catch any errors or warnings that wouldn't
         # show up when targeting 11.0, since these would later show up on
         # CI for Intel builds.
-        # (lambda t, d: "11.0" if (t.cpu == "aarch64" and not d) else "10.12"),
-        
-        # Wasmer: Scratch that, a static build of the code is impossible on 
-        # pre-11.0 because __builtin_available cannot be used outside 
-        # dynamically linked environments.
-        (lambda t, d: "11.0"),
+        (lambda t, d: "11.0" if (t.cpu == "aarch64" and not d) else "10.12"),
         help="Set the minimum MacOS version needed at runtime{|}",
     )
 

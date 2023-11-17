@@ -999,15 +999,11 @@ static PRUNTIME_FUNCTION RuntimeFunctionCallback(DWORD64 ControlPc,
 #ifdef JS_USE_APPLE_FAST_WX
 void js::jit::AutoMarkJitCodeWritableForThread::markExecutable(
     bool executable) {
-#ifdef MOZ_STATIC_JS
-  pthread_jit_write_protect_np(executable);
-#else
   if (__builtin_available(macOS 11.0, *)) {
     pthread_jit_write_protect_np(executable);
   } else {
     MOZ_CRASH("pthread_jit_write_protect_np must be available");
   }
-#endif
 }
 #endif
 
