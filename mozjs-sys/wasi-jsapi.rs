@@ -3469,7 +3469,7 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
-            #[link_name = "\u{1}_ZN2js11ToInt64SlowEP9JSContextN2JS6HandleINS2_5ValueEEEPl"]
+            #[link_name = "\u{1}_ZN2js11ToInt64SlowEP9JSContextN2JS6HandleINS2_5ValueEEEPx"]
             pub fn ToInt64Slow(
                 cx: *mut root::JSContext,
                 v: root::JS::HandleValue,
