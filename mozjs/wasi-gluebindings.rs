@@ -1787,6 +1787,11 @@ pub mod root {
         ) -> *mut root::JS::ReadableStreamUnderlyingSource;
     }
     extern "C" {
+        pub fn ReadableStreamUnderlyingSourceGetSource(
+            source: *const root::JS::ReadableStreamUnderlyingSource,
+        ) -> *const ::std::os::raw::c_void;
+    }
+    extern "C" {
         pub fn DeleteReadableStreamUnderlyingSource(
             source: *mut root::JS::ReadableStreamUnderlyingSource,
         );

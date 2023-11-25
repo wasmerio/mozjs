@@ -135,6 +135,8 @@ class RustReadableStreamUnderlyingSource
   }
 
   virtual void finalize() { return mTraps.finalize(this); }
+
+  const void* getSource() const { return mSource; }
 };
 
 struct JSExternalStringCallbacksTraps {
@@ -1042,6 +1044,11 @@ void DeleteJobQueue(JS::JobQueue* queue) { delete queue; }
 JS::ReadableStreamUnderlyingSource* CreateReadableStreamUnderlyingSource(
     const ReadableStreamUnderlyingSourceTraps* aTraps, const void* aSource) {
   return new RustReadableStreamUnderlyingSource(*aTraps, aSource);
+}
+
+const void* ReadableStreamUnderlyingSourceGetSource(
+    const JS::ReadableStreamUnderlyingSource* source) {
+  return static_cast<const RustReadableStreamUnderlyingSource*>(source)->getSource();
 }
 
 void DeleteReadableStreamUnderlyingSource(
