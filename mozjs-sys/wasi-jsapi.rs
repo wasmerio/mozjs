@@ -15047,6 +15047,22 @@ pub mod root {
                 reader: root::JS::HandleObject,
             ) -> *mut root::JSObject;
         }
+        extern "C" {
+            #[doc = " Returns a new instance of the WritableStream builtin class in the current\n compartment, configured as a default stream.\n If a |proto| is passed, that gets set as the instance's [[Prototype]]\n instead of the original value of |WritableStream.prototype|."]
+            #[link_name = "\u{1}_ZN2JS30NewWritableDefaultStreamObjectEP9JSContextNS_6HandleIP8JSObjectEENS2_IP10JSFunctionEEdS5_"]
+            pub fn NewWritableDefaultStreamObject(
+                cx: *mut root::JSContext,
+                underlyingSink: root::JS::HandleObject,
+                size: root::JS::HandleFunction,
+                highWaterMark: f64,
+                proto: root::JS::HandleObject,
+            ) -> *mut root::JSObject;
+        }
+        extern "C" {
+            #[doc = " Returns true if the given object is a WritableStream object or an\n unwrappable wrapper for one, false otherwise."]
+            #[link_name = "\u{1}_ZN2JS16IsWritableStreamEP8JSObject"]
+            pub fn IsWritableStream(obj: *mut root::JSObject) -> bool;
+        }
         #[repr(i32)]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
         pub enum WritableStreamState {
@@ -15054,6 +15070,68 @@ pub mod root {
             Closed = 1,
             Erroring = 2,
             Errored = 3,
+        }
+        extern "C" {
+            #[doc = " Returns the given WritableStream's state.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one."]
+            #[link_name = "\u{1}_ZN2JS22WritableStreamGetStateEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn WritableStreamGetState(
+                cx: *mut root::JSContext,
+                stream: root::JS::HandleObject,
+            ) -> root::JS::WritableStreamState;
+        }
+        extern "C" {
+            #[doc = " Returns true if the given WritableStream is locked, false if not.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one."]
+            #[link_name = "\u{1}_ZN2JS22WritableStreamIsLockedEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn WritableStreamIsLocked(
+                cx: *mut root::JSContext,
+                stream: root::JS::HandleObject,
+            ) -> bool;
+        }
+        extern "C" {
+            #[doc = " Returns true if the given object is a WritableStreamDefaultWriter or\n WritableStreamBYOBWriter object or an unwrappable wrapper for one, false\n otherwise."]
+            #[link_name = "\u{1}_ZN2JS22IsWritableStreamWriterEP8JSObject"]
+            pub fn IsWritableStreamWriter(obj: *mut root::JSObject) -> bool;
+        }
+        extern "C" {
+            #[doc = " Creates a WritableStreamDefaultWriter and locks the stream to the new\n writer.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one. The returned object will always be created in the\n current cx compartment."]
+            #[link_name = "\u{1}_ZN2JS23WritableStreamGetWriterEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn WritableStreamGetWriter(
+                cx: *mut root::JSContext,
+                stream: root::JS::HandleObject,
+            ) -> *mut root::JSObject;
+        }
+        extern "C" {
+            #[doc = " Returns the controller associated with the given WritableStream.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one."]
+            #[link_name = "\u{1}_ZN2JS27WritableStreamGetControllerEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn WritableStreamGetController(
+                cx: *mut root::JSContext,
+                stream: root::JS::HandleObject,
+            ) -> *mut root::JSObject;
+        }
+        extern "C" {
+            #[doc = " Returns the underlying sink associated with the given\n WritableStreamDefaultController.\n\n Asserts that |controller| is a WritableStreamDefaultController object or an\n unwrappable wrapper for one."]
+            #[link_name = "\u{1}_ZN2JS41WritableStreamControllerGetUnderlyingSinkEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn WritableStreamControllerGetUnderlyingSink(
+                cx: *mut root::JSContext,
+                controller: root::JS::HandleObject,
+            ) -> root::JS::Value;
+        }
+        extern "C" {
+            #[doc = " Errors the given WritableStream, causing all future interactions to fail\n with the given error value.\n\n Throws a TypeError and returns false if the erroring operation fails.\n\n Note: This is semantically equivalent to the |error| method on\n the stream controller's prototype in JS. We expose it with the stream\n itself as a target for simplicity.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one."]
+            #[link_name = "\u{1}_ZN2JS19WritableStreamErrorEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEE"]
+            pub fn WritableStreamError(
+                cx: *mut root::JSContext,
+                stream: root::JS::HandleObject,
+                error: root::JS::HandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[doc = " Returns the stream's stored error.\n\n Asserts that |stream| is a WritableStream object or an unwrappable wrapper\n for one."]
+            #[link_name = "\u{1}_ZN2JS28WritableStreamGetStoredErrorEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn WritableStreamGetStoredError(
+                cx: *mut root::JSContext,
+                stream: root::JS::HandleObject,
+            ) -> root::JS::Value;
         }
         #[repr(C)]
         pub struct WritableStreamUnderlyingSink__bindgen_vtable(::std::os::raw::c_void);
