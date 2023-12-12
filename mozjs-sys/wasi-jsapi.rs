@@ -14923,6 +14923,14 @@ pub mod root {
             Byob = 1,
         }
         extern "C" {
+            #[doc = " Returns the stream's stored error.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
+            #[link_name = "\u{1}_ZN2JS28ReadableStreamGetStoredErrorEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn ReadableStreamGetStoredError(
+                cx: *mut root::JSContext,
+                stream: root::JS::HandleObject,
+            ) -> root::JS::Value;
+        }
+        extern "C" {
             #[doc = " Returns true if the given ReadableStream is readable, false if not.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS24ReadableStreamIsReadableEP9JSContextNS_6HandleIP8JSObjectEEPb"]
             pub fn ReadableStreamIsReadable(
@@ -14950,6 +14958,15 @@ pub mod root {
             ) -> bool;
         }
         extern "C" {
+            #[doc = " Returns true if the given ReadableStream is errored, false if not.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[link_name = "\u{1}_ZN2JS23ReadableStreamIsErroredEP9JSContextNS_6HandleIP8JSObjectEEPb"]
+            pub fn ReadableStreamIsErrored(
+                cx: *mut root::JSContext,
+                stream: root::JS::HandleObject,
+                result: *mut bool,
+            ) -> bool;
+        }
+        extern "C" {
             #[doc = " Cancels the given ReadableStream with the given reason and returns a\n Promise resolved according to the result.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
             #[link_name = "\u{1}_ZN2JS20ReadableStreamCancelEP9JSContextNS_6HandleIP8JSObjectEENS2_INS_5ValueEEE"]
             pub fn ReadableStreamCancel(
@@ -14966,6 +14983,40 @@ pub mod root {
                 stream: root::JS::HandleObject,
                 mode: root::JS::ReadableStreamReaderMode,
             ) -> *mut root::JSObject;
+        }
+        extern "C" {
+            #[doc = " Returns the controller associated with the given ReadableStream.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[link_name = "\u{1}_ZN2JS27ReadableStreamGetControllerEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn ReadableStreamGetController(
+                cx: *mut root::JSContext,
+                stream: root::JS::HandleObject,
+            ) -> *mut root::JSObject;
+        }
+        extern "C" {
+            #[doc = " Returns the underlying source associated with the given\n ReadableStreamController.\n\n Checks if |controller| is a ReadableStreamController object or an\n unwrappable wrapper for one and throws an error if not. The returned\n object will always be created in the current cx compartment.\n\n Note: this is different from ReadableStreamGetExternalUnderlyingSource in\n that it only works for ReadableStreams with a mode of Default or Byte,\n returns a Value, and doesn't lock the stream."]
+            #[link_name = "\u{1}_ZN2JS43ReadableStreamControllerGetUnderlyingSourceEP9JSContextNS_6HandleIP8JSObjectEENS_13MutableHandleINS_5ValueEEE"]
+            pub fn ReadableStreamControllerGetUnderlyingSource(
+                cx: *mut root::JSContext,
+                controller: root::JS::HandleObject,
+                source: root::JS::MutableHandleValue,
+            ) -> bool;
+        }
+        extern "C" {
+            #[doc = " Results in true if the stream associated with the given controller\n is readable, and the closeRequested flag on the controller is false,\n and throws an error and returns false if not.\n\n Checks if |stream| is a ReadableStream object or an unwrappable wrapper\n for one and throws an error if not."]
+            #[link_name = "\u{1}_ZN2JS46CheckReadableStreamControllerCanCloseOrEnqueueEP9JSContextNS_6HandleIP8JSObjectEEPKc"]
+            pub fn CheckReadableStreamControllerCanCloseOrEnqueue(
+                cx: *mut root::JSContext,
+                controller: root::JS::HandleObject,
+                action: *const ::std::os::raw::c_char,
+            ) -> bool;
+        }
+        extern "C" {
+            #[doc = " The WHATWG Streams spec algorithm ReadableStreamControllerShouldCallPull.\n\n Asserts that |controller| is a ReadableStreamController object or an\n unwrappable wrapper for one."]
+            #[link_name = "\u{1}_ZN2JS38ReadableStreamControllerShouldCallPullEP9JSContextNS_6HandleIP8JSObjectEE"]
+            pub fn ReadableStreamControllerShouldCallPull(
+                cx: *mut root::JSContext,
+                controller: root::JS::HandleObject,
+            ) -> bool;
         }
         extern "C" {
             #[doc = " Tees the given ReadableStream and stores the two resulting streams in\n outparams. Returns false if the operation fails, e.g. because the stream is\n locked.\n\n Asserts that |stream| is a ReadableStream object or an unwrappable wrapper\n for one."]
