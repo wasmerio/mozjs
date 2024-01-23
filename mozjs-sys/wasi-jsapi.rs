@@ -15768,6 +15768,10 @@ pub mod root {
         pub struct DataView {
             pub _base: root::JS::ArrayBufferView,
         }
+        extern "C" {
+            #[link_name = "\u{1}__ZN2JS8DataView8ClassPtrE"]
+            pub static DataView_ClassPtr: *const root::JSClass;
+        }
         #[test]
         fn bindgen_test_layout_DataView() {
             assert_eq!(
