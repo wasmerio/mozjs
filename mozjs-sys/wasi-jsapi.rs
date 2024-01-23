@@ -15691,6 +15691,10 @@ pub mod root {
                 token: *mut root::JS::OffThreadToken,
             );
         }
+        extern "C" {
+            #[link_name = "\u{1}_ZN2JS22IsLargeArrayBufferViewEP8JSObject"]
+            pub fn IsLargeArrayBufferView(obj: *mut root::JSObject) -> bool;
+        }
         #[repr(C)]
         #[derive(Debug, Copy, Clone)]
         pub struct ArrayBufferOrView {
