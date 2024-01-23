@@ -21063,7 +21063,7 @@ pub mod root {
         ) -> *mut root::JSObject;
     }
     extern "C" {
-        #[link_name = "\u{1}_Z26JS_NewUint8ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEml"]
+        #[link_name = "\u{1}_Z26JS_NewUint8ArrayWithBufferP9JSContextN2JS6HandleIP8JSObjectEEmx"]
         pub fn JS_NewUint8ArrayWithBuffer(
             cx: *mut root::JSContext,
             arrayBuffer: root::JS::Handle<*mut root::JSObject>,
