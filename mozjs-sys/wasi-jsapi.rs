@@ -15769,7 +15769,7 @@ pub mod root {
             pub _base: root::JS::ArrayBufferView,
         }
         extern "C" {
-            #[link_name = "\u{1}__ZN2JS8DataView8ClassPtrE"]
+            #[link_name = "\u{1}_ZN2JS8DataView8ClassPtrE"]
             pub static DataView_ClassPtr: *const root::JSClass;
         }
         #[test]
