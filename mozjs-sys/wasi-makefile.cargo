@@ -136,7 +136,7 @@ else ifeq ($(MSYSTEM),MINGW64)
 
 endif
 
-JSSRC := '$(BASE_DIR)'/mozjs-wasi/js/src
+JSSRC := '$(BASE_DIR)'/mozjs/js/src
 
 .PHONY : all maybe-configure
 

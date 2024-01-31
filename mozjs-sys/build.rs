@@ -12,7 +12,7 @@ use std::process::Command;
 use std::str;
 use walkdir::WalkDir;
 
-const ENV_VARS: &'static [&'static str] = &[
+const ENV_VARS: &[&str] = &[
     "AR",
     "AS",
     "CC",
@@ -29,7 +29,7 @@ const ENV_VARS: &'static [&'static str] = &[
     "STLPORT_LIBS",
 ];
 
-const EXTRA_FILES: &'static [&'static str] = &[
+const EXTRA_FILES: &[&str] = &[
     "makefile.cargo",
     "makefile-wasi.cargo",
     "src/rustfmt.toml",
@@ -216,19 +216,19 @@ fn build_jsapi(build_dir: &Path) {
     let encoding_c_mem_include_dir = env::var("DEP_ENCODING_C_MEM_INCLUDE_DIR").unwrap();
     let mut cppflags = OsString::from("-I");
     cppflags.push(OsString::from(
-        encoding_c_mem_include_dir.replace("\\", "/"),
+        encoding_c_mem_include_dir.replace('\\', "/"),
     ));
     cppflags.push(" ");
     // add zlib from libz-sys to include path
     if let Ok(zlib_include_dir) = env::var("DEP_Z_INCLUDE") {
-        cppflags.push(format!("-I{} ", zlib_include_dir.replace("\\", "/")));
+        cppflags.push(format!("-I{} ", zlib_include_dir.replace('\\', "/")));
     }
     // add zlib.pc into pkg-config's search path
     // this is only needed when libz-sys builds zlib from source
     if let Ok(zlib_root_dir) = env::var("DEP_Z_ROOT") {
         let mut pkg_config_path = OsString::from(format!(
             "{}/lib/pkgconfig",
-            zlib_root_dir.replace("\\", "/")
+            zlib_root_dir.replace('\\', "/")
         ));
         if let Some(env_pkg_config_path) = env::var_os("PKG_CONFIG_PATH") {
             pkg_config_path.push(":");
@@ -261,11 +261,11 @@ fn build_jsapi(build_dir: &Path) {
     };
 
     let result = cmd
-        .args(&["-R", "-f"])
+        .args(["-R", "-f"])
         .arg(cargo_makefile)
-        .current_dir(&build_dir)
+        .current_dir(build_dir)
         .env("BASE_DIR", &cargo_manifest_dir)
-        .env("MOZ_OBJDIR", &build_dir)
+        .env("MOZ_OBJDIR", build_dir)
         .env("NO_RUST_PANIC_HOOK", "1")
         .status()
         .expect(&format!("Failed to run `{:?}`", make));
@@ -421,7 +421,7 @@ fn build_jsapi_bindings(build_dir: &Path) {
     if target.contains("wasi") {
         let wasi_sysroot_path = env::var("WASI_SYSROOT")
             .expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
-        builder = builder.clang_arg(&format!("--sysroot={}", wasi_sysroot_path));
+        builder = builder.clang_arg(format!("--sysroot={}", wasi_sysroot_path));
     }
 
     if let Ok(flags) = env::var("CLANGFLAGS") {
@@ -490,7 +490,7 @@ fn build_jsapi_bindings(build_dir: &Path) {
 }
 
 /// JSAPI types for which we should implement `Sync`.
-const UNSAFE_IMPL_SYNC_TYPES: &'static [&'static str] = &[
+const UNSAFE_IMPL_SYNC_TYPES: &[&str] = &[
     "JSClass",
     "JSFunctionSpec",
     "JSNativeWrapper",
@@ -500,10 +500,10 @@ const UNSAFE_IMPL_SYNC_TYPES: &'static [&'static str] = &[
 
 /// Types which we want to generate bindings for (and every other type they
 /// transitively use).
-const WHITELIST_TYPES: &'static [&'static str] = &["JS.*", "js::.*", "mozilla::.*"];
+const WHITELIST_TYPES: &[&str] = &["JS.*", "js::.*", "mozilla::.*"];
 
 /// Global variables we want to generate bindings to.
-const WHITELIST_VARS: &'static [&'static str] = &[
+const WHITELIST_VARS: &[&str] = &[
     "JS::NullHandleValue",
     "JS::TrueHandleValue",
     "JS::UndefinedHandleValue",
@@ -517,7 +517,7 @@ const WHITELIST_VARS: &'static [&'static str] = &[
 ];
 
 /// Functions we want to generate bindings to.
-const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
+const WHITELIST_FUNCTIONS: &[&str] = &[
     "ExceptionStackOrNull",
     "glue::.*",
     "JS::.*",
@@ -528,7 +528,7 @@ const WHITELIST_FUNCTIONS: &'static [&'static str] = &[
 ];
 
 /// Functions we do not want to generate bindings to.
-const BLACKLIST_FUNCTIONS: &'static [&'static str] = &[
+const BLACKLIST_FUNCTIONS: &[&str] = &[
     "JS::CopyAsyncStack",
     "JS::CreateError",
     "JS::DecodeMultiStencilsOffThread",
@@ -565,7 +565,7 @@ const BLACKLIST_FUNCTIONS: &'static [&'static str] = &[
 /// These are types which are too tricky for bindgen to handle, and/or use C++
 /// features that don't have an equivalent in rust, such as partial template
 /// specialization.
-const OPAQUE_TYPES: &'static [&'static str] = &[
+const OPAQUE_TYPES: &[&str] = &[
     "JS::Auto.*Impl",
     "JS::StackGCVector.*",
     "JS::PersistentRooted.*",
@@ -583,7 +583,7 @@ const OPAQUE_TYPES: &'static [&'static str] = &[
 
 /// Types for which we should NEVER generate bindings, even if it is used within
 /// a type or function signature that we are generating bindings for.
-const BLACKLIST_TYPES: &'static [&'static str] = &[
+const BLACKLIST_TYPES: &[&str] = &[
     // We'll be using libc::FILE.
     "FILE",
     // We provide our own definition because we need to express trait bounds in
@@ -607,7 +607,7 @@ const BLACKLIST_TYPES: &'static [&'static str] = &[
 ];
 
 /// Definitions for types that were blacklisted
-const MODULE_RAW_LINES: &'static [(&'static str, &'static str)] = &[
+const MODULE_RAW_LINES: &[(&str, &str)] = &[
     ("root", "pub type FILE = ::libc::FILE;"),
     ("root::JS", "pub type Heap<T> = crate::jsgc::Heap<T>;"),
     ("root::JS", "pub type Rooted<T> = crate::jsgc::Rooted<T>;"),

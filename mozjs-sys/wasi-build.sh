@@ -65,7 +65,7 @@ case "$mode" in
     ;;
 esac
 
-cd mozjs-wasi
+cd mozjs
 
 MOZCONFIG="${mozconfig}" \
 CXXFLAGS="-matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix -ftls-model=local-exec -fno-trapping-math -lwasi-emulated-process-clocks" \
