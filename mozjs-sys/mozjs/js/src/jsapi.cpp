@@ -2588,6 +2588,11 @@ JS_PUBLIC_API void JS::SetJobQueue(JSContext* cx, JobQueue* queue) {
   cx->jobQueue = queue;
 }
 
+JS_PUBLIC_API void JS::SetPromiseLifecycleCallbacks(
+    JSContext* cx, PromiseLifecycleCallbacks* callbacks) {
+  cx->promiseLifecycleCallbacks = callbacks;
+}
+
 extern JS_PUBLIC_API void JS::SetPromiseRejectionTrackerCallback(
     JSContext* cx, PromiseRejectionTrackerCallback callback,
     void* data /* = nullptr */) {

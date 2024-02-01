@@ -1634,6 +1634,14 @@ static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp);
   //         HostPromiseRejectionTracker(promise, "reject").
   PromiseObject::onSettled(cx, promise, unwrappedRejectionStack);
 
+  // The resolve callback is triggered before the beginning of
+  // resolve or reject functions as per the V8 documentation.
+  // https://docs.google.com/document/d/1rda3yKGHimKIhg5YeoAmCOtyURgsbTH_qaYR79FELlk
+  if (cx->promiseLifecycleCallbacks) {
+    RootedObject promiseObj(cx, promise);
+    cx->promiseLifecycleCallbacks->onPromiseSettled(cx, promiseObj);
+  }
+
   // FulfillPromise
   // Step 7. Return TriggerPromiseReactions(reactions, value).
   // RejectPromise
@@ -1713,6 +1721,11 @@ CreatePromiseObjectWithoutResolutionFunctions(JSContext* cx) {
   }
 
   AddPromiseFlags(*promise, PROMISE_FLAG_DEFAULT_RESOLVING_FUNCTIONS);
+
+  if (cx->promiseLifecycleCallbacks) {
+    RootedObject promiseObj(cx, promise);
+    cx->promiseLifecycleCallbacks->onNewPromise(cx, promiseObj);
+  }
 
   // Step 11. Return promise.
   return promise;
@@ -2167,20 +2180,62 @@ static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp) {
   // Optimized/special cases.
   Handle<PromiseReactionRecord*> reaction =
       reactionObj.as<PromiseReactionRecord>();
+  
+  if (cx->promiseLifecycleCallbacks && reaction->promise()) {
+    RootedObject promiseObj(cx, reaction->promise());
+    cx->promiseLifecycleCallbacks->onBeforePromiseReaction(cx, promiseObj);
+  }
+
+  bool result = false;
+  bool handled = false;
+
   if (reaction->isDefaultResolvingHandler()) {
-    return DefaultResolvingPromiseReactionJob(cx, reaction);
+    result = DefaultResolvingPromiseReactionJob(cx, reaction);
+    handled = true;
   }
   if (reaction->isAsyncFunction()) {
-    return AsyncFunctionPromiseReactionJob(cx, reaction);
+    result = AsyncFunctionPromiseReactionJob(cx, reaction);
+    handled = true;
   }
   if (reaction->isAsyncGenerator()) {
     RootedValue argument(cx, reaction->handlerArg());
     Rooted<AsyncGeneratorObject*> generator(cx, reaction->asyncGenerator());
     auto handler = static_cast<PromiseHandler>(reaction->handler().toInt32());
-    return AsyncGeneratorPromiseReactionJob(cx, handler, generator, argument);
+    result = AsyncGeneratorPromiseReactionJob(cx, handler, generator, argument);
+    handled = true;
   }
   if (reaction->isDebuggerDummy()) {
-    return true;
+    result = true;
+    handled = true;
+  }
+
+  if (handled) {
+    if (cx->promiseLifecycleCallbacks && reaction->promise()) {
+      // Store and clear the pending exception for the duration of
+      // the callback
+      bool hadPendingException = false;
+      RootedValue exception(cx);
+      Rooted<SavedFrame*> exceptionStack(cx);
+      if (!result && cx->isExceptionPending())
+      {
+        if (cx->getPendingException(&exception))
+        {
+          exceptionStack = cx->getPendingExceptionStack();
+          hadPendingException = true;
+        }
+
+        cx->clearPendingException();
+      }
+
+      RootedObject promiseObj(cx, reaction->promise());
+      cx->promiseLifecycleCallbacks->onAfterPromiseReaction(cx, promiseObj);
+
+      if (hadPendingException) {
+        cx->setPendingException(exception, exceptionStack);
+      }
+    }
+
+    return result;
   }
 
   // Step 1.a. Let promiseCapability be reaction.[[Capability]].
@@ -2253,14 +2308,40 @@ static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp) {
     callee =
         reaction->getFixedSlot(ReactionRecordSlot_Resolve).toObjectOrNull();
 
-    return CallPromiseResolveFunction(cx, callee, handlerResult, promiseObj);
+    result = CallPromiseResolveFunction(cx, callee, handlerResult, promiseObj);
+  } else {
+    callee = reaction->getFixedSlot(ReactionRecordSlot_Reject).toObjectOrNull();
+
+    result = CallPromiseRejectFunction(cx, callee, handlerResult, promiseObj,
+                                    unwrappedRejectionStack,
+                                    reaction->unhandledRejectionBehavior());
   }
 
-  callee = reaction->getFixedSlot(ReactionRecordSlot_Reject).toObjectOrNull();
+  if (cx->promiseLifecycleCallbacks && reaction->promise()) {
+    // Store and clear the pending exception for the duration of
+    // the callback
+    bool hadPendingException = false;
+    RootedValue exception(cx);
+    Rooted<SavedFrame*> exceptionStack(cx);
+    if (!result && cx->isExceptionPending())
+    {
+      if (cx->getPendingException(&exception))
+      {
+        exceptionStack = cx->getPendingExceptionStack();
+        hadPendingException = true;
+      }
 
-  return CallPromiseRejectFunction(cx, callee, handlerResult, promiseObj,
-                                   unwrappedRejectionStack,
-                                   reaction->unhandledRejectionBehavior());
+      cx->clearPendingException();
+    }
+
+    cx->promiseLifecycleCallbacks->onAfterPromiseReaction(cx, promiseObj);
+
+    if (hadPendingException) {
+      cx->setPendingException(exception, exceptionStack);
+    }
+  }
+  
+  return result;
 }
 
 /**
@@ -2888,6 +2969,10 @@ PromiseObject* PromiseObject::create(JSContext* cx, HandleObject executor,
 
   // Let the Debugger know about this Promise.
   DebugAPI::onNewPromise(cx, promise);
+
+  if (cx->promiseLifecycleCallbacks) {
+    cx->promiseLifecycleCallbacks->onNewPromise(cx, promiseObj);
+  }
 
   // Step 11. Return promise.
   return promise;

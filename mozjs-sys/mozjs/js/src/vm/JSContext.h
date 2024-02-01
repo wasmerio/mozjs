@@ -917,6 +917,13 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
   // Such conditions permit optimizations around `await` expressions.
   js::ContextData<bool> canSkipEnqueuingJobs;
 
+  // Promise lifecycle callbacks, used to inform embedding code
+  // when a promise is created, etc.
+  //
+  // This is a non-owning pointer to an implementation the embedding
+  // provided by calling JS::SetPromiseLifecycleCallbacks. Can be null.
+  js::ContextData<JS::PromiseLifecycleCallbacks*> promiseLifecycleCallbacks;
+
   js::ContextData<JS::PromiseRejectionTrackerCallback>
       promiseRejectionTrackerCallback;
   js::ContextData<void*> promiseRejectionTrackerCallbackData;

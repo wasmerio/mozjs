@@ -261,6 +261,138 @@ pub mod root {
     }
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
+    pub struct PromiseLifecycleTraps {
+        pub onNewPromise: ::std::option::Option<
+            unsafe extern "C" fn(
+                state: *const ::std::os::raw::c_void,
+                cx: *mut root::JSContext,
+                promise: root::JS::HandleObject,
+            ),
+        >,
+        pub onBeforePromiseReaction: ::std::option::Option<
+            unsafe extern "C" fn(
+                state: *const ::std::os::raw::c_void,
+                cx: *mut root::JSContext,
+                promise: root::JS::HandleObject,
+            ),
+        >,
+        pub onAfterPromiseReaction: ::std::option::Option<
+            unsafe extern "C" fn(
+                state: *const ::std::os::raw::c_void,
+                cx: *mut root::JSContext,
+                promise: root::JS::HandleObject,
+            ),
+        >,
+        pub onPromiseSettled: ::std::option::Option<
+            unsafe extern "C" fn(
+                state: *const ::std::os::raw::c_void,
+                cx: *mut root::JSContext,
+                promise: root::JS::HandleObject,
+            ),
+        >,
+    }
+    #[test]
+    fn bindgen_test_layout_PromiseLifecycleTraps() {
+        const UNINIT: ::std::mem::MaybeUninit<PromiseLifecycleTraps> =
+            ::std::mem::MaybeUninit::uninit();
+        let ptr = UNINIT.as_ptr();
+        assert_eq!(
+            ::std::mem::size_of::<PromiseLifecycleTraps>(),
+            16usize,
+            concat!("Size of: ", stringify!(PromiseLifecycleTraps))
+        );
+        assert_eq!(
+            ::std::mem::align_of::<PromiseLifecycleTraps>(),
+            4usize,
+            concat!("Alignment of ", stringify!(PromiseLifecycleTraps))
+        );
+        assert_eq!(
+            unsafe { ::std::ptr::addr_of!((*ptr).onNewPromise) as usize - ptr as usize },
+            0usize,
+            concat!(
+                "Offset of field: ",
+                stringify!(PromiseLifecycleTraps),
+                "::",
+                stringify!(onNewPromise)
+            )
+        );
+        assert_eq!(
+            unsafe { ::std::ptr::addr_of!((*ptr).onBeforePromiseReaction) as usize - ptr as usize },
+            4usize,
+            concat!(
+                "Offset of field: ",
+                stringify!(PromiseLifecycleTraps),
+                "::",
+                stringify!(onBeforePromiseReaction)
+            )
+        );
+        assert_eq!(
+            unsafe { ::std::ptr::addr_of!((*ptr).onAfterPromiseReaction) as usize - ptr as usize },
+            8usize,
+            concat!(
+                "Offset of field: ",
+                stringify!(PromiseLifecycleTraps),
+                "::",
+                stringify!(onAfterPromiseReaction)
+            )
+        );
+        assert_eq!(
+            unsafe { ::std::ptr::addr_of!((*ptr).onPromiseSettled) as usize - ptr as usize },
+            12usize,
+            concat!(
+                "Offset of field: ",
+                stringify!(PromiseLifecycleTraps),
+                "::",
+                stringify!(onPromiseSettled)
+            )
+        );
+    }
+    #[repr(C)]
+    pub struct RustPromiseLifecycleCallbacks__bindgen_vtable(::std::os::raw::c_void);
+    #[repr(C)]
+    pub struct RustPromiseLifecycleCallbacks {
+        pub vtable_: *const RustPromiseLifecycleCallbacks__bindgen_vtable,
+        pub mTraps: root::PromiseLifecycleTraps,
+        pub mState: *const ::std::os::raw::c_void,
+    }
+    #[test]
+    fn bindgen_test_layout_RustPromiseLifecycleCallbacks() {
+        const UNINIT: ::std::mem::MaybeUninit<RustPromiseLifecycleCallbacks> =
+            ::std::mem::MaybeUninit::uninit();
+        let ptr = UNINIT.as_ptr();
+        assert_eq!(
+            ::std::mem::size_of::<RustPromiseLifecycleCallbacks>(),
+            24usize,
+            concat!("Size of: ", stringify!(RustPromiseLifecycleCallbacks))
+        );
+        assert_eq!(
+            ::std::mem::align_of::<RustPromiseLifecycleCallbacks>(),
+            4usize,
+            concat!("Alignment of ", stringify!(RustPromiseLifecycleCallbacks))
+        );
+        assert_eq!(
+            unsafe { ::std::ptr::addr_of!((*ptr).mTraps) as usize - ptr as usize },
+            4usize,
+            concat!(
+                "Offset of field: ",
+                stringify!(RustPromiseLifecycleCallbacks),
+                "::",
+                stringify!(mTraps)
+            )
+        );
+        assert_eq!(
+            unsafe { ::std::ptr::addr_of!((*ptr).mState) as usize - ptr as usize },
+            20usize,
+            concat!(
+                "Offset of field: ",
+                stringify!(RustPromiseLifecycleCallbacks),
+                "::",
+                stringify!(mState)
+            )
+        );
+    }
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
     pub struct ReadableStreamUnderlyingSourceTraps {
         pub requestData: ::std::option::Option<
             unsafe extern "C" fn(
@@ -1779,6 +1911,15 @@ pub mod root {
     }
     extern "C" {
         pub fn DeleteJobQueue(queue: *mut root::JS::JobQueue);
+    }
+    extern "C" {
+        pub fn CreatePromiseLifecycleCallbacks(
+            aTraps: *const root::PromiseLifecycleTraps,
+            aState: *const ::std::os::raw::c_void,
+        ) -> *mut root::JS::PromiseLifecycleCallbacks;
+    }
+    extern "C" {
+        pub fn DeletePromiseLifecycleCallbacks(callbacks: *mut root::JS::PromiseLifecycleCallbacks);
     }
     extern "C" {
         pub fn CreateReadableStreamUnderlyingSource(

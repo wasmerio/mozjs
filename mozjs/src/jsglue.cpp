@@ -82,6 +82,46 @@ class RustJobQueue : public JS::JobQueue {
   }
 };
 
+struct PromiseLifecycleTraps {
+  void (*onNewPromise)(const void* state, JSContext* cx, JS::HandleObject promise);
+  void (*onBeforePromiseReaction)(const void* state, JSContext* cx, JS::HandleObject promise);
+  void (*onAfterPromiseReaction)(const void* state, JSContext* cx, JS::HandleObject promise);
+  void (*onPromiseSettled)(const void* state, JSContext* cx, JS::HandleObject promise);
+};
+
+class RustPromiseLifecycleCallbacks : public JS::PromiseLifecycleCallbacks {
+  PromiseLifecycleTraps mTraps;
+  const void* mState;
+
+ public:
+  RustPromiseLifecycleCallbacks(const PromiseLifecycleTraps& aTraps, const void* aState)
+      : mTraps(aTraps), mState(aState) {}
+
+  virtual void onNewPromise(JSContext* cx, JS::HandleObject promise) {
+    if (mTraps.onNewPromise) {
+      mTraps.onNewPromise(mState, cx, promise);
+    }
+  }
+
+  virtual void onBeforePromiseReaction(JSContext* cx, JS::HandleObject promise) {
+    if (mTraps.onBeforePromiseReaction) {
+      mTraps.onBeforePromiseReaction(mState, cx, promise);
+    }
+  }
+
+  virtual void onAfterPromiseReaction(JSContext* cx, JS::HandleObject promise) {
+    if (mTraps.onAfterPromiseReaction) {
+      mTraps.onAfterPromiseReaction(mState, cx, promise);
+    }
+  }
+
+  virtual void onPromiseSettled(JSContext* cx, JS::HandleObject promise) {
+    if (mTraps.onPromiseSettled) {
+      mTraps.onPromiseSettled(mState, cx, promise);
+    }
+  }
+};
+
 struct ReadableStreamUnderlyingSourceTraps {
   void (*requestData)(const void* source, JSContext* cx, JS::HandleObject stream,
                       size_t desiredSize);
@@ -1040,6 +1080,15 @@ JS::JobQueue* CreateJobQueue(const JobQueueTraps* aTraps, const void* aQueue) {
 }
 
 void DeleteJobQueue(JS::JobQueue* queue) { delete queue; }
+
+JS::PromiseLifecycleCallbacks* CreatePromiseLifecycleCallbacks(
+    const PromiseLifecycleTraps* aTraps, const void* aState) {
+  return new RustPromiseLifecycleCallbacks(*aTraps, aState);
+}
+
+void DeletePromiseLifecycleCallbacks(JS::PromiseLifecycleCallbacks* callbacks) {
+  delete callbacks;
+}
 
 JS::ReadableStreamUnderlyingSource* CreateReadableStreamUnderlyingSource(
     const ReadableStreamUnderlyingSourceTraps* aTraps, const void* aSource) {

@@ -117,6 +117,48 @@ class JS_PUBLIC_API JobQueue {
 extern JS_PUBLIC_API void SetJobQueue(JSContext* cx, JobQueue* queue);
 
 /**
+ * Invented by Wasmer
+ * 
+ * A set of callbacks raised for different stages of a promise's lifetime.
+ * Allows external code to react to changes in all promises. We had to add
+ * this to enable a node.js-like implementation of the AsyncLocalStorage
+ * API.
+ */
+class JS_PUBLIC_API PromiseLifecycleCallbacks {
+ public:
+  virtual ~PromiseLifecycleCallbacks() = default;
+
+  /**
+   * Called when a new promise is created
+   */
+  virtual void onNewPromise(JSContext* cx, JS::HandleObject promise) = 0;
+
+  /**
+   * Called when a reaction to a promise starts executing.
+   */
+  virtual void onBeforePromiseReaction(JSContext* cx, JS::HandleObject promise) = 0;
+
+  /**
+   * Called when a reaction to a promise finishes executing.
+   */
+  virtual void onAfterPromiseReaction(JSContext* cx, JS::HandleObject promise) = 0;
+
+  /**
+   * Called when a promise settles (by being either fulfilled or rejected)
+   */
+  virtual void onPromiseSettled(JSContext* cx, JS::HandleObject promise) = 0;
+};
+
+/**
+ * Tell SpiderMonkey to use `callbacks` to raise promise lifecycle callbacks.
+ *
+ * SpiderMonkey does not take ownership of the callbacks object; it is the
+ * embedding's responsibility to clean it up after the runtime is destroyed.
+ */
+extern JS_PUBLIC_API void SetPromiseLifecycleCallbacks(
+  JSContext* cx, PromiseLifecycleCallbacks* callbacks);
+
+/**
  * [SMDOC] Protecting the debuggee's job/microtask queue from debugger activity.
  *
  * When the JavaScript debugger interrupts the execution of some debuggee code
