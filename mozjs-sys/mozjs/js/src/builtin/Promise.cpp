@@ -5556,7 +5556,20 @@ template <typename T>
   auto extra = [&](Handle<PromiseReactionRecord*> reaction) {
     reaction->setIsAsyncGenerator(generator);
   };
-  return InternalAwait(cx, value, nullptr, onFulfilled, onRejected, extra);
+
+  // Invented by Wasmer
+  //
+  // See comments in AsyncFunctionAwait, below.
+  RootedObject resultPromise(cx);
+  if (cx->promiseLifecycleCallbacks) {
+    JSObject* promise = CreatePromiseObjectWithoutResolutionFunctions(cx);
+    if (!promise) {
+      return false;
+    }
+    resultPromise = promise;
+  }
+
+  return InternalAwait(cx, value, resultPromise, onFulfilled, onRejected, extra);
 }
 
 /**
@@ -5571,7 +5584,63 @@ template <typename T>
   auto extra = [&](Handle<PromiseReactionRecord*> reaction) {
     reaction->setIsAsyncFunction(genObj);
   };
-  if (!InternalAwait(cx, value, nullptr,
+
+  // Invented by Wasmer:
+  //
+  // Normally, JS code cannot observe await points in async functions. However, 
+  // since we're implementing promise lifecycle callbacks, now it's possible to 
+  // do that.
+  // `Promise.then` creates a new promise alongside its original argument, and that
+  // promise gets its own set of callbacks. However, since `await`ing a promise (which
+  // is otherwise analogous to `Promise.then`) doesn't create an intermediate
+  // promise, the promise callbacks will not be raised before continuing at an await
+  // point.
+  //
+  // Consider this code (this is not a perfect example, but it's the best I can think
+  // of to illustrate the issue more clearly):
+  // ```
+  // let p1 = fooAsync();
+  // let p2 = barAsync();
+  // let p3 = p1.then(() => p2);
+  // let p4 = bazAsync();
+  // let p5 = p3.then(() => p4);
+  // ```
+  //
+  // And compare it with:
+  // ```
+  // function doStuff() {
+  //   let p1 = fooAsync();
+  //   await p1;
+  //   let p2 = barAsync();
+  //   await p2;
+  //   let p4 = bazAsync();
+  //   await p4;
+  // }
+  // let p5 = await doStuff(); // Where is p3?
+  // ```
+  //
+  // Here, the promise that would have been assigned to `p3` is skipped and unobservable.
+  // This is undesirable since we want the hooks to be raised for all promises, whether
+  // implicit or not.
+  // To remedy the situation, we create a "dummy" promise and pass it into
+  // `InternalAwait`. This promise will only be visible to callback code, but that's
+  // exactly what we want; this is also why we don't create the promise if callbacks
+  // haven't been registered. This has the side effect that if callbacks are registered
+  // while an async function is waiting, the intermediate promises won't be observed
+  // for that function. However, we expect this edge case to be inconsequential for
+  // all code, since callback registration can always be moved earlier. It's also very
+  // difficult to count on the semantics of callbacks when they're registered
+  // asynchronously, which should make it unusable anyway.
+  RootedObject resultPromise(cx);
+  if (cx->promiseLifecycleCallbacks) {
+    JSObject* promise = CreatePromiseObjectWithoutResolutionFunctions(cx);
+    if (!promise) {
+      return nullptr;
+    }
+    resultPromise = promise;
+  }
+
+  if (!InternalAwait(cx, value, resultPromise,
                      PromiseHandler::AsyncFunctionAwaitedFulfilled,
                      PromiseHandler::AsyncFunctionAwaitedRejected, extra)) {
     return nullptr;
