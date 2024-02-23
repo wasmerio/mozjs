@@ -14929,6 +14929,11 @@ pub mod root {
             #[link_name = "\u{1}_ZN2JS29IsReadableStreamDefaultReaderEP8JSObject"]
             pub fn IsReadableStreamDefaultReader(obj: *mut root::JSObject) -> bool;
         }
+        extern "C" {
+            #[doc = " Returns true if the given object is a ReadableByteStreamController\n object or an unwrappable wrapper for one, false otherwise."]
+            #[link_name = "\u{1}_ZN2JS30IsReadableByteStreamControllerEP8JSObject"]
+            pub fn IsReadableByteStreamController(obj: *mut root::JSObject) -> bool;
+        }
         #[repr(i32)]
         #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
         pub enum ReadableStreamMode {
