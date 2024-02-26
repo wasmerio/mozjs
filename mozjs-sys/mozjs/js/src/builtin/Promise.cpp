@@ -5154,7 +5154,8 @@ static bool PromiseThenNewPromiseCapability(
   }
 
   if (createDependent != CreateDependentPromise::Always &&
-      IsNativeFunction(C, PromiseConstructor)) {
+      IsNativeFunction(C, PromiseConstructor) &&
+      cx->promiseLifecycleCallbacks == nullptr) {
     return true;
   }
 
