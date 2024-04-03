@@ -75,7 +75,7 @@ CFLAGS="-matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix 
 mkdir -p "${MOZ_OBJDIR}/mozjs-libs"
 
 while read -r file; do
-  cp "${MOZ_OBJDIR}/$file" "${MOZ_OBJDIR}/mozjs-libs/"
+  cp ${MOZ_OBJDIR}/$file "${MOZ_OBJDIR}/mozjs-libs/"
 done < "${script_dir}/wasi-object-files.list"
 
 llvm-ar -r ${MOZ_OBJDIR}/mozjs-libs/libjs_static_extended.a ${MOZ_OBJDIR}/mozjs-libs/*.o
