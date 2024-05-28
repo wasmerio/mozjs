@@ -1,4 +1,8 @@
 config/*.o
+config/external/icu/common/*.o
+config/external/icu/data/*.o
+config/external/icu/i18n/*.o
+intl/components/*.o
 js/src/*.o
 js/src/debugger/*.o
 js/src/frontend/*.o
