@@ -30,6 +30,7 @@ ac_add_options --disable-js-shell
 ac_add_options --disable-export-js
 ac_add_options --disable-shared-js
 ac_add_options --build-backends=RecursiveMake
+ac_add_options --with-intl-api
 ac_add_options --sysroot=${WASI_SYSROOT}
 EOF
 

@@ -9,6 +9,7 @@ CONFIGURE_FLAGS := \
 	--disable-tests \
 	--disable-export-js \
 	--disable-shared-js \
+	--with-intl-api \
 	--build-backends=RecursiveMake
 
 ifneq (,$(CARGO_FEATURE_STREAMS))
