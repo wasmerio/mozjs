@@ -28,8 +28,8 @@ endif
 
 ifeq (wasi,$(findstring wasi,$(TARGET)))
 	WASI := 1
-	CFLAGS += 
-	CXXFLAGS += 
+	CFLAGS += -matomics -mbulk-memory
+	CXXFLAGS += -matomics -mbulk-memory
 else
 	WASI :=
 endif
@@ -75,9 +75,9 @@ ifneq ($(HOST),$(TARGET))
 	endif
 
 	ifeq ($(WASI),1)
-		CC ?= clang
-		CPP ?= clang++ -E
-		CXX ?= clang++
+		CC ?= clang -matomics -mbulk-memory -mmutable-globals
+		CPP ?= clang++ -E -matomics -mbulk-memory -mmutable-globals
+		CXX ?= clang++ -matomics -mbulk-memory -mmutable-globals
 		AR ?= llvm-ar
         LD = $(WASI_SDK)/bin/wasm-ld
 		CONFIGURE_FLAGS += --target=$(TARGET) --without-system-zlib

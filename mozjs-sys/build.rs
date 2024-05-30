@@ -275,7 +275,7 @@ fn build_jsapi(build_dir: &Path) {
         "cargo:rustc-link-search=native={}/js/src/build",
         build_dir.display()
     );
-    println!("cargo:rustc-link-lib=static=js_static"); // Must come before c++
+    // println!("cargo:rustc-link-lib=static=js_static"); // Must come before c++
     if target.contains("windows") {
         println!(
             "cargo:rustc-link-search=native={}/dist/bin",
@@ -289,12 +289,12 @@ fn build_jsapi(build_dir: &Path) {
             println!("cargo:rustc-link-lib=stdc++");
         }
     } else if target.contains("apple") || target.contains("freebsd") {
-        println!("cargo:rustc-link-lib=c++");
         println!(
             "cargo:rustc-link-search=native={}/mozjs-libs",
             build_dir.display()
         );
         println!("cargo:rustc-link-lib=static=js_static_extended");
+        println!("cargo:rustc-link-lib=c++");
     } else if target.contains("wasi") {
         // if we are in WASI
         let wasi_sysroot_path = env::var("WASI_SYSROOT")
@@ -308,10 +308,10 @@ fn build_jsapi(build_dir: &Path) {
         );
         println!("cargo:rustc-link-lib=static=js_static_extended");
 
-        println!(
-            "cargo:rustc-link-search=native={}/js/src/build",
-            build_dir.display()
-        );
+        // println!(
+        //     "cargo:rustc-link-search=native={}/js/src/build",
+        //     build_dir.display()
+        // );
 
         println!(
             "cargo:rustc-link-search=native={}/lib/wasm32-wasi",
