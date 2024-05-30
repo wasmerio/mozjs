@@ -39,6 +39,34 @@ using JS::AutoStableStringChars;
 using js::intl::ReportInternalError;
 using js::intl::SharedIntlData;
 
+#ifdef __wasi__
+namespace mozilla::intl {
+SpanResult<char> KeywordValueToBcp47Extension2(const char* aKeyword,
+                                               int32_t aLength) {
+  if (aKeyword == nullptr) {
+    return Err(InternalError{});
+  }
+  return MakeStringSpan(uloc_toUnicodeLocaleType("co", aKeyword));
+}
+using Bcp47ExtEnumeration2 =
+    Enumeration<char, SpanResult<char>, KeywordValueToBcp47Extension2>;
+
+static Result<Bcp47ExtEnumeration2, ICUError> GetBcp47KeywordValuesForLocale(
+    const char* aLocale,
+    Collator::CommonlyUsed aCommonlyUsed = Collator::CommonlyUsed::No) {
+  UErrorCode status = U_ZERO_ERROR;
+  UEnumeration* enumeration = ucol_getKeywordValuesForLocale(
+      "collation", aLocale, static_cast<bool>(aCommonlyUsed), &status);
+
+  if (U_SUCCESS(status)) {
+    return Bcp47ExtEnumeration2(enumeration);
+  }
+
+  return Err(ToICUError(status));
+}
+}  // namespace mozilla::intl
+#endif
+
 const JSClassOps CollatorObject::classOps_ = {
     nullptr,                   // addProperty
     nullptr,                   // delProperty
@@ -159,7 +187,11 @@ bool js::intl_availableCollations(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
   auto keywords =
+#ifdef __wasi__
+      mozilla::intl::GetBcp47KeywordValuesForLocale(locale.get());
+#else
       mozilla::intl::Collator::GetBcp47KeywordValuesForLocale(locale.get());
+#endif
   if (keywords.isErr()) {
     ReportInternalError(cx, keywords.unwrapErr());
     return false;

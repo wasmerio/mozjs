@@ -21,7 +21,7 @@ ac_add_options --enable-jitspew
 ac_add_options --enable-optimize=-O3
 ac_add_options --enable-js-streams
 ac_add_options --without-system-zlib
-ac_add_options --without-intl-api
+ac_add_options --with-intl-api
 ac_add_options --disable-tests
 ac_add_options --disable-clang-plugin
 ac_add_options --disable-jit
@@ -30,7 +30,6 @@ ac_add_options --disable-js-shell
 ac_add_options --disable-export-js
 ac_add_options --disable-shared-js
 ac_add_options --build-backends=RecursiveMake
-ac_add_options --with-intl-api
 ac_add_options --sysroot=${WASI_SYSROOT}
 EOF
 
@@ -69,8 +68,8 @@ esac
 cd mozjs
 
 MOZCONFIG="${mozconfig}" \
-CXXFLAGS="-matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix -ftls-model=local-exec -fno-trapping-math -lwasi-emulated-process-clocks" \
-CFLAGS="-matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix -ftls-model=local-exec -fno-trapping-math -lwasi-emulated-process-clocks" \
+CXXFLAGS="-matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix -ftls-model=local-exec -fno-trapping-math -lwasi-emulated-process-clocks -Wall" \
+CFLAGS="-matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix -ftls-model=local-exec -fno-trapping-math -lwasi-emulated-process-clocks -Wall" \
   ./mach build
 
 mkdir -p "${MOZ_OBJDIR}/mozjs-libs"

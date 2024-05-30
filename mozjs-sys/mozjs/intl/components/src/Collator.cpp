@@ -265,6 +265,7 @@ Result<Collator::CaseFirst, ICUError> Collator::GetCaseFirst() const {
   return CaseFirst::Lower;
 }
 
+#ifndef __wasi__
 /* static */
 Result<Collator::Bcp47ExtEnumeration, ICUError>
 Collator::GetBcp47KeywordValuesForLocale(const char* aLocale,
@@ -292,6 +293,7 @@ Collator::GetBcp47KeywordValues() {
 
   return Err(ToICUError(status));
 }
+#endif
 
 /* static */
 SpanResult<char> Collator::KeywordValueToBcp47Extension(const char* aKeyword,

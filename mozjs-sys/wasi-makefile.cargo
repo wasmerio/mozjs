@@ -11,6 +11,7 @@ CONFIGURE_FLAGS := \
 	--disable-shared-js \
 	--build-backends=RecursiveMake \
 	--enable-js-streams \
+	--with-intl-api \
     --host=aarch64-apple-darwin
 
 ifneq (,$(CARGO_FEATURE_JITSPEW))
