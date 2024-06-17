@@ -12,7 +12,7 @@ CONFIGURE_FLAGS := \
 	--build-backends=RecursiveMake \
 	--enable-js-streams \
 	--with-intl-api \
-    --host=aarch64-apple-darwin
+    --host=x86_64-unknown-linux-gnu
 
 ifneq (,$(CARGO_FEATURE_JITSPEW))
     CONFIGURE_FLAGS += --enable-jitspew
@@ -28,8 +28,15 @@ endif
 
 ifeq (wasi,$(findstring wasi,$(TARGET)))
 	WASI := 1
-	CFLAGS += -matomics -mbulk-memory
-	CXXFLAGS += -matomics -mbulk-memory
+	CFLAGS += -matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix \
+		-ftls-model=local-exec -fno-trapping-math -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_SIGNAL \
+		-D_WASI_EMULATED_PROCESS_CLOCKS
+	CPPFLAGS += -matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix \
+		-ftls-model=local-exec -fno-trapping-math -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_SIGNAL \
+		-D_WASI_EMULATED_PROCESS_CLOCKS
+	CXXFLAGS += -matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix \
+		-ftls-model=local-exec -fno-trapping-math -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_SIGNAL \
+		-D_WASI_EMULATED_PROCESS_CLOCKS
 else
 	WASI :=
 endif
@@ -75,9 +82,9 @@ ifneq ($(HOST),$(TARGET))
 	endif
 
 	ifeq ($(WASI),1)
-		CC ?= clang -matomics -mbulk-memory -mmutable-globals
-		CPP ?= clang++ -E -matomics -mbulk-memory -mmutable-globals
-		CXX ?= clang++ -matomics -mbulk-memory -mmutable-globals
+		CC ?= clang-15 --sysroot $(WASI_SYSROOT) 
+		CPP ?= clang-15 -E --sysroot $(WASI_SYSROOT)
+		CXX ?= clang-15 --sysroot $(WASI_SYSROOT)
 		AR ?= llvm-ar
         LD = $(WASI_SDK)/bin/wasm-ld
 		CONFIGURE_FLAGS += --target=$(TARGET) --without-system-zlib

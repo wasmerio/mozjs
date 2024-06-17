@@ -833,7 +833,7 @@ class SrcRepository(Repository):
         """
         res = []
         # move away the .git or .hg folder from path to more easily test in a hg/git repo
-        for root, dirs, files in os.walk("."):
+        for root, dirs, files in os.walk(path):
             for name in files:
                 res.append(os.path.join(root, name))
         return res
