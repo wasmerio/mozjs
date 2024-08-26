@@ -1,0 +1,1 @@
+UnaryArith, 1, 1, 3, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(1) , OP(GuardToBigInt) ID(0) OP(BigIntIncResult) ID(0) OP(ReturnFromIC)  

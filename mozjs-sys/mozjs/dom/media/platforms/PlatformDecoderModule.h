@@ -7,8 +7,6 @@
 #if !defined(PlatformDecoderModule_h_)
 #  define PlatformDecoderModule_h_
 
-#  include <queue>
-
 #  include "DecoderDoctorLogger.h"
 #  include "GMPCrashHelper.h"
 #  include "MediaCodecsSupport.h"
@@ -56,6 +54,8 @@ enum class Option {
                                 // delivered before initialization data.
   DefaultPlaybackDeviceMono,    // Currently only used by Opus on RDD to avoid
                                 // initialization of audio backends on RDD
+  KeepOriginalPts,  // It can be that the decoder mangles the pts of decoded
+                    // frames, this forces using the input PTS.
 
   SENTINEL  // one past the last valid value
 };
@@ -125,7 +125,7 @@ struct MOZ_STACK_CLASS CreateDecoderParams final {
   CreateDecoderParams(const CreateDecoderParams& aParams) = default;
 
   MOZ_IMPLICIT CreateDecoderParams(const CreateDecoderParamsForAsync& aParams)
-      : mConfig(*aParams.mConfig.get()),
+      : mConfig(*aParams.mConfig),
         mImageContainer(aParams.mImageContainer),
         mKnowsCompositor(aParams.mKnowsCompositor),
         mCrashHelper(aParams.mCrashHelper),
@@ -196,7 +196,7 @@ struct MOZ_STACK_CLASS CreateDecoderParams final {
     mUseNullDecoder = aUseNullDecoder;
   }
   void Set(NoWrapper aNoWrapper) { mNoWrapper = aNoWrapper; }
-  void Set(OptionSet aOptions) { mOptions = aOptions; }
+  void Set(const OptionSet& aOptions) { mOptions = aOptions; }
   void Set(VideoFrameRate aRate) { mRate = aRate; }
   void Set(layers::KnowsCompositor* aKnowsCompositor) {
     if (aKnowsCompositor) {
@@ -285,7 +285,7 @@ struct MOZ_STACK_CLASS SupportDecoderParams final {
     mUseNullDecoder = aUseNullDecoder;
   }
   void Set(media::NoWrapper aNoWrapper) { mNoWrapper = aNoWrapper; }
-  void Set(media::OptionSet aOptions) { mOptions = aOptions; }
+  void Set(const media::OptionSet& aOptions) { mOptions = aOptions; }
   void Set(media::VideoFrameRate aRate) { mRate = aRate; }
   void Set(layers::KnowsCompositor* aKnowsCompositor) {
     if (aKnowsCompositor) {
@@ -350,7 +350,7 @@ class PlatformDecoderModule {
         SupportsMimeType(trackInfo.mMimeType, aDiagnostics);
 
     // Bail early if we don't support this format at all
-    if (support == media::DecodeSupport::Unsupported) {
+    if (support.isEmpty()) {
       return support;
     }
 
@@ -363,7 +363,7 @@ class PlatformDecoderModule {
 
     // Check whether we support the desired color depth
     if (!SupportsColorDepth(videoInfo->mColorDepth, aDiagnostics)) {
-      return media::DecodeSupport::Unsupported;
+      return media::DecodeSupportSet{};
     }
     return support;
   }
@@ -439,13 +439,11 @@ class MediaDataDecoder : public DecoderDoctorLifeLogger<MediaDataDecoder> {
   virtual ~MediaDataDecoder() = default;
 
  public:
-  typedef TrackInfo::TrackType TrackType;
-  typedef nsTArray<RefPtr<MediaData>> DecodedData;
-  typedef MozPromise<TrackType, MediaResult, /* IsExclusive = */ true>
-      InitPromise;
-  typedef MozPromise<DecodedData, MediaResult, /* IsExclusive = */ true>
-      DecodePromise;
-  typedef MozPromise<bool, MediaResult, /* IsExclusive = */ true> FlushPromise;
+  using TrackType = TrackInfo::TrackType;
+  using DecodedData = nsTArray<RefPtr<MediaData>>;
+  using InitPromise = MozPromise<TrackType, MediaResult, true>;
+  using DecodePromise = MozPromise<DecodedData, MediaResult, true>;
+  using FlushPromise = MozPromise<bool, MediaResult, true>;
 
   NS_INLINE_DECL_PURE_VIRTUAL_REFCOUNTING
 

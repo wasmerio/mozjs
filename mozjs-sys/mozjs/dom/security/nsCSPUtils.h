@@ -89,41 +89,31 @@ static const char* CSPStrDirectives[] = {
     "block-all-mixed-content",    // BLOCK_ALL_MIXED_CONTENT
     "sandbox",                    // SANDBOX_DIRECTIVE
     "worker-src",                 // WORKER_SRC_DIRECTIVE
-    "navigate-to",                // NAVIGATE_TO_DIRECTIVE
     "script-src-elem",            // SCRIPT_SRC_ELEM_DIRECTIVE
     "script-src-attr",            // SCRIPT_SRC_ATTR_DIRECTIVE
     "style-src-elem",             // STYLE_SRC_ELEM_DIRECTIVE
     "style-src-attr",             // STYLE_SRC_ATTR_DIRECTIVE
+    "require-trusted-types-for",  // REQUIRE_TRUSTED_TYPES_FOR_DIRECTIVE
+    "trusted-types",              // TRUSTED_TYPES_DIRECTIVE
 };
 
 inline const char* CSP_CSPDirectiveToString(CSPDirective aDir) {
   return CSPStrDirectives[static_cast<uint32_t>(aDir)];
 }
 
-inline CSPDirective CSP_StringToCSPDirective(const nsAString& aDir) {
-  nsString lowerDir = PromiseFlatString(aDir);
-  ToLowerCase(lowerDir);
+CSPDirective CSP_StringToCSPDirective(const nsAString& aDir);
 
-  uint32_t numDirs = (sizeof(CSPStrDirectives) / sizeof(CSPStrDirectives[0]));
-  for (uint32_t i = 1; i < numDirs; i++) {
-    if (lowerDir.EqualsASCII(CSPStrDirectives[i])) {
-      return static_cast<CSPDirective>(i);
-    }
-  }
-  return nsIContentSecurityPolicy::NO_DIRECTIVE;
-}
-
-#define FOR_EACH_CSP_KEYWORD(MACRO)                             \
-  MACRO(CSP_SELF, "'self'")                                     \
-  MACRO(CSP_UNSAFE_INLINE, "'unsafe-inline'")                   \
-  MACRO(CSP_UNSAFE_EVAL, "'unsafe-eval'")                       \
-  MACRO(CSP_UNSAFE_HASHES, "'unsafe-hashes'")                   \
-  MACRO(CSP_NONE, "'none'")                                     \
-  MACRO(CSP_NONCE, "'nonce-")                                   \
-  MACRO(CSP_REPORT_SAMPLE, "'report-sample'")                   \
-  MACRO(CSP_STRICT_DYNAMIC, "'strict-dynamic'")                 \
-  MACRO(CSP_UNSAFE_ALLOW_REDIRECTS, "'unsafe-allow-redirects'") \
-  MACRO(CSP_WASM_UNSAFE_EVAL, "'wasm-unsafe-eval'")
+#define FOR_EACH_CSP_KEYWORD(MACRO)                 \
+  MACRO(CSP_SELF, "'self'")                         \
+  MACRO(CSP_UNSAFE_INLINE, "'unsafe-inline'")       \
+  MACRO(CSP_UNSAFE_EVAL, "'unsafe-eval'")           \
+  MACRO(CSP_UNSAFE_HASHES, "'unsafe-hashes'")       \
+  MACRO(CSP_NONE, "'none'")                         \
+  MACRO(CSP_NONCE, "'nonce-")                       \
+  MACRO(CSP_REPORT_SAMPLE, "'report-sample'")       \
+  MACRO(CSP_STRICT_DYNAMIC, "'strict-dynamic'")     \
+  MACRO(CSP_WASM_UNSAFE_EVAL, "'wasm-unsafe-eval'") \
+  MACRO(CSP_ALLOW_DUPLICATES, "'allow-duplicates'")
 
 enum CSPKeyword {
 #define KEYWORD_ENUM(id_, string_) id_,
@@ -225,24 +215,19 @@ class nsCSPBaseSrc {
   nsCSPBaseSrc();
   virtual ~nsCSPBaseSrc();
 
-  virtual bool permits(nsIURI* aUri, const nsAString& aNonce,
-                       bool aWasRedirected, bool aReportOnly,
-                       bool aUpgradeInsecure, bool aParserCreated) const;
-  virtual bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-                      bool aParserCreated) const;
+  virtual bool permits(nsIURI* aUri, bool aWasRedirected, bool aReportOnly,
+                       bool aUpgradeInsecure) const;
+  virtual bool allows(enum CSPKeyword aKeyword,
+                      const nsAString& aHashOrNonce) const;
   virtual bool visit(nsCSPSrcVisitor* aVisitor) const = 0;
   virtual void toString(nsAString& outStr) const = 0;
-
-  virtual void invalidate() const { mInvalidated = true; }
 
   virtual bool isReportSample() const { return false; }
 
   virtual bool isHash() const { return false; }
-
- protected:
-  // invalidate srcs if 'script-dynamic' is present or also invalidate
-  // unsafe-inline' if nonce- or hash-source specified
-  mutable bool mInvalidated;
+  virtual bool isNonce() const { return false; }
+  virtual bool isKeyword(CSPKeyword aKeyword) const { return false; }
+  virtual bool isTrustedTypesDirectivePolicyName() const { return false; }
 };
 
 /* =============== nsCSPSchemeSrc ============ */
@@ -252,9 +237,8 @@ class nsCSPSchemeSrc : public nsCSPBaseSrc {
   explicit nsCSPSchemeSrc(const nsAString& aScheme);
   virtual ~nsCSPSchemeSrc();
 
-  bool permits(nsIURI* aUri, const nsAString& aNonce, bool aWasRedirected,
-               bool aReportOnly, bool aUpgradeInsecure,
-               bool aParserCreated) const override;
+  bool permits(nsIURI* aUri, bool aWasRedirected, bool aReportOnly,
+               bool aUpgradeInsecure) const override;
   bool visit(nsCSPSrcVisitor* aVisitor) const override;
   void toString(nsAString& outStr) const override;
 
@@ -271,9 +255,8 @@ class nsCSPHostSrc : public nsCSPBaseSrc {
   explicit nsCSPHostSrc(const nsAString& aHost);
   virtual ~nsCSPHostSrc();
 
-  bool permits(nsIURI* aUri, const nsAString& aNonce, bool aWasRedirected,
-               bool aReportOnly, bool aUpgradeInsecure,
-               bool aParserCreated) const override;
+  bool permits(nsIURI* aUri, bool aWasRedirected, bool aReportOnly,
+               bool aUpgradeInsecure) const override;
   bool visit(nsCSPSrcVisitor* aVisitor) const override;
   void toString(nsAString& outStr) const override;
 
@@ -316,25 +299,18 @@ class nsCSPKeywordSrc : public nsCSPBaseSrc {
   explicit nsCSPKeywordSrc(CSPKeyword aKeyword);
   virtual ~nsCSPKeywordSrc();
 
-  bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-              bool aParserCreated) const override;
-  bool permits(nsIURI* aUri, const nsAString& aNonce, bool aWasRedirected,
-               bool aReportOnly, bool aUpgradeInsecure,
-               bool aParserCreated) const override;
+  bool allows(enum CSPKeyword aKeyword,
+              const nsAString& aHashOrNonce) const override;
   bool visit(nsCSPSrcVisitor* aVisitor) const override;
   void toString(nsAString& outStr) const override;
 
   inline CSPKeyword getKeyword() const { return mKeyword; };
 
-  inline void invalidate() const override {
-    // keywords that need to invalidated
-    if (mKeyword == CSP_SELF || mKeyword == CSP_UNSAFE_INLINE ||
-        mKeyword == CSP_REPORT_SAMPLE) {
-      mInvalidated = true;
-    }
-  }
-
   bool isReportSample() const override { return mKeyword == CSP_REPORT_SAMPLE; }
+
+  bool isKeyword(CSPKeyword aKeyword) const final {
+    return mKeyword == aKeyword;
+  }
 
  private:
   CSPKeyword mKeyword;
@@ -347,21 +323,14 @@ class nsCSPNonceSrc : public nsCSPBaseSrc {
   explicit nsCSPNonceSrc(const nsAString& aNonce);
   virtual ~nsCSPNonceSrc();
 
-  bool permits(nsIURI* aUri, const nsAString& aNonce, bool aWasRedirected,
-               bool aReportOnly, bool aUpgradeInsecure,
-               bool aParserCreated) const override;
-  bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-              bool aParserCreated) const override;
+  bool allows(enum CSPKeyword aKeyword,
+              const nsAString& aHashOrNonce) const override;
   bool visit(nsCSPSrcVisitor* aVisitor) const override;
   void toString(nsAString& outStr) const override;
 
   inline void getNonce(nsAString& outStr) const { outStr.Assign(mNonce); };
 
-  inline void invalidate() const override {
-    // overwrite nsCSPBaseSRC::invalidate() and explicitily
-    // do *not* invalidate, because 'strict-dynamic' should
-    // not invalidate nonces.
-  }
+  bool isNonce() const final { return true; }
 
  private:
   nsString mNonce;
@@ -374,8 +343,8 @@ class nsCSPHashSrc : public nsCSPBaseSrc {
   nsCSPHashSrc(const nsAString& algo, const nsAString& hash);
   virtual ~nsCSPHashSrc();
 
-  bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-              bool aParserCreated) const override;
+  bool allows(enum CSPKeyword aKeyword,
+              const nsAString& aHashOrNonce) const override;
   void toString(nsAString& outStr) const override;
   bool visit(nsCSPSrcVisitor* aVisitor) const override;
 
@@ -384,12 +353,6 @@ class nsCSPHashSrc : public nsCSPBaseSrc {
   };
 
   inline void getHash(nsAString& outStr) const { outStr.Assign(mHash); };
-
-  inline void invalidate() const override {
-    // overwrite nsCSPBaseSRC::invalidate() and explicitily
-    // do *not* invalidate, because 'strict-dynamic' should
-    // not invalidate hashes.
-  }
 
   bool isHash() const final { return true; }
 
@@ -426,6 +389,38 @@ class nsCSPSandboxFlags : public nsCSPBaseSrc {
   nsString mFlags;
 };
 
+/* =============== nsCSPRequireTrustedTypesForDirectiveValue =============== */
+
+class nsCSPRequireTrustedTypesForDirectiveValue : public nsCSPBaseSrc {
+ public:
+  explicit nsCSPRequireTrustedTypesForDirectiveValue(const nsAString& aValue);
+  virtual ~nsCSPRequireTrustedTypesForDirectiveValue() = default;
+
+  bool visit(nsCSPSrcVisitor* aVisitor) const override;
+  void toString(nsAString& aOutStr) const override;
+
+ private:
+  const nsString mValue;
+};
+
+/* =============== nsCSPTrustedTypesDirectiveExpression =============== */
+
+class nsCSPTrustedTypesDirectivePolicyName : public nsCSPBaseSrc {
+ public:
+  explicit nsCSPTrustedTypesDirectivePolicyName(const nsAString& aName);
+  virtual ~nsCSPTrustedTypesDirectivePolicyName() = default;
+
+  bool visit(nsCSPSrcVisitor* aVisitor) const override;
+  void toString(nsAString& aOutStr) const override;
+
+  bool isTrustedTypesDirectivePolicyName() const override { return true; }
+
+  const nsString& GetName() const { return mName; }
+
+ private:
+  const nsString mName;
+};
+
 /* =============== nsCSPSrcVisitor ================== */
 
 class nsCSPSrcVisitor {
@@ -453,14 +448,22 @@ class nsCSPDirective {
   virtual ~nsCSPDirective();
 
   virtual bool permits(CSPDirective aDirective, nsILoadInfo* aLoadInfo,
-                       nsIURI* aUri, const nsAString& aNonce,
-                       bool aWasRedirected, bool aReportOnly,
-                       bool aUpgradeInsecure, bool aParserCreated) const;
-  virtual bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-                      bool aParserCreated) const;
+                       nsIURI* aUri, bool aWasRedirected, bool aReportOnly,
+                       bool aUpgradeInsecure) const;
+  virtual bool allows(enum CSPKeyword aKeyword,
+                      const nsAString& aHashOrNonce) const;
+  bool allowsAllInlineBehavior(CSPDirective aDir) const;
+
+  // Implements step 2.1 to 2.7 of
+  // <https://w3c.github.io/trusted-types/dist/spec/#should-block-create-policy>.
+  bool ShouldCreateViolationForNewTrustedTypesPolicy(
+      const nsAString& aPolicyName,
+      const nsTArray<nsString>& aCreatedPolicyNames) const;
+
   virtual void toString(nsAString& outStr) const;
   void toDomCSPStruct(mozilla::dom::CSP& outCSP) const;
 
+  // Takes ownership of the passed sources.
   virtual void addSrcs(const nsTArray<nsCSPBaseSrc*>& aSrcs) {
     mSrcs = aSrcs.Clone();
   }
@@ -478,6 +481,10 @@ class nsCSPDirective {
   virtual void getDirName(nsAString& outStr) const;
 
   bool hasReportSampleKeyword() const;
+
+ private:
+  bool ContainsTrustedTypesDirectivePolicyName(
+      const nsAString& aPolicyName) const;
 
  protected:
   CSPDirective mDirective;
@@ -561,15 +568,15 @@ class nsBlockAllMixedContentDirective : public nsCSPDirective {
   ~nsBlockAllMixedContentDirective();
 
   bool permits(CSPDirective aDirective, nsILoadInfo* aLoadInfo, nsIURI* aUri,
-               const nsAString& aNonce, bool aWasRedirected, bool aReportOnly,
-               bool aUpgradeInsecure, bool aParserCreated) const override {
+               bool aWasRedirected, bool aReportOnly,
+               bool aUpgradeInsecure) const override {
     return false;
   }
 
   bool permits(nsIURI* aUri) const { return false; }
 
-  bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-              bool aParserCreated) const override {
+  bool allows(enum CSPKeyword aKeyword,
+              const nsAString& aHashOrNonce) const override {
     return false;
   }
 
@@ -619,15 +626,15 @@ class nsUpgradeInsecureDirective : public nsCSPDirective {
   ~nsUpgradeInsecureDirective();
 
   bool permits(CSPDirective aDirective, nsILoadInfo* aLoadInfo, nsIURI* aUri,
-               const nsAString& aNonce, bool aWasRedirected, bool aReportOnly,
-               bool aUpgradeInsecure, bool aParserCreated) const override {
+               bool aWasRedirected, bool aReportOnly,
+               bool aUpgradeInsecure) const override {
     return false;
   }
 
   bool permits(nsIURI* aUri) const { return false; }
 
-  bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce,
-              bool aParserCreated) const override {
+  bool allows(enum CSPKeyword aKeyword,
+              const nsAString& aHashOrNonce) const override {
     return false;
   }
 
@@ -649,9 +656,10 @@ class nsCSPPolicy {
 
   bool permits(CSPDirective aDirective, nsILoadInfo* aLoadInfo, nsIURI* aUri,
                bool aWasRedirected, bool aSpecific,
-               nsAString& outViolatedDirective) const;
+               nsAString& outViolatedDirective,
+               nsAString& outViolatedDirectiveString) const;
   bool allows(CSPDirective aDirective, enum CSPKeyword aKeyword,
-              const nsAString& aHashOrNonce, bool aParserCreated) const;
+              const nsAString& aHashOrNonce) const;
   void toString(nsAString& outStr) const;
   void toDomCSPStruct(mozilla::dom::CSP& outCSP) const;
 
@@ -676,15 +684,22 @@ class nsCSPPolicy {
 
   inline void setReportOnlyFlag(bool aFlag) { mReportOnly = aFlag; }
 
+  // Related to https://w3c.github.io/webappsec-csp/#policy-disposition.
+  // @return true if disposition is "report", false otherwise.
   inline bool getReportOnlyFlag() const { return mReportOnly; }
+
+  enum class Disposition { Enforce, Report };
+
+  Disposition getDisposition() const {
+    return getReportOnlyFlag() ? Disposition::Report : Disposition::Enforce;
+  }
 
   void getReportURIs(nsTArray<nsString>& outReportURIs) const;
 
-  void getDirectiveStringAndReportSampleForContentType(
-      CSPDirective aDirective, nsAString& outDirective,
-      bool* aReportSample) const;
-
-  void getDirectiveAsString(CSPDirective aDir, nsAString& outDirective) const;
+  void getViolatedDirectiveInformation(CSPDirective aDirective,
+                                       nsAString& aDirectiveName,
+                                       nsAString& aDirectiveNameAndValue,
+                                       bool* aReportSample) const;
 
   uint32_t getSandboxFlags() const;
 
@@ -692,10 +707,23 @@ class nsCSPPolicy {
 
   bool visitDirectiveSrcs(CSPDirective aDir, nsCSPSrcVisitor* aVisitor) const;
 
-  bool allowsNavigateTo(nsIURI* aURI, bool aWasRedirected,
-                        bool aEnforceAllowlist) const;
+  bool allowsAllInlineBehavior(CSPDirective aDir) const;
+
+  /*
+   * Implements step 2.1 to 2.7 of
+   * <https://w3c.github.io/trusted-types/dist/spec/#should-block-create-policy>.
+   * and returns the result of "createViolation".
+   *
+   * @param aCreatedPolicyNames The already created policy names.
+   * @return true if a violation for aPolicyName should be created.
+   */
+  bool ShouldCreateViolationForNewTrustedTypesPolicy(
+      const nsAString& aPolicyName,
+      const nsTArray<nsString>& aCreatedPolicyNames) const;
 
  private:
+  nsCSPDirective* matchingOrDefaultDirective(CSPDirective aDirective) const;
+
   nsUpgradeInsecureDirective* mUpgradeInsecDir;
   nsTArray<nsCSPDirective*> mDirectives;
   bool mReportOnly;

@@ -61,9 +61,7 @@ pub struct Profile {
     pub(crate) mAB: Option<Box<lutmABType>>,
     pub(crate) mBA: Option<Box<lutmABType>>,
     pub(crate) chromaticAdaption: Option<Matrix>,
-    pub(crate) output_table_r: Option<Arc<PrecacheOuput>>,
-    pub(crate) output_table_g: Option<Arc<PrecacheOuput>>,
-    pub(crate) output_table_b: Option<Arc<PrecacheOuput>>,
+    pub(crate) precache_output: Option<Arc<PrecacheOuput>>,
     is_srgb: bool,
 }
 
@@ -1510,6 +1508,30 @@ impl Profile {
         profile.color_space = RGB_SIGNATURE;
         profile.pcs = XYZ_TYPE;
         profile.is_srgb = true;
+        profile
+    }
+
+    pub(crate) fn new_displayP3() -> Box<Profile> {
+        let primaries = qcms_CIE_xyYTRIPLE::from(ColourPrimaries::Smpte432);
+        let white_point = qcms_white_point_sRGB();
+        let mut profile = profile_create();
+        set_rgb_colorants(&mut profile, white_point, primaries);
+
+        let curve = Box::new(curveType::Parametric(vec![
+            2.4,
+            1. / 1.055,
+            0.055 / 1.055,
+            1. / 12.92,
+            0.04045,
+        ]));
+        profile.redTRC = Some(curve.clone());
+        profile.blueTRC = Some(curve.clone());
+        profile.greenTRC = Some(curve);
+        profile.class_type = DISPLAY_DEVICE_PROFILE;
+        profile.rendering_intent = Perceptual;
+        profile.color_space = RGB_SIGNATURE;
+        profile.pcs = XYZ_TYPE;
+        profile.is_srgb = false;
         profile
     }
 

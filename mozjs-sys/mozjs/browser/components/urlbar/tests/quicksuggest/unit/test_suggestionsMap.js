@@ -7,12 +7,8 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
-  SuggestionsMap:
-    "resource:///modules/urlbar/private/QuickSuggestRemoteSettings.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
+  ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
+  SuggestionsMap: "resource:///modules/urlbar/private/SuggestBackendJs.sys.mjs",
 });
 
 // This overrides `SuggestionsMap.chunkSize`. Testing the actual value can make
@@ -20,7 +16,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 // behavior doesn't depend on the chunk size.
 const TEST_CHUNK_SIZE = 100;
 
-add_task(async function init() {
+add_setup(async () => {
   // Sanity check the actual `chunkSize` value.
   Assert.equal(
     typeof SuggestionsMap.chunkSize,

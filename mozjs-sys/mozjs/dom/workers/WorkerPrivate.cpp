@@ -52,7 +52,9 @@
 #include "mozilla/dom/RemoteWorkerChild.h"
 #include "mozilla/dom/RemoteWorkerService.h"
 #include "mozilla/dom/RootedDictionary.h"
+#include "mozilla/dom/SimpleGlobalObject.h"
 #include "mozilla/dom/TimeoutHandler.h"
+#include "mozilla/dom/UseCounterMetrics.h"
 #include "mozilla/dom/WorkerBinding.h"
 #include "mozilla/dom/WorkerScope.h"
 #include "mozilla/dom/WorkerStatus.h"
@@ -61,14 +63,15 @@
 #include "mozilla/dom/WindowContext.h"
 #include "mozilla/extensions/ExtensionBrowser.h"  // extensions::Create{AndDispatchInitWorkerContext,WorkerLoaded,WorkerDestroyed}Runnable
 #include "mozilla/extensions/WebExtensionPolicy.h"
+#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/ipc/BackgroundChild.h"
+#include "mozilla/ipc/PBackgroundChild.h"
 #include "mozilla/StorageAccess.h"
 #include "mozilla/StoragePrincipalHelper.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/ThreadEventQueue.h"
 #include "mozilla/ThreadSafety.h"
 #include "mozilla/ThrottledEventQueue.h"
-#include "mozilla/TimelineConsumers.h"
-#include "mozilla/WorkerTimelineMarker.h"
 #include "nsCycleCollector.h"
 #include "nsGlobalWindowInner.h"
 #include "nsIDUtils.h"
@@ -116,6 +119,12 @@
 
 // A shrinking GC will run five seconds after the last event is processed.
 #define IDLE_GC_TIMER_DELAY_SEC 5
+
+// Arbitrary short grace period for the currently running task to finish.
+// There isn't an advantage for us to immediately interrupt JS in the middle of
+// execution that might yield soon, especially when there is so much async
+// variability in the data flow prior to us deciding to trigger the interrupt.
+#define DEBUGGER_RUNNABLE_INTERRUPT_AFTER_MS 250
 
 static mozilla::LazyLogModule sWorkerPrivateLog("WorkerPrivate");
 static mozilla::LazyLogModule sWorkerTimeoutsLog("WorkerTimeouts");
@@ -178,19 +187,20 @@ inline UniquePtrComparator<T> GetUniquePtrComparator(
 // This class is used to wrap any runnables that the worker receives via the
 // nsIEventTarget::Dispatch() method (either from NS_DispatchToCurrentThread or
 // from the worker's EventTarget).
-class ExternalRunnableWrapper final : public WorkerRunnable {
+class ExternalRunnableWrapper final : public WorkerThreadRunnable {
   nsCOMPtr<nsIRunnable> mWrappedRunnable;
 
  public:
   ExternalRunnableWrapper(WorkerPrivate* aWorkerPrivate,
                           nsIRunnable* aWrappedRunnable)
-      : WorkerRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerThreadRunnable("ExternalRunnableWrapper"),
         mWrappedRunnable(aWrappedRunnable) {
     MOZ_ASSERT(aWorkerPrivate);
     MOZ_ASSERT(aWrappedRunnable);
   }
 
-  NS_INLINE_DECL_REFCOUNTING_INHERITED(ExternalRunnableWrapper, WorkerRunnable)
+  NS_INLINE_DECL_REFCOUNTING_INHERITED(ExternalRunnableWrapper,
+                                       WorkerThreadRunnable)
 
  private:
   ~ExternalRunnableWrapper() = default;
@@ -208,6 +218,7 @@ class ExternalRunnableWrapper final : public WorkerRunnable {
   virtual bool WorkerRun(JSContext* aCx,
                          WorkerPrivate* aWorkerPrivate) override {
     nsresult rv = mWrappedRunnable->Run();
+    mWrappedRunnable = nullptr;
     if (NS_FAILED(rv)) {
       if (!JS_IsExceptionPending(aCx)) {
         Throw(aCx, rv);
@@ -223,6 +234,7 @@ class ExternalRunnableWrapper final : public WorkerRunnable {
     if (doomed) {
       doomed->OnDiscard();
     }
+    mWrappedRunnable = nullptr;
     return NS_OK;
   }
 };
@@ -245,7 +257,7 @@ class WorkerFinishedRunnable final : public WorkerControlRunnable {
  public:
   WorkerFinishedRunnable(WorkerPrivate* aWorkerPrivate,
                          WorkerPrivate* aFinishedWorker)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerControlRunnable("WorkerFinishedRunnable"),
         mFinishedWorker(aFinishedWorker) {
     aFinishedWorker->IncreaseWorkerFinishedRunnableCount();
   }
@@ -322,31 +334,6 @@ class TopLevelWorkerFinishedRunnable final : public Runnable {
   }
 };
 
-class ModifyBusyCountRunnable final : public WorkerControlRunnable {
-  bool mIncrease;
-
- public:
-  ModifyBusyCountRunnable(WorkerPrivate* aWorkerPrivate, bool aIncrease)
-      : WorkerControlRunnable(aWorkerPrivate, ParentThreadUnchangedBusyCount),
-        mIncrease(aIncrease) {}
-
- private:
-  virtual bool WorkerRun(JSContext* aCx,
-                         WorkerPrivate* aWorkerPrivate) override {
-    return aWorkerPrivate->ModifyBusyCount(mIncrease);
-  }
-
-  virtual void PostRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
-                       bool aRunResult) override {
-    if (mIncrease) {
-      WorkerControlRunnable::PostRun(aCx, aWorkerPrivate, aRunResult);
-      return;
-    }
-    // Don't do anything here as it's possible that aWorkerPrivate has been
-    // deleted.
-  }
-};
-
 class CompileScriptRunnable final : public WorkerDebuggeeRunnable {
   nsString mScriptURL;
   const mozilla::Encoding* mDocumentEncoding;
@@ -357,7 +344,7 @@ class CompileScriptRunnable final : public WorkerDebuggeeRunnable {
                                  UniquePtr<SerializedStackHolder> aOriginStack,
                                  const nsAString& aScriptURL,
                                  const mozilla::Encoding* aDocumentEncoding)
-      : WorkerDebuggeeRunnable(aWorkerPrivate, WorkerThreadModifyBusyCount),
+      : WorkerDebuggeeRunnable("CompileScriptRunnable"),
         mScriptURL(aScriptURL),
         mDocumentEncoding(aDocumentEncoding),
         mOriginStack(aOriginStack.release()) {}
@@ -455,7 +442,7 @@ class CompileScriptRunnable final : public WorkerDebuggeeRunnable {
     if (!aRunResult) {
       aWorkerPrivate->CloseInternal();
     }
-    WorkerRunnable::PostRun(aCx, aWorkerPrivate, aRunResult);
+    WorkerThreadRunnable::PostRun(aCx, aWorkerPrivate, aRunResult);
   }
 };
 
@@ -464,8 +451,7 @@ class NotifyRunnable final : public WorkerControlRunnable {
 
  public:
   NotifyRunnable(WorkerPrivate* aWorkerPrivate, WorkerStatus aStatus)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
-        mStatus(aStatus) {
+      : WorkerControlRunnable("NotifyRunnable"), mStatus(aStatus) {
     MOZ_ASSERT(aStatus == Closing || aStatus == Canceling ||
                aStatus == Killing);
   }
@@ -473,34 +459,27 @@ class NotifyRunnable final : public WorkerControlRunnable {
  private:
   virtual bool PreDispatch(WorkerPrivate* aWorkerPrivate) override {
     aWorkerPrivate->AssertIsOnParentThread();
-    return aWorkerPrivate->ModifyBusyCount(true);
+    return true;
   }
 
   virtual void PostDispatch(WorkerPrivate* aWorkerPrivate,
                             bool aDispatchResult) override {
     aWorkerPrivate->AssertIsOnParentThread();
-    if (!aDispatchResult) {
-      // We couldn't dispatch to the worker, which means it's already dead.
-      // Undo the busy count modification.
-      aWorkerPrivate->ModifyBusyCount(false);
-    }
-  }
-
-  virtual void PostRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
-                       bool aRunResult) override {
-    aWorkerPrivate->ModifyBusyCountFromWorker(false);
   }
 
   virtual bool WorkerRun(JSContext* aCx,
                          WorkerPrivate* aWorkerPrivate) override {
     return aWorkerPrivate->NotifyInternal(mStatus);
   }
+
+  virtual void PostRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
+                       bool aRunResult) override {}
 };
 
 class FreezeRunnable final : public WorkerControlRunnable {
  public:
   explicit FreezeRunnable(WorkerPrivate* aWorkerPrivate)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount) {}
+      : WorkerControlRunnable("FreezeRunnable") {}
 
  private:
   virtual bool WorkerRun(JSContext* aCx,
@@ -512,7 +491,7 @@ class FreezeRunnable final : public WorkerControlRunnable {
 class ThawRunnable final : public WorkerControlRunnable {
  public:
   explicit ThawRunnable(WorkerPrivate* aWorkerPrivate)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount) {}
+      : WorkerControlRunnable("ThawRunnable") {}
 
  private:
   virtual bool WorkerRun(JSContext* aCx,
@@ -526,7 +505,8 @@ class PropagateStorageAccessPermissionGrantedRunnable final
  public:
   explicit PropagateStorageAccessPermissionGrantedRunnable(
       WorkerPrivate* aWorkerPrivate)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount) {}
+      : WorkerControlRunnable(
+            "PropagateStorageAccessPermissionGrantedRunnable") {}
 
  private:
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
@@ -535,7 +515,7 @@ class PropagateStorageAccessPermissionGrantedRunnable final
   }
 };
 
-class ReportErrorToConsoleRunnable final : public WorkerRunnable {
+class ReportErrorToConsoleRunnable final : public WorkerParentThreadRunnable {
   const char* mMessage;
   const nsTArray<nsString> mParams;
 
@@ -553,7 +533,7 @@ class ReportErrorToConsoleRunnable final : public WorkerRunnable {
     if (aWorkerPrivate) {
       RefPtr<ReportErrorToConsoleRunnable> runnable =
           new ReportErrorToConsoleRunnable(aWorkerPrivate, aMessage, aParams);
-      runnable->Dispatch();
+      runnable->Dispatch(aWorkerPrivate);
       return;
     }
 
@@ -567,7 +547,7 @@ class ReportErrorToConsoleRunnable final : public WorkerRunnable {
   ReportErrorToConsoleRunnable(WorkerPrivate* aWorkerPrivate,
                                const char* aMessage,
                                const nsTArray<nsString>& aParams)
-      : WorkerRunnable(aWorkerPrivate, ParentThreadUnchangedBusyCount),
+      : WorkerParentThreadRunnable("ReportErrorToConsoleRunnable"),
         mMessage(aMessage),
         mParams(aParams.Clone()) {}
 
@@ -588,17 +568,16 @@ class ReportErrorToConsoleRunnable final : public WorkerRunnable {
   }
 };
 
-class TimerRunnable final : public WorkerRunnable,
-                            public nsITimerCallback,
-                            public nsINamed {
+class RunExpiredTimoutsRunnable final : public WorkerThreadRunnable,
+                                        public nsITimerCallback {
  public:
   NS_DECL_ISUPPORTS_INHERITED
 
-  explicit TimerRunnable(WorkerPrivate* aWorkerPrivate)
-      : WorkerRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount) {}
+  explicit RunExpiredTimoutsRunnable(WorkerPrivate* aWorkerPrivate)
+      : WorkerThreadRunnable("RunExpiredTimoutsRunnable") {}
 
  private:
-  ~TimerRunnable() = default;
+  ~RunExpiredTimoutsRunnable() = default;
 
   virtual bool PreDispatch(WorkerPrivate* aWorkerPrivate) override {
     // Silence bad assertions.
@@ -620,24 +599,18 @@ class TimerRunnable final : public WorkerRunnable,
 
   NS_IMETHOD
   Notify(nsITimer* aTimer) override { return Run(); }
-
-  NS_IMETHOD
-  GetName(nsACString& aName) override {
-    aName.AssignLiteral("TimerRunnable");
-    return NS_OK;
-  }
 };
 
-NS_IMPL_ISUPPORTS_INHERITED(TimerRunnable, WorkerRunnable, nsITimerCallback,
-                            nsINamed)
+NS_IMPL_ISUPPORTS_INHERITED(RunExpiredTimoutsRunnable, WorkerThreadRunnable,
+                            nsITimerCallback)
 
-class DebuggerImmediateRunnable : public WorkerRunnable {
+class DebuggerImmediateRunnable final : public WorkerThreadRunnable {
   RefPtr<dom::Function> mHandler;
 
  public:
   explicit DebuggerImmediateRunnable(WorkerPrivate* aWorkerPrivate,
                                      dom::Function& aHandler)
-      : WorkerRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerThreadRunnable("DebuggerImmediateRunnable"),
         mHandler(&aHandler) {}
 
  private:
@@ -698,7 +671,7 @@ class UpdateContextOptionsRunnable final : public WorkerControlRunnable {
  public:
   UpdateContextOptionsRunnable(WorkerPrivate* aWorkerPrivate,
                                const JS::ContextOptions& aContextOptions)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerControlRunnable("UpdateContextOptionsRunnable"),
         mContextOptions(aContextOptions) {}
 
  private:
@@ -709,13 +682,14 @@ class UpdateContextOptionsRunnable final : public WorkerControlRunnable {
   }
 };
 
-class UpdateLanguagesRunnable final : public WorkerRunnable {
+class UpdateLanguagesRunnable final : public WorkerThreadRunnable {
   nsTArray<nsString> mLanguages;
 
  public:
   UpdateLanguagesRunnable(WorkerPrivate* aWorkerPrivate,
                           const nsTArray<nsString>& aLanguages)
-      : WorkerRunnable(aWorkerPrivate), mLanguages(aLanguages.Clone()) {}
+      : WorkerThreadRunnable("UpdateLanguagesRunnable"),
+        mLanguages(aLanguages.Clone()) {}
 
   virtual bool WorkerRun(JSContext* aCx,
                          WorkerPrivate* aWorkerPrivate) override {
@@ -733,7 +707,7 @@ class UpdateJSWorkerMemoryParameterRunnable final
   UpdateJSWorkerMemoryParameterRunnable(WorkerPrivate* aWorkerPrivate,
                                         JSGCParamKey aKey,
                                         Maybe<uint32_t> aValue)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerControlRunnable("UpdateJSWorkerMemoryParameterRunnable"),
         mValue(aValue),
         mKey(aKey) {}
 
@@ -753,7 +727,7 @@ class UpdateGCZealRunnable final : public WorkerControlRunnable {
  public:
   UpdateGCZealRunnable(WorkerPrivate* aWorkerPrivate, uint8_t aGCZeal,
                        uint32_t aFrequency)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerControlRunnable("UpdateGCZealRunnable"),
         mGCZeal(aGCZeal),
         mFrequency(aFrequency) {}
 
@@ -771,8 +745,7 @@ class SetLowMemoryStateRunnable final : public WorkerControlRunnable {
 
  public:
   SetLowMemoryStateRunnable(WorkerPrivate* aWorkerPrivate, bool aState)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
-        mState(aState) {}
+      : WorkerControlRunnable("SetLowMemoryStateRunnable"), mState(aState) {}
 
  private:
   virtual bool WorkerRun(JSContext* aCx,
@@ -789,7 +762,7 @@ class GarbageCollectRunnable final : public WorkerControlRunnable {
  public:
   GarbageCollectRunnable(WorkerPrivate* aWorkerPrivate, bool aShrinking,
                          bool aCollectChildren)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerControlRunnable("GarbageCollectRunnable"),
         mShrinking(aShrinking),
         mCollectChildren(aCollectChildren) {}
 
@@ -818,12 +791,12 @@ class GarbageCollectRunnable final : public WorkerControlRunnable {
   }
 };
 
-class CycleCollectRunnable : public WorkerControlRunnable {
+class CycleCollectRunnable final : public WorkerControlRunnable {
   bool mCollectChildren;
 
  public:
   CycleCollectRunnable(WorkerPrivate* aWorkerPrivate, bool aCollectChildren)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerControlRunnable("CycleCollectRunnable"),
         mCollectChildren(aCollectChildren) {}
 
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
@@ -832,10 +805,11 @@ class CycleCollectRunnable : public WorkerControlRunnable {
   }
 };
 
-class OfflineStatusChangeRunnable : public WorkerRunnable {
+class OfflineStatusChangeRunnable final : public WorkerThreadRunnable {
  public:
   OfflineStatusChangeRunnable(WorkerPrivate* aWorkerPrivate, bool aIsOffline)
-      : WorkerRunnable(aWorkerPrivate), mIsOffline(aIsOffline) {}
+      : WorkerThreadRunnable("OfflineStatusChangeRunnable"),
+        mIsOffline(aIsOffline) {}
 
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
     aWorkerPrivate->OfflineStatusChangeEventInternal(mIsOffline);
@@ -846,10 +820,10 @@ class OfflineStatusChangeRunnable : public WorkerRunnable {
   bool mIsOffline;
 };
 
-class MemoryPressureRunnable : public WorkerControlRunnable {
+class MemoryPressureRunnable final : public WorkerControlRunnable {
  public:
   explicit MemoryPressureRunnable(WorkerPrivate* aWorkerPrivate)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount) {}
+      : WorkerControlRunnable("MemoryPressureRunnable") {}
 
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
     aWorkerPrivate->MemoryPressureInternal();
@@ -877,11 +851,10 @@ PRThread* PRThreadFromThread(nsIThread* aThread) {
 // called. This runnable is executed on the parent process in order to cancel
 // the current runnable. It uses a normal WorkerDebuggeeRunnable in order to be
 // sure that all the pending WorkerDebuggeeRunnables are executed before this.
-class CancelingOnParentRunnable final : public WorkerDebuggeeRunnable {
+class CancelingOnParentRunnable final : public WorkerParentDebuggeeRunnable {
  public:
   explicit CancelingOnParentRunnable(WorkerPrivate* aWorkerPrivate)
-      : WorkerDebuggeeRunnable(aWorkerPrivate, ParentThreadUnchangedBusyCount) {
-  }
+      : WorkerParentDebuggeeRunnable("CancelingOnParentRunnable") {}
 
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
     aWorkerPrivate->Cancel();
@@ -891,10 +864,10 @@ class CancelingOnParentRunnable final : public WorkerDebuggeeRunnable {
 
 // A runnable to cancel the worker from the parent process.
 class CancelingWithTimeoutOnParentRunnable final
-    : public WorkerControlRunnable {
+    : public WorkerParentControlRunnable {
  public:
   explicit CancelingWithTimeoutOnParentRunnable(WorkerPrivate* aWorkerPrivate)
-      : WorkerControlRunnable(aWorkerPrivate, ParentThreadUnchangedBusyCount) {}
+      : WorkerParentControlRunnable("CancelingWithTimeoutOnParentRunnable") {}
 
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
     aWorkerPrivate->AssertIsOnParentThread();
@@ -942,7 +915,7 @@ class CancelingRunnable final : public Runnable {
     // Now we can cancel the this worker from the parent process.
     RefPtr<CancelingOnParentRunnable> r =
         new CancelingOnParentRunnable(workerPrivate);
-    r->Dispatch();
+    r->Dispatch(workerPrivate);
 
     return NS_OK;
   }
@@ -1268,7 +1241,7 @@ WorkerPrivate::MemoryReporter::CollectReports(
                                           aAnonymize, path);
   }
 
-  if (!runnable->Dispatch()) {
+  if (!runnable->Dispatch(mWorkerPrivate)) {
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -1278,7 +1251,7 @@ WorkerPrivate::MemoryReporter::CollectReports(
 WorkerPrivate::MemoryReporter::CollectReportsRunnable::CollectReportsRunnable(
     WorkerPrivate* aWorkerPrivate, nsIHandleReportCallback* aHandleReport,
     nsISupports* aHandlerData, bool aAnonymize, const nsACString& aPath)
-    : MainThreadWorkerControlRunnable(aWorkerPrivate),
+    : MainThreadWorkerControlRunnable("CollectReportsRunnable"),
       mFinishCollectRunnable(new FinishCollectRunnable(
           aHandleReport, aHandlerData, aAnonymize, aPath)),
       mAnonymize(aAnonymize) {}
@@ -1459,8 +1432,8 @@ nsresult WorkerPrivate::SetCSPFromHeaderValues(
   }
   MOZ_ASSERT(selfURI, "need a self URI for CSP");
 
-  rv = csp->SetRequestContextWithPrincipal(mLoadInfo.mPrincipal, selfURI,
-                                           u""_ns, 0);
+  rv = csp->SetRequestContextWithPrincipal(mLoadInfo.mPrincipal, selfURI, ""_ns,
+                                           0);
   NS_ENSURE_SUCCESS(rv, rv);
 
   csp->EnsureEventTarget(mMainThreadEventTarget);
@@ -1558,12 +1531,14 @@ void WorkerPrivate::Traverse(nsCycleCollectionTraversalCallback& aCb) {
 
   // The WorkerPrivate::mParentEventTargetRef has a reference to the exposed
   // Worker object, which is really held by the worker thread.  We traverse this
-  // reference if and only if our busy count is zero and we have not released
-  // the main thread reference.  We do not unlink it.  This allows the CC to
-  // break cycles involving the Worker and begin shutting it down (which does
-  // happen in unlink) but ensures that the WorkerPrivate won't be deleted
-  // before we're done shutting down the thread.
-  if (!mBusyCount && !mMainThreadObjectsForgotten) {
+  // reference if and only if all main thread event queues are empty, no
+  // shutdown tasks, no StrongWorkerRefs, no child workers, no timeouts, no
+  // blocking background actors, and we have not released the main thread
+  // reference.  We do not unlink it. This allows the CC to break cycles
+  // involving the Worker and begin shutting it down (which does happen in
+  // unlink) but ensures that the WorkerPrivate won't be deleted before we're
+  // done shutting down the thread.
+  if (IsEligibleForCC() && !mMainThreadObjectsForgotten) {
     nsCycleCollectionTraversalCallback& cb = aCb;
     WorkerPrivate* tmp = this;
     NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mParentEventTargetRef);
@@ -1573,8 +1548,48 @@ void WorkerPrivate::Traverse(nsCycleCollectionTraversalCallback& aCb) {
 nsresult WorkerPrivate::Dispatch(already_AddRefed<WorkerRunnable> aRunnable,
                                  nsIEventTarget* aSyncLoopTarget) {
   // May be called on any thread!
+  RefPtr<WorkerRunnable> runnable(aRunnable);
+
+  LOGV(("WorkerPrivate::Dispatch [%p] runnable %p", this, runnable.get()));
+  if (!aSyncLoopTarget) {
+    // Dispatch control runnable
+    if (runnable->IsControlRunnable()) {
+      return DispatchControlRunnable(runnable.forget());
+    }
+
+    // Dispatch debugger runnable
+    if (runnable->IsDebuggerRunnable()) {
+      return DispatchDebuggerRunnable(runnable.forget());
+    }
+  }
   MutexAutoLock lock(mMutex);
-  return DispatchLockHeld(std::move(aRunnable), aSyncLoopTarget, lock);
+  return DispatchLockHeld(runnable.forget(), aSyncLoopTarget, lock);
+}
+
+nsresult WorkerPrivate::DispatchToParent(
+    already_AddRefed<WorkerRunnable> aRunnable) {
+  RefPtr<WorkerRunnable> runnable(aRunnable);
+
+  LOGV(("WorkerPrivate::DispatchToParent [%p] runnable %p", this,
+        runnable.get()));
+
+  WorkerPrivate* parent = GetParent();
+  // Dispatch to parent worker
+  if (parent) {
+    if (runnable->IsControlRunnable()) {
+      return parent->DispatchControlRunnable(runnable.forget());
+    }
+    return parent->Dispatch(runnable.forget());
+  }
+
+  // Dispatch to main thread
+  if (runnable->IsDebuggeeRunnable()) {
+    RefPtr<WorkerParentDebuggeeRunnable> debuggeeRunnable =
+        runnable.forget().downcast<WorkerParentDebuggeeRunnable>();
+    return DispatchDebuggeeToMainThread(debuggeeRunnable.forget(),
+                                        NS_DISPATCH_NORMAL);
+  }
+  return DispatchToMainThread(runnable.forget());
 }
 
 nsresult WorkerPrivate::DispatchLockHeld(
@@ -1587,9 +1602,8 @@ nsresult WorkerPrivate::DispatchLockHeld(
 
   MOZ_ASSERT_IF(aSyncLoopTarget, mThread);
 
+  // Dispatch normal worker runnable
   if (mStatus == Dead || (!aSyncLoopTarget && ParentStatus() > Canceling)) {
-    LOGV(("WorkerPrivate::DispatchLockHeld [%p] runnable %p, parent status: %u",
-          this, runnable.get(), (uint8_t)(ParentStatus())));
     NS_WARNING(
         "A runnable was posted to a worker that is already shutting "
         "down!");
@@ -1608,7 +1622,10 @@ nsresult WorkerPrivate::DispatchLockHeld(
           ("WorkerPrivate::DispatchLockHeld [%p] runnable %p is queued in "
            "mPreStartRunnables",
            this, runnable.get()));
-      mPreStartRunnables.AppendElement(runnable);
+      RefPtr<WorkerThreadRunnable> workerThreadRunnable =
+          static_cast<WorkerThreadRunnable*>(runnable.get());
+      workerThreadRunnable->mWorkerPrivateForPreStartCleaning = this;
+      mPreStartRunnables.AppendElement(workerThreadRunnable);
       return NS_OK;
     }
 
@@ -1638,6 +1655,7 @@ nsresult WorkerPrivate::DispatchLockHeld(
   }
 
   if (NS_WARN_IF(NS_FAILED(rv))) {
+    LOGV(("WorkerPrivate::Dispatch Failed [%p]", this));
     return rv;
   }
 
@@ -1669,10 +1687,10 @@ void WorkerPrivate::DisableDebugger() {
 }
 
 nsresult WorkerPrivate::DispatchControlRunnable(
-    already_AddRefed<WorkerControlRunnable> aWorkerControlRunnable) {
+    already_AddRefed<WorkerRunnable> aWorkerRunnable) {
   // May be called on any thread!
-  RefPtr<WorkerControlRunnable> runnable(aWorkerControlRunnable);
-  MOZ_ASSERT(runnable);
+  RefPtr<WorkerRunnable> runnable(aWorkerRunnable);
+  MOZ_ASSERT_DEBUG_OR_FUZZING(runnable && runnable->IsControlRunnable());
 
   LOG(WorkerLog(), ("WorkerPrivate::DispatchControlRunnable [%p] runnable %p",
                     this, runnable.get()));
@@ -1698,6 +1716,13 @@ nsresult WorkerPrivate::DispatchControlRunnable(
   return NS_OK;
 }
 
+void DebuggerInterruptTimerCallback(nsITimer* aTimer, void* aClosure)
+    MOZ_NO_THREAD_SAFETY_ANALYSIS {
+  WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+  MOZ_DIAGNOSTIC_ASSERT(workerPrivate);
+  workerPrivate->DebuggerInterruptRequest();
+}
+
 nsresult WorkerPrivate::DispatchDebuggerRunnable(
     already_AddRefed<WorkerRunnable> aDebuggerRunnable) {
   // May be called on any thread!
@@ -1706,23 +1731,54 @@ nsresult WorkerPrivate::DispatchDebuggerRunnable(
 
   MOZ_ASSERT(runnable);
 
-  {
-    MutexAutoLock lock(mMutex);
+  MutexAutoLock lock(mMutex);
+  if (!mDebuggerInterruptTimer) {
+    // There is no timer, so we need to create one.  For locking discipline
+    // purposes we can't manipulate the timer while our mutex is held so
+    // drop the mutex while we build and configure the timer.  Only this
+    // function here on the main thread will create a timer, so we're not
+    // racing anyone to create or assign the timer.
+    nsCOMPtr<nsITimer> timer;
+    {
+      MutexAutoUnlock unlock(mMutex);
+      timer = NS_NewTimer();
+      MOZ_ALWAYS_SUCCEEDS(timer->SetTarget(mWorkerControlEventTarget));
 
-    if (mStatus == Dead) {
-      NS_WARNING(
-          "A debugger runnable was posted to a worker that is already "
-          "shutting down!");
-      return NS_ERROR_UNEXPECTED;
+      // Whenever an event is scheduled on the WorkerControlEventTarget an
+      // interrupt is automatically requested which causes us to yield JS
+      // execution and the next JS execution in the queue to execute. This
+      // allows for simple code reuse of the existing interrupt callback code
+      // used for control events.
+      MOZ_ALWAYS_SUCCEEDS(timer->InitWithNamedFuncCallback(
+          DebuggerInterruptTimerCallback, nullptr,
+          DEBUGGER_RUNNABLE_INTERRUPT_AFTER_MS, nsITimer::TYPE_ONE_SHOT,
+          "dom:DebuggerInterruptTimer"));
     }
 
-    // Transfer ownership to the debugger queue.
-    mDebuggerQueue.Push(runnable.forget().take());
-
-    mCondVar.Notify();
+    // okay, we have our mutex back now, put the timer in place.
+    mDebuggerInterruptTimer.swap(timer);
   }
 
+  if (mStatus == Dead) {
+    NS_WARNING(
+        "A debugger runnable was posted to a worker that is already "
+        "shutting down!");
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  // Transfer ownership to the debugger queue.
+  mDebuggerQueue.Push(runnable.forget().take());
+
+  mCondVar.Notify();
+
   return NS_OK;
+}
+
+void WorkerPrivate::DebuggerInterruptRequest() {
+  AssertIsOnWorkerThread();
+
+  auto data = mWorkerThreadAccessible.Access();
+  data->mDebuggerInterruptRequested = true;
 }
 
 already_AddRefed<WorkerRunnable> WorkerPrivate::MaybeWrapAsWorkerRunnable(
@@ -1784,6 +1840,8 @@ bool WorkerPrivate::Notify(WorkerStatus aStatus) {
     mCancellationCallback = nullptr;
   }
 
+  mParentRef->DropWorkerPrivate();
+
   if (pending) {
 #ifdef DEBUG
     {
@@ -1809,8 +1867,16 @@ bool WorkerPrivate::Notify(WorkerStatus aStatus) {
     mCancelingTimer = nullptr;
   }
 
+  // The NotifyRunnable kicks off a series of events that need the
+  // CancelingOnParentRunnable to be executed always.
+  // Note that we already advanced mParentStatus above and we check that
+  // status in all other (asynchronous) call sites of SetIsPaused.
+  if (!mParent) {
+    MOZ_ALWAYS_SUCCEEDS(mMainThreadDebuggeeEventTarget->SetIsPaused(false));
+  }
+
   RefPtr<NotifyRunnable> runnable = new NotifyRunnable(this, aStatus);
-  return runnable->Dispatch();
+  return runnable->Dispatch(this);
 }
 
 bool WorkerPrivate::Freeze(const nsPIDOMWindowInner* aWindow) {
@@ -1818,8 +1884,15 @@ bool WorkerPrivate::Freeze(const nsPIDOMWindowInner* aWindow) {
 
   mParentFrozen = true;
 
-  // WorkerDebuggeeRunnables sent from a worker to content must not be delivered
-  // while the worker is frozen.
+  bool isCanceling = false;
+  {
+    MutexAutoLock lock(mMutex);
+
+    isCanceling = mParentStatus >= Canceling;
+  }
+
+  // WorkerDebuggeeRunnables sent from a worker to content must not be
+  // delivered while the worker is frozen.
   //
   // Since a top-level worker and all its children share the same
   // mMainThreadDebuggeeEventTarget, it's sufficient to do this only in the
@@ -1829,22 +1902,19 @@ bool WorkerPrivate::Freeze(const nsPIDOMWindowInner* aWindow) {
     // allocated mMainThreadDebuggeeEventTarget yet.
     if (mMainThreadDebuggeeEventTarget) {
       // Pausing a ThrottledEventQueue is infallible.
-      MOZ_ALWAYS_SUCCEEDS(mMainThreadDebuggeeEventTarget->SetIsPaused(true));
+      MOZ_ALWAYS_SUCCEEDS(
+          mMainThreadDebuggeeEventTarget->SetIsPaused(!isCanceling));
     }
   }
 
-  {
-    MutexAutoLock lock(mMutex);
-
-    if (mParentStatus >= Canceling) {
-      return true;
-    }
+  if (isCanceling) {
+    return true;
   }
 
   DisableDebugger();
 
   RefPtr<FreezeRunnable> runnable = new FreezeRunnable(this);
-  return runnable->Dispatch();
+  return runnable->Dispatch(this);
 }
 
 bool WorkerPrivate::Thaw(const nsPIDOMWindowInner* aWindow) {
@@ -1853,26 +1923,32 @@ bool WorkerPrivate::Thaw(const nsPIDOMWindowInner* aWindow) {
 
   mParentFrozen = false;
 
-  // Delivery of WorkerDebuggeeRunnables to the window may resume.
-  //
-  // Since a top-level worker and all its children share the same
-  // mMainThreadDebuggeeEventTarget, it's sufficient to do this only in the
-  // top-level worker.
-  if (aWindow) {
-    // Since the worker is no longer frozen, only a paused parent window should
-    // require the queue to remain paused.
-    //
-    // This can only fail if the ThrottledEventQueue cannot dispatch its
-    // executor to the main thread, in which case the main thread was never
-    // going to draw runnables from it anyway, so the failure doesn't matter.
-    Unused << mMainThreadDebuggeeEventTarget->SetIsPaused(
-        IsParentWindowPaused());
-  }
-
   {
-    MutexAutoLock lock(mMutex);
+    bool isCanceling = false;
 
-    if (mParentStatus >= Canceling) {
+    {
+      MutexAutoLock lock(mMutex);
+
+      isCanceling = mParentStatus >= Canceling;
+    }
+
+    // Delivery of WorkerDebuggeeRunnables to the window may resume.
+    //
+    // Since a top-level worker and all its children share the same
+    // mMainThreadDebuggeeEventTarget, it's sufficient to do this only in the
+    // top-level worker.
+    if (aWindow) {
+      // Since the worker is no longer frozen, only a paused parent window
+      // should require the queue to remain paused.
+      //
+      // This can only fail if the ThrottledEventQueue cannot dispatch its
+      // executor to the main thread, in which case the main thread was never
+      // going to draw runnables from it anyway, so the failure doesn't matter.
+      Unused << mMainThreadDebuggeeEventTarget->SetIsPaused(
+          IsParentWindowPaused() && !isCanceling);
+    }
+
+    if (isCanceling) {
       return true;
     }
   }
@@ -1880,7 +1956,7 @@ bool WorkerPrivate::Thaw(const nsPIDOMWindowInner* aWindow) {
   EnableDebugger();
 
   RefPtr<ThawRunnable> runnable = new ThawRunnable(this);
-  return runnable->Dispatch();
+  return runnable->Dispatch(this);
 }
 
 void WorkerPrivate::ParentWindowPaused() {
@@ -1891,8 +1967,18 @@ void WorkerPrivate::ParentWindowPaused() {
   // This is called from WorkerPrivate construction, and we may not have
   // allocated mMainThreadDebuggeeEventTarget yet.
   if (mMainThreadDebuggeeEventTarget) {
-    // Pausing a ThrottledEventQueue is infallible.
-    MOZ_ALWAYS_SUCCEEDS(mMainThreadDebuggeeEventTarget->SetIsPaused(true));
+    bool isCanceling = false;
+
+    {
+      MutexAutoLock lock(mMutex);
+
+      isCanceling = mParentStatus >= Canceling;
+    }
+
+    // If we are already canceling we might wait for CancelingOnParentRunnable
+    // to be executed, so do not pause.
+    MOZ_ALWAYS_SUCCEEDS(
+        mMainThreadDebuggeeEventTarget->SetIsPaused(!isCanceling));
   }
 }
 
@@ -1902,12 +1988,11 @@ void WorkerPrivate::ParentWindowResumed() {
   MOZ_ASSERT(mParentWindowPaused);
   mParentWindowPaused = false;
 
+  bool isCanceling = false;
   {
     MutexAutoLock lock(mMutex);
 
-    if (mParentStatus >= Canceling) {
-      return;
-    }
+    isCanceling = mParentStatus >= Canceling;
   }
 
   // Since the window is no longer paused, the queue should only remain paused
@@ -1916,7 +2001,8 @@ void WorkerPrivate::ParentWindowResumed() {
   // This can only fail if the ThrottledEventQueue cannot dispatch its executor
   // to the main thread, in which case the main thread was never going to draw
   // runnables from it anyway, so the failure doesn't matter.
-  Unused << mMainThreadDebuggeeEventTarget->SetIsPaused(IsFrozen());
+  Unused << mMainThreadDebuggeeEventTarget->SetIsPaused(IsFrozen() &&
+                                                        !isCanceling);
 }
 
 void WorkerPrivate::PropagateStorageAccessPermissionGranted() {
@@ -1932,38 +2018,39 @@ void WorkerPrivate::PropagateStorageAccessPermissionGranted() {
 
   RefPtr<PropagateStorageAccessPermissionGrantedRunnable> runnable =
       new PropagateStorageAccessPermissionGrantedRunnable(this);
-  Unused << NS_WARN_IF(!runnable->Dispatch());
+  Unused << NS_WARN_IF(!runnable->Dispatch(this));
+}
+
+void WorkerPrivate::NotifyStorageKeyUsed() {
+  AssertIsOnWorkerThread();
+
+  // Only notify once per global.
+  if (hasNotifiedStorageKeyUsed) {
+    return;
+  }
+  hasNotifiedStorageKeyUsed = true;
+
+  // Notify about storage access on the main thread.
+  RefPtr<StrongWorkerRef> strongRef =
+      StrongWorkerRef::Create(this, "WorkerPrivate::NotifyStorageKeyUsed");
+  if (!strongRef) {
+    return;
+  }
+  RefPtr<ThreadSafeWorkerRef> ref = new ThreadSafeWorkerRef(strongRef);
+  DispatchToMainThread(NS_NewRunnableFunction(
+      "WorkerPrivate::NotifyStorageKeyUsed", [ref = std::move(ref)] {
+        nsGlobalWindowInner* window =
+            nsGlobalWindowInner::Cast(ref->Private()->GetAncestorWindow());
+        if (window) {
+          window->MaybeNotifyStorageKeyUsed();
+        }
+      }));
 }
 
 bool WorkerPrivate::Close() {
   mMutex.AssertCurrentThreadOwns();
   if (mParentStatus < Closing) {
     mParentStatus = Closing;
-  }
-
-  return true;
-}
-
-bool WorkerPrivate::ModifyBusyCount(bool aIncrease) {
-  AssertIsOnParentThread();
-
-  MOZ_ASSERT(aIncrease || mBusyCount, "Mismatched busy count mods!");
-
-  if (aIncrease) {
-    mBusyCount++;
-    return true;
-  }
-
-  if (--mBusyCount == 0) {
-    bool shouldCancel;
-    {
-      MutexAutoLock lock(mMutex);
-      shouldCancel = mParentStatus == Canceling;
-    }
-
-    if (shouldCancel && !Cancel()) {
-      return false;
-    }
   }
 
   return true;
@@ -1999,7 +2086,7 @@ void WorkerPrivate::UpdateContextOptions(
 
   RefPtr<UpdateContextOptionsRunnable> runnable =
       new UpdateContextOptionsRunnable(this, aContextOptions);
-  if (!runnable->Dispatch()) {
+  if (!runnable->Dispatch(this)) {
     NS_WARNING("Failed to update worker context options!");
   }
 }
@@ -2009,7 +2096,7 @@ void WorkerPrivate::UpdateLanguages(const nsTArray<nsString>& aLanguages) {
 
   RefPtr<UpdateLanguagesRunnable> runnable =
       new UpdateLanguagesRunnable(this, aLanguages);
-  if (!runnable->Dispatch()) {
+  if (!runnable->Dispatch(this)) {
     NS_WARNING("Failed to update worker languages!");
   }
 }
@@ -2028,7 +2115,7 @@ void WorkerPrivate::UpdateJSWorkerMemoryParameter(JSGCParamKey aKey,
   if (changed) {
     RefPtr<UpdateJSWorkerMemoryParameterRunnable> runnable =
         new UpdateJSWorkerMemoryParameterRunnable(this, aKey, aValue);
-    if (!runnable->Dispatch()) {
+    if (!runnable->Dispatch(this)) {
       NS_WARNING("Failed to update memory parameter!");
     }
   }
@@ -2046,7 +2133,7 @@ void WorkerPrivate::UpdateGCZeal(uint8_t aGCZeal, uint32_t aFrequency) {
 
   RefPtr<UpdateGCZealRunnable> runnable =
       new UpdateGCZealRunnable(this, aGCZeal, aFrequency);
-  if (!runnable->Dispatch()) {
+  if (!runnable->Dispatch(this)) {
     NS_WARNING("Failed to update worker gczeal!");
   }
 }
@@ -2057,7 +2144,7 @@ void WorkerPrivate::SetLowMemoryState(bool aState) {
 
   RefPtr<SetLowMemoryStateRunnable> runnable =
       new SetLowMemoryStateRunnable(this, aState);
-  if (!runnable->Dispatch()) {
+  if (!runnable->Dispatch(this)) {
     NS_WARNING("Failed to set low memory state!");
   }
 }
@@ -2067,7 +2154,7 @@ void WorkerPrivate::GarbageCollect(bool aShrinking) {
 
   RefPtr<GarbageCollectRunnable> runnable = new GarbageCollectRunnable(
       this, aShrinking, /* aCollectChildren = */ true);
-  if (!runnable->Dispatch()) {
+  if (!runnable->Dispatch(this)) {
     NS_WARNING("Failed to GC worker!");
   }
 }
@@ -2077,7 +2164,7 @@ void WorkerPrivate::CycleCollect() {
 
   RefPtr<CycleCollectRunnable> runnable =
       new CycleCollectRunnable(this, /* aCollectChildren = */ true);
-  if (!runnable->Dispatch()) {
+  if (!runnable->Dispatch(this)) {
     NS_WARNING("Failed to CC worker!");
   }
 }
@@ -2087,7 +2174,7 @@ void WorkerPrivate::OfflineStatusChangeEvent(bool aIsOffline) {
 
   RefPtr<OfflineStatusChangeRunnable> runnable =
       new OfflineStatusChangeRunnable(this, aIsOffline);
-  if (!runnable->Dispatch()) {
+  if (!runnable->Dispatch(this)) {
     NS_WARNING("Failed to dispatch offline status change event!");
   }
 }
@@ -2130,7 +2217,7 @@ void WorkerPrivate::MemoryPressure() {
   AssertIsOnParentThread();
 
   RefPtr<MemoryPressureRunnable> runnable = new MemoryPressureRunnable(this);
-  Unused << NS_WARN_IF(!runnable->Dispatch());
+  Unused << NS_WARN_IF(!runnable->Dispatch(this));
 }
 
 RefPtr<WorkerPrivate::JSMemoryUsagePromise> WorkerPrivate::GetJSMemoryUsage() {
@@ -2252,6 +2339,13 @@ void WorkerPrivate::UpdateOverridenLoadGroup(nsILoadGroup* aBaseLoadGroup) {
   mLoadInfo.mInterfaceRequestor->MaybeAddBrowserChild(aBaseLoadGroup);
 }
 
+bool WorkerPrivate::IsOnParentThread() const {
+  if (GetParent()) {
+    return GetParent()->IsOnWorkerThread();
+  }
+  return NS_IsMainThread();
+}
+
 #ifdef DEBUG
 
 void WorkerPrivate::AssertIsOnParentThread() const {
@@ -2289,10 +2383,12 @@ WorkerPrivate::WorkerThreadAccessible::WorkerThreadAccessible(
     WorkerPrivate* const aParent)
     : mNumWorkerRefsPreventingShutdownStart(0),
       mDebuggerEventLoopLevel(0),
+      mNonblockingCCBackgroundActorCount(0),
       mErrorHandlerRecursionCount(0),
       mNextTimeoutId(1),
       mCurrentTimerNestingLevel(0),
       mFrozen(false),
+      mDebuggerInterruptRequested(false),
       mTimerRunning(false),
       mRunningExpiredTimeouts(false),
       mPeriodicGCTimerRunning(false),
@@ -2362,7 +2458,6 @@ WorkerPrivate::WorkerPrivate(
           new WorkerEventTarget(this, WorkerEventTarget::Behavior::Hybrid)),
       mParentStatus(Pending),
       mStatus(Pending),
-      mBusyCount(0),
       mCreationTimeStamp(TimeStamp::Now()),
       mCreationTimeHighRes((double)PR_Now() / PR_USEC_PER_MSEC),
       mReportedUseCounters(false),
@@ -2415,42 +2510,16 @@ WorkerPrivate::WorkerPrivate(
       JS::RealmOptions& chromeRealmOptions = mJSSettings.chromeRealmOptions;
       JS::RealmOptions& contentRealmOptions = mJSSettings.contentRealmOptions;
 
-      JS::RealmBehaviors& chromeRealmBehaviors = chromeRealmOptions.behaviors();
-      JS::RealmBehaviors& contentRealmBehaviors =
-          contentRealmOptions.behaviors();
-
-      bool usesSystemPrincipal = UsesSystemPrincipal();
-
-      // Make timing imprecise in unprivileged code to blunt Spectre timing
-      // attacks.
-      bool clampAndJitterTime = !usesSystemPrincipal;
-      chromeRealmBehaviors.setClampAndJitterTime(clampAndJitterTime);
-      contentRealmBehaviors.setClampAndJitterTime(clampAndJitterTime);
-
-      JS::RealmCreationOptions& chromeCreationOptions =
-          chromeRealmOptions.creationOptions();
-      JS::RealmCreationOptions& contentCreationOptions =
-          contentRealmOptions.creationOptions();
-
-      // Expose uneval and toSource functions only if this is privileged code.
-      bool toSourceEnabled = usesSystemPrincipal;
-      chromeCreationOptions.setToSourceEnabled(toSourceEnabled);
-      contentCreationOptions.setToSourceEnabled(toSourceEnabled);
-
-      if (mIsSecureContext) {
-        chromeCreationOptions.setSecureContext(true);
-        contentCreationOptions.setSecureContext(true);
-      }
-
-      chromeCreationOptions.setForceUTC(
-          ShouldResistFingerprinting(RFPTarget::JSDateTimeUTC));
-      contentCreationOptions.setForceUTC(
-          ShouldResistFingerprinting(RFPTarget::JSDateTimeUTC));
-
-      chromeCreationOptions.setAlwaysUseFdlibm(
-          ShouldResistFingerprinting(RFPTarget::JSMathFdlibm));
-      contentCreationOptions.setAlwaysUseFdlibm(
-          ShouldResistFingerprinting(RFPTarget::JSMathFdlibm));
+      xpc::InitGlobalObjectOptions(
+          chromeRealmOptions, UsesSystemPrincipal(), mIsSecureContext,
+          ShouldResistFingerprinting(RFPTarget::JSDateTimeUTC),
+          ShouldResistFingerprinting(RFPTarget::JSMathFdlibm),
+          ShouldResistFingerprinting(RFPTarget::JSLocale));
+      xpc::InitGlobalObjectOptions(
+          contentRealmOptions, UsesSystemPrincipal(), mIsSecureContext,
+          ShouldResistFingerprinting(RFPTarget::JSDateTimeUTC),
+          ShouldResistFingerprinting(RFPTarget::JSMathFdlibm),
+          ShouldResistFingerprinting(RFPTarget::JSLocale));
 
       // Check if it's a privileged addon executing in order to allow access
       // to SharedArrayBuffer
@@ -2482,10 +2551,12 @@ WorkerPrivate::WorkerPrivate(
       // (because COOP/COEP support isn't enabled, or because COOP/COEP don't
       // act to isolate this worker to a separate process).
       const bool defineSharedArrayBufferConstructor = IsSharedMemoryAllowed();
-      chromeCreationOptions.setDefineSharedArrayBufferConstructor(
-          defineSharedArrayBufferConstructor);
-      contentCreationOptions.setDefineSharedArrayBufferConstructor(
-          defineSharedArrayBufferConstructor);
+      chromeRealmOptions.creationOptions()
+          .setDefineSharedArrayBufferConstructor(
+              defineSharedArrayBufferConstructor);
+      contentRealmOptions.creationOptions()
+          .setDefineSharedArrayBufferConstructor(
+              defineSharedArrayBufferConstructor);
     }
 
     mIsInAutomation = xpc::IsInAutomation();
@@ -2690,6 +2761,7 @@ already_AddRefed<WorkerPrivate> WorkerPrivate::Constructor(
   // must keep ourself alive. We can now only be cleared by
   // ClearSelfAndParentEventTargetRef().
   worker->mSelfRef = worker;
+  worker->mParentRef = MakeRefPtr<WorkerParentRef>(worker);
 
   worker->EnableDebugger();
 
@@ -2710,7 +2782,7 @@ already_AddRefed<WorkerPrivate> WorkerPrivate::Constructor(
 
   RefPtr<CompileScriptRunnable> compiler = new CompileScriptRunnable(
       worker, std::move(stack), aScriptURL, aDocumentEncoding);
-  if (!compiler->Dispatch()) {
+  if (!compiler->Dispatch(worker)) {
     aRv.Throw(NS_ERROR_UNEXPECTED);
     return nullptr;
   }
@@ -2812,8 +2884,7 @@ nsresult WorkerPrivate::GetLoadInfo(
         aParent->AssociatedBrowsingContextID();
     loadInfo.mStorageAccess = aParent->StorageAccess();
     loadInfo.mUseRegularPrincipal = aParent->UseRegularPrincipal();
-    loadInfo.mHasStorageAccessPermissionGranted =
-        aParent->HasStorageAccessPermissionGranted();
+    loadInfo.mUsingStorageAccess = aParent->UsingStorageAccess();
     loadInfo.mCookieJarSettings = aParent->CookieJarSettings();
     if (loadInfo.mCookieJarSettings) {
       loadInfo.mCookieJarSettingsArgs = aParent->CookieJarSettingsArgs();
@@ -2821,17 +2892,23 @@ nsresult WorkerPrivate::GetLoadInfo(
     loadInfo.mOriginAttributes = aParent->GetOriginAttributes();
     loadInfo.mServiceWorkersTestingInWindow =
         aParent->ServiceWorkersTestingInWindow();
-    loadInfo.mIsThirdPartyContextToTopWindow =
-        aParent->IsThirdPartyContextToTopWindow();
+    loadInfo.mIsThirdPartyContext = aParent->IsThirdPartyContext();
     loadInfo.mShouldResistFingerprinting = aParent->ShouldResistFingerprinting(
         RFPTarget::IsAlwaysEnabledForPrecompute);
+    loadInfo.mOverriddenFingerprintingSettings =
+        aParent->GetOverriddenFingerprintingSettings();
     loadInfo.mParentController = aParent->GlobalScope()->GetController();
     loadInfo.mWatchedByDevTools = aParent->IsWatchedByDevTools();
   } else {
     AssertIsOnMainThread();
 
     // Make sure that the IndexedDatabaseManager is set up
-    Unused << NS_WARN_IF(!IndexedDatabaseManager::GetOrCreate());
+    IndexedDatabaseManager* idm = IndexedDatabaseManager::GetOrCreate();
+    if (idm) {
+      Unused << NS_WARN_IF(NS_FAILED(idm->EnsureLocale()));
+    } else {
+      NS_WARNING("Failed to get IndexedDatabaseManager!");
+    }
 
     nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
     MOZ_ASSERT(ssm);
@@ -2963,19 +3040,20 @@ nsresult WorkerPrivate::GetLoadInfo(
           globalWindow->GetBrowsingContext()->Id();
       loadInfo.mStorageAccess = StorageAllowedForWindow(globalWindow);
       loadInfo.mUseRegularPrincipal = document->UseRegularPrincipal();
-      loadInfo.mHasStorageAccessPermissionGranted =
-          document->HasStorageAccessPermissionGranted();
+      loadInfo.mUsingStorageAccess = document->UsingStorageAccess();
       loadInfo.mShouldResistFingerprinting =
           document->ShouldResistFingerprinting(
               RFPTarget::IsAlwaysEnabledForPrecompute);
+      loadInfo.mOverriddenFingerprintingSettings =
+          document->GetOverriddenFingerprintingSettings();
 
       // This is an hack to deny the storage-access-permission for workers of
       // sub-iframes.
-      if (loadInfo.mHasStorageAccessPermissionGranted &&
+      if (loadInfo.mUsingStorageAccess &&
           StorageAllowedForDocument(document) != StorageAccess::eAllow) {
-        loadInfo.mHasStorageAccessPermissionGranted = false;
+        loadInfo.mUsingStorageAccess = false;
       }
-      loadInfo.mIsThirdPartyContextToTopWindow =
+      loadInfo.mIsThirdPartyContext =
           AntiTrackingUtils::IsThirdPartyWindow(globalWindow, nullptr);
       loadInfo.mCookieJarSettings = document->CookieJarSettings();
       if (loadInfo.mCookieJarSettings) {
@@ -3029,7 +3107,7 @@ nsresult WorkerPrivate::GetLoadInfo(
       loadInfo.mWindowID = UINT64_MAX;
       loadInfo.mStorageAccess = StorageAccess::eAllow;
       loadInfo.mUseRegularPrincipal = true;
-      loadInfo.mHasStorageAccessPermissionGranted = false;
+      loadInfo.mUsingStorageAccess = false;
       loadInfo.mCookieJarSettings =
           mozilla::net::CookieJarSettings::Create(loadInfo.mLoadingPrincipal);
       loadInfo.mShouldResistFingerprinting =
@@ -3043,7 +3121,7 @@ nsresult WorkerPrivate::GetLoadInfo(
       cookieJarSettings->Serialize(loadInfo.mCookieJarSettingsArgs);
 
       loadInfo.mOriginAttributes = OriginAttributes();
-      loadInfo.mIsThirdPartyContextToTopWindow = false;
+      loadInfo.mIsThirdPartyContext = false;
     }
 
     MOZ_ASSERT(loadInfo.mLoadingPrincipal);
@@ -3083,9 +3161,8 @@ nsresult WorkerPrivate::GetLoadInfo(
     // well as the hasStoragePermission flag.
     nsCOMPtr<nsILoadInfo> channelLoadInfo = loadInfo.mChannel->LoadInfo();
     rv = channelLoadInfo->SetStoragePermission(
-        loadInfo.mHasStorageAccessPermissionGranted
-            ? nsILoadInfo::HasStoragePermission
-            : nsILoadInfo::NoStoragePermission);
+        loadInfo.mUsingStorageAccess ? nsILoadInfo::HasStoragePermission
+                                     : nsILoadInfo::NoStoragePermission);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = loadInfo.SetPrincipalsAndCSPFromChannel(loadInfo.mChannel);
@@ -3126,26 +3203,50 @@ void WorkerPrivate::OverrideLoadInfoLoadGroup(WorkerLoadInfo& aLoadInfo,
 
 void WorkerPrivate::RunLoopNeverRan() {
   LOG(WorkerLog(), ("WorkerPrivate::RunLoopNeverRan [%p]", this));
+  // RunLoopNeverRan is only called in WorkerThreadPrimaryRunnable::Run() to
+  // handle cases
+  //   1. Fail to get BackgroundChild for the worker thread or
+  //   2. Fail to initialize the worker's JS context
+  // However, mPreStartRunnables had already dispatched in
+  // WorkerThread::SetWorkerPrivateInWorkerThread() where beforing above jobs
+  // start. So we need to clean up these dispatched runnables for the worker
+  // thread.
+
+  auto data = mWorkerThreadAccessible.Access();
+  RefPtr<WorkerThread> thread;
   {
     MutexAutoLock lock(mMutex);
-
+    // WorkerPrivate::DoRunLoop() is never called, so CompileScriptRunnable
+    // should not execute yet. However, the Worker is going to "Dead", flip the
+    // mCancelBeforeWorkerScopeConstructed to true for the dispatched runnables
+    // to indicate runnables there is no valid WorkerGlobalScope for executing.
+    MOZ_ASSERT(!data->mCancelBeforeWorkerScopeConstructed);
+    data->mCancelBeforeWorkerScopeConstructed.Flip();
+    // Switch State to Dead
     mStatus = Dead;
+    thread = mThread;
+  }
+
+  // Clear the dispatched mPreStartRunnables.
+  if (thread && NS_HasPendingEvents(thread)) {
+    NS_ProcessPendingEvents(nullptr);
   }
 
   // After mStatus is set to Dead there can be no more
   // WorkerControlRunnables so no need to lock here.
   if (!mControlQueue.IsEmpty()) {
-    WorkerControlRunnable* runnable = nullptr;
+    WorkerRunnable* runnable = nullptr;
     while (mControlQueue.Pop(runnable)) {
       runnable->Cancel();
       runnable->Release();
     }
   }
 
-  // Should not have any WorkerRefs, children workers and Timeouts.
-  MOZ_DIAGNOSTIC_ASSERT(!HasActiveWorkerRefs());
-
-  ScheduleDeletion(WorkerPrivate::WorkerRan);
+  // There should be no StrongWorkerRefs, child Workers, and Timeouts, but
+  // WeakWorkerRefs could. WorkerThreadPrimaryRunnable could have created a
+  // PerformanceStorageWorker which holds a WeakWorkerRef.
+  // Notify WeakWorkerRefs with Dead status.
+  NotifyWorkerRefs(Dead);
 }
 
 void WorkerPrivate::UnrootGlobalScopes() {
@@ -3249,11 +3350,6 @@ void WorkerPrivate::DoRunLoop(JSContext* aCx) {
 
     {
       MutexAutoLock lock(mMutex);
-
-      LOGV(
-          ("WorkerPrivate::DoRunLoop [%p] mStatus %u before getting events"
-           " to run",
-           this, (uint8_t)mStatus));
       if (checkFinalGCCC && currentStatus != mStatus) {
         // Something moved our status while we were supposed to check for a
         // potentially needed GC/CC. Just check again.
@@ -3272,7 +3368,11 @@ void WorkerPrivate::DoRunLoop(JSContext* aCx) {
         // an event running for a very long time.
         thread->SetRunningEventDelay(TimeDuration(), TimeStamp());
 
+        mWorkerLoopIsIdle = true;
+
         WaitForWorkerEvents();
+
+        mWorkerLoopIsIdle = false;
       }
 
       auto result = ProcessAllControlRunnablesLocked();
@@ -3283,6 +3383,25 @@ void WorkerPrivate::DoRunLoop(JSContext* aCx) {
       }
 
       currentStatus = mStatus;
+    }
+
+    // Status transitions to Closing/Canceling and there are no SyncLoops,
+    // set global start dying, disconnect EventTargetObjects and
+    // WebTaskScheduler.
+    // The Worker might switch to the "Killing" immediately then directly exits
+    // DoRunLoop(). Before exiting the DoRunLoop(), explicitly disconnecting the
+    // WorkerGlobalScope's EventTargetObject here would help to fail runnable
+    // dispatching when the Worker is in the status changing.
+    if (currentStatus >= Closing &&
+        !data->mPerformedShutdownAfterLastContentTaskExecuted) {
+      data->mPerformedShutdownAfterLastContentTaskExecuted.Flip();
+      if (data->mScope) {
+        data->mScope->NoteTerminating();
+        data->mScope->DisconnectGlobalTeardownObservers();
+        if (data->mScope->GetExistingScheduler()) {
+          data->mScope->GetExistingScheduler()->Disconnect();
+        }
+      }
     }
 
     // Transition from Canceling to Killing and exit this loop when:
@@ -3321,12 +3440,17 @@ void WorkerPrivate::DoRunLoop(JSContext* aCx) {
 
         DisableMemoryReporter();
 
+        // Move the timer out with the mutex held but only drop the ref
+        // when the mutex is not held.
+        nsCOMPtr<nsITimer> timer;
         {
           MutexAutoLock lock(mMutex);
 
           mStatus = Dead;
           mJSContext = nullptr;
+          mDebuggerInterruptTimer.swap(timer);
         }
+        timer = nullptr;
 
         // After mStatus is set to Dead there can be no more
         // WorkerControlRunnables so no need to lock here.
@@ -3335,7 +3459,7 @@ void WorkerPrivate::DoRunLoop(JSContext* aCx) {
               ("WorkerPrivate::DoRunLoop [%p] dropping control runnables in "
                "Dead status",
                this));
-          WorkerControlRunnable* runnable = nullptr;
+          WorkerRunnable* runnable = nullptr;
           while (mControlQueue.Pop(runnable)) {
             runnable->Cancel();
             runnable->Release();
@@ -3350,42 +3474,18 @@ void WorkerPrivate::DoRunLoop(JSContext* aCx) {
       }
     }
 
-    // Status transitions to Closing/Canceling and there are no SyncLoops,
-    // set global start dying, disconnect EventTargetObjects and
-    // WebTaskScheduler.
-    if (currentStatus >= Closing &&
-        !data->mPerformedShutdownAfterLastContentTaskExecuted) {
-      data->mPerformedShutdownAfterLastContentTaskExecuted.Flip();
-      if (data->mScope) {
-        data->mScope->NoteTerminating();
-        data->mScope->DisconnectEventTargetObjects();
-        if (data->mScope->GetExistingScheduler()) {
-          data->mScope->GetExistingScheduler()->Disconnect();
-        }
-      }
-    }
-
     if (debuggerRunnablesPending || normalRunnablesPending) {
       // Start the periodic GC timer if it is not already running.
       SetGCTimerMode(PeriodicTimer);
     }
 
     if (debuggerRunnablesPending) {
-      WorkerRunnable* runnable = nullptr;
+      ProcessSingleDebuggerRunnable();
 
       {
         MutexAutoLock lock(mMutex);
-
-        mDebuggerQueue.Pop(runnable);
         debuggerRunnablesPending = !mDebuggerQueue.IsEmpty();
       }
-
-      MOZ_ASSERT(runnable);
-      static_cast<nsIRunnable*>(runnable)->Run();
-      runnable->Release();
-
-      CycleCollectedJSContext* ccjs = CycleCollectedJSContext::Get();
-      ccjs->PerformDebuggerMicroTaskCheckpoint();
 
       if (debuggerRunnablesPending) {
         WorkerDebuggerGlobalScope* globalScope = DebuggerGlobalScope();
@@ -3411,6 +3511,13 @@ void WorkerPrivate::DoRunLoop(JSContext* aCx) {
         JSAutoRealm ar(aCx, GlobalScope()->GetGlobalJSObject());
         JS_MaybeGC(aCx);
       }
+    }
+
+    // Checking the background actors if needed, any runnable execution could
+    // release background actors which blocks GC/CC on
+    // WorkerPrivate::mParentEventTargetRef.
+    if (currentStatus < Canceling) {
+      UpdateCCFlag(CCFlag::CheckBackgroundActors);
     }
 
     if (!debuggerRunnablesPending && !normalRunnablesPending) {
@@ -3515,8 +3622,11 @@ nsresult WorkerPrivate::DispatchToMainThread(
 }
 
 nsresult WorkerPrivate::DispatchDebuggeeToMainThread(
-    already_AddRefed<WorkerDebuggeeRunnable> aRunnable, uint32_t aFlags) {
-  return mMainThreadDebuggeeEventTarget->Dispatch(std::move(aRunnable), aFlags);
+    already_AddRefed<WorkerRunnable> aRunnable, uint32_t aFlags) {
+  RefPtr<WorkerRunnable> debuggeeRunnable = std::move(aRunnable);
+  MOZ_ASSERT_DEBUG_OR_FUZZING(debuggeeRunnable->IsDebuggeeRunnable());
+  return mMainThreadDebuggeeEventTarget->Dispatch(debuggeeRunnable.forget(),
+                                                  aFlags);
 }
 
 nsISerialEventTarget* WorkerPrivate::ControlEventTarget() {
@@ -3852,6 +3962,32 @@ bool WorkerPrivate::InterruptCallback(JSContext* aCx) {
   // Make sure the periodic timer gets turned back on here.
   SetGCTimerMode(PeriodicTimer);
 
+  if (data->mDebuggerInterruptRequested) {
+    bool debuggerRunnablesPending = false;
+    {
+      MutexAutoLock lock(mMutex);
+      debuggerRunnablesPending = !mDebuggerQueue.IsEmpty();
+    }
+    if (debuggerRunnablesPending) {
+      // Prevents interrupting the debugger's own logic unless it has called
+      // back into content
+      WorkerGlobalScope* globalScope = GlobalScope();
+      if (globalScope) {
+        JSObject* global = JS::CurrentGlobalOrNull(aCx);
+        if (global && global == globalScope->GetGlobalJSObject()) {
+          while (debuggerRunnablesPending) {
+            ProcessSingleDebuggerRunnable();
+            {
+              MutexAutoLock lock(mMutex);
+              debuggerRunnablesPending = !mDebuggerQueue.IsEmpty();
+            }
+          }
+        }
+      }
+    }
+    data->mDebuggerInterruptRequested = false;
+  }
+
   return true;
 }
 
@@ -3891,14 +4027,16 @@ void WorkerPrivate::ScheduleDeletion(WorkerRanOrNot aRanOrNot) {
   if (WorkerRan == aRanOrNot) {
     nsIThread* currentThread = NS_GetCurrentThread();
     MOZ_ASSERT(currentThread);
-    MOZ_ASSERT(!NS_HasPendingEvents(currentThread));
+    // On the worker thread WorkerRunnable will refuse to run if not nested
+    // on top of a WorkerThreadPrimaryRunnable.
+    Unused << NS_WARN_IF(NS_HasPendingEvents(currentThread));
   }
 #endif
 
   if (WorkerPrivate* parent = GetParent()) {
     RefPtr<WorkerFinishedRunnable> runnable =
         new WorkerFinishedRunnable(parent, this);
-    if (!runnable->Dispatch()) {
+    if (!runnable->Dispatch(parent)) {
       NS_WARNING("Failed to dispatch runnable!");
     }
   } else {
@@ -4011,16 +4149,19 @@ WorkerPrivate::ProcessAllControlRunnablesLocked() {
   auto result = ProcessAllControlRunnablesResult::Nothing;
 
   for (;;) {
-    WorkerControlRunnable* event;
+    WorkerRunnable* event;
     if (!mControlQueue.Pop(event)) {
       break;
     }
 
     MutexAutoUnlock unlock(mMutex);
 
-    MOZ_ASSERT(event);
-    if (NS_FAILED(static_cast<nsIRunnable*>(event)->Run())) {
-      result = ProcessAllControlRunnablesResult::Abort;
+    {
+      MOZ_ASSERT(event);
+      AUTO_PROFILE_FOLLOWING_RUNNABLE(event);
+      if (NS_FAILED(static_cast<nsIRunnable*>(event)->Run())) {
+        result = ProcessAllControlRunnablesResult::Abort;
+      }
     }
 
     if (result == ProcessAllControlRunnablesResult::Nothing) {
@@ -4063,12 +4204,56 @@ void WorkerPrivate::ClearPreStartRunnables() {
   }
 }
 
-void WorkerPrivate::ClearDebuggerEventQueue() {
-  while (!mDebuggerQueue.IsEmpty()) {
-    WorkerRunnable* runnable = nullptr;
+void WorkerPrivate::ProcessSingleDebuggerRunnable() {
+  WorkerRunnable* runnable = nullptr;
+
+  // Move the timer out with the mutex held but only drop the ref
+  // when the mutex is not held.
+  nsCOMPtr<nsITimer> timer;
+  {
+    MutexAutoLock lock(mMutex);
+
     mDebuggerQueue.Pop(runnable);
+
+    mDebuggerInterruptTimer.swap(timer);
+  }
+  timer = nullptr;
+
+  {
+    MOZ_ASSERT(runnable);
+    AUTO_PROFILE_FOLLOWING_RUNNABLE(runnable);
+    static_cast<nsIRunnable*>(runnable)->Run();
+  }
+  runnable->Release();
+
+  CycleCollectedJSContext* ccjs = CycleCollectedJSContext::Get();
+  ccjs->PerformDebuggerMicroTaskCheckpoint();
+}
+
+void WorkerPrivate::ClearDebuggerEventQueue() {
+  bool debuggerRunnablesPending = false;
+  {
+    MutexAutoLock lock(mMutex);
+    debuggerRunnablesPending = !mDebuggerQueue.IsEmpty();
+  }
+  while (debuggerRunnablesPending) {
+    WorkerRunnable* runnable = nullptr;
+    {
+      MutexAutoLock lock(mMutex);
+      mDebuggerQueue.Pop(runnable);
+      debuggerRunnablesPending = !mDebuggerQueue.IsEmpty();
+    }
     // It should be ok to simply release the runnable, without running it.
     runnable->Release();
+
+    // Move the timer out with the mutex held but only drop the ref
+    // when the mutex is not held.
+    nsCOMPtr<nsITimer> timer;
+    {
+      MutexAutoLock lock(mMutex);
+      mDebuggerInterruptTimer.swap(timer);
+    }
+    timer = nullptr;
   }
 }
 
@@ -4114,7 +4299,7 @@ void WorkerPrivate::PropagateStorageAccessPermissionGrantedInternal() {
   auto data = mWorkerThreadAccessible.Access();
 
   mLoadInfo.mUseRegularPrincipal = true;
-  mLoadInfo.mHasStorageAccessPermissionGranted = true;
+  mLoadInfo.mUsingStorageAccess = true;
 
   WorkerGlobalScope* globalScope = GlobalScope();
   if (globalScope) {
@@ -4140,24 +4325,6 @@ void WorkerPrivate::UnlinkTimeouts() {
   data->mTimeouts.Clear();
 }
 
-bool WorkerPrivate::ModifyBusyCountFromWorker(bool aIncrease) {
-  AssertIsOnWorkerThread();
-
-  {
-    MutexAutoLock lock(mMutex);
-
-    // If we're in shutdown then the busy count is no longer being considered so
-    // just return now.
-    if (mStatus >= Killing) {
-      return true;
-    }
-  }
-
-  RefPtr<ModifyBusyCountRunnable> runnable =
-      new ModifyBusyCountRunnable(this, aIncrease);
-  return runnable->Dispatch();
-}
-
 bool WorkerPrivate::AddChildWorker(WorkerPrivate& aChildWorker) {
   auto data = mWorkerThreadAccessible.Access();
 
@@ -4177,8 +4344,11 @@ bool WorkerPrivate::AddChildWorker(WorkerPrivate& aChildWorker) {
                "Already know about this one!");
   data->mChildWorkers.AppendElement(&aChildWorker);
 
-  return data->mChildWorkers.Length() == 1 ? ModifyBusyCountFromWorker(true)
-                                           : true;
+  if (data->mChildWorkers.Length() == 1) {
+    UpdateCCFlag(CCFlag::IneligibleForChildWorker);
+  }
+
+  return true;
 }
 
 void WorkerPrivate::RemoveChildWorker(WorkerPrivate& aChildWorker) {
@@ -4188,8 +4358,8 @@ void WorkerPrivate::RemoveChildWorker(WorkerPrivate& aChildWorker) {
                "Didn't know about this one!");
   data->mChildWorkers.RemoveElement(&aChildWorker);
 
-  if (data->mChildWorkers.IsEmpty() && !ModifyBusyCountFromWorker(false)) {
-    NS_WARNING("Failed to modify busy count!");
+  if (data->mChildWorkers.IsEmpty()) {
+    UpdateCCFlag(CCFlag::EligibleForChildWorker);
   }
 }
 
@@ -4224,11 +4394,10 @@ bool WorkerPrivate::AddWorkerRef(WorkerRef* aWorkerRef,
              "Already know about this one!");
 
   if (aWorkerRef->IsPreventingShutdown()) {
-    if (!data->mNumWorkerRefsPreventingShutdownStart &&
-        !ModifyBusyCountFromWorker(true)) {
-      return false;
-    }
     data->mNumWorkerRefsPreventingShutdownStart += 1;
+    if (data->mNumWorkerRefsPreventingShutdownStart == 1) {
+      UpdateCCFlag(CCFlag::IneligibleForWorkerRef);
+    }
   }
 
   data->mWorkerRefs.AppendElement(aWorkerRef);
@@ -4247,9 +4416,8 @@ void WorkerPrivate::RemoveWorkerRef(WorkerRef* aWorkerRef) {
 
   if (aWorkerRef->IsPreventingShutdown()) {
     data->mNumWorkerRefsPreventingShutdownStart -= 1;
-    if (!data->mNumWorkerRefsPreventingShutdownStart &&
-        !ModifyBusyCountFromWorker(false)) {
-      NS_WARNING("Failed to modify busy count!");
+    if (!data->mNumWorkerRefsPreventingShutdownStart) {
+      UpdateCCFlag(CCFlag::EligibleForWorkerRef);
     }
   }
 }
@@ -4324,6 +4492,131 @@ void WorkerPrivate::RunShutdownTasks() {
   mWorkerHybridEventTarget->ForgetWorkerPrivate(this);
 }
 
+RefPtr<WorkerParentRef> WorkerPrivate::GetWorkerParentRef() const {
+  RefPtr<WorkerParentRef> ref(mParentRef);
+  return ref;
+}
+
+void WorkerPrivate::AdjustNonblockingCCBackgroundActorCount(int32_t aCount) {
+  AssertIsOnWorkerThread();
+  auto data = mWorkerThreadAccessible.Access();
+  LOGV(("WorkerPrivate::AdjustNonblockingCCBackgroundActors [%p] (%d/%u)", this,
+        aCount, data->mNonblockingCCBackgroundActorCount));
+
+#ifdef DEBUG
+  if (aCount < 0) {
+    MOZ_ASSERT(data->mNonblockingCCBackgroundActorCount >=
+               (uint32_t)abs(aCount));
+  }
+#endif
+
+  data->mNonblockingCCBackgroundActorCount += aCount;
+}
+
+void WorkerPrivate::UpdateCCFlag(const CCFlag aFlag) {
+  AssertIsOnWorkerThread();
+
+  auto data = mWorkerThreadAccessible.Access();
+
+#ifdef DEBUG
+  switch (aFlag) {
+    case CCFlag::EligibleForWorkerRef: {
+      MOZ_ASSERT(!data->mNumWorkerRefsPreventingShutdownStart);
+      break;
+    }
+    case CCFlag::IneligibleForWorkerRef: {
+      MOZ_ASSERT(data->mNumWorkerRefsPreventingShutdownStart);
+      break;
+    }
+    case CCFlag::EligibleForChildWorker: {
+      MOZ_ASSERT(data->mChildWorkers.IsEmpty());
+      break;
+    }
+    case CCFlag::IneligibleForChildWorker: {
+      MOZ_ASSERT(!data->mChildWorkers.IsEmpty());
+      break;
+    }
+    case CCFlag::EligibleForTimeout: {
+      MOZ_ASSERT(data->mTimeouts.IsEmpty());
+      break;
+    }
+    case CCFlag::IneligibleForTimeout: {
+      MOZ_ASSERT(!data->mTimeouts.IsEmpty());
+      break;
+    }
+    case CCFlag::CheckBackgroundActors: {
+      break;
+    }
+  }
+#endif
+
+  {
+    MutexAutoLock lock(mMutex);
+    if (mStatus > Canceling) {
+      mCCFlagSaysEligible = true;
+      return;
+    }
+  }
+  auto HasBackgroundActors = [nonblockingActorCount =
+                                  data->mNonblockingCCBackgroundActorCount]() {
+    RefPtr<PBackgroundChild> backgroundChild =
+        BackgroundChild::GetForCurrentThread();
+    MOZ_ASSERT(backgroundChild);
+    auto totalCount = backgroundChild->AllManagedActorsCount();
+    LOGV(("WorkerPrivate::UpdateCCFlag HasBackgroundActors: %s(%u/%u)",
+          totalCount > nonblockingActorCount ? "true" : "false", totalCount,
+          nonblockingActorCount));
+
+    return totalCount > nonblockingActorCount;
+  };
+
+  bool eligibleForCC = data->mChildWorkers.IsEmpty() &&
+                       data->mTimeouts.IsEmpty() &&
+                       !data->mNumWorkerRefsPreventingShutdownStart;
+
+  // Only checking BackgroundActors when no strong WorkerRef, ChildWorker, and
+  // Timeout since the checking is expensive.
+  if (eligibleForCC) {
+    eligibleForCC = !HasBackgroundActors();
+  }
+
+  {
+    MutexAutoLock lock(mMutex);
+    mCCFlagSaysEligible = eligibleForCC;
+  }
+}
+
+bool WorkerPrivate::IsEligibleForCC() {
+  LOGV(("WorkerPrivate::IsEligibleForCC [%p]", this));
+  MutexAutoLock lock(mMutex);
+  if (mStatus > Canceling) {
+    return true;
+  }
+
+  bool hasShutdownTasks = !mShutdownTasks.IsEmpty();
+  bool hasPendingEvents = false;
+  if (mThread) {
+    hasPendingEvents =
+        NS_SUCCEEDED(mThread->HasPendingEvents(&hasPendingEvents)) &&
+        hasPendingEvents;
+  }
+
+  LOGV(("mMainThreadEventTarget: %s",
+        mMainThreadEventTarget->IsEmpty() ? "empty" : "non-empty"));
+  LOGV(("mMainThreadEventTargetForMessaging: %s",
+        mMainThreadEventTargetForMessaging->IsEmpty() ? "empty" : "non-empty"));
+  LOGV(("mMainThreadDebuggerEventTarget: %s",
+        mMainThreadDebuggeeEventTarget->IsEmpty() ? "empty" : "non-empty"));
+  LOGV(("mCCFlagSaysEligible: %s", mCCFlagSaysEligible ? "true" : "false"));
+  LOGV(("hasShutdownTasks: %s", hasShutdownTasks ? "true" : "false"));
+  LOGV(("hasPendingEvents: %s", hasPendingEvents ? "true" : "false"));
+
+  return mMainThreadEventTarget->IsEmpty() &&
+         mMainThreadEventTargetForMessaging->IsEmpty() &&
+         mMainThreadDebuggeeEventTarget->IsEmpty() && mCCFlagSaysEligible &&
+         !hasShutdownTasks && !hasPendingEvents && mWorkerLoopIsIdle;
+}
+
 void WorkerPrivate::CancelAllTimeouts() {
   auto data = mWorkerThreadAccessible.Access();
 
@@ -4346,7 +4639,7 @@ void WorkerPrivate::CancelAllTimeouts() {
     // them.  Otherwise, we need to clean them up ourselves.
     if (!data->mRunningExpiredTimeouts) {
       data->mTimeouts.Clear();
-      ModifyBusyCountFromWorker(false);
+      UpdateCCFlag(CCFlag::EligibleForTimeout);
     }
 
     // Set mTimerRunning false even if mRunningExpiredTimeouts is true, so that
@@ -4581,7 +4874,7 @@ void WorkerPrivate::DispatchCancelingRunnable() {
                     this));
   RefPtr<CancelingWithTimeoutOnParentRunnable> rr =
       new CancelingWithTimeoutOnParentRunnable(this);
-  rr->Dispatch();
+  rr->Dispatch(this);
 }
 
 void WorkerPrivate::ReportUseCounters() {
@@ -4592,20 +4885,20 @@ void WorkerPrivate::ReportUseCounters() {
   }
   mReportedUseCounters = true;
 
-  if (Telemetry::HistogramUseCounterWorkerCount <= 0 || IsChromeWorker()) {
+  if (IsChromeWorker()) {
     return;
   }
 
   const size_t kind = Kind();
   switch (kind) {
     case WorkerKindDedicated:
-      Telemetry::Accumulate(Telemetry::DEDICATED_WORKER_DESTROYED, 1);
+      glean::use_counter::dedicated_workers_destroyed.Add();
       break;
     case WorkerKindShared:
-      Telemetry::Accumulate(Telemetry::SHARED_WORKER_DESTROYED, 1);
+      glean::use_counter::shared_workers_destroyed.Add();
       break;
     case WorkerKindService:
-      Telemetry::Accumulate(Telemetry::SERVICE_WORKER_DESTROYED, 1);
+      glean::use_counter::service_workers_destroyed.Add();
       break;
     default:
       MOZ_ASSERT(false, "Unknown worker kind");
@@ -4623,41 +4916,35 @@ void WorkerPrivate::ReportUseCounters() {
     workerPathForLogging.emplace(std::move(path));
   }
 
-  static_assert(
-      static_cast<size_t>(UseCounterWorker::Count) * 3 ==
-          static_cast<size_t>(Telemetry::HistogramUseCounterWorkerCount),
-      "There should be three histograms (dedicated and shared and "
-      "servie) for each worker use counter");
   const size_t count = static_cast<size_t>(UseCounterWorker::Count);
-  const size_t factor =
-      static_cast<size_t>(Telemetry::HistogramUseCounterWorkerCount) / count;
-  MOZ_ASSERT(factor > kind);
 
+  const auto workerKind = Kind();
   for (size_t c = 0; c < count; ++c) {
-    // Histograms for worker use counters use the same order as the worker kinds
-    // , so we can use the worker kind to index to corresponding histogram.
-    auto id = static_cast<Telemetry::HistogramID>(
-        Telemetry::HistogramFirstUseCounterWorker + c * factor + kind);
-    MOZ_ASSERT(id <= Telemetry::HistogramLastUseCounterWorker);
-
     if (!GetUseCounter(static_cast<UseCounterWorker>(c))) {
       continue;
     }
+    const char* metricName =
+        IncrementWorkerUseCounter(static_cast<UseCounterWorker>(c), workerKind);
     if (dumpCounters) {
-      printf_stderr("USE_COUNTER_WORKER: %s - %s\n",
-                    Telemetry::GetHistogramName(id),
+      printf_stderr("USE_COUNTER_WORKER: %s - %s\n", metricName,
                     workerPathForLogging->get());
     }
-    Telemetry::Accumulate(id, 1);
   }
 }
 
 void WorkerPrivate::StopSyncLoop(nsIEventTarget* aSyncLoopTarget,
                                  nsresult aResult) {
-  AssertIsOnWorkerThread();
   AssertValidSyncLoop(aSyncLoopTarget);
 
-  MOZ_ASSERT(!mSyncLoopStack.IsEmpty());
+  if (!MaybeStopSyncLoop(aSyncLoopTarget, aResult)) {
+    // TODO: I wonder if we should really ever crash here given the assert.
+    MOZ_CRASH("Unknown sync loop!");
+  }
+}
+
+bool WorkerPrivate::MaybeStopSyncLoop(nsIEventTarget* aSyncLoopTarget,
+                                      nsresult aResult) {
+  AssertIsOnWorkerThread();
 
   for (uint32_t index = mSyncLoopStack.Length(); index > 0; index--) {
     const auto& loopInfo = mSyncLoopStack[index - 1];
@@ -4674,13 +4961,13 @@ void WorkerPrivate::StopSyncLoop(nsIEventTarget* aSyncLoopTarget,
 
       loopInfo->mEventTarget->Disable();
 
-      return;
+      return true;
     }
 
     MOZ_ASSERT(!SameCOMIdentity(loopInfo->mEventTarget, aSyncLoopTarget));
   }
 
-  MOZ_CRASH("Unknown sync loop!");
+  return false;
 }
 
 #ifdef DEBUG
@@ -4731,20 +5018,8 @@ void WorkerPrivate::PostMessageToParent(
     return;
   }
 
-  RefPtr<MessageEventRunnable> runnable = new MessageEventRunnable(
-      this, WorkerRunnable::ParentThreadUnchangedBusyCount);
-
-  UniquePtr<AbstractTimelineMarker> start;
-  UniquePtr<AbstractTimelineMarker> end;
-  bool isTimelineRecording = !TimelineConsumers::IsEmpty();
-
-  if (isTimelineRecording) {
-    start = MakeUnique<WorkerTimelineMarker>(
-        NS_IsMainThread()
-            ? ProfileTimelineWorkerOperationType::SerializeDataOnMainThread
-            : ProfileTimelineWorkerOperationType::SerializeDataOffMainThread,
-        MarkerTracingType::START);
-  }
+  RefPtr<MessageEventToParentRunnable> runnable =
+      new MessageEventToParentRunnable(this);
 
   JS::CloneDataPolicy clonePolicy;
 
@@ -4757,21 +5032,11 @@ void WorkerPrivate::PostMessageToParent(
 
   runnable->Write(aCx, aMessage, transferable, clonePolicy, aRv);
 
-  if (isTimelineRecording) {
-    end = MakeUnique<WorkerTimelineMarker>(
-        NS_IsMainThread()
-            ? ProfileTimelineWorkerOperationType::SerializeDataOnMainThread
-            : ProfileTimelineWorkerOperationType::SerializeDataOffMainThread,
-        MarkerTracingType::END);
-    TimelineConsumers::AddMarkerForAllObservedDocShells(start);
-    TimelineConsumers::AddMarkerForAllObservedDocShells(end);
-  }
-
   if (NS_WARN_IF(aRv.Failed())) {
     return;
   }
 
-  if (!runnable->Dispatch()) {
+  if (!runnable->Dispatch(this)) {
     aRv = NS_ERROR_FAILURE;
   }
 }
@@ -4824,19 +5089,7 @@ void WorkerPrivate::EnterDebuggerEventLoop() {
       // Start the periodic GC timer if it is not already running.
       SetGCTimerMode(PeriodicTimer);
 
-      WorkerRunnable* runnable = nullptr;
-
-      {
-        MutexAutoLock lock(mMutex);
-
-        mDebuggerQueue.Pop(runnable);
-      }
-
-      MOZ_ASSERT(runnable);
-      static_cast<nsIRunnable*>(runnable)->Run();
-      runnable->Release();
-
-      ccjscx->PerformDebuggerMicroTaskCheckpoint();
+      ProcessSingleDebuggerRunnable();
 
       // Now *might* be a good time to GC. Let the JS engine make the decision.
       if (GetCurrentEventLoopGlobal()) {
@@ -4871,7 +5124,7 @@ void WorkerPrivate::SetDebuggerImmediate(dom::Function& aHandler,
 
   RefPtr<DebuggerImmediateRunnable> runnable =
       new DebuggerImmediateRunnable(this, aHandler);
-  if (!runnable->Dispatch()) {
+  if (!runnable->Dispatch(this)) {
     aRv.Throw(NS_ERROR_FAILURE);
   }
 }
@@ -4905,18 +5158,8 @@ bool WorkerPrivate::NotifyInternal(WorkerStatus aStatus) {
       return true;
     }
 
-    MOZ_ASSERT_IF(aStatus == Killing, mStatus == Canceling);
-
-    if (aStatus >= Canceling) {
-      MutexAutoUnlock unlock(mMutex);
-      if (data->mScope) {
-        if (aStatus == Canceling) {
-          data->mScope->NoteTerminating();
-        } else {
-          data->mScope->NoteShuttingDown();
-        }
-      }
-    }
+    MOZ_ASSERT_IF(aStatus == Killing,
+                  mStatus == Canceling && mParentStatus == Canceling);
 
     mStatus = aStatus;
 
@@ -4924,6 +5167,24 @@ bool WorkerPrivate::NotifyInternal(WorkerStatus aStatus) {
     // dispatched after we clear the queue below.
     if (aStatus == Closing) {
       Close();
+    }
+
+    // Synchronize the mParentStatus with mStatus, such that event dispatching
+    // will fail in proper after WorkerPrivate gets into Killing status.
+    if (aStatus >= Killing) {
+      mParentStatus = aStatus;
+    }
+  }
+
+  // Status transistion to "Canceling"/"Killing", mark the scope as dying when
+  // "Canceling," or shutdown the StorageManager when "Killing."
+  if (aStatus >= Canceling) {
+    if (data->mScope) {
+      if (aStatus == Canceling) {
+        data->mScope->NoteTerminating();
+      } else {
+        data->mScope->NoteShuttingDown();
+      }
     }
   }
 
@@ -5120,21 +5381,17 @@ int32_t WorkerPrivate::SetTimeout(JSContext* aCx, TimeoutHandler* aHandler,
   if (insertedInfo == data->mTimeouts.Elements() &&
       !data->mRunningExpiredTimeouts) {
     if (!data->mTimer) {
-      data->mTimer =
-          NS_NewTimer(GlobalScope()->EventTargetFor(TaskCategory::Timer));
+      data->mTimer = NS_NewTimer(GlobalScope()->SerialEventTarget());
       if (!data->mTimer) {
         aRv.Throw(NS_ERROR_UNEXPECTED);
         return 0;
       }
 
-      data->mTimerRunnable = new TimerRunnable(this);
+      data->mTimerRunnable = new RunExpiredTimoutsRunnable(this);
     }
 
     if (!data->mTimerRunning) {
-      if (!ModifyBusyCountFromWorker(true)) {
-        aRv.Throw(NS_ERROR_FAILURE);
-        return 0;
-      }
+      UpdateCCFlag(CCFlag::IneligibleForTimeout);
       data->mTimerRunning = true;
     }
 
@@ -5315,9 +5572,7 @@ bool WorkerPrivate::RunExpiredTimeouts(JSContext* aCx) {
   // Either signal the parent that we're no longer using timeouts or reschedule
   // the timer.
   if (data->mTimeouts.IsEmpty()) {
-    if (!ModifyBusyCountFromWorker(false)) {
-      retval = false;
-    }
+    UpdateCCFlag(CCFlag::EligibleForTimeout);
     data->mTimerRunning = false;
   } else if (retval && !RescheduleTimeoutTimer(aCx)) {
     retval = false;
@@ -5363,9 +5618,12 @@ bool WorkerPrivate::RescheduleTimeoutTimer(JSContext* aCx) {
 void WorkerPrivate::StartCancelingTimer() {
   AssertIsOnParentThread();
 
-  auto errorCleanup = MakeScopeExit([&] { mCancelingTimer = nullptr; });
+  // return if mCancelingTimer has already existed.
+  if (mCancelingTimer) {
+    return;
+  }
 
-  MOZ_ASSERT(!mCancelingTimer);
+  auto errorCleanup = MakeScopeExit([&] { mCancelingTimer = nullptr; });
 
   if (WorkerPrivate* parent = GetParent()) {
     mCancelingTimer = NS_NewTimer(parent->ControlEventTarget());
@@ -5450,7 +5708,7 @@ void WorkerPrivate::UpdateGCZealInternal(JSContext* aCx, uint8_t aGCZeal,
                                          uint32_t aFrequency) {
   auto data = mWorkerThreadAccessible.Access();
 
-  JS_SetGCZeal(aCx, aGCZeal, aFrequency);
+  JS::SetGCZeal(aCx, aGCZeal, aFrequency);
 
   for (uint32_t index = 0; index < data->mChildWorkers.Length(); index++) {
     data->mChildWorkers[index]->UpdateGCZeal(aGCZeal, aFrequency);
@@ -5611,10 +5869,11 @@ void WorkerPrivate::ResetWorkerPrivateInWorkerThread() {
 
   // Release the mutex before doomedThread.
   MutexAutoLock lock(mMutex);
+  MOZ_ASSERT(mStatus == Dead);
 
   MOZ_ASSERT(mThread);
 
-  mThread->SetWorker(WorkerThreadFriendKey{}, nullptr);
+  mThread->ClearEventQueueAndWorker(WorkerThreadFriendKey{});
   mThread.swap(doomedThread);
 }
 
@@ -5728,7 +5987,7 @@ WorkerGlobalScope* WorkerPrivate::GetOrCreateGlobalScope(JSContext* aCx) {
   // Worker has already in "Canceling", let the WorkerGlobalScope start dying.
   if (data->mCancelBeforeWorkerScopeConstructed) {
     data->mScope->NoteTerminating();
-    data->mScope->DisconnectEventTargetObjects();
+    data->mScope->DisconnectGlobalTeardownObservers();
   }
 
   JS_FireOnNewGlobalObject(aCx, global);
@@ -5794,6 +6053,12 @@ void WorkerPrivate::DumpCrashInformation(nsACString& aString) {
     if (workerRef->IsPreventingShutdown()) {
       aString.Append("|");
       aString.Append(workerRef->Name());
+      const nsCString status = GET_WORKERREF_DEBUG_STATUS(workerRef);
+      if (!status.IsEmpty()) {
+        aString.Append("[");
+        aString.Append(status);
+        aString.Append("]");
+      }
     }
   }
 }
@@ -5805,7 +6070,10 @@ PerformanceStorage* WorkerPrivate::GetPerformanceStorage() {
 
 bool WorkerPrivate::ShouldResistFingerprinting(RFPTarget aTarget) const {
   return mLoadInfo.mShouldResistFingerprinting &&
-         nsRFPService::IsRFPEnabledFor(aTarget);
+         nsRFPService::IsRFPEnabledFor(
+             mLoadInfo.mOriginAttributes.mPrivateBrowsingId >
+                 nsIScriptSecurityManager::DEFAULT_PRIVATE_BROWSING_ID,
+             aTarget, mLoadInfo.mOverriddenFingerprintingSettings);
 }
 
 void WorkerPrivate::SetRemoteWorkerController(RemoteWorkerChild* aController) {
@@ -6119,6 +6387,33 @@ WorkerPrivate::AutoPushEventLoopGlobal::~AutoPushEventLoopGlobal() {
   auto data = mWorkerPrivate->mWorkerThreadAccessible.Access();
   data->mCurrentEventLoopGlobal = std::move(mOldEventLoopGlobal);
 }
+
+// -----------------------------------------------------------------------------
+// WorkerParentRef
+WorkerParentRef::WorkerParentRef(RefPtr<WorkerPrivate>& aWorkerPrivate)
+    : mWorkerPrivate(aWorkerPrivate) {
+  LOGV(("WorkerParentRef::WorkerParentRef [%p] aWorkerPrivate %p", this,
+        aWorkerPrivate.get()));
+  MOZ_ASSERT(mWorkerPrivate);
+  mWorkerPrivate->AssertIsOnParentThread();
+}
+
+const RefPtr<WorkerPrivate>& WorkerParentRef::Private() const {
+  if (mWorkerPrivate) {
+    mWorkerPrivate->AssertIsOnParentThread();
+  }
+  return mWorkerPrivate;
+}
+
+void WorkerParentRef::DropWorkerPrivate() {
+  LOGV(("WorkerParentRef::DropWorkerPrivate [%p]", this));
+  if (mWorkerPrivate) {
+    mWorkerPrivate->AssertIsOnParentThread();
+    mWorkerPrivate = nullptr;
+  }
+}
+
+WorkerParentRef::~WorkerParentRef() = default;
 
 }  // namespace dom
 }  // namespace mozilla

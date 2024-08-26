@@ -117,6 +117,7 @@ ast_struct! {
 
 ast_struct! {
     /// A parenthesized pattern: `(A | B)`.
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
     pub struct PatParen {
         pub attrs: Vec<Attribute>,
         pub paren_token: token::Paren,
@@ -226,8 +227,8 @@ ast_struct! {
 #[cfg(feature = "parsing")]
 pub(crate) mod parsing {
     use super::*;
-    use crate::ext::IdentExt;
-    use crate::parse::{ParseBuffer, ParseStream, Result};
+    use crate::ext::IdentExt as _;
+    use crate::parse::{Parse, ParseBuffer, ParseStream, Result};
     use crate::path;
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
@@ -354,6 +355,18 @@ pub(crate) mod parsing {
         }
     }
 
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for PatType {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(PatType {
+                attrs: Vec::new(),
+                pat: Box::new(Pat::parse_single(input)?),
+                colon_token: input.parse()?,
+                ty: input.parse()?,
+            })
+        }
+    }
+
     fn multi_pat_impl(input: ParseStream, leading_vert: Option<Token![|]>) -> Result<Pat> {
         let mut pat = Pat::parse_single(input)?;
         if leading_vert.is_some()
@@ -422,7 +435,7 @@ pub(crate) mod parsing {
     fn pat_box(begin: ParseBuffer, input: ParseStream) -> Result<Pat> {
         input.parse::<Token![box]>()?;
         Pat::parse_single(input)?;
-        Ok(Pat::Verbatim(verbatim::between(begin, input)))
+        Ok(Pat::Verbatim(verbatim::between(&begin, input)))
     }
 
     fn pat_ident(input: ParseStream) -> Result<PatIdent> {
@@ -506,15 +519,6 @@ pub(crate) mod parsing {
         })
     }
 
-    impl Member {
-        fn is_unnamed(&self) -> bool {
-            match self {
-                Member::Named(_) => false,
-                Member::Unnamed(_) => true,
-            }
-        }
-    }
-
     fn field_pat(input: ParseStream) -> Result<FieldPat> {
         let begin = input.fork();
         let boxed: Option<Token![box]> = input.parse()?;
@@ -528,7 +532,7 @@ pub(crate) mod parsing {
         }?;
 
         if boxed.is_none() && by_ref.is_none() && mutability.is_none() && input.peek(Token![:])
-            || member.is_unnamed()
+            || !member.is_named()
         {
             return Ok(FieldPat {
                 attrs: Vec::new(),
@@ -544,7 +548,7 @@ pub(crate) mod parsing {
         };
 
         let pat = if boxed.is_some() {
-            Pat::Verbatim(verbatim::between(begin, input))
+            Pat::Verbatim(verbatim::between(&begin, input))
         } else {
             Pat::Ident(PatIdent {
                 attrs: Vec::new(),
@@ -762,7 +766,7 @@ pub(crate) mod parsing {
         content.call(Attribute::parse_inner)?;
         content.call(Block::parse_within)?;
 
-        Ok(verbatim::between(begin, input))
+        Ok(verbatim::between(&begin, input))
     }
 }
 
@@ -856,6 +860,15 @@ mod printing {
             tokens.append_all(self.attrs.outer());
             self.paren_token.surround(tokens, |tokens| {
                 self.elems.to_tokens(tokens);
+                // If there is only one element, a trailing comma is needed to
+                // distinguish PatTuple from PatParen, unless this is `(..)`
+                // which is a tuple pattern even without comma.
+                if self.elems.len() == 1
+                    && !self.elems.trailing_punct()
+                    && !matches!(self.elems[0], Pat::Rest { .. })
+                {
+                    <Token![,]>::default().to_tokens(tokens);
+                }
             });
         }
     }

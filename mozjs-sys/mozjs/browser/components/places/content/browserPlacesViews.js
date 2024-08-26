@@ -41,6 +41,10 @@ class PlacesViewBase {
   // The xul element that represents the root container.
   _rootElt = null;
 
+  get rootElement() {
+    return this._rootElt;
+  }
+
   // Set to true for views that are represented by native widgets (i.e.
   // the native mac menu).
   _nativeView = false;
@@ -277,7 +281,7 @@ class PlacesViewBase {
     return this.controller.buildContextMenu(aPopup);
   }
 
-  destroyContextMenu(aPopup) {
+  destroyContextMenu() {
     this._contextMenuShown = null;
   }
 
@@ -458,7 +462,7 @@ class PlacesViewBase {
     }
   }
 
-  nodeURIChanged(aPlacesNode, aURIString) {
+  nodeURIChanged(aPlacesNode) {
     let elt = this._getDOMNodeForPlacesNode(aPlacesNode, true);
 
     // There's no DOM node, thus there's nothing to be done when the URI changes.
@@ -519,7 +523,7 @@ class PlacesViewBase {
     }
   }
 
-  nodeRemoved(aParentPlacesNode, aPlacesNode, aIndex) {
+  nodeRemoved(aParentPlacesNode, aPlacesNode) {
     let parentElt = this._getDOMNodeForPlacesNode(aParentPlacesNode);
     let elt = this._getDOMNodeForPlacesNode(aPlacesNode);
 
@@ -932,6 +936,8 @@ class PlacesToolbar extends PlacesViewBase {
     if (this._chevron._placesView) {
       this._chevron._placesView.uninit();
     }
+
+    this._chevronPopup.uninit();
 
     if (this._otherBookmarks?._placesView) {
       this._otherBookmarks._placesView.uninit();
@@ -1482,7 +1488,7 @@ class PlacesToolbar extends PlacesViewBase {
       // Container is the toolbar itself.
       let instance = (this._rebuildingInstance = {});
       if (!this._rebuilding) {
-        this._rebuilding = PromiseUtils.defer();
+        this._rebuilding = Promise.withResolvers();
       }
       this._rebuild()
         .catch(console.error)
@@ -1620,13 +1626,31 @@ class PlacesToolbar extends PlacesViewBase {
         }
       }
     } else {
-      // We are most likely dragging on the empty area of the
-      // toolbar, we should drop after the last node.
       dropPoint.ip = new PlacesInsertionPoint({
         parentGuid: PlacesUtils.getConcreteItemGuid(this._resultNode),
         orientation: Ci.nsITreeView.DROP_BEFORE,
       });
+
+      // If could not find an insertion point before bookmark items or empty,
+      // drop after the last bookmark.
       dropPoint.beforeIndex = -1;
+
+      let canInsertHere = this.isRTL
+        ? (x, rect) => x >= Math.round(rect.right)
+        : (x, rect) => x <= Math.round(rect.left);
+
+      // Find the bookmark placed just after the mouse point as the insertion
+      // point.
+      for (let i = 0; i < this._rootElt.children.length; i++) {
+        let childRect = window.windowUtils.getBoundsWithoutFlushing(
+          this._rootElt.children[i]
+        );
+        if (canInsertHere(aEvent.clientX, childRect)) {
+          dropPoint.beforeIndex = i;
+          dropPoint.ip.index = i;
+          break;
+        }
+      }
     }
 
     return dropPoint;
@@ -1689,7 +1713,7 @@ class PlacesToolbar extends PlacesViewBase {
     }
   }
 
-  _onMouseOut(aEvent) {
+  _onMouseOut() {
     window.XULBrowserWindow.setOverLink("");
   }
 
@@ -1852,7 +1876,7 @@ class PlacesToolbar extends PlacesViewBase {
     aEvent.stopPropagation();
   }
 
-  _onDragLeave(aEvent) {
+  _onDragLeave() {
     PlacesControllerDragHelper.currentDropTarget = null;
 
     this._dropIndicator.collapsed = true;
@@ -1863,7 +1887,7 @@ class PlacesToolbar extends PlacesViewBase {
     }
   }
 
-  _onDragEnd(aEvent) {
+  _onDragEnd() {
     this._cleanupDragDetails();
   }
 
@@ -2096,7 +2120,7 @@ this.PlacesPanelview = class PlacesPanelview extends PlacesViewBase {
   }
 
   _onCommand(event) {
-    event = getRootEvent(event);
+    event = BrowserUtils.getRootEvent(event);
     let button = event.originalTarget;
     if (!button._placesNode) {
       return;

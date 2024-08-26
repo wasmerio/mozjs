@@ -19,6 +19,7 @@
 #include "nsString.h"
 #include "mozilla/dom/ContentProcessManager.h"
 #include "mozilla/dom/BrowserParent.h"
+#include "mozilla/StaticPrefs_media.h"
 #include "nsISocketTransportService.h"
 #include "nsICancelable.h"
 #include "nsSocketTransportService2.h"
@@ -399,7 +400,6 @@ nsresult WebrtcTCPSocket::OpenWithHttpProxy() {
   }
 
   nsCOMPtr<nsILoadInfo> loadInfo;
-  Maybe<net::LoadInfoArgs> loadInfoArgs = Some(mProxyConfig->loadInfoArgs());
 
   // FIXME: We don't know the remote type of the process which provided these
   // LoadInfoArgs. Pass in `NOT_REMOTE_TYPE` as the origin process to blindly
@@ -407,8 +407,8 @@ nsresult WebrtcTCPSocket::OpenWithHttpProxy() {
   // using it for security checks here.
   // If this code ever starts checking the triggering remote type, this needs to
   // be changed.
-  rv = ipc::LoadInfoArgsToLoadInfo(loadInfoArgs, NOT_REMOTE_TYPE,
-                                   getter_AddRefs(loadInfo));
+  rv = ipc::LoadInfoArgsToLoadInfo(mProxyConfig->loadInfoArgs(),
+                                   NOT_REMOTE_TYPE, getter_AddRefs(loadInfo));
   if (NS_FAILED(rv)) {
     LOG(("WebrtcTCPSocket %p: could not init load info\n", this));
     return rv;
@@ -421,14 +421,14 @@ nsresult WebrtcTCPSocket::OpenWithHttpProxy() {
   // introduce new behavior. can't follow redirects on connect anyway.
   nsCOMPtr<nsIChannel> localChannel;
   rv = ioService->NewChannelFromURIWithProxyFlags(
-      mURI, nullptr,
-      // Proxy flags are overridden by SetConnectOnly()
-      0, loadInfo->LoadingNode(), loadInfo->GetLoadingPrincipal(),
+      mURI, mURI,
+      nsIProtocolProxyService::RESOLVE_PREFER_HTTPS_PROXY |
+          nsIProtocolProxyService::RESOLVE_ALWAYS_TUNNEL,
+      loadInfo->LoadingNode(), loadInfo->GetLoadingPrincipal(),
       loadInfo->TriggeringPrincipal(),
-      nsILoadInfo::SEC_COOKIES_OMIT |
-          // We need this flag to allow loads from any origin since this channel
-          // is being used to CONNECT to an HTTP proxy.
-          nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_SEC_CONTEXT_IS_NULL,
+      // We need this flag to allow loads from any origin since this channel
+      // is being used to CONNECT to an HTTP proxy.
+      nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_SEC_CONTEXT_IS_NULL,
       nsIContentPolicy::TYPE_PROXIED_WEBRTC_MEDIA,
       getter_AddRefs(localChannel));
   if (NS_FAILED(rv)) {
@@ -449,6 +449,9 @@ nsresult WebrtcTCPSocket::OpenWithHttpProxy() {
     return NS_ERROR_FAILURE;
   }
 
+  rv = localChannel->SetLoadInfo(loadInfo);
+  NS_ENSURE_SUCCESS(rv, rv);
+
   httpChannel->SetNotificationCallbacks(this);
 
   // don't block webrtc proxy setup with other requests
@@ -466,7 +469,8 @@ nsresult WebrtcTCPSocket::OpenWithHttpProxy() {
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
-  rv = httpChannel->SetConnectOnly();
+  rv = httpChannel->SetConnectOnly(
+      mozilla::StaticPrefs::media_webrtc_tls_tunnel_for_all_proxy());
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }

@@ -82,11 +82,14 @@ class Channel {
   // |mode| specifies whether this channel is operating in server mode or client
   // mode. One side of the connection should be the client, and the other should
   // be the server.
+  // |other_pid| specifies the pid of the other side of this channel. This will
+  // be used for logging, and for transferring HANDLEs from a privileged process
+  // on Windows (if enabled).
   //
   // The Channel must be created and destroyed on the IO thread, and all
   // methods, unless otherwise noted, are only safe to call on the I/O thread.
   //
-  Channel(ChannelHandle pipe, Mode mode);
+  Channel(ChannelHandle pipe, Mode mode, base::ProcessId other_pid);
 
   ~Channel();
 
@@ -112,9 +115,13 @@ class Channel {
   // immediately.
   bool Send(mozilla::UniquePtr<Message> message);
 
-  // The PID which this channel has been opened with. This will be
-  // `-1` until `OnChannelConnected` has been called.
-  int32_t OtherPid() const;
+  // Explicitly set the pid expected for the other side of this channel. This
+  // will be used for logging, and on Windows may be used for transferring
+  // handles between processes.
+  //
+  // If it is set this way, the "hello" message will be checked to ensure that
+  // the same pid is reported.
+  void SetOtherPid(base::ProcessId other_pid);
 
   // IsClosed() is safe to call from any thread, but the value returned may
   // be out of date.
@@ -135,11 +142,12 @@ class Channel {
   void StartAcceptingHandles(Mode mode);
 #endif
 
-#if defined(MOZ_WIDGET_ANDROID)
-  // Used to set the first IPC file descriptor in the child process on Android.
-  // See ipc_channel_posix.cc for further details on how this is used.
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+  // Used to set the first IPC file descriptor in the child process on
+  // Android and iOS. See ipc_channel_posix.cc for further details on how this
+  // is used.
   static void SetClientChannelFd(int fd);
-#endif  // defined(MOZ_WIDGET_ANDROID)
+#endif  // defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
 
   // Get the first IPC channel handle in the child process. This will have been
   // set by SetClientChannelFd on Android, will be a constant on other unix

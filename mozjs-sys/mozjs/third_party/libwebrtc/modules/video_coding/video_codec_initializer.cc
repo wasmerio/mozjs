@@ -16,9 +16,10 @@
 #include <algorithm>
 
 #include "absl/types/optional.h"
+#include "api/array_view.h"
+#include "api/field_trials_view.h"
 #include "api/scoped_refptr.h"
 #include "api/units/data_rate.h"
-#include "api/video/video_bitrate_allocation.h"
 #include "api/video_codecs/video_encoder.h"
 #include "modules/video_coding/codecs/av1/av1_svc_config.h"
 #include "modules/video_coding/codecs/vp8/vp8_scalability.h"
@@ -32,26 +33,9 @@
 
 namespace webrtc {
 
-bool VideoCodecInitializer::SetupCodec(const VideoEncoderConfig& config,
-                                       const std::vector<VideoStream>& streams,
-                                       VideoCodec* codec) {
-  if (config.codec_type == kVideoCodecMultiplex) {
-    VideoEncoderConfig associated_config = config.Copy();
-    associated_config.codec_type = kVideoCodecVP9;
-    if (!SetupCodec(associated_config, streams, codec)) {
-      RTC_LOG(LS_ERROR) << "Failed to create stereo encoder configuration.";
-      return false;
-    }
-    codec->codecType = kVideoCodecMultiplex;
-    return true;
-  }
-
-  *codec = VideoEncoderConfigToVideoCodec(config, streams);
-  return true;
-}
-
 // TODO(sprang): Split this up and separate the codec specific parts.
-VideoCodec VideoCodecInitializer::VideoEncoderConfigToVideoCodec(
+VideoCodec VideoCodecInitializer::SetupCodec(
+    const FieldTrialsView& field_trials,
     const VideoEncoderConfig& config,
     const std::vector<VideoStream>& streams) {
   static const int kEncoderMinBitrateKbps = 30;
@@ -140,8 +124,9 @@ VideoCodec VideoCodecInitializer::VideoEncoderConfigToVideoCodec(
 
     // TODO(bugs.webrtc.org/11607): Since scalability mode is a top-level
     // setting on VideoCodec, setting it makes sense only if it is the same for
-    // all simulcast streams.
-    if (streams[0].scalability_mode != streams[i].scalability_mode) {
+    // all active simulcast streams.
+    if (streams[i].active &&
+        streams[0].scalability_mode != streams[i].scalability_mode) {
       scalability_mode.reset();
       // For VP8, top-level scalability mode doesn't matter, since configuration
       // is based on the per-simulcast stream configuration of temporal layers.
@@ -211,8 +196,11 @@ VideoCodec VideoCodecInitializer::VideoEncoderConfigToVideoCodec(
       break;
     }
     case kVideoCodecVP9: {
-      // Force the first stream to always be active.
-      video_codec.simulcastStream[0].active = codec_active;
+      // When the SvcRateAllocator is used, "active" is controlled by
+      // `SpatialLayer::active` instead.
+      if (video_codec.numberOfSimulcastStreams <= 1) {
+        video_codec.simulcastStream[0].active = codec_active;
+      }
 
       if (!config.encoder_specific_settings) {
         *video_codec.VP9() = VideoEncoder::GetDefaultVp9Settings();
@@ -233,11 +221,9 @@ VideoCodec VideoCodecInitializer::VideoEncoderConfigToVideoCodec(
       if (!config.spatial_layers.empty()) {
         // Layering is set explicitly.
         spatial_layers = config.spatial_layers;
-      } else if (scalability_mode.has_value()) {
+      } else if (video_codec.GetScalabilityMode().has_value()) {
         // Layering is set via scalability mode.
         spatial_layers = GetVp9SvcConfig(video_codec);
-        if (spatial_layers.empty())
-          break;
       } else {
         size_t first_active_layer = 0;
         for (size_t spatial_idx = 0;
@@ -284,8 +270,15 @@ VideoCodec VideoCodecInitializer::VideoEncoderConfigToVideoCodec(
       // This difference must be propagated to the stream configuration.
       video_codec.width = spatial_layers.back().width;
       video_codec.height = spatial_layers.back().height;
-      video_codec.simulcastStream[0].width = spatial_layers.back().width;
-      video_codec.simulcastStream[0].height = spatial_layers.back().height;
+      // Only propagate if we're not doing simulcast. Simulcast is assumed not
+      // to have multiple spatial layers, if we wanted to support simulcast+SVC
+      // combos we would need to calculate unique spatial layers per simulcast
+      // layer, but VideoCodec is not capable of expressing per-simulcastStream
+      // spatialLayers.
+      if (video_codec.numberOfSimulcastStreams == 1) {
+        video_codec.simulcastStream[0].width = spatial_layers.back().width;
+        video_codec.simulcastStream[0].height = spatial_layers.back().height;
+      }
 
       // Update layering settings.
       video_codec.VP9()->numberOfSpatialLayers =
@@ -327,6 +320,9 @@ VideoCodec VideoCodecInitializer::VideoEncoderConfigToVideoCodec(
                     kMaxTemporalStreams);
       break;
     }
+    case kVideoCodecH265:
+      // TODO(bugs.webrtc.org/13485)
+      break;
     default:
       // TODO(pbos): Support encoder_settings codec-agnostically.
       RTC_DCHECK(!config.encoder_specific_settings)
@@ -335,7 +331,7 @@ VideoCodec VideoCodecInitializer::VideoEncoderConfigToVideoCodec(
   }
 
   const absl::optional<DataRate> experimental_min_bitrate =
-      GetExperimentalMinVideoBitrate(video_codec.codecType);
+      GetExperimentalMinVideoBitrate(field_trials, video_codec.codecType);
   if (experimental_min_bitrate) {
     const int experimental_min_bitrate_kbps =
         rtc::saturated_cast<int>(experimental_min_bitrate->kbps());

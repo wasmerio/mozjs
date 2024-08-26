@@ -149,6 +149,12 @@ var gExperimentalPane = {
       checkbox.id = feature.id;
       checkbox.setAttribute("aria-describedby", description.id);
       document.l10n.setAttributes(checkbox, feature.title);
+      let extraTemplate = document.getElementById(`template-${feature.id}`);
+      if (extraTemplate) {
+        template
+          .querySelector(".featureGate")
+          .appendChild(extraTemplate.content.cloneNode(true));
+      }
       frag.appendChild(template);
       let preference = Preferences.add({
         id: feature.preference,
@@ -159,5 +165,7 @@ var gExperimentalPane = {
       preference.setElementValue(checkbox);
     }
     this._featureGatesContainer.appendChild(frag);
+
+    Services.obs.notifyObservers(window, "experimental-pane-loaded");
   },
 };

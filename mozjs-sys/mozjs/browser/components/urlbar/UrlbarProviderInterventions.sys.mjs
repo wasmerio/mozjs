@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import {
   UrlbarProvider,
   UrlbarUtils,
@@ -18,12 +16,11 @@ ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   ResetProfile: "resource://gre/modules/ResetProfile.sys.mjs",
   Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
-  UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
   UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "appUpdater", () => new lazy.AppUpdater());
+ChromeUtils.defineLazyGetter(lazy, "appUpdater", () => new lazy.AppUpdater());
 
 // The possible tips to show.  These names (except NONE) are used in the names
 // of keys in the `urlbar.tips` keyed scalar telemetry (see telemetry.rst).
@@ -440,10 +437,8 @@ class ProviderInterventions extends UrlbarProvider {
     // The tip we should currently show.
     this.currentTip = TIPS.NONE;
 
-    this.tipsShownInCurrentEngagement = new Set();
-
     // This object is used to match the user's queries to tips.
-    XPCOMUtils.defineLazyGetter(this, "queryScorer", () => {
+    ChromeUtils.defineLazyGetter(this, "queryScorer", () => {
       let queryScorer = new QueryScorer({
         variations: new Map([
           // Recognize "fire fox", "fox fire", and "foxfire" as "firefox".
@@ -547,7 +542,7 @@ class ProviderInterventions extends UrlbarProvider {
     );
   }
 
-  async _setCurrentTipFromAppUpdaterStatus(waitForCheck) {
+  async _setCurrentTipFromAppUpdaterStatus() {
     // The update tips depend on the app's update status, so check for updates
     // now (if we haven't already checked within the update-check period).  If
     // we're running in an xpcshell test, then checkForBrowserUpdate's attempt
@@ -659,24 +654,18 @@ class ProviderInterventions extends UrlbarProvider {
         type: this.currentTip,
         icon: UrlbarUtils.ICON.TIP,
         helpL10n: {
-          id: lazy.UrlbarPrefs.get("resultMenu")
-            ? "urlbar-result-menu-tip-get-help"
-            : "urlbar-tip-help-icon",
+          id: "urlbar-result-menu-tip-get-help",
         },
       }
     );
     result.suggestedIndex = 1;
-    this.tipsShownInCurrentEngagement.add(this.currentTip);
     addCallback(this, result);
   }
 
   /**
    * Cancels a running query,
-   *
-   * @param {UrlbarQueryContext} queryContext the query context object to cancel
-   *        query for.
    */
-  cancelQuery(queryContext) {
+  cancelQuery() {
     // If we're waiting for appUpdater to finish its update check,
     // this._appUpdaterListener will be defined.  We can stop listening now.
     if (this._appUpdaterListener) {
@@ -711,18 +700,24 @@ class ProviderInterventions extends UrlbarProvider {
     }
   }
 
-  onEngagement(isPrivate, state, queryContext, details, window) {
-    let { result } = details;
-    if (result?.providerName == this.name) {
-      this.#pickResult(result, window);
+  onEngagement(queryContext, controller, details) {
+    // `selType` is "tip" when the tip's main button is picked. Ignore clicks on
+    // the help command ("tiphelp"), which is handled by UrlbarInput since we
+    // set `helpUrl` on the result payload. Currently there aren't any other
+    // buttons or commands but this will ignore clicks on them too.
+    if (details.selType == "tip") {
+      this.#pickResult(details.result, controller.browserWindow);
     }
+  }
 
-    if (["engagement", "abandonment"].includes(state)) {
-      for (let tip of this.tipsShownInCurrentEngagement) {
-        Services.telemetry.keyedScalarAdd("urlbar.tips", `${tip}-shown`, 1);
-      }
-    }
-    this.tipsShownInCurrentEngagement.clear();
+  onImpression(state, queryContext, controller, providerVisibleResults) {
+    providerVisibleResults.forEach(({ result }) => {
+      Services.telemetry.keyedScalarAdd(
+        "urlbar.tips",
+        `${result.payload.type}-shown`,
+        1
+      );
+    });
   }
 
   /**

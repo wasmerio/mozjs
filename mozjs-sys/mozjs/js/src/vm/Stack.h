@@ -253,7 +253,7 @@ class AbstractFramePtr {
 
 class NullFramePtr : public AbstractFramePtr {
  public:
-  NullFramePtr() : AbstractFramePtr() {}
+  NullFramePtr() = default;
 };
 
 enum MaybeConstruct { NO_CONSTRUCT = false, CONSTRUCT = true };
@@ -538,8 +538,8 @@ class InterpreterFrame {
    */
 
   bool pushLexicalEnvironment(JSContext* cx, Handle<LexicalScope*> scope);
-  bool freshenLexicalEnvironment(JSContext* cx);
-  bool recreateLexicalEnvironment(JSContext* cx);
+  bool freshenLexicalEnvironment(JSContext* cx, jsbytecode* pc);
+  bool recreateLexicalEnvironment(JSContext* cx, jsbytecode* pc);
 
   bool pushClassBodyEnvironment(JSContext* cx, Handle<ClassBodyScope*> scope);
 
@@ -977,6 +977,7 @@ inline bool FillArgumentsFromArraylike(JSContext* cx, Args& args,
   return true;
 }
 
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
 struct PortableBaselineStack {
   static const size_t DEFAULT_SIZE = 512 * 1024;
 
@@ -992,6 +993,7 @@ struct PortableBaselineStack {
   }
   ~PortableBaselineStack() { js_free(base); }
 };
+#endif  // ENABLE_PORTABLE_BASELINE_INTERP
 
 }  // namespace js
 

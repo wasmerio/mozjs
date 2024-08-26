@@ -24,7 +24,7 @@ def insert_index(index_path, task_id, data=None, use_proxy=False):
     index_url = get_index_url(index_path, use_proxy=use_proxy)
 
     # Find task expiry.
-    expires = get_task_definition(task_id, use_proxy=use_proxy)["expires"]
+    expires = get_task_definition(task_id, use_proxy)["expires"]
 
     response = _do_request(
         index_url,
@@ -126,3 +126,8 @@ def list_task_group_complete_tasks(task_group_id):
                 "status", {}
             ).get("taskId", "")
     return tasks
+
+
+def find_task(index_path, use_proxy=False):
+    response = _do_request(get_index_url(index_path, use_proxy))
+    return response.json()

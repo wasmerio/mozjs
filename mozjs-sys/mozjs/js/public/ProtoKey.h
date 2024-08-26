@@ -31,7 +31,8 @@
 
 #define CLASP(NAME) (&NAME##Class)
 #define OCLASP(NAME) (&NAME##Object::class_)
-#define TYPED_ARRAY_CLASP(TYPE) (&TypedArrayObject::classes[JS::Scalar::TYPE])
+#define TYPED_ARRAY_CLASP(TYPE) \
+  (&TypedArrayObject::fixedLengthClasses[JS::Scalar::TYPE])
 #define ERROR_CLASP(TYPE) (&ErrorObject::classes[TYPE])
 
 #ifdef JS_HAS_INTL_API
@@ -52,8 +53,21 @@
 #  define IF_WASM_TYPE(REAL, IMAGINARY) IMAGINARY
 #endif
 
+#ifdef ENABLE_WASM_JSPI
+#  define IF_WASM_JSPI(REAL, IMAGINARY) REAL
+#else
+#  define IF_WASM_JSPI(REAL, IMAGINARY) IMAGINARY
+#endif
+
+#ifdef NIGHTLY_BUILD
+#  define IF_NIGHTLY(REAL, IMAGINARY) REAL
+#else
+#  define IF_NIGHTLY(REAL, IMAGINARY) IMAGINARY
+#endif
+
 #define JS_FOR_PROTOTYPES_(REAL, IMAGINARY, REAL_IF_INTL, REAL_IF_TEMPORAL, \
-                           REAL_IF_WASM_TYPE)                               \
+                           REAL_IF_WASM_TYPE, REAL_IF_WASM_JSPI,            \
+                           REAL_IF_NIGHTLY)                                 \
   IMAGINARY(Null, dummy)                                                    \
   REAL(Object, OCLASP(Plain))                                               \
   REAL(Function, &FunctionClass)                                            \
@@ -79,7 +93,7 @@
   REAL(CompileError, ERROR_CLASP(JSEXN_WASMCOMPILEERROR))                   \
   REAL(LinkError, ERROR_CLASP(JSEXN_WASMLINKERROR))                         \
   REAL(RuntimeError, ERROR_CLASP(JSEXN_WASMRUNTIMEERROR))                   \
-  REAL(ArrayBuffer, OCLASP(ArrayBuffer))                                    \
+  REAL(ArrayBuffer, OCLASP(FixedLengthArrayBuffer))                         \
   REAL(Int8Array, TYPED_ARRAY_CLASP(Int8))                                  \
   REAL(Uint8Array, TYPED_ARRAY_CLASP(Uint8))                                \
   REAL(Int16Array, TYPED_ARRAY_CLASP(Int16))                                \
@@ -91,15 +105,16 @@
   REAL(Uint8ClampedArray, TYPED_ARRAY_CLASP(Uint8Clamped))                  \
   REAL(BigInt64Array, TYPED_ARRAY_CLASP(BigInt64))                          \
   REAL(BigUint64Array, TYPED_ARRAY_CLASP(BigUint64))                        \
+  REAL(Float16Array, TYPED_ARRAY_CLASP(Float16))                            \
   REAL(BigInt, OCLASP(BigInt))                                              \
   REAL(Proxy, CLASP(Proxy))                                                 \
   REAL(WeakMap, OCLASP(WeakMap))                                            \
   REAL(Map, OCLASP(Map))                                                    \
   REAL(Set, OCLASP(Set))                                                    \
-  REAL(DataView, OCLASP(DataView))                                          \
+  REAL(DataView, OCLASP(FixedLengthDataView))                               \
   REAL(Symbol, OCLASP(Symbol))                                              \
   REAL(ShadowRealm, OCLASP(ShadowRealm))                                    \
-  REAL(SharedArrayBuffer, OCLASP(SharedArrayBuffer))                        \
+  REAL(SharedArrayBuffer, OCLASP(FixedLengthSharedArrayBuffer))             \
   REAL_IF_INTL(Intl, CLASP(Intl))                                           \
   REAL_IF_INTL(Collator, OCLASP(Collator))                                  \
   REAL_IF_INTL(DateTimeFormat, OCLASP(DateTimeFormat))                      \
@@ -109,6 +124,7 @@
   REAL_IF_INTL(NumberFormat, OCLASP(NumberFormat))                          \
   REAL_IF_INTL(PluralRules, OCLASP(PluralRules))                            \
   REAL_IF_INTL(RelativeTimeFormat, OCLASP(RelativeTimeFormat))              \
+  REAL_IF_INTL(Segmenter, OCLASP(Segmenter))                                \
   REAL(Reflect, CLASP(Reflect))                                             \
   REAL(WeakSet, OCLASP(WeakSet))                                            \
   REAL(TypedArray, &js::TypedArrayObject::sharedTypedArrayPrototypeClass)   \
@@ -126,6 +142,7 @@
   REAL(WasmGlobal, OCLASP(WasmGlobal))                                      \
   REAL(WasmTag, OCLASP(WasmTag))                                            \
   REAL_IF_WASM_TYPE(WasmFunction, CLASP(WasmFunction))                      \
+  REAL_IF_WASM_JSPI(WasmSuspending, OCLASP(WasmSuspending))                 \
   REAL(WasmException, OCLASP(WasmException))                                \
   REAL(FinalizationRegistry, OCLASP(FinalizationRegistry))                  \
   REAL(WeakRef, OCLASP(WeakRef))                                            \
@@ -165,10 +182,11 @@
   IF_RECORD_TUPLE(REAL(Record, (&RecordType::class_)))                      \
   IF_RECORD_TUPLE(REAL(Tuple, (&TupleType::class_)))
 
-#define JS_FOR_PROTOTYPES(REAL, IMAGINARY)                      \
-  JS_FOR_PROTOTYPES_(REAL, IMAGINARY, IF_INTL(REAL, IMAGINARY), \
-                     IF_TEMPORAL(REAL, IMAGINARY),              \
-                     IF_WASM_TYPE(REAL, IMAGINARY))
+#define JS_FOR_PROTOTYPES(REAL, IMAGINARY)                                     \
+  JS_FOR_PROTOTYPES_(                                                          \
+      REAL, IMAGINARY, IF_INTL(REAL, IMAGINARY), IF_TEMPORAL(REAL, IMAGINARY), \
+      IF_WASM_TYPE(REAL, IMAGINARY), IF_WASM_JSPI(REAL, IMAGINARY),            \
+      IF_NIGHTLY(REAL, IMAGINARY))
 
 #define JS_FOR_EACH_PROTOTYPE(MACRO) JS_FOR_PROTOTYPES(MACRO, MACRO)
 

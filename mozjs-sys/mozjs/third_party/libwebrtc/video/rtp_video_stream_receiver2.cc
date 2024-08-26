@@ -245,7 +245,7 @@ RtpVideoStreamReceiver2::RtpVideoStreamReceiver2(
     RtcpPacketTypeCounterObserver* rtcp_packet_type_counter_observer,
     RtcpCnameCallback* rtcp_cname_callback,
     NackPeriodicProcessor* nack_periodic_processor,
-    VCMReceiveStatisticsCallback* vcm_receive_statistics,
+    VideoStreamBufferControllerStatsObserver* vcm_receive_statistics,
     OnCompleteFrameCallback* complete_frame_callback,
     rtc::scoped_refptr<FrameDecryptorInterface> frame_decryptor,
     rtc::scoped_refptr<FrameTransformerInterface> frame_transformer,
@@ -302,8 +302,12 @@ RtpVideoStreamReceiver2::RtpVideoStreamReceiver2(
       frames_decryptable_(false),
       absolute_capture_time_interpolator_(clock) {
   packet_sequence_checker_.Detach();
-  if (packet_router_)
-    packet_router_->AddReceiveRtpModule(rtp_rtcp_.get(), config_.rtp.remb);
+  if (packet_router_) {
+    // Do not register as REMB candidate, this is only done when starting to
+    // receive.
+    packet_router_->AddReceiveRtpModule(rtp_rtcp_.get(),
+                                        /*remb_candidate=*/false);
+  }
 
   RTC_DCHECK(config_.rtp.rtcp_mode != RtcpMode::kOff)
       << "A stream should not be configured with RTCP disabled. This value is "
@@ -341,7 +345,7 @@ RtpVideoStreamReceiver2::RtpVideoStreamReceiver2(
   if (frame_transformer) {
     frame_transformer_delegate_ =
         rtc::make_ref_counted<RtpVideoStreamReceiverFrameTransformerDelegate>(
-            this, std::move(frame_transformer), rtc::Thread::Current(),
+            this, clock_, std::move(frame_transformer), TaskQueueBase::Current(),
             config_.rtp.remote_ssrc);
     frame_transformer_delegate_->Init();
   }
@@ -358,44 +362,18 @@ RtpVideoStreamReceiver2::~RtpVideoStreamReceiver2() {
 void RtpVideoStreamReceiver2::AddReceiveCodec(
     uint8_t payload_type,
     VideoCodecType video_codec,
-    const std::map<std::string, std::string>& codec_params,
+    const webrtc::CodecParameterMap& codec_params,
     bool raw_payload) {
   RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
   if (codec_params.count(cricket::kH264FmtpSpsPpsIdrInKeyframe) > 0 ||
       field_trials_.IsEnabled("WebRTC-SpsPpsIdrIsH264Keyframe")) {
     packet_buffer_.ForceSpsPpsIdrIsH264Keyframe();
+    sps_pps_idr_is_h264_keyframe_ = true;
   }
   payload_type_map_.emplace(
       payload_type, raw_payload ? std::make_unique<VideoRtpDepacketizerRaw>()
                                 : CreateVideoRtpDepacketizer(video_codec));
   pt_codec_params_.emplace(payload_type, codec_params);
-}
-
-void RtpVideoStreamReceiver2::RemoveReceiveCodec(uint8_t payload_type) {
-  RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
-  auto codec_params_it = pt_codec_params_.find(payload_type);
-  if (codec_params_it == pt_codec_params_.end())
-    return;
-
-  const bool sps_pps_idr_in_key_frame =
-      codec_params_it->second.count(cricket::kH264FmtpSpsPpsIdrInKeyframe) > 0;
-
-  pt_codec_params_.erase(codec_params_it);
-  payload_type_map_.erase(payload_type);
-
-  if (sps_pps_idr_in_key_frame) {
-    bool reset_setting = true;
-    for (auto& [unused, codec_params] : pt_codec_params_) {
-      if (codec_params.count(cricket::kH264FmtpSpsPpsIdrInKeyframe) > 0) {
-        reset_setting = false;
-        break;
-      }
-    }
-
-    if (reset_setting) {
-      packet_buffer_.ResetSpsPpsIdrIsH264Keyframe();
-    }
-  }
 }
 
 void RtpVideoStreamReceiver2::RemoveReceiveCodecs() {
@@ -404,18 +382,20 @@ void RtpVideoStreamReceiver2::RemoveReceiveCodecs() {
   pt_codec_params_.clear();
   payload_type_map_.clear();
   packet_buffer_.ResetSpsPpsIdrIsH264Keyframe();
+  h26x_packet_buffer_.reset();
 }
 
 absl::optional<Syncable::Info> RtpVideoStreamReceiver2::GetSyncInfo() const {
   RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
   Syncable::Info info;
-  if (rtp_rtcp_->RemoteNTP(&info.capture_time_ntp_secs,
-                           &info.capture_time_ntp_frac,
-                           /*rtcp_arrival_time_secs=*/nullptr,
-                           /*rtcp_arrival_time_frac=*/nullptr,
-                           &info.capture_time_source_clock) != 0) {
+  absl::optional<RtpRtcpInterface::SenderReportStats> last_sr =
+      rtp_rtcp_->GetSenderReportStats();
+  if (!last_sr.has_value()) {
     return absl::nullopt;
   }
+  info.capture_time_ntp_secs = last_sr->last_remote_timestamp.seconds();
+  info.capture_time_ntp_frac = last_sr->last_remote_timestamp.fractions();
+  info.capture_time_source_clock = last_sr->last_remote_rtp_timestamp;
 
   if (!last_received_rtp_timestamp_ || !last_received_rtp_system_time_) {
     return absl::nullopt;
@@ -432,23 +412,21 @@ RtpVideoStreamReceiver2::ParseGenericDependenciesExtension(
     const RtpPacketReceived& rtp_packet,
     RTPVideoHeader* video_header) {
   RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
-  if (rtp_packet.HasExtension<RtpDependencyDescriptorExtension>()) {
-    webrtc::DependencyDescriptor dependency_descriptor;
+  if (DependencyDescriptorMandatory dd_mandatory;
+      rtp_packet.GetExtension<RtpDependencyDescriptorExtension>(
+          &dd_mandatory)) {
+    const int64_t frame_id =
+        frame_id_unwrapper_.Unwrap(dd_mandatory.frame_number());
+    DependencyDescriptor dependency_descriptor;
     if (!rtp_packet.GetExtension<RtpDependencyDescriptorExtension>(
             video_structure_.get(), &dependency_descriptor)) {
-      // Descriptor is there, but failed to parse. Either it is invalid,
-      // or too old packet (after relevant video_structure_ changed),
-      // or too new packet (before relevant video_structure_ arrived).
-      // Drop such packet to be on the safe side.
-      // TODO(bugs.webrtc.org/10342): Stash too new packet.
-      Timestamp now = clock_->CurrentTime();
-      if (now - last_logged_failed_to_parse_dd_ > TimeDelta::Seconds(1)) {
-        last_logged_failed_to_parse_dd_ = now;
-        RTC_LOG(LS_WARNING) << "ssrc: " << rtp_packet.Ssrc()
-                            << " Failed to parse dependency descriptor.";
+      if (!video_structure_frame_id_ || frame_id < video_structure_frame_id_) {
+        return kDropPacket;
+      } else {
+        return kStashPacket;
       }
-      return kDropPacket;
     }
+
     if (dependency_descriptor.attached_structure != nullptr &&
         !dependency_descriptor.first_packet_in_frame) {
       RTC_LOG(LS_WARNING) << "ssrc: " << rtp_packet.Ssrc()
@@ -461,8 +439,6 @@ RtpVideoStreamReceiver2::ParseGenericDependenciesExtension(
     video_header->is_last_packet_in_frame =
         dependency_descriptor.last_packet_in_frame;
 
-    int64_t frame_id =
-        frame_id_unwrapper_.Unwrap(dependency_descriptor.frame_number);
     auto& generic_descriptor_info = video_header->generic.emplace();
     generic_descriptor_info.frame_id = frame_id;
     generic_descriptor_info.spatial_index =
@@ -537,10 +513,11 @@ RtpVideoStreamReceiver2::ParseGenericDependenciesExtension(
   return kHasGenericDescriptor;
 }
 
-void RtpVideoStreamReceiver2::OnReceivedPayloadData(
+bool RtpVideoStreamReceiver2::OnReceivedPayloadData(
     rtc::CopyOnWriteBuffer codec_payload,
     const RtpPacketReceived& rtp_packet,
-    const RTPVideoHeader& video) {
+    const RTPVideoHeader& video,
+    int times_nacked) {
   RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
 
   auto packet =
@@ -566,7 +543,13 @@ void RtpVideoStreamReceiver2::OnReceivedPayloadData(
           // Assume frequency is the same one for all video frames.
           kVideoPayloadTypeFrequency,
           rtp_packet.GetExtension<AbsoluteCaptureTimeExtension>()));
-
+  if (packet_info.absolute_capture_time().has_value()) {
+    packet_info.set_local_capture_clock_offset(
+        capture_clock_offset_updater_.ConvertsToTimeDela(
+            capture_clock_offset_updater_.AdjustEstimatedCaptureClockOffset(
+                packet_info.absolute_capture_time()
+                    ->estimated_capture_clock_offset)));
+  }
   RTPVideoHeader& video_header = packet->video_header;
   video_header.rotation = kVideoRotation_0;
   video_header.content_type = VideoContentType::UNSPECIFIED;
@@ -578,22 +561,32 @@ void RtpVideoStreamReceiver2::OnReceivedPayloadData(
       &video_header.content_type);
   rtp_packet.GetExtension<VideoTimingExtension>(&video_header.video_timing);
   if (forced_playout_delay_max_ms_ && forced_playout_delay_min_ms_) {
-    video_header.playout_delay.max_ms = *forced_playout_delay_max_ms_;
-    video_header.playout_delay.min_ms = *forced_playout_delay_min_ms_;
+    if (!video_header.playout_delay.emplace().Set(
+            TimeDelta::Millis(*forced_playout_delay_min_ms_),
+            TimeDelta::Millis(*forced_playout_delay_max_ms_))) {
+      video_header.playout_delay = absl::nullopt;
+    }
   } else {
-    rtp_packet.GetExtension<PlayoutDelayLimits>(&video_header.playout_delay);
+    video_header.playout_delay = rtp_packet.GetExtension<PlayoutDelayLimits>();
   }
-
-  ParseGenericDependenciesResult generic_descriptor_state =
-      ParseGenericDependenciesExtension(rtp_packet, &video_header);
 
   if (!rtp_packet.recovered()) {
     UpdatePacketReceiveTimestamps(
         rtp_packet, video_header.frame_type == VideoFrameType::kVideoFrameKey);
   }
 
-  if (generic_descriptor_state == kDropPacket) {
+  ParseGenericDependenciesResult generic_descriptor_state =
+      ParseGenericDependenciesExtension(rtp_packet, &video_header);
+
+  if (generic_descriptor_state == kStashPacket) {
+    return true;
+  } else if (generic_descriptor_state == kDropPacket) {
     Timestamp now = clock_->CurrentTime();
+    if (now - last_logged_failed_to_parse_dd_ > TimeDelta::Seconds(1)) {
+      last_logged_failed_to_parse_dd_ = now;
+      RTC_LOG(LS_WARNING) << "ssrc: " << rtp_packet.Ssrc()
+                          << " Failed to parse dependency descriptor.";
+    }
     if (video_structure_ == nullptr &&
         next_keyframe_request_for_missing_video_structure_ < now) {
       // No video structure received yet, most likely part of the initial
@@ -602,7 +595,7 @@ void RtpVideoStreamReceiver2::OnReceivedPayloadData(
       next_keyframe_request_for_missing_video_structure_ =
           now + TimeDelta::Seconds(1);
     }
-    return;
+    return false;
   }
 
   // Color space should only be transmitted in the last packet of a frame,
@@ -648,21 +641,12 @@ void RtpVideoStreamReceiver2::OnReceivedPayloadData(
     }
   }
 
-  if (nack_module_) {
-    const bool is_keyframe =
-        video_header.is_first_packet_in_frame &&
-        video_header.frame_type == VideoFrameType::kVideoFrameKey;
-
-    packet->times_nacked = nack_module_->OnReceivedPacket(
-        rtp_packet.SequenceNumber(), is_keyframe, rtp_packet.recovered());
-  } else {
-    packet->times_nacked = -1;
-  }
+  packet->times_nacked = times_nacked;
 
   if (codec_payload.size() == 0) {
     NotifyReceiverOfEmptyPacket(packet->seq_num);
     rtcp_feedback_buffer_.SendBufferedRtcpFeedback();
-    return;
+    return false;
   }
 
   if (packet->codec() == kVideoCodecH264) {
@@ -673,7 +657,9 @@ void RtpVideoStreamReceiver2::OnReceivedPayloadData(
       last_payload_type_ = packet->payload_type;
       InsertSpsPpsIntoTracker(packet->payload_type);
     }
+  }
 
+  if (packet->codec() == kVideoCodecH264 && !h26x_packet_buffer_) {
     video_coding::H264SpsPpsTracker::FixedBitstream fixed =
         tracker_.CopyAndFixBitstream(
             rtc::MakeArrayView(codec_payload.cdata(), codec_payload.size()),
@@ -685,7 +671,7 @@ void RtpVideoStreamReceiver2::OnReceivedPayloadData(
         rtcp_feedback_buffer_.SendBufferedRtcpFeedback();
         [[fallthrough]];
       case video_coding::H264SpsPpsTracker::kDrop:
-        return;
+        return false;
       case video_coding::H264SpsPpsTracker::kInsert:
         packet->video_payload = std::move(fixed.bitstream);
         break;
@@ -697,7 +683,15 @@ void RtpVideoStreamReceiver2::OnReceivedPayloadData(
 
   rtcp_feedback_buffer_.SendBufferedRtcpFeedback();
   frame_counter_.Add(packet->timestamp);
-  OnInsertedPacket(packet_buffer_.InsertPacket(std::move(packet)));
+
+  if ((packet->codec() == kVideoCodecH264 ||
+       packet->codec() == kVideoCodecH265) &&
+      h26x_packet_buffer_) {
+    OnInsertedPacket(h26x_packet_buffer_->InsertPacket(std::move(packet)));
+  } else {
+    OnInsertedPacket(packet_buffer_.InsertPacket(std::move(packet)));
+  }
+  return false;
 }
 
 void RtpVideoStreamReceiver2::OnRecoveredPacket(
@@ -808,6 +802,7 @@ void RtpVideoStreamReceiver2::OnInsertedPacket(
     if (packet->is_last_packet_in_frame()) {
       auto depacketizer_it = payload_type_map_.find(first_packet->payload_type);
       RTC_CHECK(depacketizer_it != payload_type_map_.end());
+      RTC_CHECK(depacketizer_it->second);
 
       rtc::scoped_refptr<EncodedImageBuffer> bitstream =
           depacketizer_it->second->AssembleFrame(payloads);
@@ -882,7 +877,7 @@ void RtpVideoStreamReceiver2::OnAssembledFrame(
   // Reset `reference_finder_` if `frame` is new and the codec have changed.
   if (current_codec_) {
     bool frame_is_newer =
-        AheadOf(frame->Timestamp(), last_assembled_frame_rtp_timestamp_);
+        AheadOf(frame->RtpTimestamp(), last_assembled_frame_rtp_timestamp_);
 
     if (frame->codec_type() != current_codec_) {
       if (frame_is_newer) {
@@ -900,11 +895,11 @@ void RtpVideoStreamReceiver2::OnAssembledFrame(
     }
 
     if (frame_is_newer) {
-      last_assembled_frame_rtp_timestamp_ = frame->Timestamp();
+      last_assembled_frame_rtp_timestamp_ = frame->RtpTimestamp();
     }
   } else {
     current_codec_ = frame->codec_type();
-    last_assembled_frame_rtp_timestamp_ = frame->Timestamp();
+    last_assembled_frame_rtp_timestamp_ = frame->RtpTimestamp();
   }
 
   if (buffered_frame_decryptor_ != nullptr) {
@@ -960,7 +955,7 @@ void RtpVideoStreamReceiver2::SetDepacketizerToDecoderFrameTransformer(
   RTC_DCHECK_RUN_ON(&worker_task_checker_);
   frame_transformer_delegate_ =
       rtc::make_ref_counted<RtpVideoStreamReceiverFrameTransformerDelegate>(
-          this, std::move(frame_transformer), rtc::Thread::Current(),
+          this, clock_, std::move(frame_transformer), rtc::Thread::Current(),
           config_.rtp.remote_ssrc);
   frame_transformer_delegate_->Init();
 }
@@ -1049,6 +1044,12 @@ absl::optional<int64_t> RtpVideoStreamReceiver2::LastReceivedPacketMs() const {
   return absl::nullopt;
 }
 
+absl::optional<uint32_t>
+RtpVideoStreamReceiver2::LastReceivedFrameRtpTimestamp() const {
+  RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
+  return last_received_rtp_timestamp_;
+}
+
 absl::optional<int64_t> RtpVideoStreamReceiver2::LastReceivedKeyframePacketMs()
     const {
   RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
@@ -1068,6 +1069,12 @@ void RtpVideoStreamReceiver2::RemoteRTCPSenderInfo(
   RTC_DCHECK_RUN_ON(&worker_task_checker_);
   rtp_rtcp_->RemoteRTCPSenderInfo(packet_count, octet_count, ntp_timestamp_ms,
                                   remote_ntp_timestamp_ms);
+}
+
+absl::optional<RtpRtcpInterface::SenderReportStats>
+RtpVideoStreamReceiver2::GetSenderReportStats() const {
+  RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
+  return rtp_rtcp_->GetSenderReportStats();
 }
 
 void RtpVideoStreamReceiver2::ManageFrame(
@@ -1095,15 +1102,51 @@ void RtpVideoStreamReceiver2::ReceivePacket(const RtpPacketReceived& packet) {
   if (type_it == payload_type_map_.end()) {
     return;
   }
-  absl::optional<VideoRtpDepacketizer::ParsedRtpPayload> parsed_payload =
-      type_it->second->Parse(packet.PayloadBuffer());
-  if (parsed_payload == absl::nullopt) {
-    RTC_LOG(LS_WARNING) << "Failed parsing payload.";
-    return;
-  }
 
-  OnReceivedPayloadData(std::move(parsed_payload->video_payload), packet,
-                        parsed_payload->video_header);
+  auto parse_and_insert = [&](const RtpPacketReceived& packet) {
+    RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
+    absl::optional<VideoRtpDepacketizer::ParsedRtpPayload> parsed_payload =
+        type_it->second->Parse(packet.PayloadBuffer());
+    if (parsed_payload == absl::nullopt) {
+      RTC_LOG(LS_WARNING) << "Failed parsing payload.";
+      return false;
+    }
+
+    int times_nacked = nack_module_
+                           ? nack_module_->OnReceivedPacket(
+                                 packet.SequenceNumber(), packet.recovered())
+                           : -1;
+
+    return OnReceivedPayloadData(std::move(parsed_payload->video_payload),
+                                 packet, parsed_payload->video_header,
+                                 times_nacked);
+  };
+
+  // When the dependency descriptor is used and the descriptor fail to parse
+  // then `OnReceivedPayloadData` may return true to signal the the packet
+  // should be retried at a later stage, which is why they are stashed here.
+  //
+  // TODO(bugs.webrtc.org/15782):
+  // This is an ugly solution. The way things should work is for the
+  // `RtpFrameReferenceFinder` to stash assembled frames until the keyframe with
+  // the relevant template structure has been received, but unfortunately the
+  // `frame_transformer_delegate_` is called before the frames are inserted into
+  // the `RtpFrameReferenceFinder`, and it expects the dependency descriptor to
+  // be parsed at that stage.
+  if (parse_and_insert(packet)) {
+    if (stashed_packets_.size() == 100) {
+      stashed_packets_.clear();
+    }
+    stashed_packets_.push_back(packet);
+  } else {
+    for (auto it = stashed_packets_.begin(); it != stashed_packets_.end();) {
+      if (parse_and_insert(*it)) {
+        ++it;  // keep in the stash.
+      } else {
+        it = stashed_packets_.erase(it);
+      }
+    }
+  }
 }
 
 void RtpVideoStreamReceiver2::ParseAndHandleEncapsulatingHeader(
@@ -1135,8 +1178,7 @@ void RtpVideoStreamReceiver2::NotifyReceiverOfEmptyPacket(uint16_t seq_num) {
 
   OnInsertedPacket(packet_buffer_.InsertPadding(seq_num));
   if (nack_module_) {
-    nack_module_->OnReceivedPacket(seq_num, /* is_keyframe = */ false,
-                                   /* is _recovered = */ false);
+    nack_module_->OnReceivedPacket(seq_num, /*is_recovered=*/false);
   }
   if (loss_notification_controller_) {
     // TODO(bugs.webrtc.org/10336): Handle empty packets.
@@ -1156,29 +1198,24 @@ bool RtpVideoStreamReceiver2::DeliverRtcp(const uint8_t* rtcp_packet,
   rtp_rtcp_->IncomingRtcpPacket(
       rtc::MakeArrayView(rtcp_packet, rtcp_packet_length));
 
-  int64_t rtt = 0;
-  rtp_rtcp_->RTT(config_.rtp.remote_ssrc, &rtt, nullptr, nullptr, nullptr);
-  if (rtt == 0) {
+  absl::optional<TimeDelta> rtt = rtp_rtcp_->LastRtt();
+  if (!rtt.has_value()) {
     // Waiting for valid rtt.
     return true;
   }
-  uint32_t ntp_secs = 0;
-  uint32_t ntp_frac = 0;
-  uint32_t rtp_timestamp = 0;
-  uint32_t received_ntp_secs = 0;
-  uint32_t received_ntp_frac = 0;
-  if (rtp_rtcp_->RemoteNTP(&ntp_secs, &ntp_frac, &received_ntp_secs,
-                           &received_ntp_frac, &rtp_timestamp) != 0) {
+
+  absl::optional<RtpRtcpInterface::SenderReportStats> last_sr =
+      rtp_rtcp_->GetSenderReportStats();
+  if (!last_sr.has_value()) {
     // Waiting for RTCP.
     return true;
   }
-  NtpTime received_ntp(received_ntp_secs, received_ntp_frac);
-  int64_t time_since_received =
-      clock_->CurrentNtpInMilliseconds() - received_ntp.ToMs();
+  int64_t time_since_received = clock_->CurrentNtpInMilliseconds() -
+                                last_sr->last_arrival_timestamp.ToMs();
   // Don't use old SRs to estimate time.
   if (time_since_received <= 1) {
-    ntp_estimator_.UpdateRtcpTimestamp(
-        TimeDelta::Millis(rtt), NtpTime(ntp_secs, ntp_frac), rtp_timestamp);
+    ntp_estimator_.UpdateRtcpTimestamp(*rtt, last_sr->last_remote_timestamp,
+                                       last_sr->last_remote_rtp_timestamp);
     absl::optional<int64_t> remote_to_local_clock_offset =
         ntp_estimator_.EstimateRemoteToLocalClockOffset();
     if (remote_to_local_clock_offset.has_value()) {
@@ -1236,11 +1273,30 @@ void RtpVideoStreamReceiver2::SignalNetworkState(NetworkState state) {
 
 void RtpVideoStreamReceiver2::StartReceive() {
   RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
+  // |h26x_packet_buffer_| is created here instead of in the ctor because we
+  // need to know the value of |sps_pps_id_is_h264_keyframe_|.
+  if (field_trials_.IsEnabled("WebRTC-Video-H26xPacketBuffer") &&
+      !h26x_packet_buffer_) {
+    h26x_packet_buffer_ =
+        std::make_unique<H26xPacketBuffer>(!sps_pps_idr_is_h264_keyframe_);
+  }
+  if (!receiving_ && packet_router_) {
+    // Change REMB candidate egibility.
+    packet_router_->RemoveReceiveRtpModule(rtp_rtcp_.get());
+    packet_router_->AddReceiveRtpModule(rtp_rtcp_.get(),
+                                        /*remb_candidate=*/config_.rtp.remb);
+  }
   receiving_ = true;
 }
 
 void RtpVideoStreamReceiver2::StopReceive() {
   RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
+  if (receiving_ && packet_router_) {
+    // Change REMB candidate egibility.
+    packet_router_->RemoveReceiveRtpModule(rtp_rtcp_.get());
+    packet_router_->AddReceiveRtpModule(rtp_rtcp_.get(),
+                                        /*remb_candidate=*/false);
+  }
   receiving_ = false;
 }
 
@@ -1268,6 +1324,10 @@ void RtpVideoStreamReceiver2::InsertSpsPpsIntoTracker(uint8_t payload_type) {
 
   tracker_.InsertSpsPpsNalus(sprop_decoder.sps_nalu(),
                              sprop_decoder.pps_nalu());
+
+  if (h26x_packet_buffer_) {
+    h26x_packet_buffer_->SetSpropParameterSets(sprop_base64_it->second);
+  }
 }
 
 void RtpVideoStreamReceiver2::UpdatePacketReceiveTimestamps(

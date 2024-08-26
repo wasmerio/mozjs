@@ -1,0 +1,1 @@
+GetProp, 1, 1, 3, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(Id) , LASTUSED(1) , OP(GuardToObject) ID(0) OP(MegamorphicLoadSlotResult) ID(0) OFFSET(0) OP(ReturnFromIC)  

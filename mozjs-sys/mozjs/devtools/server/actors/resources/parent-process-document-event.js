@@ -4,9 +4,6 @@
 
 "use strict";
 
-const {
-  TYPES: { DOCUMENT_EVENT },
-} = require("resource://devtools/server/actors/resources/index.js");
 const isEveryFrameTargetEnabled = Services.prefs.getBoolPref(
   "devtools.every-frame-target.enabled",
   false
@@ -98,7 +95,7 @@ class ParentProcessDocumentEventWatcher {
     return Promise.resolve();
   }
 
-  onStateChange(progress, request, flag, status) {
+  onStateChange(progress, request, flag) {
     const isStart = flag & Ci.nsIWebProgressListener.STATE_START;
     const isDocument = flag & Ci.nsIWebProgressListener.STATE_IS_DOCUMENT;
     if (isDocument && isStart) {
@@ -138,7 +135,6 @@ class ParentProcessDocumentEventWatcher {
         {
           browsingContextID: browsingContext.id,
           innerWindowId,
-          resourceType: DOCUMENT_EVENT,
           name: "will-navigate",
           time: Date.now() - WILL_NAVIGATE_TIME_SHIFT,
           isFrameSwitching: false,

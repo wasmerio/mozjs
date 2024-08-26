@@ -10,7 +10,7 @@ features: [Temporal]
 
 class SubminuteTimeZone extends Temporal.TimeZone {
   constructor() {
-    super("-00:00:01.111111111");
+    super("UTC");
   }
   get id() {
     return "Custom/Subminute";
@@ -98,9 +98,7 @@ assert.sameValue(obj.getPreviousTransition(), null)
 
 // works in Temporal.Now
 assert(Temporal.Now.plainDateTimeISO(obj) instanceof Temporal.PlainDateTime);
-assert(Temporal.Now.plainDateTime(fakeGregorian, obj) instanceof Temporal.PlainDateTime);
 assert(Temporal.Now.plainDateISO(obj) instanceof Temporal.PlainDate);
-assert(Temporal.Now.plainDate(fakeGregorian, obj) instanceof Temporal.PlainDate);
 assert(Temporal.Now.plainTimeISO(obj) instanceof Temporal.PlainTime);
 
 reportCompare(0, 0);

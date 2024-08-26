@@ -98,7 +98,7 @@ Bookmarks.prototype = {
       let rows = await MigrationUtils.getRowsFromDBWithoutLocks(
         dbPath,
         "Safari favicons",
-        `SELECT I.uuid, I.url AS favicon_url, P.url 
+        `SELECT I.uuid, I.url AS favicon_url, P.url
         FROM icon_info I
         INNER JOIN page_url P ON I.uuid = P.uuid;`
       );
@@ -207,7 +207,7 @@ Bookmarks.prototype = {
         // They are imported under their own folder, created either under the
         // bookmarks menu (in the case of startup migration).
         let readingListTitle = await MigrationUtils.getLocalizedString(
-          "imported-safari-reading-list"
+          "migration-imported-safari-reading-list"
         );
         folderGuid = (
           await MigrationUtils.insertBookmarkWrapper({
@@ -253,7 +253,7 @@ Bookmarks.prototype = {
       parentGuid
     );
 
-    MigrationUtils.insertManyFavicons(favicons);
+    MigrationUtils.insertManyFavicons(favicons).catch(console.error);
   },
 
   /**
@@ -425,16 +425,20 @@ async function GetHistoryResource() {
 
       let pageInfos = [];
       for (let row of historyRows) {
-        pageInfos.push({
-          title: row.getResultByName("history_title"),
-          url: new URL(row.getResultByName("history_url")),
-          visits: [
-            {
-              transition: lazy.PlacesUtils.history.TRANSITIONS.TYPED,
-              date: parseNSDate(row.getResultByName("history_time")),
-            },
-          ],
-        });
+        try {
+          pageInfos.push({
+            title: row.getResultByName("history_title"),
+            url: new URL(row.getResultByName("history_url")),
+            visits: [
+              {
+                transition: lazy.PlacesUtils.history.TRANSITIONS.TYPED,
+                date: parseNSDate(row.getResultByName("history_time")),
+              },
+            ],
+          });
+        } catch (e) {
+          console.error("Could not create a history row: ", e);
+        }
       }
       await MigrationUtils.insertVisitsWrapper(pageInfos);
 
@@ -588,7 +592,8 @@ export class SafariProfileMigrator extends MigratorBase {
     if (this._hasPermissions) {
       return true;
     }
-    // Check if we have access to both bookmarks and favicons:
+    // Check if we have access to some key files, but only if they exist.
+    let historyTarget = FileUtils.getDir("ULibDir", ["Safari", "History.db"]);
     let bookmarkTarget = FileUtils.getDir("ULibDir", [
       "Safari",
       "Bookmarks.plist",
@@ -599,10 +604,21 @@ export class SafariProfileMigrator extends MigratorBase {
       "favicons.db",
     ]);
     try {
-      // 'stat' is always allowed, but reading is somehow not, if the user hasn't
-      // allowed it:
-      await IOUtils.read(bookmarkTarget.path, { maxBytes: 1 });
-      await IOUtils.read(faviconTarget.path, { maxBytes: 1 });
+      let historyExists = await IOUtils.exists(historyTarget.path);
+      let bookmarksExists = await IOUtils.exists(bookmarkTarget.path);
+      let faviconsExists = await IOUtils.exists(faviconTarget.path);
+      // We now know which files exist, which is always allowed.
+      // To determine if we have read permissions, try to read a single byte
+      // from each file that exists, which will throw if we need permissions.
+      if (historyExists) {
+        await IOUtils.read(historyTarget.path, { maxBytes: 1 });
+      }
+      if (bookmarksExists) {
+        await IOUtils.read(bookmarkTarget.path, { maxBytes: 1 });
+      }
+      if (faviconsExists) {
+        await IOUtils.read(faviconTarget.path, { maxBytes: 1 });
+      }
       this._hasPermissions = true;
       return true;
     } catch (ex) {
@@ -616,7 +632,7 @@ export class SafariProfileMigrator extends MigratorBase {
     while (!(await this.hasPermissions())) {
       let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
       // The title (second arg) is not displayed on macOS, so leave it blank.
-      fp.init(win, "", Ci.nsIFilePicker.modeGetFolder);
+      fp.init(win?.browsingContext, "", Ci.nsIFilePicker.modeGetFolder);
       fp.filterIndex = 1;
       fp.displayDirectory = FileUtils.getDir("ULibDir", [""]);
       // Now wait for the filepicker to open and close. If the user picks
@@ -630,6 +646,16 @@ export class SafariProfileMigrator extends MigratorBase {
       }
     }
     return true;
+  }
+
+  async canGetPermissions() {
+    if (await MigrationUtils.canGetPermissionsOnPlatform()) {
+      const profileDir = FileUtils.getDir("ULibDir", ["Safari"]);
+      if (await IOUtils.exists(profileDir.path)) {
+        return profileDir.path;
+      }
+    }
+    return false;
   }
 
   get mainPreferencesPropertyList() {

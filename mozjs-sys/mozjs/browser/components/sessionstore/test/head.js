@@ -29,7 +29,12 @@ const { TabState } = ChromeUtils.importESModule(
 const { TabStateFlusher } = ChromeUtils.importESModule(
   "resource:///modules/sessionstore/TabStateFlusher.sys.mjs"
 );
+const { SessionStoreTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/SessionStoreTestUtils.sys.mjs"
+);
+
 const ss = SessionStore;
+SessionStoreTestUtils.init(this, window);
 
 // Some tests here assume that all restored tabs are loaded without waiting for
 // the user to bring them to the foreground. We ensure this by resetting the
@@ -81,129 +86,11 @@ function provideWindow(aCallback, aURL, aFeatures) {
 
 // This assumes that tests will at least have some state/entries
 function waitForBrowserState(aState, aSetStateCallback) {
-  if (typeof aState == "string") {
-    aState = JSON.parse(aState);
-  }
-  if (typeof aState != "object") {
-    throw new TypeError(
-      "Argument must be an object or a JSON representation of an object"
-    );
-  }
-  let windows = [window];
-  let tabsRestored = 0;
-  let expectedTabsRestored = 0;
-  let expectedWindows = aState.windows.length;
-  let windowsOpen = 1;
-  let listening = false;
-  let windowObserving = false;
-  let restoreHiddenTabs = Services.prefs.getBoolPref(
-    "browser.sessionstore.restore_hidden_tabs"
-  );
-  // This should match the |restoreTabsLazily| value that
-  // SessionStore.restoreWindow() uses.
-  let restoreTabsLazily =
-    Services.prefs.getBoolPref("browser.sessionstore.restore_on_demand") &&
-    Services.prefs.getBoolPref("browser.sessionstore.restore_tabs_lazily");
-
-  aState.windows.forEach(function (winState) {
-    winState.tabs.forEach(function (tabState) {
-      if (!restoreTabsLazily && (restoreHiddenTabs || !tabState.hidden)) {
-        expectedTabsRestored++;
-      }
-    });
-  });
-
-  // If there are only hidden tabs and restoreHiddenTabs = false, we still
-  // expect one of them to be restored because it gets shown automatically.
-  // Otherwise if lazy tab restore there will only be one tab restored per window.
-  if (!expectedTabsRestored) {
-    expectedTabsRestored = 1;
-  } else if (restoreTabsLazily) {
-    expectedTabsRestored = aState.windows.length;
-  }
-
-  function onSSTabRestored(aEvent) {
-    if (++tabsRestored == expectedTabsRestored) {
-      // Remove the event listener from each window
-      windows.forEach(function (win) {
-        win.gBrowser.tabContainer.removeEventListener(
-          "SSTabRestored",
-          onSSTabRestored,
-          true
-        );
-      });
-      listening = false;
-      info("running " + aSetStateCallback.name);
-      executeSoon(aSetStateCallback);
-    }
-  }
-
-  // Used to add our listener to further windows so we can catch SSTabRestored
-  // coming from them when creating a multi-window state.
-  function windowObserver(aSubject, aTopic, aData) {
-    if (aTopic == "domwindowopened") {
-      let newWindow = aSubject;
-      newWindow.addEventListener(
-        "load",
-        function () {
-          if (++windowsOpen == expectedWindows) {
-            Services.ww.unregisterNotification(windowObserver);
-            windowObserving = false;
-          }
-
-          // Track this window so we can remove the progress listener later
-          windows.push(newWindow);
-          // Add the progress listener
-          newWindow.gBrowser.tabContainer.addEventListener(
-            "SSTabRestored",
-            onSSTabRestored,
-            true
-          );
-        },
-        { once: true }
-      );
-    }
-  }
-
-  // We only want to register the notification if we expect more than 1 window
-  if (expectedWindows > 1) {
-    registerCleanupFunction(function () {
-      if (windowObserving) {
-        Services.ww.unregisterNotification(windowObserver);
-      }
-    });
-    windowObserving = true;
-    Services.ww.registerNotification(windowObserver);
-  }
-
-  registerCleanupFunction(function () {
-    if (listening) {
-      windows.forEach(function (win) {
-        win.gBrowser.tabContainer.removeEventListener(
-          "SSTabRestored",
-          onSSTabRestored,
-          true
-        );
-      });
-    }
-  });
-  // Add the event listener for this window as well.
-  listening = true;
-  gBrowser.tabContainer.addEventListener(
-    "SSTabRestored",
-    onSSTabRestored,
-    true
-  );
-
-  // Ensure setBrowserState() doesn't remove the initial tab.
-  gBrowser.selectedTab = gBrowser.tabs[0];
-
-  // Finally, call setBrowserState
-  ss.setBrowserState(JSON.stringify(aState));
+  return SessionStoreTestUtils.waitForBrowserState(aState, aSetStateCallback);
 }
 
 function promiseBrowserState(aState) {
-  return new Promise(resolve => waitForBrowserState(aState, resolve));
+  return SessionStoreTestUtils.promiseBrowserState(aState);
 }
 
 function promiseTabState(tab, state) {
@@ -257,7 +144,7 @@ function waitForTopic(aTopic, aTimeout, aCallback) {
     aCallback(false);
   }, aTimeout);
 
-  function observer(subject, topic, data) {
+  function observer() {
     removeObserver();
     timeout = clearTimeout(timeout);
     executeSoon(() => aCallback(true));
@@ -381,7 +268,7 @@ var gWebProgressListener = {
     }
   },
 
-  onStateChange(aBrowser, aWebProgress, aRequest, aStateFlags, aStatus) {
+  onStateChange(aBrowser, aWebProgress, aRequest, aStateFlags, _aStatus) {
     if (
       aStateFlags & Ci.nsIWebProgressListener.STATE_STOP &&
       aStateFlags & Ci.nsIWebProgressListener.STATE_IS_NETWORK &&
@@ -411,7 +298,7 @@ var gProgressListener = {
     }
   },
 
-  observe(browser, topic, data) {
+  observe(browser) {
     gProgressListener.onRestored(browser);
   },
 
@@ -564,7 +451,7 @@ function modifySessionStorage(browser, storageData, storageOptions = {}) {
   return SpecialPowers.spawn(
     browsingContext,
     [[storageData, storageOptions]],
-    async function ([data, options]) {
+    async function ([data]) {
       let frame = content;
       let keys = new Set(Object.keys(data));
       let isClearing = !keys.size;
@@ -671,35 +558,9 @@ function setPropertyOfFormField(browserContext, selector, propName, newValue) {
 }
 
 function promiseOnHistoryReplaceEntry(browser) {
-  if (SpecialPowers.Services.appinfo.sessionHistoryInParent) {
-    return new Promise(resolve => {
-      let sessionHistory = browser.browsingContext?.sessionHistory;
-      if (sessionHistory) {
-        var historyListener = {
-          OnHistoryNewEntry() {},
-          OnHistoryGotoIndex() {},
-          OnHistoryPurge() {},
-          OnHistoryReload() {
-            return true;
-          },
-
-          OnHistoryReplaceEntry() {
-            resolve();
-          },
-
-          QueryInterface: ChromeUtils.generateQI([
-            "nsISHistoryListener",
-            "nsISupportsWeakReference",
-          ]),
-        };
-
-        sessionHistory.addSHistoryListener(historyListener);
-      }
-    });
-  }
-
-  return SpecialPowers.spawn(browser, [], () => {
-    return new Promise(resolve => {
+  return new Promise(resolve => {
+    let sessionHistory = browser.browsingContext?.sessionHistory;
+    if (sessionHistory) {
       var historyListener = {
         OnHistoryNewEntry() {},
         OnHistoryGotoIndex() {},
@@ -718,13 +579,8 @@ function promiseOnHistoryReplaceEntry(browser) {
         ]),
       };
 
-      var { sessionHistory } = this.docShell.QueryInterface(
-        Ci.nsIWebNavigation
-      );
-      if (sessionHistory) {
-        sessionHistory.legacySHistory.addSHistoryListener(historyListener);
-      }
-    });
+      sessionHistory.addSHistoryListener(historyListener);
+    }
   });
 }
 
@@ -751,11 +607,8 @@ function addNonCoopTask(aFile, aTest, aUrlRoot) {
   add_task(taskToBeAdded);
 }
 
-async function openAndCloseTab(window, url) {
-  let tab = BrowserTestUtils.addTab(window.gBrowser, url);
-  await promiseBrowserLoaded(tab.linkedBrowser, true, url);
-  await TabStateFlusher.flush(tab.linkedBrowser);
-  await promiseRemoveTabAndSessionState(tab);
+function openAndCloseTab(window, url) {
+  return SessionStoreTestUtils.openAndCloseTab(window, url);
 }
 
 /**

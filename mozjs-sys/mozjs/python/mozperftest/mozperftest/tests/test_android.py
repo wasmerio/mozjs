@@ -41,6 +41,13 @@ class FakeDevice:
         return True
 
 
+def get_android_device_layer(layers):
+    for layer in layers:
+        if layer.__class__.__name__ == "AndroidDevice":
+            return layer
+    return None
+
+
 @mock.patch("mozperftest.system.android.ADBLoggedDevice", new=FakeDevice)
 def test_android():
     args = {
@@ -56,6 +63,28 @@ def test_android():
     system = env.layers[SYSTEM]
     with system as android, silence(system):
         android(metadata)
+
+
+@mock.patch("mozperftest.system.VersionProducer", new=mock.MagicMock())
+@mock.patch("mozperftest.system.android.ADBLoggedDevice", new=FakeDevice)
+def test_android_with_binary():
+    args = {
+        "flavor": "mobile-browser",
+        "android-install-apk": ["this.apk"],
+        "android": True,
+        "android-timeout": 30,
+        "android-capture-adb": "stdout",
+        "app": "fenix",
+        "binary": "org.mozilla.fenix-fake",
+    }
+
+    mach_cmd, metadata, env = get_running_env(**args)
+    system = env.layers[SYSTEM]
+    with system as android, silence(system):
+        android(metadata)
+
+    android_layer = get_android_device_layer(system.layers)
+    assert android_layer.app_name == "org.mozilla.fenix-fake"
 
 
 @mock.patch("mozperftest.system.android.ADBLoggedDevice")
@@ -116,7 +145,7 @@ class Device:
 
 def test_android_perf_tuning_all_calls():
     # Check without mocking PerformanceTuner functions
-    for name in ("Moto G (5)", "Pixel 2", "?"):
+    for name in ["?"]:
         device = Device(name)
         tuner = PerformanceTuner(device)
         tuner.tune_performance()
@@ -243,7 +272,7 @@ def test_android_log_cat(device):
 
         mach_cmd, metadata, env = get_running_env(**args)
         system = env.layers[SYSTEM]
-        andro = system.layers[1]
+        andro = get_android_device_layer(system.layers)
 
         with system as layer, silence(system):
             andro.device = device
@@ -269,7 +298,7 @@ def test_android_custom_apk(mozperftest_android_path):
 
         mach_cmd, metadata, env = get_running_env(**args)
         system = env.layers[SYSTEM]
-        android = system.layers[1]
+        android = get_android_device_layer(system.layers)
 
         with system as _, silence(system):
             assert android._custom_apk_path is None
@@ -292,7 +321,7 @@ def test_android_custom_apk_nonexistent(path_exists):
 
     mach_cmd, metadata, env = get_running_env(**args)
     system = env.layers[SYSTEM]
-    android = system.layers[1]
+    android = get_android_device_layer(system.layers)
 
     with system as _, silence(system):
         assert android._custom_apk_path is None
@@ -316,7 +345,7 @@ def test_android_setup_custom_apk(mozperftest_android_path):
 
         mach_cmd, metadata, env = get_running_env(**args)
         system = env.layers[SYSTEM]
-        android = system.layers[1]
+        android = get_android_device_layer(system.layers)
 
         with system as _, silence(system):
             # The custom apk should be found immediately, and it

@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+
 /**
  * Manages breach alerts for saved logins using data from Firefox Monitor via
  * RemoteSettings.
  */
-
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
@@ -17,6 +17,13 @@ ChromeUtils.defineESModuleGetters(lazy, {
   RemoteSettingsClient:
     "resource://services-settings/RemoteSettingsClient.sys.mjs",
 });
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "VULNERABLE_PASSWORDS_ENABLED",
+  "signon.management.page.vulnerable-passwords.enabled",
+  false
+);
 
 export const LoginBreaches = {
   REMOTE_SETTINGS_COLLECTION: "fxmonitor-breaches",
@@ -140,6 +147,20 @@ export const LoginBreaches = {
     return vulnerablePasswordsByLoginGUID;
   },
 
+  recordBreachAlertDismissal(loginGuid) {
+    const storageJSON = Services.logins.wrappedJSObject._storage;
+    return storageJSON.recordBreachAlertDismissal(loginGuid);
+  },
+
+  isVulnerablePassword(login) {
+    if (!lazy.VULNERABLE_PASSWORDS_ENABLED) {
+      return false;
+    }
+
+    const storageJSON = Services.logins.wrappedJSObject._storage;
+    return storageJSON.isPotentiallyVulnerablePassword(login);
+  },
+
   async clearAllPotentiallyVulnerablePasswords() {
     await Services.logins.initializationPromise;
     const storageJSON = Services.logins.wrappedJSObject._storage;
@@ -168,6 +189,6 @@ export const LoginBreaches = {
   },
 };
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   return lazy.LoginHelper.createLogger("LoginBreaches");
 });

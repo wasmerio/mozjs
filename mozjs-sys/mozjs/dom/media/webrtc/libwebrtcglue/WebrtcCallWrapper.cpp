@@ -11,6 +11,8 @@
 #include "TaskQueueWrapper.h"
 
 // libwebrtc includes
+#include "api/environment/environment.h"
+#include "api/environment/environment_factory.h"
 #include "call/rtp_transport_controller_send_factory.h"
 
 namespace mozilla {
@@ -28,17 +30,16 @@ namespace mozilla {
       std::move(eventLog), std::move(taskQueueFactory), aTimestampMaker,
       std::move(aShutdownTicket));
 
+  webrtc::Environment env = CreateEnvironment(
+      wrapper->mEventLog.get(), wrapper->mClock.GetRealTimeClockRaw(),
+      wrapper->mTaskQueueFactory.get(), aSharedState->mTrials.get());
+
   wrapper->mCallThread->Dispatch(
-      NS_NewRunnableFunction(__func__, [wrapper, aSharedState] {
-        webrtc::Call::Config config(wrapper->mEventLog.get());
+      NS_NewRunnableFunction(__func__, [wrapper, aSharedState, env] {
+        webrtc::CallConfig config(env, nullptr);
         config.audio_state =
             webrtc::AudioState::Create(aSharedState->mAudioStateConfig);
-        config.task_queue_factory = wrapper->mTaskQueueFactory.get();
-        config.trials = aSharedState->mTrials.get();
-        wrapper->SetCall(WrapUnique(webrtc::Call::Create(
-            config, &wrapper->mClock,
-            webrtc::RtpTransportControllerSendFactory().Create(
-                config.ExtractTransportConfig(), &wrapper->mClock))));
+        wrapper->SetCall(WrapUnique(webrtc::Call::Create(config).release()));
       }));
 
   return wrapper;
@@ -57,7 +58,7 @@ webrtc::Call* WebrtcCallWrapper::Call() const {
 
 void WebrtcCallWrapper::UnsetRemoteSSRC(uint32_t aSsrc) {
   MOZ_ASSERT(mCallThread->IsOnCurrentThread());
-  for (auto conduit : mConduits) {
+  for (const auto& conduit : mConduits) {
     conduit->UnsetRemoteSSRC(aSsrc);
   }
 }

@@ -6,8 +6,6 @@
 
 #include "DecoderAgent.h"
 
-#include <atomic>
-
 #include "ImageContainer.h"
 #include "MediaDataDecoderProxy.h"
 #include "PDMFactory.h"
@@ -53,6 +51,7 @@ DecoderAgent::DecoderAgent(Id aId, UniquePtr<TrackInfo>&& aInfo)
       mOwnerThread(GetCurrentSerialEventTarget()),
       mPDMFactory(MakeRefPtr<PDMFactory>()),
       mImageContainer(MakeAndAddRef<layers::ImageContainer>(
+          layers::ImageUsageType::WebCodecs,
           layers::ImageContainer::ASYNCHRONOUS)),
       mDecoder(nullptr),
       mState(State::Unconfigured) {
@@ -98,16 +97,22 @@ RefPtr<DecoderAgent::ConfigurePromise> DecoderAgent::Configure(
   auto params = CreateDecoderParams{
       *mInfo,
       CreateDecoderParams::OptionSet(
-          CreateDecoderParams::Option::LowLatency,
           aPreferSoftwareDecoder
               ? CreateDecoderParams::Option::HardwareDecoderNotAllowed
               : CreateDecoderParams::Option::Default),
       mInfo->GetType(), mImageContainer, knowsCompositor};
+  if (aLowLatency) {
+    params.mOptions += CreateDecoderParams::Option::LowLatency;
+  }
+
+  // Always even use the pts that were set on the input samples when returning
+  // decoded video frames.
+  params.mOptions += CreateDecoderParams::Option::KeepOriginalPts;
 
   LOG("DecoderAgent #%d (%p) is creating a decoder - PreferSW: %s, "
-      "low-latency: %syes",
+      "low-latency: %s",
       mId, this, aPreferSoftwareDecoder ? "yes" : "no",
-      aLowLatency ? "" : "forcibly ");
+      aLowLatency ? "yes" : "no");
 
   RefPtr<ConfigurePromise> p = mConfigurePromise.Ensure(__func__);
 

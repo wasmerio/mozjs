@@ -7,11 +7,6 @@ ChromeUtils.defineESModuleGetters(this, {
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   PanelMultiView: "resource:///modules/PanelMultiView.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  this,
-  "ToolbarPanelHub",
-  "resource://activity-stream/lib/ToolbarPanelHub.jsm"
-);
 
 /**
  * Maintains the state and dispatches events for the main menu panel.
@@ -133,10 +128,15 @@ const PanelUI = {
       this.panel.addEventListener(event, this);
     }
 
-    PanelMultiView.getViewNode(document, "PanelUI-helpView").addEventListener(
-      "ViewShowing",
-      this._onHelpViewShow
-    );
+    let helpView = PanelMultiView.getViewNode(document, "PanelUI-helpView");
+    helpView.addEventListener("ViewShowing", this._onHelpViewShow);
+    helpView.addEventListener("command", this._onHelpCommand);
+    this._onLibraryCommand = this._onLibraryCommand.bind(this);
+    PanelMultiView.getViewNode(
+      document,
+      "appMenu-libraryView"
+    ).addEventListener("command", this._onLibraryCommand);
+    this.mainView.addEventListener("command", this);
     this._eventListenersAdded = true;
   },
 
@@ -144,10 +144,14 @@ const PanelUI = {
     for (let event of this.kEvents) {
       this.panel.removeEventListener(event, this);
     }
+    let helpView = PanelMultiView.getViewNode(document, "PanelUI-helpView");
+    helpView.removeEventListener("ViewShowing", this._onHelpViewShow);
+    helpView.removeEventListener("command", this._onHelpCommand);
     PanelMultiView.getViewNode(
       document,
-      "PanelUI-helpView"
-    ).removeEventListener("ViewShowing", this._onHelpViewShow);
+      "appMenu-libraryView"
+    ).removeEventListener("command", this._onLibraryCommand);
+    this.mainView.removeEventListener("command", this);
     this._eventListenersAdded = false;
   },
 
@@ -171,9 +175,6 @@ const PanelUI = {
     this.menuButton.removeEventListener("mousedown", this);
     this.menuButton.removeEventListener("keypress", this);
     CustomizableUI.removeListener(this);
-    if (this.whatsNewPanel) {
-      this.whatsNewPanel.removeEventListener("ViewShowing", this);
-    }
   },
 
   /**
@@ -307,10 +308,53 @@ const PanelUI = {
       case "activate":
         this.updateNotifications();
         break;
-      case "ViewShowing":
-        if (aEvent.target == this.whatsNewPanel) {
-          this.onWhatsNewPanelShowing();
-        }
+      case "command":
+        this.onCommand(aEvent);
+        break;
+    }
+  },
+
+  // Note that we listen for bubbling command events. In the case where the
+  // button that the user clicks has a command attribute, those events are
+  // redirected to the relevant command element, and we never see them in
+  // here. Bear this in mind if you want to write code that applies to
+  // all commands, for which this wouldn't work well.
+  onCommand(aEvent) {
+    let { target } = aEvent;
+    switch (target.id) {
+      case "appMenu-update-banner":
+        this._onBannerItemSelected(aEvent);
+        break;
+      case "appMenu-fxa-label2":
+        gSync.toggleAccountPanel(target, aEvent);
+        break;
+      case "appMenu-profiles-button":
+        gProfiles.updateView(target);
+        break;
+      case "appMenu-bookmarks-button":
+        BookmarkingUI.showSubView(target);
+        break;
+      case "appMenu-history-button":
+        this.showSubView("PanelUI-history", target);
+        break;
+      case "appMenu-passwords-button":
+        LoginHelper.openPasswordManager(window, { entryPoint: "mainmenu" });
+        break;
+      case "appMenu-fullscreen-button2":
+        // Note that we're custom-handling the hiding of the panel to make
+        // sure it disappears before entering fullscreen. Otherwise it can
+        // end up moving around on the screen during the fullscreen transition.
+        target.closest("panel").hidePopup();
+        setTimeout(() => BrowserCommands.fullScreen(), 0);
+        break;
+      case "appMenu-settings-button":
+        openPreferences();
+        break;
+      case "appMenu-more-button2":
+        this.showMoreToolsPanel(target);
+        break;
+      case "appMenu-help-button2":
+        this.showSubView("PanelUI-helpView", target);
         break;
     }
   },
@@ -416,7 +460,6 @@ const PanelUI = {
       return;
     }
 
-    this.ensureWhatsNewInitialized(viewNode);
     this.ensurePanicViewInitialized(viewNode);
 
     let container = aAnchor.closest("panelmultiview");
@@ -457,7 +500,11 @@ const PanelUI = {
       viewNode.classList.add("cui-widget-panelview", "PanelUI-subView");
 
       let viewShown = false;
-      let panelRemover = () => {
+      let panelRemover = event => {
+        // Avoid bubbled events triggering the panel closing.
+        if (event && event.target != tempPanel) {
+          return;
+        }
         viewNode.classList.remove("cui-widget-panelview");
         if (viewShown) {
           CustomizableUI.removePanelCloseListeners(tempPanel);
@@ -497,24 +544,6 @@ const PanelUI = {
   },
 
   /**
-   * Sets up the event listener for when the What's New panel is shown.
-   *
-   * @param {panelview} panelView The What's New panelview.
-   */
-  ensureWhatsNewInitialized(panelView) {
-    if (panelView.id != "PanelUI-whatsNew" || panelView._initialized) {
-      return;
-    }
-
-    if (!this.whatsNewPanel) {
-      this.whatsNewPanel = panelView;
-    }
-
-    panelView._initialized = true;
-    panelView.addEventListener("ViewShowing", this);
-  },
-
-  /**
    * Adds FTL before appending the panic view markup to the main DOM.
    *
    * @param {panelview} panelView The Panic View panelview.
@@ -530,17 +559,6 @@ const PanelUI = {
 
     MozXULElement.insertFTLIfNeeded("browser/panicButton.ftl");
     panelView._initialized = true;
-  },
-
-  /**
-   * When the What's New panel is showing, we fetch the messages to show.
-   */
-  onWhatsNewPanelShowing() {
-    ToolbarPanelHub.renderMessages(
-      window,
-      document,
-      "PanelUI-whatsNew-message-container"
-    );
   },
 
   /**
@@ -568,7 +586,7 @@ const PanelUI = {
     }
   },
 
-  onWidgetAfterDOMChange(aNode, aNextNode, aContainer, aWasRemoval) {
+  onWidgetAfterDOMChange(aNode, aNextNode, aContainer) {
     if (aContainer == this.overflowFixedList) {
       this.updateOverflowStatus();
     }
@@ -601,21 +619,13 @@ const PanelUI = {
     }
   },
 
-  _onHelpViewShow(aEvent) {
+  _onHelpViewShow() {
     // Call global menu setup function
     buildHelpMenu();
 
     let helpMenu = document.getElementById("menu_HelpPopup");
     let items = this.getElementsByTagName("vbox")[0];
-    let attrs = [
-      "command",
-      "oncommand",
-      "onclick",
-      "key",
-      "disabled",
-      "accesskey",
-      "label",
-    ];
+    let attrs = ["command", "onclick", "key", "disabled", "accesskey", "label"];
 
     // Remove all buttons from the view
     while (items.firstChild) {
@@ -669,6 +679,66 @@ const PanelUI = {
     }
 
     items.appendChild(fragment);
+  },
+
+  _onHelpCommand(aEvent) {
+    switch (aEvent.target.id) {
+      case "appMenu_menu_openHelp":
+        openHelpLink("firefox-help");
+        break;
+      case "appMenu_menu_layout_debugger":
+        toOpenWindowByType(
+          "mozapp:layoutdebug",
+          "chrome://layoutdebug/content/layoutdebug.xhtml"
+        );
+        break;
+      case "appMenu_feedbackPage":
+        openFeedbackPage();
+        break;
+      case "appMenu_helpSafeMode":
+        safeModeRestart();
+        break;
+      case "appMenu_troubleShooting":
+        openTroubleshootingPage();
+        break;
+      case "appMenu_help_reportSiteIssue":
+        ReportSiteIssue();
+        break;
+      case "appMenu_menu_HelpPopup_reportPhishingtoolmenu":
+        openUILink(gSafeBrowsing.getReportURL("Phish"), aEvent, {
+          triggeringPrincipal:
+            Services.scriptSecurityManager.createNullPrincipal({}),
+        });
+        break;
+      case "appMenu_menu_HelpPopup_reportPhishingErrortoolmenu":
+        ReportFalseDeceptiveSite();
+        break;
+      case "appMenu_helpSwitchDevice":
+        openSwitchingDevicesPage();
+        break;
+      case "appMenu_aboutName":
+        openAboutDialog();
+        break;
+      case "appMenu_helpPolicySupport":
+        openTrustedLinkIn(Services.policies.getSupportMenu().URL.href, "tab");
+        break;
+    }
+  },
+
+  _onLibraryCommand(aEvent) {
+    let button = aEvent.target;
+    let { BookmarkingUI, DownloadsPanel } = button.ownerGlobal;
+    switch (button.id) {
+      case "appMenu-library-bookmarks-button":
+        BookmarkingUI.showSubView(button);
+        break;
+      case "appMenu-library-history-button":
+        this.showSubView("PanelUI-history", button);
+        break;
+      case "appMenu-library-downloads-button":
+        DownloadsPanel.showDownloadsHistory();
+        break;
+    }
   },
 
   _hidePopup() {
@@ -879,10 +949,7 @@ const PanelUI = {
 
   get mainView() {
     if (!this._mainView) {
-      this._mainView = PanelMultiView.getViewNode(
-        document,
-        "appMenu-protonMainView"
-      );
+      this._mainView = PanelMultiView.getViewNode(document, "appMenu-mainView");
     }
     return this._mainView;
   },
@@ -891,7 +958,7 @@ const PanelUI = {
     if (!this._addonNotificationContainer) {
       this._addonNotificationContainer = PanelMultiView.getViewNode(
         document,
-        "appMenu-proton-addon-banners"
+        "appMenu-addon-banners"
       );
     }
 

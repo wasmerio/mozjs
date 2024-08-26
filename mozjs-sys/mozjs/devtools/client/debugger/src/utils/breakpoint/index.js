@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { getSourceActorsForSource } from "../../selectors";
-import { isGenerated } from "../source";
+import { getSourceActorsForSource } from "../../selectors/index";
 import { sortSelectedLocations } from "../location";
 export * from "./breakpointPositions";
 
@@ -62,7 +61,7 @@ export function createXHRBreakpoint(path, method, overrides = {}) {
 }
 
 export function getSelectedText(breakpoint, selectedSource) {
-  return !!selectedSource && isGenerated(selectedSource)
+  return !!selectedSource && !selectedSource.isOriginal
     ? breakpoint.text
     : breakpoint.originalText;
 }

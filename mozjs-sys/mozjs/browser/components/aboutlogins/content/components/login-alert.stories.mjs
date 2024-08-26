@@ -4,7 +4,6 @@
 
 // eslint-disable-next-line import/no-unresolved
 import { html } from "lit.all.mjs";
-// eslint-disable-next-line import/no-unassigned-import
 import "./login-alert.mjs";
 
 export default {
@@ -19,7 +18,7 @@ export const BasicLoginAlert = ({ variant, icon }) => {
     <login-alert
       .variant=${variant}
       .icon=${icon}
-      titleId="about-logins-login-intro-heading-logged-in"
+      titleId="about-logins-login-intro-heading-message"
     >
       <a slot="action"> Some action </a>
       <div slot="content">
@@ -31,7 +30,7 @@ export const BasicLoginAlert = ({ variant, icon }) => {
 
 BasicLoginAlert.argTypes = {
   variant: {
-    options: ["info", "error"],
+    options: ["info", "error", "warning"],
     control: { type: "radio" },
     defaultValue: "info",
   },
@@ -46,6 +45,17 @@ BasicLoginAlert.argTypes = {
     control: { type: "select" },
     defaultValue: "chrome://global/skin/icons/info-filled.svg",
   },
+};
+
+export const VulnerablePasswordAlert = ({ hostname }) =>
+  html`
+    <login-vulnerable-password-alert
+      .hostname=${hostname}
+    ></login-vulnerable-password-alert>
+  `;
+
+VulnerablePasswordAlert.args = {
+  hostname: "https://www.example.com",
 };
 
 export const LoginBreachAlert = ({ date, hostname }) =>

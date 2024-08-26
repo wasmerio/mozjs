@@ -8,8 +8,8 @@
 const { FxAccountsStorageManager } = ChromeUtils.importESModule(
   "resource://gre/modules/FxAccountsStorage.sys.mjs"
 );
-const { DATA_FORMAT_VERSION, log } = ChromeUtils.import(
-  "resource://gre/modules/FxAccountsCommon.js"
+const { DATA_FORMAT_VERSION, log } = ChromeUtils.importESModule(
+  "resource://gre/modules/FxAccountsCommon.sys.mjs"
 );
 
 initTestLogging("Trace");
@@ -62,7 +62,7 @@ MockedSecureStorage.prototype = {
   // "TypeError: this.STORAGE_LOCKED is not a constructor"
   STORAGE_LOCKED: function () {},
   /* eslint-enable object-shorthand */
-  async get(uid, email) {
+  async get() {
     this.fetchCount++;
     if (this.locked) {
       throw new this.STORAGE_LOCKED();

@@ -1,71 +1,107 @@
-From: Andreas Pehrson <apehrson@mozilla.com>
-Date: Wed, 10 May 2023 08:01:00 +0000
-Subject: Bug 1828065 - cherry-pick upstream libwebrtc commit 6fc1ae58be.
- r=webrtc-reviewers,mjf
+From: Michael Froman <mfroman@mozilla.com>
+Date: Mon, 18 Dec 2023 15:00:00 +0000
+Subject: Bug 1867099 - revert libwebrtc 8602f604e0. r=bwc
 
-Upstream commit: https://webrtc.googlesource.com/src/+/6fc1ae58be7cbb61ad0431d90eb7a7dc333de2f2
-    In DeviceInfoDS check that out vars were set
+Upstream 8602f604e0 removed code sending BYEs which breaks some of
+our wpt.  They've opened a bug for a real fix here:
+https://bugs.chromium.org/p/webrtc/issues/detail?id=15664
 
-    Bug: chromium:1441804
-    Change-Id: Id07cb61519315d77c2d7cdab1053efaaf7473e1a
-    Reviewed-on: https://webrtc-review.googlesource.com/c/src/+/304060
-    Reviewed-by: Ilya Nikolaevskiy <ilnik@webrtc.org>
-    Reviewed-by: Per Kjellander <perkj@webrtc.org>
-    Commit-Queue: Ilya Nikolaevskiy <ilnik@webrtc.org>
-    Cr-Commit-Position: refs/heads/main@{#39982}
+I've opened Bug 1870643 to track the real fix and upstream bug.
 
-Differential Revision: https://phabricator.services.mozilla.com/D177236
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/60d381b6016ae5af0181b44c6a31b41eab094793
+Differential Revision: https://phabricator.services.mozilla.com/D196729
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/d92a578327f524ec3e1c144c82492a4c76b8266f
 ---
- modules/video_capture/windows/device_info_ds.cc    | 13 +++++++------
- modules/video_capture/windows/help_functions_ds.cc |  3 +++
- 2 files changed, 10 insertions(+), 6 deletions(-)
+ call/rtp_video_sender.cc                      |  1 +
+ modules/rtp_rtcp/source/rtcp_sender.cc        | 19 +++++++++++++++++--
+ .../rtp_rtcp/source/rtcp_sender_unittest.cc   |  5 +++--
+ modules/rtp_rtcp/source/rtp_rtcp_impl.cc      |  1 +
+ modules/rtp_rtcp/source/rtp_rtcp_interface.h  |  2 +-
+ 5 files changed, 23 insertions(+), 5 deletions(-)
 
-diff --git a/modules/video_capture/windows/device_info_ds.cc b/modules/video_capture/windows/device_info_ds.cc
-index 6b4c57d01e..2c192fe4f6 100644
---- a/modules/video_capture/windows/device_info_ds.cc
-+++ b/modules/video_capture/windows/device_info_ds.cc
-@@ -505,9 +505,9 @@ int32_t DeviceInfoDS::CreateCapabilityMap(const char* deviceUniqueIdUTF8)
-       }
+diff --git a/call/rtp_video_sender.cc b/call/rtp_video_sender.cc
+index 47e422ebfc..91a39628af 100644
+--- a/call/rtp_video_sender.cc
++++ b/call/rtp_video_sender.cc
+@@ -493,6 +493,7 @@ void RtpVideoSender::SetActiveModulesLocked(bool sending) {
+   active_ = sending;
+   for (size_t i = 0; i < rtp_streams_.size(); ++i) {
+     RtpRtcpInterface& rtp_module = *rtp_streams_[i].rtp_rtcp;
++    // Sends a kRtcpByeCode when going from true to false.
+     rtp_module.SetSendingStatus(sending);
+     rtp_module.SetSendingMediaStatus(sending);
+     if (sending) {
+diff --git a/modules/rtp_rtcp/source/rtcp_sender.cc b/modules/rtp_rtcp/source/rtcp_sender.cc
+index 099b0be1a3..971f49b949 100644
+--- a/modules/rtp_rtcp/source/rtcp_sender.cc
++++ b/modules/rtp_rtcp/source/rtcp_sender.cc
+@@ -212,8 +212,23 @@ bool RTCPSender::Sending() const {
  
-       if (hrVC == S_OK) {
--        LONGLONG* frameDurationList;
--        LONGLONG maxFPS;
--        long listSize;
-+        LONGLONG* frameDurationList = NULL;
-+        LONGLONG maxFPS = 0;
-+        long listSize = 0;
-         SIZE size;
-         size.cx = capability.width;
-         size.cy = capability.height;
-@@ -520,9 +520,10 @@ int32_t DeviceInfoDS::CreateCapabilityMap(const char* deviceUniqueIdUTF8)
-         hrVC = videoControlConfig->GetFrameRateList(
-             outputCapturePin, tmp, size, &listSize, &frameDurationList);
- 
--        // On some odd cameras, you may get a 0 for duration.
--        // GetMaxOfFrameArray returns the lowest duration (highest FPS)
--        if (hrVC == S_OK && listSize > 0 &&
-+        // On some odd cameras, you may get a 0 for duration. Some others may
-+        // not update the out vars. GetMaxOfFrameArray returns the lowest
-+        // duration (highest FPS), or 0 if there was no list with elements.
-+        if (hrVC == S_OK &&
-             0 != (maxFPS = GetMaxOfFrameArray(frameDurationList, listSize))) {
-           capability.maxFPS = static_cast<int>(10000000 / maxFPS);
-           capability.supportFrameRateControl = true;
-diff --git a/modules/video_capture/windows/help_functions_ds.cc b/modules/video_capture/windows/help_functions_ds.cc
-index b767726107..47fecfe4a1 100644
---- a/modules/video_capture/windows/help_functions_ds.cc
-+++ b/modules/video_capture/windows/help_functions_ds.cc
-@@ -21,6 +21,9 @@ namespace webrtc {
- namespace videocapturemodule {
- // This returns minimum :), which will give max frame rate...
- LONGLONG GetMaxOfFrameArray(LONGLONG* maxFps, long size) {
-+  if (!maxFps || size <= 0) {
-+    return 0;
+ void RTCPSender::SetSendingStatus(const FeedbackState& feedback_state,
+                                   bool sending) {
+-  MutexLock lock(&mutex_rtcp_sender_);
+-  sending_ = sending;
++  bool sendRTCPBye = false;
++  {
++    MutexLock lock(&mutex_rtcp_sender_);
++
++    if (method_ != RtcpMode::kOff) {
++      if (sending == false && sending_ == true) {
++        // Trigger RTCP bye
++        sendRTCPBye = true;
++      }
++    }
++    sending_ = sending;
 +  }
-   LONGLONG maxFPS = maxFps[0];
-   for (int i = 0; i < size; i++) {
-     if (maxFPS > maxFps[i])
--- 
-2.34.1
-
++  if (sendRTCPBye) {
++    if (SendRTCP(feedback_state, kRtcpBye) != 0) {
++      RTC_LOG(LS_WARNING) << "Failed to send RTCP BYE";
++    }
++  }
+ }
+ 
+ void RTCPSender::SetNonSenderRttMeasurement(bool enabled) {
+diff --git a/modules/rtp_rtcp/source/rtcp_sender_unittest.cc b/modules/rtp_rtcp/source/rtcp_sender_unittest.cc
+index 002a5f86f1..1dcb628722 100644
+--- a/modules/rtp_rtcp/source/rtcp_sender_unittest.cc
++++ b/modules/rtp_rtcp/source/rtcp_sender_unittest.cc
+@@ -328,12 +328,13 @@ TEST_F(RtcpSenderTest, SendBye) {
+   EXPECT_EQ(kSenderSsrc, parser()->bye()->sender_ssrc());
+ }
+ 
+-TEST_F(RtcpSenderTest, StopSendingDoesNotTriggersBye) {
++TEST_F(RtcpSenderTest, StopSendingTriggersBye) {
+   auto rtcp_sender = CreateRtcpSender(GetDefaultConfig());
+   rtcp_sender->SetRTCPStatus(RtcpMode::kReducedSize);
+   rtcp_sender->SetSendingStatus(feedback_state(), true);
+   rtcp_sender->SetSendingStatus(feedback_state(), false);
+-  EXPECT_EQ(0, parser()->bye()->num_packets());
++  EXPECT_EQ(1, parser()->bye()->num_packets());
++  EXPECT_EQ(kSenderSsrc, parser()->bye()->sender_ssrc());
+ }
+ 
+ TEST_F(RtcpSenderTest, SendFir) {
+diff --git a/modules/rtp_rtcp/source/rtp_rtcp_impl.cc b/modules/rtp_rtcp/source/rtp_rtcp_impl.cc
+index cca9a40250..a63067141d 100644
+--- a/modules/rtp_rtcp/source/rtp_rtcp_impl.cc
++++ b/modules/rtp_rtcp/source/rtp_rtcp_impl.cc
+@@ -296,6 +296,7 @@ RTCPSender::FeedbackState ModuleRtpRtcpImpl::GetFeedbackState() {
+ 
+ int32_t ModuleRtpRtcpImpl::SetSendingStatus(const bool sending) {
+   if (rtcp_sender_.Sending() != sending) {
++    // Sends RTCP BYE when going from true to false
+     rtcp_sender_.SetSendingStatus(GetFeedbackState(), sending);
+   }
+   return 0;
+diff --git a/modules/rtp_rtcp/source/rtp_rtcp_interface.h b/modules/rtp_rtcp/source/rtp_rtcp_interface.h
+index b43919f18a..12810664f6 100644
+--- a/modules/rtp_rtcp/source/rtp_rtcp_interface.h
++++ b/modules/rtp_rtcp/source/rtp_rtcp_interface.h
+@@ -282,7 +282,7 @@ class RtpRtcpInterface : public RtcpFeedbackSenderInterface {
+   // Returns the FlexFEC SSRC, if there is one.
+   virtual absl::optional<uint32_t> FlexfecSsrc() const = 0;
+ 
+-  // Sets sending status.
++  // Sets sending status. Sends kRtcpByeCode when going from true to false.
+   // Returns -1 on failure else 0.
+   virtual int32_t SetSendingStatus(bool sending) = 0;
+ 

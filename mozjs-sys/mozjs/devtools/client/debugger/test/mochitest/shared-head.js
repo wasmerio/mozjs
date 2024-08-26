@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
+// This file is loaded in a `spawn` context sometimes which doesn't have,
+// `Assert`, so we can't use its comparison functions.
+/* eslint-disable mozilla/no-comparison-or-assignment-inside-ok */
+
 /**
  * Helper methods to drive with the debugger during mochitests. This file can be safely
  * required from other panel test files.
@@ -50,13 +54,11 @@ const {
 } = require("devtools/client/debugger/src/utils/prefs");
 
 const {
-  safeDecodeItemName,
-} = require("devtools/client/debugger/src/utils/sources-tree/utils");
+  getUnicodeUrlPath,
+} = require("resource://devtools/client/shared/unicode-url.js");
 
 const {
   isGeneratedId,
-  isOriginalId,
-  originalToGeneratedId,
 } = require("devtools/client/shared/source-map-loader/index");
 
 const DEBUGGER_L10N = new LocalizationHelper(
@@ -66,25 +68,27 @@ const DEBUGGER_L10N = new LocalizationHelper(
 /**
  * Waits for `predicate()` to be true. `state` is the redux app state.
  *
- * @memberof mochitest/waits
  * @param {Object} dbg
  * @param {Function} predicate
+ * @param {String} msg
  * @return {Promise}
- * @static
  */
-function waitForState(dbg, predicate, msg) {
+function waitForState(dbg, predicate, msg = "") {
   return new Promise(resolve => {
-    info(`Waiting for state change: ${msg || ""}`);
-    if (predicate(dbg.store.getState())) {
-      info(`Finished waiting for state change: ${msg || ""}`);
-      resolve();
+    info(`Waiting for state change: ${msg}`);
+    let result = predicate(dbg.store.getState());
+    if (result) {
+      info(
+        `--> The state was immediately correct (should rather do an immediate assertion?)`
+      );
+      resolve(result);
       return;
     }
 
     const unsubscribe = dbg.store.subscribe(() => {
-      const result = predicate(dbg.store.getState());
+      result = predicate(dbg.store.getState());
       if (result) {
-        info(`Finished waiting for state change: ${msg || ""}`);
+        info(`Finished waiting for state change: ${msg}`);
         unsubscribe();
         resolve(result);
       }
@@ -135,7 +139,7 @@ async function waitForSources(dbg, ...sources) {
 function waitForSource(dbg, url) {
   return waitForState(
     dbg,
-    state => findSource(dbg, url, { silent: true }),
+    () => findSource(dbg, url, { silent: true }),
     "source exists"
   );
 }
@@ -187,7 +191,7 @@ function assertClass(el, className, exists = true) {
 }
 
 function waitForSelectedLocation(dbg, line, column) {
-  return waitForState(dbg, state => {
+  return waitForState(dbg, () => {
     const location = dbg.selectors.getSelectedLocation();
     return (
       location &&
@@ -218,7 +222,7 @@ function waitForSelectedSource(dbg, sourceOrUrl) {
 
   return waitForState(
     dbg,
-    state => {
+    () => {
       const location = dbg.selectors.getSelectedLocation() || {};
       const sourceTextContent = getSelectedSourceTextContent();
       if (!sourceTextContent) {
@@ -229,7 +233,8 @@ function waitForSelectedSource(dbg, sourceOrUrl) {
         // Second argument is either a source URL (string)
         // or a Source object.
         if (typeof sourceOrUrl == "string") {
-          if (!location.source.url.includes(encodeURI(sourceOrUrl))) {
+          const url = location.source.url;
+          if (typeof url != "string" || !url.includes(encodeURI(sourceOrUrl))) {
             return false;
           }
         } else if (location.source.id != sourceOrUrl.id) {
@@ -444,8 +449,10 @@ function assertPausedAtSourceAndLine(
   );
   const pauseColumn = getVisibleSelectedFrameColumn(dbg);
   if (expectedColumn) {
+    // `pauseColumn` is 0-based, coming from internal state,
+    // while `expectedColumn` is manually passed from test scripts and so is 1-based.
     is(
-      pauseColumn,
+      pauseColumn + 1,
       expectedColumn,
       "Redux state for currently selected frame's column is correct"
     );
@@ -476,10 +483,14 @@ function assertPausedAtSourceAndLine(
   );
 
   if (expectedColumn) {
+    // `column` is 0-based, coming from internal state,
+    // while `expectedColumn` is manually passed from test scripts and so is 1-based.
     is(
-      column,
+      column + 1,
       expectedColumn,
-      `Frame paused at column ${column}, but expected column ${expectedColumn}`
+      `Frame paused at column ${
+        column + 1
+      }, but expected column ${expectedColumn}`
     );
   }
 }
@@ -499,10 +510,7 @@ async function waitForLoadedScopes(dbg) {
 }
 
 function waitForBreakpointCount(dbg, count) {
-  return waitForState(
-    dbg,
-    state => dbg.selectors.getBreakpointCount() == count
-  );
+  return waitForState(dbg, () => dbg.selectors.getBreakpointCount() == count);
 }
 
 function waitForBreakpoint(dbg, url, line) {
@@ -548,20 +556,31 @@ function assertPaused(dbg, msg = "client is paused") {
  * @param {Object} dbg
  * @param {String} url
  *        Optional URL of the script we should be pausing on.
+ * @param {Object} options
+ *         {Boolean} shouldWaitForLoadScopes
+ *        When paused in original files with original variable mapping disabled, scopes are
+ *        not going to exist, lets not wait for it. defaults to true
  */
-async function waitForPaused(dbg, url) {
+async function waitForPaused(
+  dbg,
+  url,
+  options = { shouldWaitForLoadedScopes: true }
+) {
   info("Waiting for the debugger to pause");
   const { getSelectedScope, getCurrentThread, getCurrentThreadFrames } =
     dbg.selectors;
 
   await waitForState(
     dbg,
-    state => isPaused(dbg) && !!getSelectedScope(getCurrentThread()),
+    () => isPaused(dbg) && !!getSelectedScope(getCurrentThread()),
     "paused"
   );
 
   await waitForState(dbg, getCurrentThreadFrames, "fetched frames");
-  await waitForLoadedScopes(dbg);
+
+  if (options.shouldWaitForLoadedScopes) {
+    await waitForLoadedScopes(dbg);
+  }
   await waitForSelectedSource(dbg, url);
 }
 
@@ -572,7 +591,7 @@ async function waitForPaused(dbg, url) {
  */
 function waitForResumed(dbg) {
   info("Waiting for the debugger to resume");
-  return waitForState(dbg, state => !dbg.selectors.getIsCurrentThreadPaused());
+  return waitForState(dbg, () => !dbg.selectors.getIsCurrentThreadPaused());
 }
 
 function waitForInlinePreviews(dbg) {
@@ -580,7 +599,7 @@ function waitForInlinePreviews(dbg) {
 }
 
 function waitForCondition(dbg, condition) {
-  return waitForState(dbg, state =>
+  return waitForState(dbg, () =>
     dbg.selectors
       .getBreakpointsList()
       .find(bp => bp.options.condition == condition)
@@ -588,7 +607,7 @@ function waitForCondition(dbg, condition) {
 }
 
 function waitForLog(dbg, logValue) {
-  return waitForState(dbg, state =>
+  return waitForState(dbg, () =>
     dbg.selectors
       .getBreakpointsList()
       .find(bp => bp.options.logValue == logValue)
@@ -596,10 +615,10 @@ function waitForLog(dbg, logValue) {
 }
 
 async function waitForPausedThread(dbg, thread) {
-  return waitForState(dbg, state => dbg.selectors.getIsPaused(thread));
+  return waitForState(dbg, () => dbg.selectors.getIsPaused(thread));
 }
 
-function isSelectedFrameSelected(dbg, state) {
+function isSelectedFrameSelected(dbg) {
   const frame = dbg.selectors.getVisibleSelectedFrame();
 
   // Make sure the source text is completely loaded for the
@@ -637,7 +656,7 @@ function isFrameSelected(dbg, index, title) {
 }
 
 /**
- * Clear all the debugger related preferences.
+ *  Clear all the debugger related preferences.
  */
 async function clearDebuggerPreferences(prefs = []) {
   resetSchemaVersion();
@@ -652,7 +671,6 @@ async function clearDebuggerPreferences(prefs = []) {
   Services.prefs.clearUserPref("devtools.debugger.call-stack-visible");
   Services.prefs.clearUserPref("devtools.debugger.scopes-visible");
   Services.prefs.clearUserPref("devtools.debugger.skip-pausing");
-  Services.prefs.clearUserPref("devtools.debugger.map-scopes-enabled");
 
   for (const pref of prefs) {
     await pushPref(...pref);
@@ -718,7 +736,7 @@ function findSource(
   const source = sources.find(s => {
     // Sources don't have a file name attribute, we need to compute it here:
     const sourceFileName = s.url
-      ? safeDecodeItemName(s.url.substring(s.url.lastIndexOf("/") + 1))
+      ? getUnicodeUrlPath(s.url.substring(s.url.lastIndexOf("/") + 1))
       : "";
 
     // The input argument may either be only the filename, or the complete URL
@@ -769,7 +787,7 @@ function sourceExists(dbg, url) {
 function waitForLoadedSource(dbg, url) {
   return waitForState(
     dbg,
-    state => {
+    () => {
       const source = findSource(dbg, url, { silent: true });
       return (
         source &&
@@ -782,14 +800,6 @@ function waitForLoadedSource(dbg, url) {
     },
     "loaded source"
   );
-}
-
-function getContext(dbg) {
-  return dbg.selectors.getContext();
-}
-
-function getThreadContext(dbg) {
-  return dbg.selectors.getThreadContext();
 }
 
 /*
@@ -853,16 +863,14 @@ async function triggerSourceTreeContextMenu(
 async function selectSource(dbg, url, line, column) {
   const source = findSource(dbg, url);
 
-  await dbg.actions.selectLocation(
-    getContext(dbg),
-    createLocation({ source, line, column }),
-    { keepContext: false }
-  );
+  await dbg.actions.selectLocation(createLocation({ source, line, column }), {
+    keepContext: false,
+  });
   return waitForSelectedSource(dbg, source);
 }
 
 async function closeTab(dbg, url) {
-  await dbg.actions.closeTab(getContext(dbg), findSource(dbg, url));
+  await dbg.actions.closeTab(findSource(dbg, url));
 }
 
 function countTabs(dbg) {
@@ -874,14 +882,15 @@ function countTabs(dbg) {
  *
  * @memberof mochitest/actions
  * @param {Object} dbg
+ * @param {Object} pauseOptions
  * @return {Promise}
  * @static
  */
-async function stepOver(dbg) {
+async function stepOver(dbg, pauseOptions) {
   const pauseLine = getVisibleSelectedFrameLine(dbg);
   info(`Stepping over from ${pauseLine}`);
-  await dbg.actions.stepOver(getThreadContext(dbg));
-  return waitForPaused(dbg);
+  await dbg.actions.stepOver();
+  return waitForPaused(dbg, null, pauseOptions);
 }
 
 /**
@@ -895,7 +904,7 @@ async function stepOver(dbg) {
 async function stepIn(dbg) {
   const pauseLine = getVisibleSelectedFrameLine(dbg);
   info(`Stepping in from ${pauseLine}`);
-  await dbg.actions.stepIn(getThreadContext(dbg));
+  await dbg.actions.stepIn();
   return waitForPaused(dbg);
 }
 
@@ -910,7 +919,7 @@ async function stepIn(dbg) {
 async function stepOut(dbg) {
   const pauseLine = getVisibleSelectedFrameLine(dbg);
   info(`Stepping out from ${pauseLine}`);
-  await dbg.actions.stepOut(getThreadContext(dbg));
+  await dbg.actions.stepOut();
   return waitForPaused(dbg);
 }
 
@@ -1052,8 +1061,8 @@ async function addBreakpoint(dbg, source, line, column, options) {
   const bpCount = dbg.selectors.getBreakpointCount();
   const onBreakpoint = waitForDispatch(dbg.store, "SET_BREAKPOINT");
   await dbg.actions.addBreakpoint(
-    getContext(dbg),
-    createLocation({ source, line, column }),
+    // column is 0-based internally, but tests are using 1-based.
+    createLocation({ source, line, column: column - 1 }),
     options
   );
   await onBreakpoint;
@@ -1076,28 +1085,31 @@ async function addBreakpointViaGutter(dbg, line) {
 }
 
 function disableBreakpoint(dbg, source, line, column) {
-  column = column || getFirstBreakpointColumn(dbg, source, line);
+  if (column === 0) {
+    throw new Error("disableBreakpoint expect a 1-based column argument");
+  }
+  // `internalColumn` is 0-based internally, while `column` manually defined in test scripts is 1-based.
+  const internalColumn = column
+    ? column - 1
+    : getFirstBreakpointColumn(dbg, source, line);
   const location = createLocation({
     source,
     line,
-    column,
+    column: internalColumn,
   });
   const bp = getBreakpointForLocation(dbg, location);
-  return dbg.actions.disableBreakpoint(getContext(dbg), bp);
+  return dbg.actions.disableBreakpoint(bp);
 }
 
 function findBreakpoint(dbg, url, line) {
   const source = findSource(dbg, url);
-  return dbg.selectors.getBreakpointsForSource(source.id, line)[0];
+  return dbg.selectors.getBreakpointsForSource(source, line)[0];
 }
 
 // helper for finding column breakpoints.
 function findColumnBreakpoint(dbg, url, line, column) {
   const source = findSource(dbg, url);
-  const lineBreakpoints = dbg.selectors.getBreakpointsForSource(
-    source.id,
-    line
-  );
+  const lineBreakpoints = dbg.selectors.getBreakpointsForSource(source, line);
 
   return lineBreakpoints.find(bp => {
     return source.isOriginal
@@ -1122,13 +1134,16 @@ async function loadAndAddBreakpoint(dbg, filename, line, column) {
   await addBreakpoint(dbg, source, line, column);
 
   is(getBreakpointCount(), 1, "One breakpoint exists");
-  if (!getBreakpoint(createLocation({ source, line, column }))) {
+  // column is 0-based internally, but tests are using 1-based.
+  if (!getBreakpoint(createLocation({ source, line, column: column - 1 }))) {
     const breakpoints = getBreakpointsMap();
     const id = Object.keys(breakpoints).pop();
     const loc = breakpoints[id].location;
     ok(
       false,
-      `Breakpoint has correct line ${line}, column ${column}, but was line ${loc.line} column ${loc.column}`
+      `Breakpoint has correct line ${line}, column ${column}, but was line ${
+        loc.line
+      } column ${loc.column + 1}`
     );
   }
 
@@ -1140,14 +1155,15 @@ async function invokeWithBreakpoint(
   fnName,
   filename,
   { line, column },
-  handler
+  handler,
+  pauseOptions
 ) {
   const source = await loadAndAddBreakpoint(dbg, filename, line, column);
 
   const invokeResult = invokeInTab(fnName);
 
   const invokeFailed = await Promise.race([
-    waitForPaused(dbg),
+    waitForPaused(dbg, null, pauseOptions),
     invokeResult.then(
       () => new Promise(() => {}),
       () => true
@@ -1175,8 +1191,8 @@ async function invokeWithBreakpoint(
 }
 
 function prettyPrint(dbg) {
-  const sourceId = dbg.selectors.getSelectedSourceId();
-  return dbg.actions.togglePrettyPrint(getContext(dbg), sourceId);
+  const source = dbg.selectors.getSelectedSource();
+  return dbg.actions.prettyPrintAndSelectSource(source);
 }
 
 async function expandAllScopes(dbg) {
@@ -1198,18 +1214,18 @@ async function assertScopes(dbg, items) {
 
   for (const [i, val] of items.entries()) {
     if (Array.isArray(val)) {
-      is(getScopeLabel(dbg, i + 1), val[0]);
+      is(getScopeNodeLabel(dbg, i + 1), val[0]);
       is(
-        getScopeValue(dbg, i + 1),
+        getScopeNodeValue(dbg, i + 1),
         val[1],
         `"${val[0]}" has the expected "${val[1]}" value`
       );
     } else {
-      is(getScopeLabel(dbg, i + 1), val);
+      is(getScopeNodeLabel(dbg, i + 1), val);
     }
   }
 
-  is(getScopeLabel(dbg, items.length + 1), "Window");
+  is(getScopeNodeLabel(dbg, items.length + 1), "Window");
 }
 
 function findSourceTreeThreadByName(dbg, name) {
@@ -1272,14 +1288,15 @@ async function expandAllSourceNodes(dbg, treeNode) {
  */
 function removeBreakpoint(dbg, sourceId, line, column) {
   const source = dbg.selectors.getSource(sourceId);
-  column = column || getFirstBreakpointColumn(dbg, source, line);
+  // column is 0-based internally, but tests are using 1-based.
+  column = column ? column - 1 : getFirstBreakpointColumn(dbg, source, line);
   const location = createLocation({
     source,
     line,
     column,
   });
   const bp = getBreakpointForLocation(dbg, location);
-  return dbg.actions.removeBreakpoint(getContext(dbg), bp);
+  return dbg.actions.removeBreakpoint(bp);
 }
 
 /**
@@ -1369,6 +1386,7 @@ const keyMappings = {
   debugger: { code: "s", modifiers: shiftOrAlt },
   // test conditional panel shortcut
   toggleCondPanel: { code: "b", modifiers: cmdShift },
+  toggleLogPanel: { code: "y", modifiers: cmdShift },
   inspector: { code: "c", modifiers: shiftOrAlt },
   quickOpen: { code: "p", modifiers: cmdOrCtrl },
   quickOpenFunc: { code: "o", modifiers: cmdShift },
@@ -1681,13 +1699,13 @@ async function assertLogBreakpoint(dbg, line) {
   ok(hasLogClass, `Log breakpoint on line ${line}`);
 }
 
-function assertBreakpointSnippet(dbg, index, snippet) {
+function assertBreakpointSnippet(dbg, index, expectedSnippet) {
   const actualSnippet = findElement(dbg, "breakpointLabel", 2).innerText;
-  is(snippet, actualSnippet, `Breakpoint ${index} snippet`);
+  is(actualSnippet, expectedSnippet, `Breakpoint ${index} snippet`);
 }
 
 const selectors = {
-  callStackHeader: ".call-stack-pane ._header",
+  callStackHeader: ".call-stack-pane ._header .header-label",
   callStackBody: ".call-stack-pane .pane",
   domMutationItem: ".dom-mutation-list li",
   expressionNode: i =>
@@ -1701,7 +1719,8 @@ const selectors = {
   expressionNodes: ".expressions-list .tree-node",
   expressionPlus: ".watch-expressions-pane button.plus",
   expressionRefresh: ".watch-expressions-pane button.refresh",
-  scopesHeader: ".scopes-pane ._header",
+  expressionsHeader: ".watch-expressions-pane ._header .header-label",
+  scopesHeader: ".scopes-pane ._header .header-label",
   breakpointItem: i => `.breakpoints-list div:nth-of-type(${i})`,
   breakpointLabel: i => `${selectors.breakpointItem(i)} .breakpoint-label`,
   breakpointHeadings: ".breakpoints-list .breakpoint-heading",
@@ -1755,8 +1774,9 @@ const selectors = {
   stepIn: ".stepIn.active",
   trace: ".debugger-trace-menu-button",
   prettyPrintButton: ".source-footer .prettyPrint",
-  sourceMapLink: ".source-footer .mapped-source",
+  mappedSourceLink: ".source-footer .mapped-source",
   sourcesFooter: ".sources-panel .source-footer",
+  sourceMapFooterButton: ".debugger-source-map-button",
   editorFooter: ".editor-pane .source-footer",
   sourceNode: i => `.sources-list .tree-node:nth-child(${i}) .node`,
   sourceNodes: ".sources-list .tree-node",
@@ -1773,7 +1793,6 @@ const selectors = {
     `${selectors.resultItems}:nth-child(${i})[title$="${name}"]`,
   fileMatch: ".project-text-search .line-value",
   popup: ".popover",
-  tooltip: ".tooltip",
   previewPopup: ".preview-popup",
   openInspector: "button.open-inspector",
   outlineItem: i =>
@@ -1781,6 +1800,7 @@ const selectors = {
   outlineItems: ".outline-list__element",
   conditionalPanel: ".conditional-breakpoint-panel",
   conditionalPanelInput: ".conditional-breakpoint-panel textarea",
+  logPanelInput: ".conditional-breakpoint-panel.log-point textarea",
   conditionalBreakpointInSecPane: ".breakpoint.is-conditional",
   logPointPanel: ".conditional-breakpoint-panel.log-point",
   logPointInSecPane: ".breakpoint.is-log",
@@ -1796,9 +1816,10 @@ const selectors = {
     ".project-text-search button.regex-match-btn",
   projectSearchModifiersWholeWordMatch:
     ".project-text-search button.whole-word-btn",
+  projectSearchRefreshButton: ".project-text-search button.refresh-btn",
   threadsPaneItems: ".threads-pane .thread",
   threadsPaneItem: i => `.threads-pane .thread:nth-child(${i})`,
-  threadsPaneItemPause: i => `${selectors.threadsPaneItem(i)} .pause-badge`,
+  threadsPaneItemPause: i => `${selectors.threadsPaneItem(i)}.paused`,
   CodeMirrorLines: ".CodeMirror-lines",
   inlinePreviewLabels: ".inline-preview .inline-preview-label",
   inlinePreviewValues: ".inline-preview .inline-preview-value",
@@ -1815,6 +1836,9 @@ const selectors = {
   sourceTreeFolderNode: ".sources-panel .node .folder",
   excludePatternsInput: ".project-text-search .exclude-patterns-field input",
   fileSearchInput: ".search-bar input",
+  watchExpressionsHeader: ".watch-expressions-pane ._header .header-label",
+  watchExpressionsAddButton: ".watch-expressions-pane ._header .plus",
+  editorNotificationFooter: ".editor-notification-footer",
 };
 
 function getSelector(elementName, ...args) {
@@ -2018,12 +2042,38 @@ async function assertContextMenuLabel(dbg, selector, expectedLabel) {
   );
 }
 
-async function typeInPanel(dbg, text) {
-  await waitForElement(dbg, "conditionalPanelInput");
+async function typeInPanel(dbg, text, inLogPanel = false) {
+  await waitForElement(
+    dbg,
+    inLogPanel ? "logPanelInput" : "conditionalPanelInput"
+  );
   // Position cursor reliably at the end of the text.
   pressKey(dbg, "End");
   type(dbg, text);
   pressKey(dbg, "Enter");
+}
+
+async function toggleMapScopes(dbg) {
+  info("Turn on original variable mapping");
+  const scopesLoaded = waitForLoadedScopes(dbg);
+  const onDispatch = waitForDispatch(dbg.store, "TOGGLE_MAP_SCOPES");
+  clickElement(dbg, "mapScopesCheckbox");
+  return Promise.all([onDispatch, scopesLoaded]);
+}
+
+async function waitForPausedInOriginalFileAndToggleMapScopes(
+  dbg,
+  expectedSelectedSource = null
+) {
+  // Original variable mapping is not switched on, so do not wait for any loaded scopes
+  await waitForPaused(dbg, expectedSelectedSource, {
+    shouldWaitForLoadedScopes: false,
+  });
+  await toggleMapScopes(dbg);
+}
+
+function toggleExpressions(dbg) {
+  return findElement(dbg, "expressionsHeader").click();
 }
 
 function toggleScopes(dbg) {
@@ -2042,11 +2092,11 @@ function rightClickScopeNode(dbg, index) {
   rightClickObjectInspectorNode(dbg, findElement(dbg, "scopeNode", index));
 }
 
-function getScopeLabel(dbg, index) {
+function getScopeNodeLabel(dbg, index) {
   return findElement(dbg, "scopeNode", index).innerText;
 }
 
-function getScopeValue(dbg, index) {
+function getScopeNodeValue(dbg, index) {
   return findElement(dbg, "scopeValue", index).innerText;
 }
 
@@ -2156,13 +2206,19 @@ async function clickAtPos(dbg, pos) {
   info(
     `Clicking on token ${tokenEl.innerText} in line ${tokenEl.parentNode.innerText}`
   );
+  const ClickEventConstructor = Services.prefs.getBoolPref(
+    "dom.w3c_pointer_events.dispatch_click_as_pointer_event"
+  )
+    ? PointerEvent
+    : MouseEvent;
   tokenEl.dispatchEvent(
-    new MouseEvent("click", {
+    new ClickEventConstructor("click", {
       bubbles: true,
       cancelable: true,
       view: dbg.win,
-      clientX: left,
-      clientY: top,
+      // Shift by one as we might be on the edge of the element and click on previous line/column
+      clientX: left + 1,
+      clientY: top + 1,
     })
   );
 }
@@ -2187,11 +2243,25 @@ async function hoverAtPos(dbg, pos) {
 }
 
 function hoverToken(tokenEl) {
-  info(`Hovering on token "${tokenEl.innerText}"`);
+  info(`Hovering on token <${tokenEl.innerText}>`);
 
-  // This first event helps utils/editor/token-events.js to receive the right mouseover event
-  EventUtils.synthesizeMouseAtCenter(
-    tokenEl,
+  // We can't use synthesizeMouse(AtCenter) as it's using the element bounding client rect.
+  // But here, we might have a token that wraps on multiple line and the center of the
+  // bounding client rect won't actually hover the token.
+  // +───────────────────────+
+  // │      myLongVariableNa│
+  // │me         +          │
+  // +───────────────────────+
+
+  // Instead, we need to get the first quad.
+  const { p1, p2, p3 } = tokenEl.getBoxQuads()[0];
+  const x = p1.x + (p2.x - p1.x) / 2;
+  const y = p1.y + (p3.y - p1.y) / 2;
+
+  // This first event helps utils/editor/tokens.js to receive the right mouseover event
+  EventUtils.synthesizeMouseAtPoint(
+    x,
+    y,
     {
       type: "mouseover",
     },
@@ -2199,8 +2269,9 @@ function hoverToken(tokenEl) {
   );
 
   // This second event helps Popover to have :hover pseudoclass set on the token element
-  EventUtils.synthesizeMouseAtCenter(
-    tokenEl,
+  EventUtils.synthesizeMouseAtPoint(
+    x,
+    y,
     {
       type: "mousemove",
     },
@@ -2230,10 +2301,24 @@ async function closePreviewForToken(
 
   // Force "mousing out" from all elements.
   //
-  // This helps utils/editor/token-events.js to receive the right mouseleave event.
+  // This helps utils/editor/tokens.js to receive the right mouseleave event.
   // This is super important as it will then allow re-emitting a tokenenter event if you try to re-preview the same token!
-  EventUtils.synthesizeMouseAtCenter(
+  // We can't use synthesizeMouse(AtCenter) as it's using the element bounding client rect.
+  // But here, we might have a token that wraps on multiple line and the center of the
+  // bounding client rect won't actually hover the token.
+  // +───────────────────────+
+  // │      myLongVariableNa│
+  // │me         +          │
+  // +───────────────────────+
+
+  // Instead, we need to get the first quad.
+  const { p1, p2, p3 } = tokenEl.getBoxQuads()[0];
+  const x = p1.x + (p2.x - p1.x) / 2;
+  const y = p1.y + (p3.y - p1.y) / 2;
+  EventUtils.synthesizeMouseAtPoint(
     tokenEl,
+    x,
+    y,
     {
       type: "mouseout",
     },
@@ -2261,9 +2346,20 @@ async function closePreviewForToken(
   info("Preview closed");
 }
 
-// tryHovering will hover at a position every second until we
-// see a preview element (popup, tooltip) appear. Once it appears,
-// it considers it a success.
+/**
+ * Hover at a position until we see a preview element (popup, tooltip) appear.
+ * ⚠️ Note that this is using CodeMirror method to retrieve the token element
+ * and that could be subject to CodeMirror bugs / outdated internal state
+ *
+ * @param {Debugger} dbg
+ * @param {Integer} line: The line we want to hover over
+ * @param {Integer} column: The column we want to hover over
+ * @param {String} elementName: "Selector" string that will be passed to waitForElement,
+ *                              describing the element that should be displayed on hover.
+ * @returns Promise<{element, tokenEl}>
+ *          element is the DOM element matching the passed elementName
+ *          tokenEl is the DOM element for the token we hovered
+ */
 async function tryHovering(dbg, line, column, elementName) {
   ok(
     !findElement(dbg, elementName),
@@ -2271,41 +2367,130 @@ async function tryHovering(dbg, line, column, elementName) {
   );
 
   const tokenEl = await getTokenFromPosition(dbg, { line, column });
+  return tryHoverToken(dbg, tokenEl, elementName);
+}
+
+/**
+ * Retrieve the token element matching `expression` at line `line` and hover it.
+ * This is retrieving the token from the DOM, contrary to `tryHovering`, which calls
+ * CodeMirror internal method for this (and which might suffer from bugs / outdated internal state)
+ *
+ * @param {Debugger} dbg
+ * @param {String} expression: The text of the token we want to hover
+ * @param {Integer} line: The line the token should be at
+ * @param {Integer} column: The column the token should be at
+ * @param {String} elementName: "Selector" string that will be passed to waitForElement,
+ *                              describing the element that should be displayed on hover.
+ * @returns Promise<{element, tokenEl}>
+ *          element is the DOM element matching the passed elementName
+ *          tokenEl is the DOM element for the token we hovered
+ */
+async function tryHoverTokenAtLine(dbg, expression, line, column, elementName) {
+  info("Scroll codeMirror to make the token visible");
+  const cm = getCM(dbg);
+  const onScrolled = waitForScrolling(cm);
+  cm.scrollIntoView({ line: line - 1, ch: 0 }, 0);
+  await onScrolled;
+
+  // Lookup for the token matching the passed expression
+  const tokenEl = getTokenElAtLine(dbg, expression, line, column);
+  if (!tokenEl) {
+    throw new Error(
+      `Couldn't find token <${expression}> on ${line}:${column}\n`
+    );
+  }
+
+  ok(true, `Found token <${expression}> on ${line}:${column}`);
+
+  return tryHoverToken(dbg, tokenEl, elementName);
+}
+
+async function tryHoverToken(dbg, tokenEl, elementName) {
   hoverToken(tokenEl);
 
   // Wait for the preview element to be created
   const element = await waitForElement(dbg, elementName);
-
   return { element, tokenEl };
 }
 
+/**
+ * Retrieve the token element matching `expression` at line `line`, from the DOM.
+ *
+ * @param {Debugger} dbg
+ * @param {String} expression: The text of the token we want to hover
+ * @param {Integer} line: The line the token should be at
+ * @param {Integer} column: The column the token should be at
+ * @returns {Element} the token element, or null if not found
+ */
+function getTokenElAtLine(dbg, expression, line, column = 0) {
+  info(`Search for <${expression}> token on ${line}:${column}`);
+  // Get the line gutter element matching the passed line
+  const lineGutterEl = [
+    ...dbg.win.document.querySelectorAll(".CodeMirror-linenumber"),
+  ].find(el => el.textContent === `${line}`);
+
+  // Get the related editor line
+  const editorLineEl = lineGutterEl
+    .closest(".CodeMirror-gutter-wrapper")
+    .parentElement.querySelector(".CodeMirror-line");
+
+  // Lookup for the token matching the passed expression
+  let currentColumn = 1;
+  return Array.from(editorLineEl.childNodes[0].childNodes).find(child => {
+    const childText = child.textContent;
+    currentColumn += childText.length;
+
+    // Only consider elements that are after the passed column
+    if (currentColumn < column) {
+      return false;
+    }
+    return childText === expression;
+  });
+}
+
+/**
+ * Wait for a few ms and assert that a tooltip preview was not displayed.
+ * @param {*} dbg
+ */
+async function assertNoTooltip(dbg) {
+  await wait(200);
+  const el = findElement(dbg, "previewPopup");
+  is(el, null, "Tooltip should not exist");
+}
+
+/**
+ * Hovers and asserts tooltip previews with simple text expressions (i.e numbers and strings)
+ * @param {*} dbg
+ * @param {Number} line
+ * @param {Number} column
+ * @param {Object} options
+ * @param {String}  options.result - Expected text shown in the preview
+ * @param {String}  options.expression - The expression hovered over
+ * @param {Boolean} options.doNotClose - Set to true to not close the tooltip
+ */
 async function assertPreviewTextValue(
   dbg,
   line,
   column,
-  { text, expression, doNotClose = false }
+  { result, expression, doNotClose = false }
 ) {
-  const { element: previewEl, tokenEl } = await tryHovering(
+  // CodeMirror refreshes after inline previews are displayed, so wait until they're rendered.
+  await waitForInlinePreviews(dbg);
+
+  const { element: previewEl, tokenEl } = await tryHoverTokenAtLine(
     dbg,
+    expression,
     line,
     column,
     "previewPopup"
   );
 
   ok(
-    tokenEl.innerText.includes(expression),
-    "Popup preview hovered expression is correct. Got: " +
-      tokenEl.innerText +
-      " Expected: " +
-      expression
-  );
-
-  ok(
-    previewEl.innerText.includes(text),
+    previewEl.innerText.includes(result),
     "Popup preview text shown to user. Got: " +
       previewEl.innerText +
       " Expected: " +
-      text
+      result
   );
 
   if (!doNotClose) {
@@ -2313,44 +2498,58 @@ async function assertPreviewTextValue(
   }
 }
 
-async function assertPreviewTooltip(dbg, line, column, { result, expression }) {
-  const { element: previewEl, tokenEl } = await tryHovering(
-    dbg,
-    line,
-    column,
-    "tooltip"
-  );
-
-  ok(
-    tokenEl.innerText.includes(expression),
-    "Tooltip preview hovered expression is correct. Got: " +
-      tokenEl.innerText +
-      " Expected: " +
-      expression
-  );
-
-  is(previewEl.innerText, result, "Tooltip preview text shown to user");
-
-  await closePreviewForToken(dbg, tokenEl);
-}
-
+/**
+ * Asserts multiple previews
+ * @param {*} dbg
+ * @param {Array} previews
+ */
 async function assertPreviews(dbg, previews) {
-  for (const { line, column, expression, result, fields } of previews) {
-    if (fields && result) {
-      throw new Error("Invalid test fixture");
+  // Move the cursor to the top left corner to have a clean state
+  EventUtils.synthesizeMouse(
+    findElement(dbg, "codeMirror"),
+    0,
+    0,
+    {
+      type: "mousemove",
+    },
+    dbg.win
+  );
+
+  // CodeMirror refreshes after inline previews are displayed, so wait until they're rendered.
+  await waitForInlinePreviews(dbg);
+
+  for (const { line, column, expression, result, header, fields } of previews) {
+    info(" # Assert preview on " + line + ":" + column);
+
+    if (result) {
+      await assertPreviewTextValue(dbg, line, column, {
+        expression,
+        result,
+      });
     }
 
-    info(" # Assert preview on " + line + ":" + column);
     if (fields) {
-      const { element: popupEl, tokenEl } = await tryHovering(
-        dbg,
-        line,
-        column,
-        "popup"
+      const { element: popupEl, tokenEl } = expression
+        ? await tryHoverTokenAtLine(dbg, expression, line, column, "popup")
+        : await tryHovering(dbg, line, column, "popup");
+
+      info("Wait for child nodes to load");
+      await waitUntil(
+        () => popupEl.querySelectorAll(".preview-popup .node").length > 1
       );
+      ok(true, "child nodes loaded");
+
       const oiNodes = Array.from(
         popupEl.querySelectorAll(".preview-popup .node")
       );
+
+      if (header) {
+        is(
+          oiNodes[0].querySelector(".objectBox").textContent,
+          header,
+          "popup has expected value"
+        );
+      }
 
       for (const [field, value] of fields) {
         const node = oiNodes.find(
@@ -2360,27 +2559,90 @@ async function assertPreviews(dbg, previews) {
           ok(false, `The "${field}" property is not displayed in the popup`);
         } else {
           is(
-            node.querySelector(".objectBox").textContent,
-            value,
-            `The "${field}" property has the expected value`
+            node.querySelector(".object-label").textContent,
+            field,
+            `The "${field}" property is displayed in the popup`
           );
+          if (value !== undefined) {
+            is(
+              node.querySelector(".objectBox").textContent,
+              value,
+              `The "${field}" property has the expected value`
+            );
+          }
         }
       }
 
       await closePreviewForToken(dbg, tokenEl, "popup");
-    } else {
-      await assertPreviewTextValue(dbg, line, column, {
-        expression,
-        text: result,
-      });
     }
   }
+}
+
+/**
+ * Asserts the inline expression preview value
+ * @param {*} dbg
+ * @param {Number} line
+ * @param {Number} column
+ * @param {Object} options
+ * @param {String}  options.result - Expected text shown in the preview
+ * @param {Array}  options.fields - The expected stacktrace information
+ */
+async function assertInlineExceptionPreview(
+  dbg,
+  line,
+  column,
+  { result, fields }
+) {
+  info(" # Assert preview on " + line + ":" + column);
+  const { element: popupEl, tokenEl } = await tryHovering(
+    dbg,
+    line,
+    column,
+    "previewPopup"
+  );
+
+  info("Wait for top level node to expand and child nodes to load");
+  await waitForElementWithSelector(
+    dbg,
+    ".exception-popup .exception-message .arrow.expanded"
+  );
+
+  is(
+    popupEl.querySelector(".preview-popup .exception-message .objectBox")
+      .textContent,
+    result,
+    "The correct result is not displayed in the popup"
+  );
+
+  await waitFor(() =>
+    popupEl.querySelectorAll(".preview-popup .exception-stacktrace .frame")
+  );
+  const stackFrameNodes = Array.from(
+    popupEl.querySelectorAll(".preview-popup .exception-stacktrace .frame")
+  );
+
+  for (const [field, value] of fields) {
+    const node = stackFrameNodes.find(
+      frameNode => frameNode.querySelector(".title")?.textContent === field
+    );
+    if (!node) {
+      ok(false, `The "${field}" property is not displayed in the popup`);
+    } else {
+      is(
+        node.querySelector(".location").textContent,
+        value,
+        `The "${field}" property has the expected value`
+      );
+    }
+  }
+
+  await closePreviewForToken(dbg, tokenEl, "previewPopup");
 }
 
 async function waitForBreakableLine(dbg, source, lineNumber) {
   await waitForState(
     dbg,
-    state => {
+    () => {
       const currentSource = findSource(dbg, source);
 
       const breakableLines =
@@ -2503,8 +2765,10 @@ async function addExpression(dbg, input) {
   findElementWithSelector(dbg, selectors.expressionInput).focus();
   type(dbg, input);
   const evaluated = waitForDispatch(dbg.store, "EVALUATE_EXPRESSION");
+  const clearAutocomplete = waitForDispatch(dbg.store, "CLEAR_AUTOCOMPLETE");
   pressKey(dbg, "Enter");
   await evaluated;
+  await clearAutocomplete;
 }
 
 async function editExpression(dbg, input) {
@@ -2601,7 +2865,11 @@ async function hasConsoleMessage({ toolbox }, msg) {
   });
 }
 
-function evaluateExpressionInConsole(hud, expression) {
+function evaluateExpressionInConsole(
+  hud,
+  expression,
+  expectedClassName = "result"
+) {
   const seenMessages = new Set(
     JSON.parse(
       hud.ui.outputNode
@@ -2613,7 +2881,7 @@ function evaluateExpressionInConsole(hud, expression) {
     const onNewMessage = messages => {
       for (const message of messages) {
         if (
-          message.node.classList.contains("result") &&
+          message.node.classList.contains(expectedClassName) &&
           !seenMessages.has(message.node.getAttribute("data-message-id"))
         ) {
           hud.ui.off("new-messages", onNewMessage);
@@ -2690,6 +2958,33 @@ async function toggleDebbuggerSettingsMenuItem(dbg, { className, isChecked }) {
   await waitFor(() => menuButton.getAttribute("aria-expanded") === "false");
 }
 
+/**
+ * Click on the source map button in the editor's footer
+ * and wait for its context menu to be rendered before clicking
+ * on one menuitem of it.
+ *
+ * @param {Object} dbg
+ * @param {String} className
+ *        The class name of the menuitem to click in the context menu.
+ */
+async function clickOnSourceMapMenuItem(dbg, className) {
+  const menuButton = findElement(dbg, "sourceMapFooterButton");
+  const { parent } = dbg.panel.panelWin;
+  const { document } = parent;
+
+  menuButton.click();
+  // Waits for the debugger settings panel to appear.
+  await waitFor(() => {
+    const menuListEl = document.querySelector("#debugger-source-map-list");
+    // Lets check the offsetParent property to make sure the menu list is actually visible
+    // by its parents display property being no longer "none".
+    return menuListEl && menuListEl.offsetParent !== null;
+  });
+
+  const menuItem = document.querySelector(className);
+  menuItem.click();
+}
+
 async function setLogPoint(dbg, index, value) {
   rightClickElement(dbg, "gutter", index);
   await waitForContextMenu(dbg);
@@ -2710,10 +3005,7 @@ async function setLogPoint(dbg, index, value) {
 function openProjectSearch(dbg) {
   info("Opening the project search panel");
   synthesizeKeyShortcut("CmdOrCtrl+Shift+F");
-  return waitForState(
-    dbg,
-    state => dbg.selectors.getActiveSearch() === "project"
-  );
+  return waitForState(dbg, () => dbg.selectors.getActiveSearch() === "project");
 }
 
 /**
@@ -2721,13 +3013,16 @@ function openProjectSearch(dbg) {
  *
  * @param {Object} dbg
  * @param {String} searchTerm - The test to search for
+ * @param {Number} expectedResults - The expected no of results to wait for.
+ *                                   This is the number of file results and not the numer of matches in all files.
+ *                                   When falsy value is passed, expects no match.
  * @return {Array} List of search results element nodes
  */
-async function doProjectSearch(dbg, searchTerm) {
+async function doProjectSearch(dbg, searchTerm, expectedResults) {
   await clearElement(dbg, "projectSearchSearchInput");
   type(dbg, searchTerm);
   pressKey(dbg, "Enter");
-  return waitForSearchResults(dbg);
+  return waitForSearchResults(dbg, expectedResults);
 }
 
 /**
@@ -2735,16 +3030,30 @@ async function doProjectSearch(dbg, searchTerm) {
  *
  * @param {Object} dbg
  * @param {Number} expectedResults - The expected no of results to wait for
+ *                                   This is the number of file results and not the numer of matches in all files.
  * @return (Array) List of search result element nodes
  */
 async function waitForSearchResults(dbg, expectedResults) {
-  await waitForState(dbg, state => state.projectTextSearch.status === "DONE");
   if (expectedResults) {
+    info(`Wait for ${expectedResults} project search results`);
     await waitUntil(
       () =>
         findAllElements(dbg, "projectSearchFileResults").length ==
         expectedResults
     );
+  } else {
+    // If no results are expected, wait for the "no results" message to be displayed.
+    info("Wait for project search to complete with no results");
+    await waitUntil(() => {
+      const projectSearchResult = findElementWithSelector(
+        dbg,
+        ".no-result-msg"
+      );
+      return projectSearchResult
+        ? projectSearchResult.textContent ==
+            DEBUGGER_L10N.getStr("projectTextSearch.noResults")
+        : false;
+    });
   }
   return findAllElements(dbg, "projectSearchFileResults");
 }
@@ -2769,19 +3078,14 @@ if (protocolHandler.hasSubstitution("testing-common")) {
   const { PromiseTestUtils } = ChromeUtils.importESModule(
     "resource://testing-common/PromiseTestUtils.sys.mjs"
   );
+  PromiseTestUtils.allowMatchingRejectionsGlobally(/Connection closed/);
+  this.PromiseTestUtils = PromiseTestUtils;
 
   // Debugger operations that are canceled because they were rendered obsolete by
   // a navigation or pause/resume end up as uncaught rejections. These never
   // indicate errors and are allowed in all debugger tests.
-  PromiseTestUtils.allowMatchingRejectionsGlobally(/Page has navigated/);
-  PromiseTestUtils.allowMatchingRejectionsGlobally(
-    /Current thread has changed/
-  );
-  PromiseTestUtils.allowMatchingRejectionsGlobally(
-    /Current thread has paused or resumed/
-  );
-  PromiseTestUtils.allowMatchingRejectionsGlobally(/Connection closed/);
-  this.PromiseTestUtils = PromiseTestUtils;
+  // All the following are related to context middleware throwing on obsolete async actions:
+  PromiseTestUtils.allowMatchingRejectionsGlobally(/DebuggerContextError/);
 }
 
 /**
@@ -2807,4 +3111,50 @@ async function selectBlackBoxContextMenuItem(dbg, itemName) {
   info(`Select the ${itemName} context menu item`);
   selectContextMenuItem(dbg, `#node-menu-${itemName}`);
   return wait;
+}
+
+function openOutlinePanel(dbg, waitForOutlineList = true) {
+  info("Select the outline panel");
+  const outlineTab = findElementWithSelector(dbg, ".outline-tab a");
+  EventUtils.synthesizeMouseAtCenter(outlineTab, {}, outlineTab.ownerGlobal);
+
+  if (!waitForOutlineList) {
+    return Promise.resolve();
+  }
+
+  return waitForElementWithSelector(dbg, ".outline-list");
+}
+
+// Test empty panel when source has not function or class symbols
+// Test that anonymous functions do not show in the outline panel
+function assertOutlineItems(dbg, expectedItems) {
+  const outlineItems = Array.from(
+    findAllElementsWithSelector(
+      dbg,
+      ".outline-list h2, .outline-list .outline-list__element"
+    )
+  );
+  SimpleTest.isDeeply(
+    outlineItems.map(i => i.innerText.trim()),
+    expectedItems,
+    "The expected items are displayed in the outline panel"
+  );
+}
+
+async function checkAdditionalThreadCount(dbg, count) {
+  await waitForState(
+    dbg,
+    () => {
+      return dbg.selectors.getThreads().length == count;
+    },
+    "Have the expected number of additional threads"
+  );
+  ok(true, `Have ${count} threads`);
+}
+
+/**
+ * Retrieve the text displayed as warning under the editor.
+ */
+function findFooterNotificationMessage(dbg) {
+  return findElement(dbg, "editorNotificationFooter")?.innerText;
 }

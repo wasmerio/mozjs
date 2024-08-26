@@ -109,7 +109,9 @@ class BaselineFrame {
   bool isConstructing() const {
     return CalleeTokenIsConstructing(calleeToken());
   }
-  JSScript* script() const { return ScriptFromCalleeToken(calleeToken()); }
+  JSScript* script() const {
+    return MaybeForwardedScriptFromCalleeToken(calleeToken());
+  }
   JSFunction* callee() const { return CalleeTokenToFunction(calleeToken()); }
   Value calleev() const { return ObjectValue(*callee()); }
 
@@ -303,8 +305,12 @@ class BaselineFrame {
 
   [[nodiscard]] inline bool pushLexicalEnvironment(JSContext* cx,
                                                    Handle<LexicalScope*> scope);
-  [[nodiscard]] inline bool freshenLexicalEnvironment(JSContext* cx);
-  [[nodiscard]] inline bool recreateLexicalEnvironment(JSContext* cx);
+  template <bool IsDebuggee>
+  [[nodiscard]] inline bool freshenLexicalEnvironment(
+      JSContext* cx, const jsbytecode* pc = nullptr);
+  template <bool IsDebuggee>
+  [[nodiscard]] inline bool recreateLexicalEnvironment(
+      JSContext* cx, const jsbytecode* pc = nullptr);
 
   [[nodiscard]] bool initFunctionEnvironmentObjects(JSContext* cx);
   [[nodiscard]] bool pushClassBodyEnvironment(JSContext* cx,

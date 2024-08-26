@@ -1,0 +1,1 @@
+In, 2, 3, 6, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(3) LASTUSED(4) LASTUSED(4) , OP(GuardToObject) ID(1) OP(GuardIsFixedLengthTypedArray) ID(1) OP(GuardToInt32) ID(0) OP(Int32ToIntPtr) ID(0) ID(2) OP(LoadTypedArrayElementExistsResult) ID(1) ID(2) ARRAYBUFFERVIEWKIND(FixedLength) OP(ReturnFromIC)  

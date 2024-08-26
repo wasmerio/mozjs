@@ -50,7 +50,7 @@ add_heuristic_tests(
           },
           fields: [
             { fieldName: "given-name" },
-            { fieldName: "family-name" },
+            { fieldName: "family-name"  },
             { fieldName: "organization" },
             { fieldName: "address-line1" },
             { fieldName: "address-line2" },

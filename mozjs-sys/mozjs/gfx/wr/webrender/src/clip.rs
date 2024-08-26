@@ -92,7 +92,7 @@
 //! [segment.rs]: ../segment/index.html
 //!
 
-use api::{BorderRadius, ClipMode, ComplexClipRegion, ImageMask, ClipId, ClipChainId};
+use api::{BorderRadius, ClipMode, ImageMask, ClipId, ClipChainId};
 use api::{BoxShadowClipMode, FillRule, ImageKey, ImageRendering};
 use api::units::*;
 use crate::image_tiling::{self, Repetition};
@@ -107,6 +107,8 @@ use crate::internal_types::{FastHashMap, FastHashSet, LayoutPrimitiveInfo};
 use crate::prim_store::{VisibleMaskImageTile};
 use crate::prim_store::{PointKey, SizeKey, RectangleKey, PolygonKey};
 use crate::render_task_cache::to_cache_size;
+use crate::render_task::RenderTask;
+use crate::render_task_graph::RenderTaskGraphBuilder;
 use crate::resource_cache::{ImageRequest, ResourceCache};
 use crate::scene_builder_thread::Interners;
 use crate::space::SpaceMapper;
@@ -890,14 +892,26 @@ impl From<ClipItemKey> for ClipNode {
 }
 
 // Flags that are attached to instances of clip nodes.
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[derive(Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, MallocSizeOf)]
+pub struct ClipNodeFlags(u8);
+
 bitflags! {
-    #[cfg_attr(feature = "capture", derive(Serialize))]
-    #[cfg_attr(feature = "replay", derive(Deserialize))]
-    #[derive(MallocSizeOf)]
-    pub struct ClipNodeFlags: u8 {
+    impl ClipNodeFlags : u8 {
         const SAME_SPATIAL_NODE = 0x1;
         const SAME_COORD_SYSTEM = 0x2;
         const USE_FAST_PATH = 0x4;
+    }
+}
+
+impl core::fmt::Debug for ClipNodeFlags {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        if self.is_empty() {
+            write!(f, "{:#x}", Self::empty().bits())
+        } else {
+            bitflags::parser::to_writer(self, f)
+        }
     }
 }
 
@@ -907,7 +921,7 @@ bitflags! {
 // an index to the node data itself, as well as
 // some flags describing how this clip node instance
 // is positioned.
-#[derive(Debug, MallocSizeOf)]
+#[derive(Debug, Clone, MallocSizeOf)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct ClipNodeInstance {
@@ -952,7 +966,7 @@ impl ClipNodeRange {
 //TODO: merge with `CoordinateSpaceMapping`?
 #[derive(Debug, MallocSizeOf)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
-enum ClipSpaceConversion {
+pub enum ClipSpaceConversion {
     Local,
     ScaleOffset(ScaleOffset),
     Transform(LayoutToWorldTransform),
@@ -960,7 +974,7 @@ enum ClipSpaceConversion {
 
 impl ClipSpaceConversion {
     /// Construct a new clip space converter between two spatial nodes.
-    fn new(
+    pub fn new(
         prim_spatial_node_index: SpatialNodeIndex,
         clip_spatial_node_index: SpatialNodeIndex,
         spatial_tree: &SpatialTree,
@@ -974,9 +988,8 @@ impl ClipSpaceConversion {
         if prim_spatial_node_index == clip_spatial_node_index {
             ClipSpaceConversion::Local
         } else if prim_spatial_node.coordinate_system_id == clip_spatial_node.coordinate_system_id {
-            let scale_offset = prim_spatial_node.content_transform
-                .inverse()
-                .accumulate(&clip_spatial_node.content_transform);
+            let scale_offset = clip_spatial_node.content_transform
+                .then(&prim_spatial_node.content_transform.inverse());
             ClipSpaceConversion::ScaleOffset(scale_offset)
         } else {
             ClipSpaceConversion::Transform(
@@ -1020,6 +1033,7 @@ impl ClipNodeInfo {
         resource_cache: &mut ResourceCache,
         mask_tiles: &mut Vec<VisibleMaskImageTile>,
         spatial_tree: &SpatialTree,
+        rg_builder: &mut RenderTaskGraphBuilder,
         request_resources: bool,
     ) -> Option<ClipNodeInstance> {
         // Calculate some flags that are required for the segment
@@ -1076,21 +1090,45 @@ impl ClipNodeInfo {
                             tile_size as i32,
                         );
                         for tile in tiles {
+                            let req = request.with_tile(tile.offset);
+
                             if request_resources {
                                 resource_cache.request_image(
-                                    request.with_tile(tile.offset),
+                                    req,
                                     gpu_cache,
                                 );
                             }
+
+                            let task_id = rg_builder.add().init(
+                                RenderTask::new_image(props.descriptor.size, req)
+                            );
+
                             mask_tiles.push(VisibleMaskImageTile {
                                 tile_offset: tile.offset,
                                 tile_rect: tile.rect,
+                                task_id,
                             });
                         }
                     }
                     visible_tiles = Some(tile_range_start..mask_tiles.len());
-                } else if request_resources {
-                    resource_cache.request_image(request, gpu_cache);
+                } else {
+                    if request_resources {
+                        resource_cache.request_image(request, gpu_cache);
+                    }
+
+                    let tile_range_start = mask_tiles.len();
+
+                    let task_id = rg_builder.add().init(
+                        RenderTask::new_image(props.descriptor.size, request)
+                    );
+
+                    mask_tiles.push(VisibleMaskImageTile {
+                        tile_rect: rect,
+                        tile_offset: TileOffset::zero(),
+                        task_id,
+                    });
+
+                    visible_tiles = Some(tile_range_start .. mask_tiles.len());
                 }
             } else {
                 // If the supplied image key doesn't exist in the resource cache,
@@ -1368,6 +1406,7 @@ impl ClipStore {
         device_pixel_scale: DevicePixelScale,
         world_rect: &WorldRect,
         clip_data_store: &mut ClipDataStore,
+        rg_builder: &mut RenderTaskGraphBuilder,
         request_resources: bool,
     ) -> Option<ClipChainInstance> {
         let local_clip_rect = match self.active_local_clip_rect {
@@ -1434,6 +1473,7 @@ impl ClipStore {
                         resource_cache,
                         &mut self.mask_tiles,
                         spatial_tree,
+                        rg_builder,
                         request_resources,
                     ) {
                         // As a special case, a partial accept of a clip rect that is
@@ -1507,23 +1547,6 @@ impl ClipStore {
         } else {
             &[]
         }
-    }
-}
-
-pub struct ComplexTranslateIter<I> {
-    source: I,
-    offset: LayoutVector2D,
-}
-
-impl<I: Iterator<Item = ComplexClipRegion>> Iterator for ComplexTranslateIter<I> {
-    type Item = ComplexClipRegion;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.source
-            .next()
-            .map(|mut complex| {
-                complex.rect = complex.rect.translate(self.offset);
-                complex
-            })
     }
 }
 

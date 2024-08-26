@@ -32,6 +32,10 @@ const FETCH_URI = "https://example.com/document-builder.sjs?html=foo";
 const uuid = `${Date.now()}-${Math.random()}`;
 const IMAGE_URI = URL_ROOT_SSL + "test_image.png?" + uuid;
 
+// Loading the content page might also trigger priviledge image requests from the firefox UI, this seems to
+// happen when a new tab is created for the page.
+const ignoreRequestPatterns = "file:///";
+
 add_task(async function testParentProcessRequests() {
   // The test expects the main process commands instance to receive resources
   // for content process requests.
@@ -46,6 +50,9 @@ add_task(async function testParentProcessRequests() {
   const onAvailable = resources => {
     for (const resource of resources) {
       if (resource.resourceType == resourceCommand.TYPES.NETWORK_EVENT) {
+        if (resource.url.startsWith(ignoreRequestPatterns)) {
+          return;
+        }
         receivedNetworkEvents.push(resource);
       } else if (
         resource.resourceType == resourceCommand.TYPES.NETWORK_EVENT_STACKTRACE
@@ -140,6 +147,10 @@ add_task(async function testParentProcessRequests() {
     secondImageRequest.url,
     IMAGE_URI,
     "The third resource is for the second image request"
+  );
+  await waitFor(
+    () => secondImageRequest.fromCache,
+    "Wait for fromCache attribute to be set asynchronously via a resource update"
   );
   ok(secondImageRequest.fromCache, "The second image request is cached");
   ok(

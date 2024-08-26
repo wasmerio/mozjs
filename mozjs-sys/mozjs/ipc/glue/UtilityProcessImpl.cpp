@@ -7,6 +7,7 @@
 
 #include "mozilla/ipc/IOThreadChild.h"
 #include "mozilla/GeckoArgs.h"
+#include "mozilla/ProcInfo.h"
 
 #if defined(XP_WIN)
 #  include "nsExceptionHandler.h"
@@ -20,6 +21,10 @@
 
 #if defined(XP_OPENBSD) && defined(MOZ_SANDBOX)
 #  include "mozilla/SandboxSettings.h"
+#endif
+
+#if defined(MOZ_WMF_CDM) && defined(MOZ_SANDBOX)
+#  include "mozilla/MFCDMParent.h"
 #endif
 
 namespace mozilla::ipc {
@@ -86,6 +91,10 @@ bool UtilityProcessImpl::Init(int aArgc, char* aArgv[]) {
   // lower the sandbox in processes where the policy will prevent loading.
   LoadLibraryOrCrash(L"winmm.dll");
 
+  // Call this once before enabling the sandbox, it will cache its result
+  // in a static variable.
+  GetCpuFrequencyMHz();
+
   if (*sandboxingKind == SandboxingKind::GENERIC_UTILITY) {
     // Preload audio generic libraries required for ffmpeg only
     UtilityAudioDecoderParent::GenericPreloadForSandbox();
@@ -105,6 +114,17 @@ bool UtilityProcessImpl::Init(int aArgc, char* aArgv[]) {
   if (*sandboxingKind != SandboxingKind::GENERIC_UTILITY) {
     StartOpenBSDSandbox(GeckoProcessType_Utility,
                         (SandboxingKind)*sandboxingKind);
+  }
+#endif
+
+#if defined(MOZ_WMF_CDM) && defined(MOZ_SANDBOX)
+  if (*sandboxingKind == MF_MEDIA_ENGINE_CDM) {
+    Maybe<const char*> pluginPath = geckoargs::sPluginPath.Get(aArgc, aArgv);
+    if (pluginPath) {
+      MFCDMParent::SetWidevineL1Path(*pluginPath);
+    } else {
+      NS_WARNING("No Widevine L1 plugin for the utility process!");
+    }
   }
 #endif
 

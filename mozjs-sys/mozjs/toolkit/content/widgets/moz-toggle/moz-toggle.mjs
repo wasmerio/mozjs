@@ -22,11 +22,6 @@ import "chrome://global/content/elements/moz-label.mjs";
  *  Custom event indicating that the toggle's pressed state has changed.
  */
 export default class MozToggle extends MozLitElement {
-  static shadowRootOptions = {
-    ...MozLitElement.shadowRootOptions,
-    delegatesFocus: true,
-  };
-
   static properties = {
     pressed: { type: Boolean, reflect: true },
     disabled: { type: Boolean, reflect: true },
@@ -43,11 +38,6 @@ export default class MozToggle extends MozLitElement {
       descriptionEl: "#moz-toggle-description",
     };
   }
-
-  // Use a relative URL in storybook to get faster reloads on style changes.
-  static stylesheetUrl = window.IS_STORYBOOK
-    ? "./moz-toggle/moz-toggle.css"
-    : "chrome://global/content/elements/moz-toggle.css";
 
   constructor() {
     super();
@@ -70,24 +60,9 @@ export default class MozToggle extends MozLitElement {
     this.buttonEl.click();
   }
 
-  labelTemplate() {
-    if (this.label) {
-      return html`
-        <span class="label-wrapper">
-          <label
-            is="moz-label"
-            id="moz-toggle-label"
-            part="label"
-            for="moz-toggle-button"
-            accesskey=${ifDefined(this.accessKey)}
-          >
-            ${this.label}
-          </label>
-          ${!this.description ? this.supportLinkTemplate() : ""}
-        </span>
-      `;
-    }
-    return "";
+  // Delegate focus to the input element
+  focus() {
+    this.buttonEl.focus();
   }
 
   descriptionTemplate() {
@@ -95,7 +70,7 @@ export default class MozToggle extends MozLitElement {
       return html`
         <p
           id="moz-toggle-description"
-          class="description-wrapper"
+          class="description-wrapper text-deemphasized"
           part="description"
         >
           ${this.description} ${this.supportLinkTemplate()}
@@ -109,11 +84,9 @@ export default class MozToggle extends MozLitElement {
     return html` <slot name="support-link"></slot> `;
   }
 
-  render() {
+  buttonTemplate() {
     const { pressed, disabled, description, ariaLabel, handleClick } = this;
     return html`
-      <link rel="stylesheet" href=${this.constructor.stylesheetUrl} />
-      ${this.labelTemplate()}
       <button
         id="moz-toggle-button"
         part="button"
@@ -127,6 +100,32 @@ export default class MozToggle extends MozLitElement {
         )}
         @click=${handleClick}
       ></button>
+    `;
+  }
+
+  render() {
+    return html`
+      <link
+        rel="stylesheet"
+        href="chrome://global/content/elements/moz-toggle.css"
+      />
+      ${this.label
+        ? html`
+            <label
+              is="moz-label"
+              id="moz-toggle-label"
+              part="label"
+              for="moz-toggle-button"
+              accesskey=${ifDefined(this.accessKey)}
+            >
+              <span>
+                ${this.label}
+                ${!this.description ? this.supportLinkTemplate() : ""}
+              </span>
+              ${this.buttonTemplate()}
+            </label>
+          `
+        : this.buttonTemplate()}
       ${this.descriptionTemplate()}
     `;
   }

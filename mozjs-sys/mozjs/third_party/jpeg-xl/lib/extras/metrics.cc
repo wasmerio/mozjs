@@ -16,6 +16,7 @@
 #include <hwy/highway.h>
 
 #include "lib/jxl/base/compiler_specific.h"
+#include "lib/jxl/base/rect.h"
 #include "lib/jxl/base/status.h"
 #include "lib/jxl/color_encoding_internal.h"
 HWY_BEFORE_NAMESPACE();
@@ -42,7 +43,7 @@ double ComputeDistanceP(const ImageF& distmap, const ButteraugliParams& params,
     using T = float;
 #endif
     const HWY_FULL(T) d;
-    constexpr size_t N = MaxLanes(HWY_FULL(T)());
+    constexpr size_t N = MaxLanes(d);
     // Manually aligned storage to avoid asan crash on clang-7 due to
     // unaligned spill.
     HWY_ALIGN T sum_totals0[N] = {0};

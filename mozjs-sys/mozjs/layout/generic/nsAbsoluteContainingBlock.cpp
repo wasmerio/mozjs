@@ -93,16 +93,14 @@ void nsAbsoluteContainingBlock::InsertFrames(nsIFrame* aDelegatingFrame,
       aDelegatingFrame, IntrinsicDirty::None, NS_FRAME_HAS_DIRTY_CHILDREN);
 }
 
-void nsAbsoluteContainingBlock::RemoveFrame(nsIFrame* aDelegatingFrame,
+void nsAbsoluteContainingBlock::RemoveFrame(FrameDestroyContext& aContext,
                                             FrameChildListID aListID,
                                             nsIFrame* aOldFrame) {
   NS_ASSERTION(mChildListID == aListID, "unexpected child list");
-  nsIFrame* nif = aOldFrame->GetNextInFlow();
-  if (nif) {
-    nif->GetParent()->DeleteNextInFlowChild(nif, false);
+  if (nsIFrame* nif = aOldFrame->GetNextInFlow()) {
+    nif->GetParent()->DeleteNextInFlowChild(aContext, nif, false);
   }
-
-  mAbsoluteFrames.DestroyFrame(aOldFrame);
+  mAbsoluteFrames.DestroyFrame(aContext, aOldFrame);
 }
 
 static void MaybeMarkAncestorsAsHavingDescendantDependentOnItsStaticPos(
@@ -224,8 +222,7 @@ void nsAbsoluteContainingBlock::Reflow(nsContainerFrame* aDelegatingFrame,
                  "ShouldAvoidBreakInside should prevent this from happening");
       nsIFrame* nextFrame = kidFrame->GetNextInFlow();
       if (!kidStatus.IsFullyComplete() &&
-          aDelegatingFrame->IsFrameOfType(
-              nsIFrame::eCanContainOverflowContainers)) {
+          aDelegatingFrame->CanContainOverflowContainers()) {
         // Need a continuation
         if (!nextFrame) {
           nextFrame = aPresContext->PresShell()
@@ -238,12 +235,11 @@ void nsAbsoluteContainingBlock::Reflow(nsContainerFrame* aDelegatingFrame,
         // to keep continuations within an nsAbsoluteContainingBlock eventually.
         tracker.Insert(nextFrame, kidStatus);
         reflowStatus.MergeCompletionStatusFrom(kidStatus);
-      } else {
+      } else if (nextFrame) {
         // Delete any continuations
-        if (nextFrame) {
-          nsOverflowContinuationTracker::AutoFinish fini(&tracker, kidFrame);
-          nextFrame->GetParent()->DeleteNextInFlowChild(nextFrame, true);
-        }
+        nsOverflowContinuationTracker::AutoFinish fini(&tracker, kidFrame);
+        FrameDestroyContext context(aPresContext->PresShell());
+        nextFrame->GetParent()->DeleteNextInFlowChild(context, nextFrame, true);
       }
     } else {
       tracker.Skip(kidFrame, reflowStatus);
@@ -376,8 +372,8 @@ bool nsAbsoluteContainingBlock::FrameDependsOnContainer(nsIFrame* f,
     // and be positioned relative to the containing block right edge.
     // 'left' length and 'right' auto is the only combination we can be
     // sure of.
-    if ((wm.GetInlineDir() == WritingMode::eInlineRTL ||
-         wm.GetBlockDir() == WritingMode::eBlockRL) &&
+    if ((wm.GetInlineDir() == WritingMode::InlineDir::RTL ||
+         wm.GetBlockDir() == WritingMode::BlockDir::RL) &&
         !pos->mOffset.Get(eSideRight).IsAuto()) {
       return true;
     }
@@ -387,7 +383,7 @@ bool nsAbsoluteContainingBlock::FrameDependsOnContainer(nsIFrame* f,
       return true;
     }
     // See comment above for width changes.
-    if (wm.GetInlineDir() == WritingMode::eInlineBTT &&
+    if (wm.GetInlineDir() == WritingMode::InlineDir::BTT &&
         !pos->mOffset.Get(eSideBottom).IsAuto()) {
       return true;
     }
@@ -396,10 +392,8 @@ bool nsAbsoluteContainingBlock::FrameDependsOnContainer(nsIFrame* f,
   return false;
 }
 
-void nsAbsoluteContainingBlock::DestroyFrames(
-    nsIFrame* aDelegatingFrame, nsIFrame* aDestructRoot,
-    PostDestroyData& aPostDestroyData) {
-  mAbsoluteFrames.DestroyFramesFrom(aDestructRoot, aPostDestroyData);
+void nsAbsoluteContainingBlock::DestroyFrames(DestroyContext& aContext) {
+  mAbsoluteFrames.DestroyFrames(aContext);
 }
 
 void nsAbsoluteContainingBlock::MarkSizeDependentFramesDirty() {
@@ -528,7 +522,7 @@ static nscoord OffsetToAlignedStaticPos(const ReflowInput& aKidReflowInput,
     return 0;  // (leave the child at the start of its alignment container)
   }
 
-  nscoord alignAreaSizeInAxis = (pcAxis == eLogicalAxisInline)
+  nscoord alignAreaSizeInAxis = (pcAxis == LogicalAxis::Inline)
                                     ? alignAreaSize.ISize(pcWM)
                                     : alignAreaSize.BSize(pcWM);
 
@@ -625,7 +619,7 @@ void nsAbsoluteContainingBlock::ResolveSizeDependentOffsets(
       placeholderContainer = GetPlaceholderContainer(aKidReflowInput.mFrame);
       nscoord offset = OffsetToAlignedStaticPos(
           aKidReflowInput, aKidSize, logicalCBSizeOuterWM, placeholderContainer,
-          outerWM, eLogicalAxisInline);
+          outerWM, LogicalAxis::Inline);
       // Shift IStart from its current position (at start corner of the
       // alignment container) by the returned offset.  And set IEnd to the
       // distance between the kid's end edge to containing block's end edge.
@@ -645,7 +639,7 @@ void nsAbsoluteContainingBlock::ResolveSizeDependentOffsets(
       }
       nscoord offset = OffsetToAlignedStaticPos(
           aKidReflowInput, aKidSize, logicalCBSizeOuterWM, placeholderContainer,
-          outerWM, eLogicalAxisBlock);
+          outerWM, LogicalAxis::Block);
       // Shift BStart from its current position (at start corner of the
       // alignment container) by the returned offset.  And set BEnd to the
       // distance between the kid's end edge to containing block's end edge.
@@ -845,11 +839,10 @@ void nsAbsoluteContainingBlock::ReflowAbsoluteFrame(
     }
 
     LogicalRect rect(outerWM,
-                     border.IStart(outerWM) + offsets.IStart(outerWM) +
-                         margin.IStart(outerWM),
-                     border.BStart(outerWM) + offsets.BStart(outerWM) +
-                         margin.BStart(outerWM),
-                     kidSize.ISize(outerWM), kidSize.BSize(outerWM));
+                     border.StartOffset(outerWM) +
+                         offsets.StartOffset(outerWM) +
+                         margin.StartOffset(outerWM),
+                     kidSize);
     nsRect r = rect.GetPhysicalRect(
         outerWM, logicalCBSize.GetPhysicalSize(wm) +
                      border.Size(outerWM).GetPhysicalSize(outerWM));

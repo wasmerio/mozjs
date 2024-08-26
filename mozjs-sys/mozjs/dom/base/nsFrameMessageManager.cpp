@@ -456,7 +456,7 @@ bool nsFrameMessageManager::GetParamsForMessage(JSContext* aCx,
       do_GetService(NS_CONSOLESERVICE_CONTRACTID));
   if (console) {
     nsAutoString filename;
-    uint32_t lineno = 0, column = 0;
+    uint32_t lineno = 0, column = 1;
     nsJSUtils::GetCallingLocation(aCx, filename, &lineno, &column);
     nsCOMPtr<nsIScriptError> error(
         do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
@@ -474,15 +474,21 @@ bool nsFrameMessageManager::GetParamsForMessage(JSContext* aCx,
   //    properly cases when interface is implemented in JS and used
   //    as a dictionary.
   nsAutoString json;
-  NS_ENSURE_TRUE(
-      nsContentUtils::StringifyJSON(aCx, v, json, UndefinedIsNullStringLiteral),
-      false);
+  if (!nsContentUtils::StringifyJSON(aCx, v, json,
+                                     UndefinedIsNullStringLiteral)) {
+    NS_WARNING("nsContentUtils::StringifyJSON() failed");
+    JS_ClearPendingException(aCx);
+    return false;
+  }
   NS_ENSURE_TRUE(!json.IsEmpty(), false);
 
   JS::Rooted<JS::Value> val(aCx, JS::NullValue());
-  NS_ENSURE_TRUE(JS_ParseJSON(aCx, static_cast<const char16_t*>(json.get()),
-                              json.Length(), &val),
-                 false);
+  if (!JS_ParseJSON(aCx, static_cast<const char16_t*>(json.get()),
+                    json.Length(), &val)) {
+    NS_WARNING("JS_ParseJSON");
+    JS_ClearPendingException(aCx);
+    return false;
+  }
 
   aData.Write(aCx, val, rv);
   if (NS_WARN_IF(rv.Failed())) {
@@ -506,7 +512,7 @@ void nsFrameMessageManager::SendSyncMessage(JSContext* aCx,
                "Should not have parent manager in content!");
 
   AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
-      "nsFrameMessageManager::SendMessage", OTHER, aMessageName);
+      "nsFrameMessageManager::SendSyncMessage", OTHER, aMessageName);
   profiler_add_marker("SendSyncMessage", geckoprofiler::category::IPC, {},
                       FrameMessageMarker{}, aMessageName, true);
 
@@ -1403,8 +1409,7 @@ class nsAsyncMessageToSameProcessChild : public nsSameProcessAsyncMessageBase,
                                          public Runnable {
  public:
   nsAsyncMessageToSameProcessChild()
-      : nsSameProcessAsyncMessageBase(),
-        mozilla::Runnable("nsAsyncMessageToSameProcessChild") {}
+      : mozilla::Runnable("nsAsyncMessageToSameProcessChild") {}
   NS_IMETHOD Run() override {
     nsFrameMessageManager* ppm =
         nsFrameMessageManager::GetChildProcessManager();
@@ -1429,8 +1434,7 @@ class SameParentProcessMessageManagerCallback : public MessageManagerCallback {
                                   bool aRunInGlobalScope) override {
     auto* global = ContentProcessMessageManager::Get();
     MOZ_ASSERT(!aRunInGlobalScope);
-    global->LoadScript(aURL);
-    return true;
+    return global && global->LoadScript(aURL);
   }
 
   nsresult DoSendAsyncMessage(const nsAString& aMessage,
@@ -1498,7 +1502,7 @@ class nsAsyncMessageToSameProcessParent
     : public nsSameProcessAsyncMessageBase,
       public SameProcessMessageQueue::Runnable {
  public:
-  nsAsyncMessageToSameProcessParent() : nsSameProcessAsyncMessageBase() {}
+  nsAsyncMessageToSameProcessParent() = default;
   nsresult HandleMessage() override {
     nsFrameMessageManager* ppm =
         nsFrameMessageManager::sSameProcessParentManager;

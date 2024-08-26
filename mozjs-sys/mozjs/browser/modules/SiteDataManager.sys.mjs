@@ -2,20 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "gStringBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gStringBundle", function () {
   return Services.strings.createBundle(
     "chrome://browser/locale/siteData.properties"
   );
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "gBrandBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gBrandBundle", function () {
   return Services.strings.createBundle(
     "chrome://branding/locale/brand.properties"
   );
+});
+
+ChromeUtils.defineESModuleGetters(lazy, {
+  Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
 });
 
 export var SiteDataManager = {
@@ -106,6 +108,37 @@ export var SiteDataManager = {
       };
       this._sites.set(baseDomainOrHost, site);
     }
+    return site;
+  },
+
+  /**
+   * Insert site with specific params into the SiteDataManager
+   * Currently used for testing purposes
+   *
+   * @param {String} baseDomainOrHost
+   * @param {Object} Site info params
+   * @returns {Object} site object
+   */
+  _testInsertSite(
+    baseDomainOrHost,
+    {
+      cookies = [],
+      persisted = false,
+      quotaUsage = 0,
+      lastAccessed = 0,
+      principals = [],
+    }
+  ) {
+    let site = {
+      baseDomainOrHost,
+      cookies,
+      persisted,
+      quotaUsage,
+      lastAccessed,
+      principals,
+    };
+    this._sites.set(baseDomainOrHost, site);
+
     return site;
   },
 
@@ -331,6 +364,12 @@ export var SiteDataManager = {
     return false;
   },
 
+  /**
+   * Fetches total quota usage
+   * This method assumes that siteDataManager.updateSites has been called externally
+   *
+   * @returns total quota usage
+   */
   getTotalUsage() {
     return this._getQuotaUsagePromise.then(() => {
       let usage = 0;
@@ -339,6 +378,41 @@ export var SiteDataManager = {
       }
       return usage;
     });
+  },
+
+  /**
+   *
+   * Fetch quota usage for all time ranges to display in the clear data dialog.
+   * This method assumes that SiteDataManager.updateSites has been called externally
+   *
+   * @param {string[]} timeSpanArr - Array of timespan options to get quota usage
+   *              from Sanitizer, e.g. ["TIMESPAN_HOUR", "TIMESPAN_2HOURS"]
+   * @returns {Object} bytes used for each timespan
+   */
+  async getQuotaUsageForTimeRanges(timeSpanArr) {
+    let usage = {};
+    await this._getQuotaUsagePromise;
+
+    for (let timespan of timeSpanArr) {
+      usage[timespan] = 0;
+    }
+
+    let timeNow = Date.now();
+    for (let site of this._sites.values()) {
+      let lastAccessed = new Date(site.lastAccessed / 1000);
+      for (let timeSpan of timeSpanArr) {
+        let compareTime = new Date(
+          timeNow - lazy.Sanitizer.timeSpanMsMap[timeSpan]
+        );
+
+        if (timeSpan === "TIMESPAN_EVERYTHING") {
+          usage[timeSpan] += site.quotaUsage;
+        } else if (lastAccessed >= compareTime) {
+          usage[timeSpan] += site.quotaUsage;
+        }
+      }
+    }
+    return usage;
   },
 
   /**
@@ -418,40 +492,6 @@ export var SiteDataManager = {
     }
   },
 
-  _removeQuotaUsage(site) {
-    let promises = [];
-    let removals = new Set();
-    for (let principal of site.principals) {
-      let { originNoSuffix } = principal;
-      if (removals.has(originNoSuffix)) {
-        // In case of encountering
-        //   - https://www.foo.com
-        //   - https://www.foo.com^userContextId=2
-        // below we have already removed across OAs so skip the same origin without suffix
-        continue;
-      }
-      removals.add(originNoSuffix);
-      promises.push(
-        new Promise(resolve => {
-          // We are clearing *All* across OAs so need to ensure a principal without suffix here,
-          // or the call of `clearStoragesForPrincipal` would fail.
-          principal =
-            Services.scriptSecurityManager.createContentPrincipalFromOrigin(
-              originNoSuffix
-            );
-          let request = this._qms.clearStoragesForPrincipal(
-            principal,
-            null,
-            null,
-            true
-          );
-          request.callback = resolve;
-        })
-      );
-    }
-    return Promise.all(promises);
-  },
-
   _removeCookies(site) {
     for (let cookie of site.cookies) {
       Services.cookies.remove(
@@ -462,23 +502,6 @@ export var SiteDataManager = {
       );
     }
     site.cookies = [];
-  },
-
-  // Returns a list of permissions from the permission manager that
-  // we consider part of "site data and cookies".
-  _getDeletablePermissions() {
-    let perms = [];
-
-    for (let permission of Services.perms.all) {
-      if (
-        permission.type == "persistent-storage" ||
-        permission.type == "storage-access"
-      ) {
-        perms.push(permission);
-      }
-    }
-
-    return perms;
   },
 
   /**
@@ -502,14 +525,18 @@ export var SiteDataManager = {
     if (!Array.isArray(domainsOrHosts)) {
       domainsOrHosts = [domainsOrHosts];
     }
-    let perms = this._getDeletablePermissions();
+
     let promises = [];
     for (let domainOrHost of domainsOrHosts) {
       const kFlags =
         Ci.nsIClearDataService.CLEAR_COOKIES |
         Ci.nsIClearDataService.CLEAR_DOM_STORAGES |
         Ci.nsIClearDataService.CLEAR_EME |
-        Ci.nsIClearDataService.CLEAR_ALL_CACHES;
+        Ci.nsIClearDataService.CLEAR_ALL_CACHES |
+        Ci.nsIClearDataService.CLEAR_COOKIE_BANNER_EXECUTED_RECORD |
+        Ci.nsIClearDataService.CLEAR_FINGERPRINTING_PROTECTION_STATE |
+        Ci.nsIClearDataService.CLEAR_BOUNCE_TRACKING_PROTECTION_STATE |
+        Ci.nsIClearDataService.CLEAR_STORAGE_PERMISSIONS;
       promises.push(
         new Promise(function (resolve) {
           const { clearData } = Services;
@@ -537,19 +564,6 @@ export var SiteDataManager = {
           }
         })
       );
-
-      for (let perm of perms) {
-        // Specialcase local file permissions.
-        if (!domainOrHost) {
-          if (perm.principal.schemeIs("file")) {
-            Services.perms.removePermission(perm);
-          }
-        } else if (
-          Services.eTLD.hasRootDomain(perm.principal.host, domainOrHost)
-        ) {
-          Services.perms.removePermission(perm);
-        }
-      }
     }
 
     await Promise.all(promises);
@@ -644,17 +658,10 @@ export var SiteDataManager = {
   async removeSiteData() {
     await new Promise(function (resolve) {
       Services.clearData.deleteData(
-        Ci.nsIClearDataService.CLEAR_COOKIES |
-          Ci.nsIClearDataService.CLEAR_DOM_STORAGES |
-          Ci.nsIClearDataService.CLEAR_HSTS |
-          Ci.nsIClearDataService.CLEAR_EME,
+        Ci.nsIClearDataService.CLEAR_COOKIES_AND_SITE_DATA,
         resolve
       );
     });
-
-    for (let permission of this._getDeletablePermissions()) {
-      Services.perms.removePermission(permission);
-    }
 
     return this.updateSites();
   },

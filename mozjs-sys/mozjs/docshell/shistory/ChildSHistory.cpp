@@ -108,7 +108,7 @@ void ChildSHistory::SetIndexAndLength(uint32_t aIndex, uint32_t aLength,
 void ChildSHistory::Reload(uint32_t aReloadFlags, ErrorResult& aRv) {
   if (mozilla::SessionHistoryInParent()) {
     if (XRE_IsParentProcess()) {
-      nsISHistory* shistory =
+      nsCOMPtr<nsISHistory> shistory =
           mBrowsingContext->Canonical()->GetSessionHistory();
       if (shistory) {
         aRv = shistory->Reload(aReloadFlags);
@@ -120,7 +120,8 @@ void ChildSHistory::Reload(uint32_t aReloadFlags, ErrorResult& aRv) {
 
     return;
   }
-  aRv = mHistory->Reload(aReloadFlags);
+  nsCOMPtr<nsISHistory> shistory = mHistory;
+  aRv = shistory->Reload(aReloadFlags);
 }
 
 bool ChildSHistory::CanGo(int32_t aOffset) {
@@ -155,7 +156,8 @@ void ChildSHistory::Go(int32_t aOffset, bool aRequireUserInteraction,
     // Check for user interaction if desired, except for the first and last
     // history entries. We compare with >= to account for the case where
     // aOffset >= Count().
-    if (!aRequireUserInteraction || index.value() >= Count() - 1 ||
+    if (!StaticPrefs::browser_navigation_requireUserInteraction() ||
+        !aRequireUserInteraction || index.value() >= Count() - 1 ||
         index.value() <= 0) {
       break;
     }
@@ -207,7 +209,8 @@ void ChildSHistory::GotoIndex(int32_t aIndex, int32_t aOffset,
     }
 
     nsCOMPtr<nsISHistory> shistory = mHistory;
-    mBrowsingContext->HistoryGo(
+    RefPtr<BrowsingContext> bc = mBrowsingContext;
+    bc->HistoryGo(
         aOffset, mHistoryEpoch, aRequireUserInteraction, aUserActivation,
         [shistory](Maybe<int32_t>&& aRequestedIndex) {
           // FIXME Should probably only do this for non-fission.
@@ -216,7 +219,8 @@ void ChildSHistory::GotoIndex(int32_t aIndex, int32_t aOffset,
           }
         });
   } else {
-    aRv = mHistory->GotoIndex(aIndex, aUserActivation);
+    nsCOMPtr<nsISHistory> shistory = mHistory;
+    aRv = shistory->GotoIndex(aIndex, aUserActivation);
   }
 }
 
@@ -232,9 +236,9 @@ void ChildSHistory::RemovePendingHistoryNavigations() {
   mPendingNavigations.clear();
 }
 
-void ChildSHistory::EvictLocalContentViewers() {
+void ChildSHistory::EvictLocalDocumentViewers() {
   if (!mozilla::SessionHistoryInParent()) {
-    mHistory->EvictAllContentViewers();
+    mHistory->EvictAllDocumentViewers();
   }
 }
 

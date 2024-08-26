@@ -2,11 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { clearDocuments } from "../utils/editor";
 import sourceQueue from "../utils/source-queue";
 
 import { clearWasmStates } from "../utils/wasm";
-import { getMainThread } from "../selectors";
+import { getMainThread } from "../selectors/index";
 import { evaluateExpressionsForCurrentContext } from "../actions/expressions";
 
 /**
@@ -19,17 +18,10 @@ import { evaluateExpressionsForCurrentContext } from "../actions/expressions";
  * @static
  */
 export function willNavigate(event) {
-  return async function ({
-    dispatch,
-    getState,
-    client,
-    sourceMapLoader,
-    parserWorker,
-  }) {
+  return async function ({ dispatch, getState, sourceMapLoader }) {
     sourceQueue.clear();
     sourceMapLoader.clearSourceMaps();
     clearWasmStates();
-    clearDocuments();
     const thread = getMainThread(getState());
 
     dispatch({
@@ -44,7 +36,7 @@ export function willNavigate(event) {
  * @static
  */
 export function navigated() {
-  return async function ({ getState, dispatch, panel }) {
+  return async function ({ dispatch, panel }) {
     try {
       // Update the watched expressions once the page is fully loaded
       await dispatch(evaluateExpressionsForCurrentContext());

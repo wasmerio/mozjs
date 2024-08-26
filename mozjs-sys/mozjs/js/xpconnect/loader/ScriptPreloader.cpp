@@ -22,7 +22,9 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_javascript.h"
+#include "mozilla/TaskController.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/Try.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
@@ -30,9 +32,9 @@
 #include "mozilla/scache/StartupCache.h"
 
 #include "crc32c.h"
-#include "js/CompileOptions.h"          // JS::ReadOnlyCompileOptions
-#include "js/experimental/JSStencil.h"  // JS::Stencil, JS::DecodeStencil
-#include "js/experimental/CompileScript.h"  // JS::NewFrontendContext, JS::DestroyFrontendContext
+#include "js/CompileOptions.h"              // JS::ReadOnlyCompileOptions
+#include "js/experimental/JSStencil.h"      // JS::Stencil, JS::DecodeStencil
+#include "js/experimental/CompileScript.h"  // JS::NewFrontendContext, JS::DestroyFrontendContext, JS::SetNativeStackQuota, JS::ThreadStackQuotaForSize
 #include "js/Transcoding.h"
 #include "MainThreadUtils.h"
 #include "nsDebug.h"
@@ -114,13 +116,13 @@ nsresult ScriptPreloader::CollectReports(nsIHandleReportCallback* aHandleReport,
 
 StaticRefPtr<ScriptPreloader> ScriptPreloader::gScriptPreloader;
 StaticRefPtr<ScriptPreloader> ScriptPreloader::gChildScriptPreloader;
-UniquePtr<AutoMemMap> ScriptPreloader::gCacheData;
-UniquePtr<AutoMemMap> ScriptPreloader::gChildCacheData;
+StaticAutoPtr<AutoMemMap> ScriptPreloader::gCacheData;
+StaticAutoPtr<AutoMemMap> ScriptPreloader::gChildCacheData;
 
 ScriptPreloader& ScriptPreloader::GetSingleton() {
   if (!gScriptPreloader) {
     if (XRE_IsParentProcess()) {
-      gCacheData = MakeUnique<AutoMemMap>();
+      gCacheData = new AutoMemMap();
       gScriptPreloader = new ScriptPreloader(gCacheData.get());
       gScriptPreloader->mChildCache = &GetChildSingleton();
       Unused << gScriptPreloader->InitCache();
@@ -157,7 +159,7 @@ ScriptPreloader& ScriptPreloader::GetSingleton() {
 //  previous cache file, but I'd rather do that as a follow-up.
 ScriptPreloader& ScriptPreloader::GetChildSingleton() {
   if (!gChildScriptPreloader) {
-    gChildCacheData = MakeUnique<AutoMemMap>();
+    gChildCacheData = new AutoMemMap();
     gChildScriptPreloader = new ScriptPreloader(gChildCacheData.get());
     if (XRE_IsParentProcess()) {
       Unused << gChildScriptPreloader->InitCache(u"scriptCache-child"_ns);
@@ -710,9 +712,10 @@ Result<Ok, nsresult> ScriptPreloader::WriteCache() {
   }
 
   {
-    AutoFDClose fd;
+    AutoFDClose raiiFd;
     MOZ_TRY(cacheFile->OpenNSPRFileDesc(PR_WRONLY | PR_CREATE_FILE, 0644,
-                                        &fd.rwget()));
+                                        getter_Transfers(raiiFd)));
+    const auto fd = raiiFd.get();
 
     // We also need to hold mMonitor while we're touching scripts in
     // mScripts, or they may be freed before we're done with them.
@@ -939,7 +942,8 @@ void ScriptPreloader::FillDecodeOptionsForCachedStencil(
 }
 
 already_AddRefed<JS::Stencil> ScriptPreloader::GetCachedStencil(
-    JSContext* cx, const JS::DecodeOptions& options, const nsCString& path) {
+    JSContext* cx, const JS::ReadOnlyDecodeOptions& options,
+    const nsCString& path) {
   MOZ_RELEASE_ASSERT(
       !(XRE_IsContentProcess() && !mCacheInitialized),
       "ScriptPreloader must be initialized before getting cached "
@@ -965,7 +969,8 @@ already_AddRefed<JS::Stencil> ScriptPreloader::GetCachedStencil(
 }
 
 already_AddRefed<JS::Stencil> ScriptPreloader::GetCachedStencilInternal(
-    JSContext* cx, const JS::DecodeOptions& options, const nsCString& path) {
+    JSContext* cx, const JS::ReadOnlyDecodeOptions& options,
+    const nsCString& path) {
   auto* cachedScript = mScripts.Get(path);
   if (cachedScript) {
     return WaitForCachedStencil(cx, options, cachedScript);
@@ -974,8 +979,12 @@ already_AddRefed<JS::Stencil> ScriptPreloader::GetCachedStencilInternal(
 }
 
 already_AddRefed<JS::Stencil> ScriptPreloader::WaitForCachedStencil(
-    JSContext* cx, const JS::DecodeOptions& options, CachedStencil* script) {
+    JSContext* cx, const JS::ReadOnlyDecodeOptions& options,
+    CachedStencil* script) {
   if (!script->mReadyToExecute) {
+    // mReadyToExecute is kept as false only when off-thread decode task was
+    // available (pref is set to true) and the task was successfully created.
+    // See ScriptPreloader::StartDecodeTask methods.
     MOZ_ASSERT(mDecodedStencils);
 
     // Check for the finished operations that can contain our target.
@@ -1060,7 +1069,12 @@ void ScriptPreloader::OnDecodeTaskFailed() {
 void ScriptPreloader::FinishPendingParses(MonitorAutoLock& aMal) {
   mMonitor.AssertCurrentThreadOwns();
 
-  MOZ_ASSERT_IF(!mDecodingScripts.isEmpty(), mDecodedStencils);
+  // If off-thread decoding task hasn't been started, nothing to do.
+  // This can happen if the javascript.options.parallel_parsing pref was false,
+  // or the decode task fails to start.
+  if (!mDecodedStencils) {
+    return;
+  }
 
   // Process any pending decodes that are in flight.
   while (!mDecodingScripts.isEmpty()) {
@@ -1184,7 +1198,7 @@ void ScriptPreloader::StartDecodeTask(JS::HandleObject scope) {
 }
 
 bool ScriptPreloader::StartDecodeTask(
-    JS::DecodeOptions decodeOptions,
+    const JS::ReadOnlyDecodeOptions& decodeOptions,
     Vector<JS::TranscodeSource>&& decodingSources) {
   mDecodedStencils.emplace(decodingSources.length());
   MOZ_ASSERT(mDecodedStencils);
@@ -1213,9 +1227,8 @@ NS_IMETHODIMP ScriptPreloader::DecodeTask::Run() {
 
   auto cleanup = MakeScopeExit([&]() { JS::DestroyFrontendContext(fc); });
 
-  const size_t kDefaultStackQuota = 128 * sizeof(size_t) * 1024;
-
-  JS::SetNativeStackQuota(fc, kDefaultStackQuota);
+  size_t stackSize = TaskController::GetThreadStackSize();
+  JS::SetNativeStackQuota(fc, JS::ThreadStackQuotaForSize(stackSize));
 
   size_t remaining = mDecodingSources.length();
   for (auto& source : mDecodingSources) {
@@ -1269,7 +1282,7 @@ bool ScriptPreloader::CachedStencil::XDREncode(JSContext* cx) {
 }
 
 already_AddRefed<JS::Stencil> ScriptPreloader::CachedStencil::GetStencil(
-    JSContext* cx, const JS::DecodeOptions& options) {
+    JSContext* cx, const JS::ReadOnlyDecodeOptions& options) {
   MOZ_ASSERT(mReadyToExecute);
   if (mStencil) {
     return do_AddRef(mStencil);

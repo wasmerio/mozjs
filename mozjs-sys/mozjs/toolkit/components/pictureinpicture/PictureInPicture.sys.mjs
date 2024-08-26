@@ -14,6 +14,10 @@ XPCOMUtils.defineLazyServiceGetters(lazy, {
 });
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  ASRouter:
+    // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
+    "resource:///modules/asrouter/ASRouter.sys.mjs",
+  PageActions: "resource:///modules/PageActions.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
@@ -242,8 +246,6 @@ export var PictureInPicture = {
     let panel = browser.ownerDocument.querySelector("#PictureInPicturePanel");
 
     if (!panel) {
-      browser.ownerGlobal.ensureCustomElements("moz-toggle");
-      browser.ownerGlobal.ensureCustomElements("moz-support-link");
       let template = browser.ownerDocument.querySelector(
         "#PictureInPicturePanelTemplate"
       );
@@ -562,10 +564,15 @@ export var PictureInPicture = {
       this.getEligiblePipVideoCount(browser);
 
     let pipToggle = win.document.getElementById("picture-in-picture-button");
-    pipToggle.hidden = !(
+    if (
       totalPipCount === 1 ||
       (totalPipDisabled > 0 && lazy.RESPECT_PIP_DISABLED)
-    );
+    ) {
+      pipToggle.hidden = false;
+      lazy.PageActions.sendPlacedInUrlbarTrigger(pipToggle);
+    } else {
+      pipToggle.hidden = true;
+    }
 
     let browserHasPip = !!this.browserWeakMap.get(browser);
     if (browserHasPip) {
@@ -602,8 +609,36 @@ export var PictureInPicture = {
         this.togglePipPanel(browser);
         return;
       } else if (pipCount === 1) {
+        let eventExtraKeys = {};
+        if (
+          !Services.prefs.getBoolPref(TOGGLE_HAS_USED_PREF) &&
+          lazy.ASRouter.initialized
+        ) {
+          let { messages, messageImpressions } = lazy.ASRouter.state;
+          let pipCallouts = messages.filter(
+            message =>
+              message.template === "feature_callout" &&
+              message.content.screens.some(screen =>
+                screen.anchors.some(anchor =>
+                  anchor.selector.includes("picture-in-picture-button")
+                )
+              )
+          );
+          if (pipCallouts.length) {
+            // Has one of the callouts been seen in the last 48 hours?
+            let now = Date.now();
+            let callout = pipCallouts.some(message =>
+              messageImpressions[message.id]?.some(
+                impression => now - impression < 48 * 60 * 60 * 1000
+              )
+            );
+            if (callout) {
+              eventExtraKeys.callout = "true";
+            }
+          }
+        }
         let actor = windowGlobal.getActor("PictureInPictureToggle");
-        actor.sendAsyncMessage("PictureInPicture:UrlbarToggle");
+        actor.sendAsyncMessage("PictureInPicture:UrlbarToggle", eventExtraKeys);
         return;
       }
     }
@@ -1393,28 +1428,35 @@ export var PictureInPicture = {
 
     // We synthesize a new MouseEvent to propagate the inputSource to the
     // subsequently triggered popupshowing event.
-    let newEvent = document.createEvent("MouseEvent");
-    let screenX = data.screenXDevPx / window.devicePixelRatio;
-    let screenY = data.screenYDevPx / window.devicePixelRatio;
-    newEvent.initNSMouseEvent(
-      "contextmenu",
-      true,
-      true,
-      null,
-      0,
-      screenX,
-      screenY,
-      0,
-      0,
-      false,
-      false,
-      false,
-      false,
-      0,
-      null,
-      0,
-      data.mozInputSource
-    );
+    const ContextMenuEventConstructor = Services.prefs.getBoolPref(
+      "dom.w3c_pointer_events.dispatch_click_as_pointer_event"
+    )
+      ? PointerEvent
+      : MouseEvent;
+    let newEvent = new ContextMenuEventConstructor("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      screenX: data.screenXDevPx / window.devicePixelRatio,
+      screenY: data.screenYDevPx / window.devicePixelRatio,
+      pointerType: (() => {
+        switch (data.inputSource) {
+          case MouseEvent.MOZ_SOURCE_MOUSE:
+            return "mouse";
+          case MouseEvent.MOZ_SOURCE_PEN:
+            return "pen";
+          case MouseEvent.MOZ_SOURCE_ERASER:
+            return "eraser";
+          case MouseEvent.MOZ_SOURCE_CURSOR:
+            return "cursor";
+          case MouseEvent.MOZ_SOURCE_TOUCH:
+            return "touch";
+          case MouseEvent.MOZ_SOURCE_KEYBOARD:
+            return "keyboard";
+          default:
+            return "";
+        }
+      })(),
+    });
     popup.openPopupAtScreen(newEvent.screenX, newEvent.screenY, true, newEvent);
   },
 

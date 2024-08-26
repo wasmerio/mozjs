@@ -495,7 +495,7 @@ function pedanticChecks(report) {
         // qpSum
         if (stat.qpSum !== undefined) {
           ok(
-            stat.qpSum > 0,
+            stat.qpSum >= 0,
             `${stat.type}.qpSum is at least 0 ` +
               `${stat.kind} test. value=${stat.qpSum}`
           );
@@ -586,7 +586,7 @@ function pedanticChecks(report) {
       let avgJitterBufferDelay =
         stat.jitterBufferDelay / stat.jitterBufferEmittedCount;
       ok(
-        avgJitterBufferDelay > 0.01 && avgJitterBufferDelay < 10,
+        avgJitterBufferDelay > 0 && avgJitterBufferDelay < 10,
         `${stat.type}.jitterBufferDelay is a sane number for a short ` +
           `${stat.kind} test. value=${stat.jitterBufferDelay}/${stat.jitterBufferEmittedCount}=${avgJitterBufferDelay}`
       );
@@ -1121,8 +1121,11 @@ function pedanticChecks(report) {
           break;
         case "video/H264":
           ok(
-            stat.payloadType == 97 || stat.payloadType == 126,
-            `codec.payloadType for H264 was ${stat.payloadType}, exp. 97 or 126`
+            stat.payloadType == 97 ||
+              stat.payloadType == 126 ||
+              stat.payloadType == 103 ||
+              stat.payloadType == 105,
+            `codec.payloadType for H264 was ${stat.payloadType}, exp. 97, 126, 103, or 105`
           );
           break;
         default:
@@ -1345,16 +1348,16 @@ function pedanticChecks(report) {
 
         // bytesSent
         ok(
-          stat.bytesSent > 1000,
-          `${stat.type}.bytesSent is a sane number (>1,000) for a short ` +
-            `${stat.kind} test. value=${stat.bytesSent}`
+          stat.bytesSent > 100,
+          `${stat.type}.bytesSent is a sane number (>100) if media is flowing. ` +
+            `value=${stat.bytesSent}`
         );
 
         // bytesReceived
         ok(
-          stat.bytesReceived > 500,
-          `${stat.type}.bytesReceived is a sane number (>500) for a short ` +
-            `${stat.kind} test. value=${stat.bytesReceived}`
+          stat.bytesReceived > 100,
+          `${stat.type}.bytesReceived is a sane number (>100) if media is flowing. ` +
+            `value=${stat.bytesReceived}`
         );
 
         // lastPacketSentTimestamp

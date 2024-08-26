@@ -20,7 +20,6 @@ void IPDLParamTraits<mozilla::layers::DisplayListData>::Write(
   WriteIPDLParam(aWriter, aActor, std::move(aParam.mDLCache));
   WriteIPDLParam(aWriter, aActor, std::move(aParam.mDLSpatialTree));
   WriteIPDLParam(aWriter, aActor, aParam.mDLDesc);
-  WriteIPDLParam(aWriter, aActor, aParam.mRemotePipelineIds);
   WriteIPDLParam(aWriter, aActor, aParam.mResourceUpdates);
   WriteIPDLParam(aWriter, aActor, aParam.mSmallShmems);
   WriteIPDLParam(aWriter, aActor, std::move(aParam.mLargeShmems));
@@ -36,7 +35,6 @@ bool IPDLParamTraits<mozilla::layers::DisplayListData>::Read(
       ReadIPDLParam(aReader, aActor, &aResult->mDLCache) &&
       ReadIPDLParam(aReader, aActor, &aResult->mDLSpatialTree) &&
       ReadIPDLParam(aReader, aActor, &aResult->mDLDesc) &&
-      ReadIPDLParam(aReader, aActor, &aResult->mRemotePipelineIds) &&
       ReadIPDLParam(aReader, aActor, &aResult->mResourceUpdates) &&
       ReadIPDLParam(aReader, aActor, &aResult->mSmallShmems) &&
       ReadIPDLParam(aReader, aActor, &aResult->mLargeShmems) &&
@@ -49,7 +47,7 @@ bool IPDLParamTraits<mozilla::layers::DisplayListData>::Read(
 void WriteScrollUpdates(IPC::MessageWriter* aWriter, IProtocol* aActor,
                         layers::ScrollUpdatesMap& aParam) {
   // ICK: we need to manually serialize this map because
-  // nsDataHashTable doesn't support it (and other maps cause other issues)
+  // nsTHashMap doesn't support it (and other maps cause other issues)
   WriteIPDLParam(aWriter, aActor, aParam.Count());
   for (auto it = aParam.ConstIter(); !it.Done(); it.Next()) {
     WriteIPDLParam(aWriter, aActor, it.Key());

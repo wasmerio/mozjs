@@ -188,17 +188,15 @@ void XULButtonElement::OpenMenuPopup(bool aSelectFirstItem) {
   }
 
   // Open the menu asynchronously.
-  OwnerDoc()->Dispatch(
-      TaskCategory::Other,
-      NS_NewRunnableFunction(
-          "AsyncOpenMenu", [self = RefPtr{this}, aSelectFirstItem] {
-            if (self->GetMenuParent() && !self->IsMenuActive()) {
-              return;
-            }
-            if (nsXULPopupManager* pm = nsXULPopupManager::GetInstance()) {
-              pm->ShowMenu(self, aSelectFirstItem);
-            }
-          }));
+  OwnerDoc()->Dispatch(NS_NewRunnableFunction(
+      "AsyncOpenMenu", [self = RefPtr{this}, aSelectFirstItem] {
+        if (self->GetMenuParent() && !self->IsMenuActive()) {
+          return;
+        }
+        if (nsXULPopupManager* pm = nsXULPopupManager::GetInstance()) {
+          pm->ShowMenu(self, aSelectFirstItem);
+        }
+      }));
 }
 
 void XULButtonElement::CloseMenuPopup(bool aDeselectMenu) {
@@ -316,13 +314,12 @@ void XULButtonElement::StartBlinking() {
             "XULButtonElement::ContinueBlinking");
       },
       this, kBlinkDelay, nsITimer::TYPE_ONE_SHOT,
-      "XULButtonElement::StartBlinking",
-      OwnerDoc()->EventTargetFor(TaskCategory::Other));
+      "XULButtonElement::StartBlinking", GetMainThreadSerialEventTarget());
 }
 
-void XULButtonElement::UnbindFromTree(bool aNullParent) {
+void XULButtonElement::UnbindFromTree(UnbindContext& aContext) {
   StopBlinking();
-  nsXULElement::UnbindFromTree(aNullParent);
+  nsXULElement::UnbindFromTree(aContext);
 }
 
 void XULButtonElement::ExecuteMenu(WidgetEvent& aEvent) {
@@ -528,8 +525,7 @@ void XULButtonElement::PostHandleEventForMenus(
           self->OpenMenuPopup(false);
         },
         this, MenuOpenCloseDelay(), nsITimer::TYPE_ONE_SHOT,
-        "XULButtonElement::OpenMenu",
-        OwnerDoc()->EventTargetFor(TaskCategory::Other));
+        "XULButtonElement::OpenMenu", GetMainThreadSerialEventTarget());
   }
 }
 
@@ -573,7 +569,7 @@ nsresult XULButtonElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
       }
       if (NS_VK_RETURN == keyEvent->mKeyCode) {
         if (RefPtr<nsIDOMXULButtonElement> button = AsXULButton()) {
-          if (MouseClicked(*keyEvent)) {
+          if (OnPointerClicked(*keyEvent)) {
             aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
           }
         }
@@ -597,7 +593,7 @@ nsresult XULButtonElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
           EventStateManager* esm = aVisitor.mPresContext->EventStateManager();
           esm->SetContentState(nullptr, ElementState::ACTIVE);
           esm->SetContentState(nullptr, ElementState::HOVER);
-          if (MouseClicked(*keyEvent)) {
+          if (OnPointerClicked(*keyEvent)) {
             aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
           }
         }
@@ -605,10 +601,10 @@ nsresult XULButtonElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
       break;
     }
 
-    case eMouseClick: {
+    case ePointerClick: {
       WidgetMouseEvent* mouseEvent = event->AsMouseEvent();
       if (mouseEvent->IsLeftClickEvent()) {
-        if (MouseClicked(*mouseEvent)) {
+        if (OnPointerClicked(*mouseEvent)) {
           aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
         }
       }
@@ -636,7 +632,7 @@ void XULButtonElement::Blurred() {
   mIsHandlingKeyEvent = false;
 }
 
-bool XULButtonElement::MouseClicked(WidgetGUIEvent& aEvent) {
+bool XULButtonElement::OnPointerClicked(WidgetGUIEvent& aEvent) {
   // Don't execute if we're disabled.
   if (IsDisabled() || !IsInComposedDoc()) {
     return false;

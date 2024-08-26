@@ -2,20 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  AppProvidedSearchEngine:
+    "resource://gre/modules/AppProvidedSearchEngine.sys.mjs",
   DeferredTask: "resource://gre/modules/DeferredTask.sys.mjs",
+  ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
-});
-
-XPCOMUtils.defineLazyGetter(lazy, "logConsole", () => {
+ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
   return console.createInstance({
     prefix: "SearchSettings",
     maxLogLevel: lazy.SearchUtils.loggingEnabled ? "Debug" : "Warn",
@@ -23,6 +20,27 @@ XPCOMUtils.defineLazyGetter(lazy, "logConsole", () => {
 });
 
 const SETTINGS_FILENAME = "search.json.mozlz4";
+
+/**
+ * A map of engine ids to their previous names. These are required for
+ * ensuring that user's settings are correctly migrated for users upgrading
+ * from a settings file prior to settings version 7 (Firefox 108).
+ *
+ * @type {Map<string, string>}
+ */
+const ENGINE_ID_TO_OLD_NAME_MAP = new Map([
+  ["wikipedia@search.mozilla.orghy", "Wikipedia (hy)"],
+  ["wikipedia@search.mozilla.orgkn", "Wikipedia (kn)"],
+  ["wikipedia@search.mozilla.orglv", "Vikipēdija"],
+  ["wikipedia@search.mozilla.orgNO", "Wikipedia (no)"],
+  ["wikipedia@search.mozilla.orgel", "Wikipedia (el)"],
+  ["wikipedia@search.mozilla.orglt", "Wikipedia (lt)"],
+  ["wikipedia@search.mozilla.orgmy", "Wikipedia (my)"],
+  ["wikipedia@search.mozilla.orgpa", "Wikipedia (pa)"],
+  ["wikipedia@search.mozilla.orgpt", "Wikipedia (pt)"],
+  ["wikipedia@search.mozilla.orgsi", "Wikipedia (si)"],
+  ["wikipedia@search.mozilla.orgtr", "Wikipedia (tr)"],
+]);
 
 /**
  * This class manages the saves search settings.
@@ -33,6 +51,12 @@ const SETTINGS_FILENAME = "search.json.mozlz4";
 export class SearchSettings {
   constructor(searchService) {
     this.#searchService = searchService;
+
+    // Once the search service has initialized, schedule a write to ensure
+    // that any settings that may have changed or need updating are handled.
+    searchService.promiseInitialized.then(() => {
+      this._delayedWrite();
+    });
   }
 
   QueryInterface = ChromeUtils.generateQI([Ci.nsIObserver]);
@@ -93,11 +117,14 @@ export class SearchSettings {
   #settings = null;
 
   /**
-   * @type {object} A deep copy of #settings.
-   *   #cachedSettings is updated when we read the settings from disk and when
-   *   we write settings to disk. #cachedSettings is compared with #settings
-   *   before we do a write to disk. If there's no change to the settings
-   *   attributes, then we don't write the settings to disk.
+   * #cachedSettings is updated when we read the settings from disk and when
+   * we write settings to disk. #cachedSettings is compared with #settings
+   * before we do a write to disk. If there's no change to the settings
+   * attributes, then we don't write the settings to disk.
+   *
+   * This is a deep copy of #settings.
+   *
+   * @type {object}
    */
   #cachedSettings = {};
 
@@ -497,11 +524,19 @@ export class SearchSettings {
           case lazy.SearchUtils.MODIFIED_TYPE.REMOVED:
             this._delayedWrite();
             break;
+          case lazy.SearchUtils.MODIFIED_TYPE.ICON_CHANGED:
+            // Application Provided Search Engines have their icons stored in
+            // Remote Settings, so we don't need to update the saved settings.
+            if (
+              !(engine?.wrappedJSObject instanceof lazy.AppProvidedSearchEngine)
+            ) {
+              this._delayedWrite();
+            }
+            break;
         }
         break;
       case lazy.SearchUtils.TOPIC_SEARCH_SERVICE:
         switch (verb) {
-          case "init-complete":
           case "engines-reloaded":
             this._delayedWrite();
             break;
@@ -610,6 +645,38 @@ export class SearchSettings {
         );
       }
     }
+  }
+
+  /**
+   * Finds the settings for the engine, based on the version of the settings
+   * passed in. Older versions of settings used the engine name as the key,
+   * whereas newer versions now use the engine id.
+   *
+   * @param {object} settings
+   *   The saved settings object.
+   * @param {string} engineId
+   *   The id of the engine.
+   * @param {string} engineName
+   *   The name of the engine.
+   * @returns {object|undefined}
+   *   The engine settings if found, undefined otherwise.
+   */
+  static findSettingsForEngine(settings, engineId, engineName) {
+    if (settings.version <= 6) {
+      let engineSettings = settings.engines?.find(e => e._name == engineName);
+      if (!engineSettings) {
+        // If we can't find the engine settings with the current name,
+        // see if there was an older name.
+        let oldEngineName = ENGINE_ID_TO_OLD_NAME_MAP.get(engineId);
+        if (oldEngineName) {
+          engineSettings = settings.engines?.find(
+            e => e._name == oldEngineName
+          );
+        }
+      }
+      return engineSettings;
+    }
+    return settings.engines?.find(e => e.id == engineId);
   }
 
   /**

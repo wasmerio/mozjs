@@ -2,46 +2,131 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { Component } from "react";
-import PropTypes from "prop-types";
-import { connect } from "../../utils/connect";
+import React, { Component } from "devtools/client/shared/vendor/react";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
+import { connect } from "devtools/client/shared/vendor/react-redux";
+
+import {
+  toEditorPosition,
+  fromEditorLine,
+  getDocument,
+} from "../../utils/editor/index";
+import { createLocation } from "../../utils/location";
+import { markerTypes } from "../../constants";
+
+import { features } from "../../utils/prefs";
 
 import Exception from "./Exception";
 
 import {
   getSelectedSource,
   getSelectedSourceExceptions,
-} from "../../selectors";
-import { getDocument } from "../../utils/editor";
+} from "../../selectors/index";
 
 class Exceptions extends Component {
   static get propTypes() {
     return {
       exceptions: PropTypes.array,
       selectedSource: PropTypes.object,
+      editor: PropTypes.object,
     };
+  }
+
+  componentDidMount() {
+    this.setMarkers();
+  }
+
+  componentDidUpdate(prevProps) {
+    this.clearMarkers(prevProps);
+    this.setMarkers();
+  }
+
+  componentWillUnmount() {
+    this.clearMarkers();
+  }
+
+  clearMarkers(prevProps) {
+    const { exceptions, selectedSource, editor } = this.props;
+    if (!features.codemirrorNext || !editor) {
+      return;
+    }
+
+    if (
+      !selectedSource ||
+      !exceptions.length ||
+      prevProps?.selectedSource !== selectedSource
+    ) {
+      editor.removeLineContentMarker(markerTypes.LINE_EXCEPTION_MARKER);
+      editor.removePositionContentMarker(markerTypes.EXCEPTION_POSITION_MARKER);
+    }
+  }
+
+  setMarkers() {
+    const { exceptions, selectedSource, editor } = this.props;
+    if (
+      !features.codemirrorNext ||
+      !selectedSource ||
+      !editor ||
+      !exceptions.length
+    ) {
+      return;
+    }
+
+    editor.setLineContentMarker({
+      id: markerTypes.LINE_EXCEPTION_MARKER,
+      lineClassName: "line-exception",
+      condition: line => {
+        const lineNumber = fromEditorLine(selectedSource.id, line);
+
+        const exception = exceptions.find(e => e.lineNumber == lineNumber);
+        if (!exception) {
+          return false;
+        }
+        const exceptionLocation = createLocation({
+          source: selectedSource,
+          line: exception.lineNumber,
+          // Exceptions are reported with column being 1-based
+          // while the frontend uses 0-based column.
+          column: exception.columnNumber - 1,
+        });
+        const editorLocation = toEditorPosition(exceptionLocation);
+        return editorLocation.line == lineNumber;
+      },
+    });
+
+    editor.setPositionContentMarker({
+      id: markerTypes.EXCEPTION_POSITION_MARKER,
+      positionClassName: "mark-text-exception",
+      positions: exceptions.map(e => ({
+        line: e.lineNumber,
+        column: e.columnNumber - 1,
+      })),
+    });
   }
 
   render() {
     const { exceptions, selectedSource } = this.props;
+
+    if (features.codemirrorNext) {
+      return null;
+    }
 
     if (!selectedSource || !exceptions.length) {
       return null;
     }
 
     const doc = getDocument(selectedSource.id);
-
-    return (
-      <>
-        {exceptions.map(exc => (
-          <Exception
-            exception={exc}
-            doc={doc}
-            key={`${exc.sourceActorId}:${exc.lineNumber}`}
-            selectedSource={selectedSource}
-          />
-        ))}
-      </>
+    return React.createElement(
+      React.Fragment,
+      null,
+      exceptions.map(exception =>
+        React.createElement(Exception, {
+          exception,
+          doc,
+          key: `${exception.sourceActorId}:${exception.lineNumber}`,
+          selectedSource,
+        })
+      )
     );
   }
 }

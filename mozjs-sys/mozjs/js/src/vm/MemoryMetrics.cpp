@@ -178,7 +178,8 @@ struct StatsClosure {
   RuntimeStats* rtStats;
   ObjectPrivateVisitor* opv;
   SourceSet seenSources;
-  wasm::Metadata::SeenSet wasmSeenMetadata;
+  wasm::CodeMetadata::SeenSet wasmSeenCodeMetadata;
+  js::CodeMetadataForAsmJS::SeenSet wasmSeenCodeMetadataForAsmJS;
   wasm::Code::SeenSet wasmSeenCode;
   wasm::Table::SeenSet wasmSeenTables;
   bool anonymize;
@@ -211,9 +212,9 @@ static void StatsZoneCallback(JSRuntime* rt, void* data, Zone* zone,
   rtStats->currZoneStats = &zStats;
 
   zone->addSizeOfIncludingThis(
-      rtStats->mallocSizeOf_, &zStats.code, &zStats.regexpZone, &zStats.jitZone,
-      &zStats.baselineStubsOptimized, &zStats.uniqueIdMap,
-      &zStats.initialPropMapTable, &zStats.shapeTables,
+      rtStats->mallocSizeOf_, &zStats.zoneObject, &zStats.code,
+      &zStats.regexpZone, &zStats.jitZone, &zStats.cacheIRStubs,
+      &zStats.uniqueIdMap, &zStats.initialPropMapTable, &zStats.shapeTables,
       &rtStats->runtime.atomsMarkBitmaps, &zStats.compartmentObjects,
       &zStats.crossCompartmentWrappersTables, &zStats.compartmentsPrivateData,
       &zStats.scriptCountsMap);
@@ -236,8 +237,7 @@ static void StatsRealmCallback(JSContext* cx, void* data, Realm* realm,
   realm->addSizeOfIncludingThis(
       rtStats->mallocSizeOf_, &realmStats.realmObject, &realmStats.realmTables,
       &realmStats.innerViewsTable, &realmStats.objectMetadataTable,
-      &realmStats.savedStacksSet, &realmStats.nonSyntacticLexicalScopesTable,
-      &realmStats.jitRealm);
+      &realmStats.savedStacksSet, &realmStats.nonSyntacticLexicalScopesTable);
 }
 
 static void StatsArenaCallback(JSRuntime* rt, void* data, gc::Arena* arena,
@@ -346,22 +346,30 @@ static void StatsCellCallback(JSRuntime* rt, void* data, JS::GCCellPtr cellptr,
       // we must be careful not to report twice.
       if (obj->is<WasmModuleObject>()) {
         const wasm::Module& module = obj->as<WasmModuleObject>().module();
-        if (ScriptSource* ss = module.metadata().maybeScriptSource()) {
+        ScriptSource* ss = module.codeMetaForAsmJS()
+                               ? module.codeMetaForAsmJS()->maybeScriptSource()
+                               : nullptr;
+        if (ss) {
           CollectScriptSourceStats<granularity>(closure, ss);
         }
-        module.addSizeOfMisc(rtStats->mallocSizeOf_, &closure->wasmSeenMetadata,
-                             &closure->wasmSeenCode,
-                             &info.objectsNonHeapCodeWasm,
-                             &info.objectsMallocHeapMisc);
+        module.addSizeOfMisc(
+            rtStats->mallocSizeOf_, &closure->wasmSeenCodeMetadata,
+            &closure->wasmSeenCodeMetadataForAsmJS, &closure->wasmSeenCode,
+            &info.objectsNonHeapCodeWasm, &info.objectsMallocHeapMisc);
       } else if (obj->is<WasmInstanceObject>()) {
         wasm::Instance& instance = obj->as<WasmInstanceObject>().instance();
-        if (ScriptSource* ss = instance.metadata().maybeScriptSource()) {
+        ScriptSource* ss =
+            instance.codeMetaForAsmJS()
+                ? instance.codeMetaForAsmJS()->maybeScriptSource()
+                : nullptr;
+        if (ss) {
           CollectScriptSourceStats<granularity>(closure, ss);
         }
         instance.addSizeOfMisc(
-            rtStats->mallocSizeOf_, &closure->wasmSeenMetadata,
-            &closure->wasmSeenCode, &closure->wasmSeenTables,
-            &info.objectsNonHeapCodeWasm, &info.objectsMallocHeapMisc);
+            rtStats->mallocSizeOf_, &closure->wasmSeenCodeMetadata,
+            &closure->wasmSeenCodeMetadataForAsmJS, &closure->wasmSeenCode,
+            &closure->wasmSeenTables, &info.objectsNonHeapCodeWasm,
+            &info.objectsMallocHeapMisc);
       }
 
       realmStats.classInfo.add(info);
@@ -389,7 +397,7 @@ static void StatsCellCallback(JSRuntime* rt, void* data, JS::GCCellPtr cellptr,
         JSScript* script = static_cast<JSScript*>(base);
         script->addSizeOfJitScript(rtStats->mallocSizeOf_,
                                    &realmStats.jitScripts,
-                                   &realmStats.baselineStubsFallback);
+                                   &realmStats.allocSites);
         jit::AddSizeOfBaselineData(script, rtStats->mallocSizeOf_,
                                    &realmStats.baselineData);
         realmStats.ionData +=

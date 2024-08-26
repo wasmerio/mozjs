@@ -9,16 +9,9 @@
 
 // https://drafts.csswg.org/cssom/#the-cssstylerule-interface
 [Exposed=Window]
-interface CSSStyleRule : CSSRule {
+interface CSSStyleRule : CSSGroupingRule {
   attribute UTF8String selectorText;
   [SameObject, PutForwards=cssText] readonly attribute CSSStyleDeclaration style;
-
-  // https://drafts.csswg.org/css-nesting/#cssom-style
-  // FIXME: Ideally CSSStyleRule should inherit from CSSGroupingRule instead,
-  // see https://github.com/w3c/csswg-drafts/issues/8940
-  [Pref="layout.css.nesting.enabled", SameObject] readonly attribute CSSRuleList cssRules;
-  [Pref="layout.css.nesting.enabled", Throws] unsigned long insertRule(UTF8String rule, optional unsigned long index = 0);
-  [Pref="layout.css.nesting.enabled", Throws] undefined deleteRule(unsigned long index);
 
   [ChromeOnly] readonly attribute unsigned long selectorCount;
   [ChromeOnly] UTF8String selectorTextAt(unsigned long index, optional boolean desugared = false);
@@ -28,4 +21,18 @@ interface CSSStyleRule : CSSRule {
     Element element,
     optional [LegacyNullToEmptyString] DOMString pseudo = "",
     optional boolean includeVisitedStyle = false);
+  [ChromeOnly] sequence<SelectorWarning> getSelectorWarnings();
+  // Get elements on the page matching the rule's selectors. This is helpful for DevTools
+  // so we can avoid computing a desugared selector, which can be very expensive on deeply
+  // nested rules.
+  [ChromeOnly] NodeList querySelectorAll(Node root);
+};
+
+enum SelectorWarningKind {
+  "UnconstrainedHas",
+};
+
+dictionary SelectorWarning {
+  required unsigned long index;
+  required SelectorWarningKind kind;
 };

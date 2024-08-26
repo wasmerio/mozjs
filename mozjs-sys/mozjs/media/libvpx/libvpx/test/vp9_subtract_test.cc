@@ -7,6 +7,7 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
+#include <cstdio>
 #include <tuple>
 
 #include "third_party/googletest/src/include/gtest/gtest.h"
@@ -20,7 +21,6 @@
 #include "test/register_state_check.h"
 #include "test/util.h"
 #include "vp9/common/vp9_blockd.h"
-#include "vpx_ports/msvc.h"
 #include "vpx_mem/vpx_mem.h"
 #include "vpx_ports/vpx_timer.h"
 
@@ -34,10 +34,10 @@ namespace vp9 {
 class VP9SubtractBlockTest : public AbstractBench,
                              public ::testing::TestWithParam<SubtractFunc> {
  public:
-  virtual void TearDown() { libvpx_test::ClearSystemState(); }
+  void TearDown() override { libvpx_test::ClearSystemState(); }
 
  protected:
-  virtual void Run() {
+  void Run() override {
     GetParam()(block_height_, block_width_, diff_, block_width_, src_,
                block_width_, pred_, block_width_);
   }
@@ -176,7 +176,7 @@ using Params = std::tuple<BLOCK_SIZE, int, HBDSubtractFunc, HBDSubtractFunc>;
 
 class VPXHBDSubtractBlockTest : public ::testing::TestWithParam<Params> {
  public:
-  virtual void SetUp() {
+  void SetUp() override {
     block_width_ = 4 * num_4x4_blocks_wide_lookup[GET_PARAM(0)];
     block_height_ = 4 * num_4x4_blocks_high_lookup[GET_PARAM(0)];
     bit_depth_ = static_cast<vpx_bit_depth_t>(GET_PARAM(1));
@@ -198,7 +198,7 @@ class VPXHBDSubtractBlockTest : public ::testing::TestWithParam<Params> {
     ASSERT_NE(diff_, nullptr);
   }
 
-  virtual void TearDown() {
+  void TearDown() override {
     vpx_free(CONVERT_TO_SHORTPTR(src_));
     vpx_free(CONVERT_TO_SHORTPTR(pred_));
     vpx_free(diff_);

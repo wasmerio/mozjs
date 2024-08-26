@@ -14,6 +14,7 @@
 #include <memory>
 #include <vector>
 
+#include "api/field_trials_view.h"
 #include "rtc_base/experiments/rate_control_settings.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/time_utils.h"
@@ -43,22 +44,29 @@ constexpr int64_t EncoderBitrateAdjuster::kWindowSizeMs;
 constexpr size_t EncoderBitrateAdjuster::kMinFramesSinceLayoutChange;
 constexpr double EncoderBitrateAdjuster::kDefaultUtilizationFactor;
 
-EncoderBitrateAdjuster::EncoderBitrateAdjuster(const VideoCodec& codec_settings)
-    : utilize_bandwidth_headroom_(RateControlSettings::ParseFromFieldTrials()
-                                      .BitrateAdjusterCanUseNetworkHeadroom()),
+EncoderBitrateAdjuster::EncoderBitrateAdjuster(
+    const VideoCodec& codec_settings,
+    const FieldTrialsView& field_trials)
+    : utilize_bandwidth_headroom_(
+          RateControlSettings::ParseFromKeyValueConfig(&field_trials)
+              .BitrateAdjusterCanUseNetworkHeadroom()),
       frames_since_layout_change_(0),
-      min_bitrates_bps_{} {
-  // TODO(https://crbug.com/webrtc/14884): In order to support simulcast VP9,
-  // this code needs to be updated to care about `numberOfSimulcastStreams` even
-  // in the case of VP9.
-  // TODO(https://crbug.com/webrtc/14891): This also needs to be updated in
-  // order to support a mix of simulcast and SVC.
-  if (codec_settings.codecType == VideoCodecType::kVideoCodecVP9) {
+      min_bitrates_bps_{},
+      frame_size_pixels_{},
+      codec_(codec_settings.codecType),
+      codec_mode_(codec_settings.mode) {
+  // TODO(https://crbug.com/webrtc/14891): If we want to support simulcast of
+  // SVC streams, EncoderBitrateAdjuster needs to be updated to care about both
+  // `simulcastStream` and `spatialLayers` at the same time.
+  if (codec_settings.codecType == VideoCodecType::kVideoCodecVP9 &&
+      codec_settings.numberOfSimulcastStreams <= 1) {
     for (size_t si = 0; si < codec_settings.VP9().numberOfSpatialLayers; ++si) {
       if (codec_settings.spatialLayers[si].active) {
         min_bitrates_bps_[si] =
             std::max(codec_settings.minBitrate * 1000,
                      codec_settings.spatialLayers[si].minBitrate * 1000);
+        frame_size_pixels_[si] = codec_settings.spatialLayers[si].width *
+                                 codec_settings.spatialLayers[si].height;
       }
     }
   } else {
@@ -67,6 +75,8 @@ EncoderBitrateAdjuster::EncoderBitrateAdjuster(const VideoCodec& codec_settings)
         min_bitrates_bps_[si] =
             std::max(codec_settings.minBitrate * 1000,
                      codec_settings.simulcastStream[si].minBitrate * 1000);
+        frame_size_pixels_[si] = codec_settings.spatialLayers[si].width *
+                                 codec_settings.spatialLayers[si].height;
       }
     }
   }
@@ -91,7 +101,9 @@ VideoBitrateAllocation EncoderBitrateAdjuster::AdjustRateAllocation(
         ++active_tls[si];
         if (!overshoot_detectors_[si][ti]) {
           overshoot_detectors_[si][ti] =
-              std::make_unique<EncoderOvershootDetector>(kWindowSizeMs);
+              std::make_unique<EncoderOvershootDetector>(
+                  kWindowSizeMs, codec_,
+                  codec_mode_ == VideoCodecMode::kScreensharing);
           frames_since_layout_change_ = 0;
         }
       } else if (overshoot_detectors_[si][ti]) {
@@ -311,6 +323,12 @@ void EncoderBitrateAdjuster::OnEncoderInfo(
   // Copy allocation into current state and re-allocate.
   for (size_t si = 0; si < kMaxSpatialLayers; ++si) {
     current_fps_allocation_[si] = encoder_info.fps_allocation[si];
+    if (frame_size_pixels_[si] > 0) {
+      if (auto bwlimit = encoder_info.GetEncoderBitrateLimitsForResolution(
+              frame_size_pixels_[si])) {
+        min_bitrates_bps_[si] = bwlimit->min_bitrate_bps;
+      }
+    }
   }
 
   // Trigger re-allocation so that overshoot detectors have correct targets.

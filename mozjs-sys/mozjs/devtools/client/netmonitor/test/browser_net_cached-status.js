@@ -10,6 +10,9 @@
 add_task(async function () {
   // Disable rcwn to make cache behavior deterministic.
   await pushPref("network.http.rcwn.enabled", false);
+  // performing http to https redirects, hence we do not
+  // want https-first to interfere with that test
+  await pushPref("dom.security.https_first", false);
 
   const { tab, monitor } = await initNetMonitor(STATUS_CODES_URL, {
     enableCache: true,
@@ -94,7 +97,7 @@ add_task(async function () {
   // that the NS_BINDING_ABORTED status is never displayed for cached requests.
   const observer = {
     QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
-    observe(subject, topic, data) {
+    observe(subject) {
       subject = subject.QueryInterface(Ci.nsIHttpChannel);
       if (subject.URI.spec == STATUS_CODES_SJS + "?sts=ok&cached") {
         subject.cancel(Cr.NS_BINDING_ABORTED);

@@ -34,6 +34,7 @@
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Preferences.h"
 #include "nsNetUtil.h"
+#include "mozilla/glean/GleanMetrics.h"
 
 #ifdef MOZ_BACKGROUNDTASKS
 #  include "mozilla/BackgroundTasksRunner.h"
@@ -1421,6 +1422,69 @@ nsresult CacheFileIOManager::OnDelayedStartupFinished() {
 }
 
 // static
+nsresult CacheFileIOManager::OnIdleDaily() {
+  // In case the background task process fails for some reason (bug 1848542)
+  // We will remove the directories in the main process on a daily idle.
+  if (!CacheObserver::ClearCacheOnShutdown()) {
+    return NS_OK;
+  }
+  if (!StaticPrefs::network_cache_shutdown_purge_in_background_task()) {
+    return NS_OK;
+  }
+
+  RefPtr<CacheFileIOManager> ioMan = gInstance;
+  nsCOMPtr<nsIFile> parentDir;
+  nsresult rv = ioMan->mCacheDirectory->GetParent(getter_AddRefs(parentDir));
+  if (NS_FAILED(rv) || !parentDir) {
+    return NS_OK;
+  }
+
+  NS_DispatchBackgroundTask(
+      NS_NewRunnableFunction(
+          "CacheFileIOManager::CheckLeftoverFolders",
+          [dir = std::move(parentDir)] {
+            nsCOMPtr<nsIDirectoryEnumerator> directories;
+            nsresult rv = dir->GetDirectoryEntries(getter_AddRefs(directories));
+            if (NS_FAILED(rv)) {
+              return;
+            }
+            bool hasMoreElements = false;
+            while (
+                NS_SUCCEEDED(directories->HasMoreElements(&hasMoreElements)) &&
+                hasMoreElements) {
+              nsCOMPtr<nsIFile> subdir;
+              rv = directories->GetNextFile(getter_AddRefs(subdir));
+              if (NS_FAILED(rv) || !subdir) {
+                break;
+              }
+              nsAutoCString leafName;
+              rv = subdir->GetNativeLeafName(leafName);
+              if (NS_FAILED(rv)) {
+                continue;
+              }
+              if (leafName.Find(kPurgeExtension) != kNotFound) {
+                mozilla::glean::networking::residual_cache_folder_count.Add(1);
+                rv = subdir->Remove(true);
+                if (NS_SUCCEEDED(rv)) {
+                  mozilla::glean::networking::residual_cache_folder_removal
+                      .Get("success"_ns)
+                      .Add(1);
+                } else {
+                  mozilla::glean::networking::residual_cache_folder_removal
+                      .Get("failure"_ns)
+                      .Add(1);
+                }
+              }
+            }
+
+            return;
+          }),
+      NS_DISPATCH_EVENT_MAY_BLOCK);
+
+  return NS_OK;
+}
+
+// static
 already_AddRefed<nsIEventTarget> CacheFileIOManager::IOTarget() {
   nsCOMPtr<nsIEventTarget> target;
   if (gInstance && gInstance->mIOThread) {
@@ -1962,26 +2026,46 @@ nsresult CacheFileIOManager::Write(CacheFileHandle* aHandle, int64_t aOffset,
        "validate=%d, truncate=%d, listener=%p]",
        aHandle, aOffset, aCount, aValidate, aTruncate, aCallback));
 
-  nsresult rv;
+  MOZ_ASSERT(aCallback);
+
   RefPtr<CacheFileIOManager> ioMan = gInstance;
 
-  if (aHandle->IsClosed() || (aCallback && aCallback->IsKilled()) || !ioMan) {
-    if (!aCallback) {
-      // When no callback is provided, CacheFileIOManager is responsible for
-      // releasing the buffer. We must release it even in case of failure.
-      free(const_cast<char*>(aBuf));
-    }
+  if (aHandle->IsClosed() || aCallback->IsKilled() || !ioMan) {
     return NS_ERROR_NOT_INITIALIZED;
   }
 
   RefPtr<WriteEvent> ev = new WriteEvent(aHandle, aOffset, aBuf, aCount,
                                          aValidate, aTruncate, aCallback);
-  rv = ioMan->mIOThread->Dispatch(ev, aHandle->mPriority
-                                          ? CacheIOThread::WRITE_PRIORITY
-                                          : CacheIOThread::WRITE);
-  NS_ENSURE_SUCCESS(rv, rv);
+  return ioMan->mIOThread->Dispatch(ev, aHandle->mPriority
+                                            ? CacheIOThread::WRITE_PRIORITY
+                                            : CacheIOThread::WRITE);
+}
 
-  return NS_OK;
+// static
+nsresult CacheFileIOManager::WriteWithoutCallback(CacheFileHandle* aHandle,
+                                                  int64_t aOffset, char* aBuf,
+                                                  int32_t aCount,
+                                                  bool aValidate,
+                                                  bool aTruncate) {
+  LOG(("CacheFileIOManager::WriteWithoutCallback() [handle=%p, offset=%" PRId64
+       ", count=%d, "
+       "validate=%d, truncate=%d]",
+       aHandle, aOffset, aCount, aValidate, aTruncate));
+
+  RefPtr<CacheFileIOManager> ioMan = gInstance;
+
+  if (aHandle->IsClosed() || !ioMan) {
+    // When no callback is provided, CacheFileIOManager is responsible for
+    // releasing the buffer. We must release it even in case of failure.
+    free(aBuf);
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  RefPtr<WriteEvent> ev = new WriteEvent(aHandle, aOffset, aBuf, aCount,
+                                         aValidate, aTruncate, nullptr);
+  return ioMan->mIOThread->Dispatch(ev, aHandle->mPriority
+                                            ? CacheIOThread::WRITE_PRIORITY
+                                            : CacheIOThread::WRITE);
 }
 
 static nsresult TruncFile(PRFileDesc* aFD, int64_t aEOF) {
@@ -3230,7 +3314,7 @@ nsresult CacheFileIOManager::EvictByContextInternal(
       }
 
       // Filter by LoadContextInfo.
-      if (aLoadContextInfo && !info->Equals(aLoadContextInfo)) {
+      if (aLoadContextInfo && !info->EqualsIgnoringFPD(aLoadContextInfo)) {
         return false;
       }
 
@@ -3249,7 +3333,6 @@ nsresult CacheFileIOManager::EvictByContextInternal(
           return false;
         }
       }
-
       return true;
     }();
 
@@ -4013,18 +4096,6 @@ nsresult CacheFileIOManager::OpenNSPRHandle(CacheFileHandle* aHandle,
             ("CacheFileIOManager::OpenNSPRHandle() - Successfully evicted entry"
              " with hash %08x%08x%08x%08x%08x. %s to create the new file.",
              LOGSHA1(&hash), NS_SUCCEEDED(rv) ? "Succeeded" : "Failed"));
-
-        // Report the full size only once per session
-        static bool sSizeReported = false;
-        if (!sSizeReported) {
-          uint32_t cacheUsage;
-          if (NS_SUCCEEDED(CacheIndex::GetCacheSize(&cacheUsage))) {
-            cacheUsage >>= 10;
-            Telemetry::Accumulate(Telemetry::NETWORK_CACHE_SIZE_FULL_FAT,
-                                  cacheUsage);
-            sSizeReported = true;
-          }
-        }
       } else {
         LOG(
             ("CacheFileIOManager::OpenNSPRHandle() - Couldn't evict an existing"

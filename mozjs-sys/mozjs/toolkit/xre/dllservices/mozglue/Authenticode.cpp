@@ -4,16 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// We need Windows 8 functions and structures to be able to verify SHA-256.
-#if defined(_WIN32_WINNT)
-#  undef _WIN32_WINNT
-#  define _WIN32_WINNT _WIN32_WINNT_WIN8
-#endif  // defined(_WIN32_WINNT)
-#if defined(NTDDI_VERSION)
-#  undef NTDDI_VERSION
-#  define NTDDI_VERSION NTDDI_WIN8
-#endif  // defined(NTDDI_VERSION)
-
 #include "Authenticode.h"
 
 #include "mozilla/ArrayUtils.h"
@@ -21,7 +11,6 @@
 #include "mozilla/DynamicallyLinkedFunctionPtr.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/UniquePtr.h"
-#include "mozilla/WindowsVersion.h"
 #include "nsWindowsHelpers.h"
 
 #include <windows.h>
@@ -300,36 +289,22 @@ bool SignedBinary::VerifySignature(const wchar_t* aFilePath) {
   // First, we open a catalog admin context.
   HCATADMIN rawCatAdmin;
 
-  // Windows 7 also exports the CryptCATAdminAcquireContext2 API, but it does
-  // *not* sign its binaries with SHA-256, so we use the old API in that case.
-  if (mozilla::IsWin8OrLater()) {
-    static const mozilla::StaticDynamicallyLinkedFunctionPtr<
-        decltype(&::CryptCATAdminAcquireContext2)>
-        pCryptCATAdminAcquireContext2(L"wintrust.dll",
-                                      "CryptCATAdminAcquireContext2");
-    if (!pCryptCATAdminAcquireContext2) {
-      return false;
-    }
+  static const mozilla::StaticDynamicallyLinkedFunctionPtr<
+      decltype(&::CryptCATAdminAcquireContext2)>
+      pCryptCATAdminAcquireContext2(L"wintrust.dll",
+                                    "CryptCATAdminAcquireContext2");
+  if (!pCryptCATAdminAcquireContext2) {
+    return false;
+  }
 
-    CERT_STRONG_SIGN_PARA policy = {sizeof(policy)};
-    policy.dwInfoChoice = CERT_STRONG_SIGN_OID_INFO_CHOICE;
-    policy.pszOID = const_cast<char*>(
-        szOID_CERT_STRONG_SIGN_OS_CURRENT);  // -Wwritable-strings
+  CERT_STRONG_SIGN_PARA policy = {sizeof(policy)};
+  policy.dwInfoChoice = CERT_STRONG_SIGN_OID_INFO_CHOICE;
+  policy.pszOID = const_cast<char*>(
+      szOID_CERT_STRONG_SIGN_OS_CURRENT);  // -Wwritable-strings
 
-    if (!pCryptCATAdminAcquireContext2(&rawCatAdmin, nullptr,
-                                       BCRYPT_SHA256_ALGORITHM, &policy, 0)) {
-      return false;
-    }
-  } else {
-    static const mozilla::StaticDynamicallyLinkedFunctionPtr<
-        decltype(&::CryptCATAdminAcquireContext)>
-        pCryptCATAdminAcquireContext(L"wintrust.dll",
-                                     "CryptCATAdminAcquireContext");
-
-    if (!pCryptCATAdminAcquireContext ||
-        !pCryptCATAdminAcquireContext(&rawCatAdmin, nullptr, 0)) {
-      return false;
-    }
+  if (!pCryptCATAdminAcquireContext2(&rawCatAdmin, nullptr,
+                                     BCRYPT_SHA256_ALGORITHM, &policy, 0)) {
+    return false;
   }
 
   CATAdminContextUniquePtr catAdmin(rawCatAdmin);
@@ -473,9 +448,7 @@ bool SignedBinary::VerifySignature(const wchar_t* aFilePath) {
   wtCatInfo.pcwszMemberTag = strHashBuf.get();
   wtCatInfo.pcwszMemberFilePath = aFilePath;
   wtCatInfo.hMemberFile = rawFile;
-  if (mozilla::IsWin8OrLater()) {
-    wtCatInfo.hCatAdmin = rawCatAdmin;
-  }
+  wtCatInfo.hCatAdmin = rawCatAdmin;
 
   WINTRUST_DATA trustData = {sizeof(trustData)};
   trustData.dwUnionChoice = WTD_CHOICE_CATALOG;

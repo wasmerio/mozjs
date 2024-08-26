@@ -2,19 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { PromiseUtils } from "resource://gre/modules/PromiseUtils.sys.mjs";
-
 import { CommonUtils } from "resource://services-common/utils.sys.mjs";
 
 import { CryptoUtils } from "resource://services-crypto/utils.sys.mjs";
 
-const {
-  SCOPE_OLD_SYNC,
+import {
+  SCOPE_APP_SYNC,
   DEPRECATED_SCOPE_ECOSYSTEM_TELEMETRY,
-  FX_OAUTH_CLIENT_ID,
+  OAUTH_CLIENT_ID,
   log,
   logPII,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+} from "resource://gre/modules/FxAccountsCommon.sys.mjs";
 
 // The following top-level fields have since been deprecated and exist here purely
 // to be removed from the account state when seen. After a reasonable period of time
@@ -37,7 +35,7 @@ const DEPRECATED_SCOPE_WEBEXT_SYNC = "sync:addon_storage";
 // These are the scopes that correspond to new storage for the `LEGACY_DERIVED_KEYS_NAMES`.
 // We will, if necessary, migrate storage for those keys so that it's associated with
 // these scopes.
-const LEGACY_DERIVED_KEY_SCOPES = [SCOPE_OLD_SYNC];
+const LEGACY_DERIVED_KEY_SCOPES = [SCOPE_APP_SYNC];
 
 // These are scopes that we used to store, but are no longer using,
 // and hence should be deleted from storage if present.
@@ -134,6 +132,69 @@ export class FxAccountsKeys {
   }
 
   /**
+   * Validates if the given scoped keys are valid keys
+   *
+   * @param { Object } scopedKeys: The scopedKeys bundle
+   *
+   * @return { Boolean }: true if the scopedKeys bundle is valid, false otherwise
+   */
+  validScopedKeys(scopedKeys) {
+    for (const expectedScope of Object.keys(scopedKeys)) {
+      const key = scopedKeys[expectedScope];
+      if (
+        !key.hasOwnProperty("scope") ||
+        !key.hasOwnProperty("kid") ||
+        !key.hasOwnProperty("kty") ||
+        !key.hasOwnProperty("k")
+      ) {
+        return false;
+      }
+      const { scope, kid, kty, k } = key;
+      if (scope != expectedScope || kty != "oct") {
+        return false;
+      }
+      // We verify the format of the key id is `timestamp-fingerprint`
+      if (!kid.includes("-")) {
+        return false;
+      }
+      const dashIndex = kid.indexOf("-");
+      const keyRotationTimestamp = kid.substring(0, dashIndex);
+      const fingerprint = kid.substring(dashIndex + 1);
+      // We then verify that the timestamp is a valid timestamp
+      const keyRotationTimestampNum = Number(keyRotationTimestamp);
+      // If the value we got back is falsy it's not a valid timestamp
+      // note that we treat a 0 timestamp as invalid
+      if (!keyRotationTimestampNum) {
+        return false;
+      }
+      // For extra safety, we validate that the timestamp can be converted into a valid
+      // Date object
+      const date = new Date(keyRotationTimestampNum);
+      if (isNaN(date.getTime()) || date.getTime() <= 0) {
+        return false;
+      }
+
+      // Finally, we validate that the fingerprint and the key itself are valid base64 values
+      // Note that we can't verify the fingerprint is correct here because we don't have kb
+      const validB64String = b64String => {
+        let decoded;
+        try {
+          decoded = ChromeUtils.base64URLDecode(b64String, {
+            padding: "reject",
+          });
+        } catch (e) {
+          return false;
+        }
+        return !!decoded;
+      };
+      if (!validB64String(fingerprint) || !validB64String(k)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Format a JWK kid as hex rather than base64.
    *
    * This is a backwards-compatibility helper for code that needs a raw key fingerprint
@@ -196,7 +257,7 @@ export class FxAccountsKeys {
         }
         // If not, we've got work to do, and we debounce to avoid duplicating it.
         if (!currentState.whenKeysReadyDeferred) {
-          currentState.whenKeysReadyDeferred = PromiseUtils.defer();
+          currentState.whenKeysReadyDeferred = Promise.withResolvers();
           // N.B. we deliberately don't `await` here, and instead use the promise
           // to resolve `whenKeysReadyDeferred` (which we then `await` below).
           this._migrateOrFetchKeys(currentState, userData).then(
@@ -214,6 +275,25 @@ export class FxAccountsKeys {
       } catch (err) {
         return this._fxai._handleTokenError(err);
       }
+    });
+  }
+
+  /**
+   * Set externally derived scoped keys in internal storage
+   * @param { Object } scopedKeys: The scoped keys object derived by the oauth flow
+   *
+   * @return { Promise }: A promise that resolves if the keys were successfully stored,
+   *    or rejects if we failed to persist the keys, or if the user is not signed in already
+   */
+  async setScopedKeys(scopedKeys) {
+    return this._fxai.withCurrentAccountState(async currentState => {
+      const userData = await currentState.getUserAccountData();
+      if (!userData) {
+        throw new Error("Cannot persist keys, no user signed in");
+      }
+      await currentState.updateUserAccountData({
+        scopedKeys,
+      });
     });
   }
 
@@ -302,7 +382,7 @@ export class FxAccountsKeys {
     sessionToken,
     keyFetchToken
   ) {
-    if (logPII) {
+    if (logPII()) {
       log.debug(
         `fetchAndUnwrapKeys: sessionToken: ${sessionToken}, keyFetchToken: ${keyFetchToken}`
       );
@@ -342,7 +422,7 @@ export class FxAccountsKeys {
       wrapKB
     );
 
-    if (logPII) {
+    if (logPII()) {
       log.debug("kBbytes: " + kBbytes);
     }
 
@@ -352,7 +432,7 @@ export class FxAccountsKeys {
       unwrapBKey: null,
     };
 
-    if (logPII) {
+    if (logPII()) {
       log.debug(`Keys Obtained: ${updateData.scopedKeys}`);
     } else {
       log.debug(
@@ -379,7 +459,7 @@ export class FxAccountsKeys {
     log.debug(
       `Fetching keys with token ${!!keyFetchToken} from ${client.host}`
     );
-    if (logPII) {
+    if (logPII()) {
       log.debug("fetchKeys - the token is " + keyFetchToken);
     }
     return client.accountKeys(keyFetchToken);
@@ -394,23 +474,21 @@ export class FxAccountsKeys {
   async _fetchScopedKeysMetadata(sessionToken) {
     // Hard-coded list of scopes that we know about.
     // This list will probably grow in future.
-    const scopes = [SCOPE_OLD_SYNC].join(" ");
+    const scopes = [SCOPE_APP_SYNC].join(" ");
     const scopedKeysMetadata =
       await this._fxai.fxAccountsClient.getScopedKeyData(
         sessionToken,
-        FX_OAUTH_CLIENT_ID,
+        OAUTH_CLIENT_ID,
         scopes
       );
     // The server may decline us permission for some of those scopes, although it really shouldn't.
-    // We can live without them...except for the OLDSYNC scope, whose absence would be catastrophic.
-    if (!scopedKeysMetadata.hasOwnProperty(SCOPE_OLD_SYNC)) {
+    // We can live without them...except for the sync scope, whose absence would be catastrophic.
+    if (!scopedKeysMetadata.hasOwnProperty(SCOPE_APP_SYNC)) {
       log.warn(
-        "The FxA server did not grant Firefox the `oldsync` scope; this is most unexpected!" +
+        "The FxA server did not grant Firefox the sync scope; this is most unexpected!" +
           ` scopes were: ${Object.keys(scopedKeysMetadata)}`
       );
-      throw new Error(
-        "The FxA server did not grant Firefox the `oldsync` scope"
-      );
+      throw new Error("The FxA server did not grant Firefox the sync scope");
     }
     return scopedKeysMetadata;
   }
@@ -565,7 +643,7 @@ export class FxAccountsKeys {
    */
   async _deriveLegacyScopedKey(uid, kBbytes, scope, scopedKeyMetadata) {
     let kid, key;
-    if (scope == SCOPE_OLD_SYNC) {
+    if (scope == SCOPE_APP_SYNC) {
       kid = await this._deriveXClientState(kBbytes);
       key = await this._deriveSyncKey(kBbytes);
     } else {

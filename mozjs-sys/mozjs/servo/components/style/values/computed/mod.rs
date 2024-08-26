@@ -16,6 +16,7 @@ use super::specified;
 use super::{CSSFloat, CSSInteger};
 use crate::computed_value_flags::ComputedValueFlags;
 use crate::context::QuirksMode;
+use crate::custom_properties::ComputedCustomProperties;
 use crate::font_metrics::{FontMetrics, FontMetricsOrientation};
 use crate::media_queries::Device;
 #[cfg(feature = "gecko")]
@@ -25,6 +26,7 @@ use crate::rule_cache::RuleCacheConditions;
 use crate::stylesheets::container_rule::{
     ContainerInfo, ContainerSizeQuery, ContainerSizeQueryResult,
 };
+use crate::stylist::Stylist;
 use crate::values::specified::length::FontBaseSize;
 use crate::{ArcSlice, Atom, One};
 use euclid::{default, Point2D, Rect, Size2D};
@@ -36,14 +38,16 @@ use std::ops::{Add, Sub};
 
 #[cfg(feature = "gecko")]
 pub use self::align::{
-    AlignContent, AlignItems, AlignTracks, JustifyContent, JustifyItems, JustifyTracks,
-    SelfAlignment,
+    AlignContent, AlignItems, JustifyContent, JustifyItems, SelfAlignment,
 };
 #[cfg(feature = "gecko")]
 pub use self::align::{AlignSelf, JustifySelf};
 pub use self::angle::Angle;
-pub use self::animation::{AnimationIterationCount, AnimationName, AnimationTimeline};
-pub use self::animation::{ScrollAxis, ScrollTimelineName, TransitionProperty, ViewTimelineInset};
+pub use self::animation::{
+    AnimationComposition, AnimationDirection, AnimationFillMode, AnimationIterationCount,
+    AnimationName, AnimationPlayState, AnimationTimeline, ScrollAxis, ScrollTimelineName,
+    TransitionBehavior, TransitionProperty, ViewTimelineInset,
+};
 pub use self::background::{BackgroundRepeat, BackgroundSize};
 pub use self::basic_shape::FillRule;
 pub use self::border::{
@@ -55,7 +59,7 @@ pub use self::box_::{
     ContainerName, ContainerType, ContentVisibility, Display, Float, LineClamp, Overflow,
     OverflowAnchor, OverflowClipBox, OverscrollBehavior, Perspective, Resize, ScrollSnapAlign,
     ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter,
-    TouchAction, VerticalAlign, WillChange,
+    TouchAction, VerticalAlign, WillChange, Zoom,
 };
 pub use self::color::{
     Color, ColorOrAuto, ColorPropertyValue, ColorScheme, ForcedColorAdjust, PrintColorAdjust,
@@ -67,11 +71,11 @@ pub use self::effects::{BoxShadow, Filter, SimpleShadow};
 pub use self::flex::FlexBasis;
 pub use self::font::{FontFamily, FontLanguageOverride, FontPalette, FontStyle};
 pub use self::font::{FontFeatureSettings, FontVariantLigatures, FontVariantNumeric};
-pub use self::font::{FontSize, FontSizeAdjust, FontStretch, FontSynthesis};
+pub use self::font::{FontSize, FontSizeAdjust, FontStretch, FontSynthesis, LineHeight};
 pub use self::font::{FontVariantAlternates, FontWeight};
 pub use self::font::{FontVariantEastAsian, FontVariationSettings};
 pub use self::font::{MathDepth, MozScriptMinSize, MozScriptSizeMultiplier, XLang, XTextScale};
-pub use self::image::{Gradient, Image, ImageRendering, LineDirection, MozImageRect};
+pub use self::image::{Gradient, Image, ImageRendering, LineDirection};
 pub use self::length::{CSSPixelLength, NonNegativeLength};
 pub use self::length::{Length, LengthOrNumber, LengthPercentage, NonNegativeLengthOrNumber};
 pub use self::length::{LengthOrAuto, LengthPercentageOrAuto, MaxSize, Size};
@@ -83,10 +87,18 @@ pub use self::motion::{OffsetPath, OffsetPosition, OffsetRotate};
 pub use self::outline::OutlineStyle;
 pub use self::page::{PageName, PageOrientation, PageSize, PageSizeOrientation, PaperSize};
 pub use self::percentage::{NonNegativePercentage, Percentage};
+pub use self::position::AnchorName;
+pub use self::position::AnchorScope;
 pub use self::position::AspectRatio;
+pub use self::position::DashedIdentAndOrTryTactic;
+pub use self::position::PositionAnchor;
+pub use self::position::PositionTryOptions;
+pub use self::position::PositionTryOrder;
+pub use self::position::PositionVisibility;
 pub use self::position::{
     GridAutoFlow, GridTemplateAreas, MasonryAutoFlow, Position, PositionOrAuto, ZIndex,
 };
+pub use self::position::{InsetArea, InsetAreaKeyword};
 pub use self::ratio::Ratio;
 pub use self::rect::NonNegativeLengthOrNumberRect;
 pub use self::resolution::Resolution;
@@ -95,12 +107,12 @@ pub use self::svg::{SVGLength, SVGOpacity, SVGPaint, SVGPaintKind};
 pub use self::svg::{SVGPaintOrder, SVGStrokeDashArray, SVGWidth};
 pub use self::text::HyphenateCharacter;
 pub use self::text::TextUnderlinePosition;
-pub use self::text::{InitialLetter, LetterSpacing, LineBreak, LineHeight};
+pub use self::text::{InitialLetter, LetterSpacing, LineBreak, TextIndent};
 pub use self::text::{OverflowWrap, RubyPosition, TextOverflow, WordBreak, WordSpacing};
 pub use self::text::{TextAlign, TextAlignLast, TextEmphasisPosition, TextEmphasisStyle};
 pub use self::text::{TextDecorationLength, TextDecorationSkipInk, TextJustify};
 pub use self::time::Time;
-pub use self::transform::{Rotate, Scale, Transform, TransformOperation};
+pub use self::transform::{Rotate, Scale, Transform, TransformBox, TransformOperation};
 pub use self::transform::{TransformOrigin, TransformStyle, Translate};
 #[cfg(feature = "gecko")]
 pub use self::ui::CursorImage;
@@ -215,7 +227,7 @@ impl<'a> Context<'a> {
     {
         let mut conditions = RuleCacheConditions::default();
         let context = Context {
-            builder: StyleBuilder::for_inheritance(device, None, None),
+            builder: StyleBuilder::for_inheritance(device, None, None, None),
             cached_system_font: None,
             in_media_query: true,
             in_container_query: false,
@@ -233,6 +245,7 @@ impl<'a> Context<'a> {
     /// specified.
     pub fn for_container_query_evaluation<F, R>(
         device: &Device,
+        stylist: Option<&Stylist>,
         container_info_and_style: Option<(ContainerInfo, Arc<ComputedValues>)>,
         container_size_query: ContainerSizeQuery,
         f: F,
@@ -250,7 +263,7 @@ impl<'a> Context<'a> {
         let style = style.as_ref().map(|s| &**s);
         let quirks_mode = device.quirks_mode();
         let context = Context {
-            builder: StyleBuilder::for_inheritance(device, style, None),
+            builder: StyleBuilder::for_inheritance(device, stylist, style, None),
             cached_system_font: None,
             in_media_query: false,
             in_container_query: true,
@@ -308,9 +321,41 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// Creates a context suitable for computing the initial value of @property.
+    pub fn new_for_initial_at_property_value(
+        stylist: &'a Stylist,
+        rule_cache_conditions: &'a mut RuleCacheConditions,
+    ) -> Self {
+        Self {
+            builder: StyleBuilder::new(stylist.device(), Some(stylist), None, None, None, false),
+            cached_system_font: None,
+            // Because font-relative values are disallowed in @property initial values, we do not
+            // need to keep track of whether we're in a media query, whether we're in a container
+            // query, and so on.
+            in_media_query: false,
+            in_container_query: false,
+            quirks_mode: stylist.quirks_mode(),
+            container_info: None,
+            for_smil_animation: false,
+            for_non_inherited_property: false,
+            rule_cache_conditions: RefCell::new(rule_cache_conditions),
+            container_size_query: RefCell::new(ContainerSizeQuery::none()),
+        }
+    }
+
     /// The current device.
     pub fn device(&self) -> &Device {
         self.builder.device
+    }
+
+    /// Get the inherited custom properties map.
+    pub fn inherited_custom_properties(&self) -> &ComputedCustomProperties {
+        &self.builder.inherited_custom_properties()
+    }
+
+    /// Whether the style is for the root element.
+    pub fn is_root_element(&self) -> bool {
+        self.builder.is_root_element
     }
 
     /// Queries font metrics.
@@ -342,9 +387,7 @@ impl<'a> Context<'a> {
             FontMetricsOrientation::MatchContextPreferHorizontal => {
                 wm.is_vertical() && wm.is_upright()
             },
-            FontMetricsOrientation::MatchContextPreferVertical => {
-                wm.is_vertical() && !wm.is_sideways()
-            },
+            FontMetricsOrientation::MatchContextPreferVertical => wm.is_text_vertical(),
             FontMetricsOrientation::Horizontal => false,
         };
         self.device().query_font_metrics(
@@ -613,6 +656,25 @@ where
     }
 }
 
+impl<T> ToComputedValue for thin_vec::ThinVec<T>
+where
+    T: ToComputedValue,
+{
+    type ComputedValue = thin_vec::ThinVec<<T as ToComputedValue>::ComputedValue>;
+
+    #[inline]
+    fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
+        self.iter()
+            .map(|item| item.to_computed_value(context))
+            .collect()
+    }
+
+    #[inline]
+    fn from_computed_value(computed: &Self::ComputedValue) -> Self {
+        computed.iter().map(T::from_computed_value).collect()
+    }
+}
+
 // NOTE(emilio): This is implementable more generically, but it's unlikely
 // what you want there, as it forces you to have an extra allocation.
 //
@@ -667,10 +729,12 @@ trivial_to_computed_value!(crate::values::AtomIdent);
 trivial_to_computed_value!(crate::Namespace);
 #[cfg(feature = "servo")]
 trivial_to_computed_value!(crate::Prefix);
+trivial_to_computed_value!(crate::stylesheets::UrlExtraData);
 trivial_to_computed_value!(String);
 trivial_to_computed_value!(Box<str>);
 trivial_to_computed_value!(crate::OwnedStr);
 trivial_to_computed_value!(style_traits::values::specified::AllowedNumericType);
+trivial_to_computed_value!(crate::values::generics::color::ColorMixFlags);
 
 #[allow(missing_docs)]
 #[derive(

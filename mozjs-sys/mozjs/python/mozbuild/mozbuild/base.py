@@ -268,6 +268,10 @@ class MozbuildObject(ProcessExecutionMixin):
 
         return self._virtualenv_manager
 
+    @virtualenv_manager.setter
+    def virtualenv_manager(self, command_site_manager):
+        self._virtualenv_manager = command_site_manager
+
     @staticmethod
     @memoize
     def get_base_mozconfig_info(topsrcdir, path, env_mozconfig):
@@ -747,7 +751,7 @@ class MozbuildObject(ProcessExecutionMixin):
             if not psutil or not job_size:
                 num_jobs = cpus
             else:
-                mem_gb = psutil.virtual_memory().total / 1024 ** 3
+                mem_gb = psutil.virtual_memory().total / 1024**3
                 from_mem = round(mem_gb / job_size)
                 num_jobs = max(1, min(cpus, from_mem))
                 print(

@@ -2,17 +2,18 @@
 
 use cfg_if::cfg_if;
 use iai::black_box;
-#[cfg(any(feature = "prio2", feature = "experimental"))]
-use prio::field::FieldElement;
 #[cfg(feature = "experimental")]
 use prio::{
     codec::{Decode, Encode, ParameterizedDecode},
-    field::Field255,
-    idpf::{self, IdpfInput, IdpfPublicShare, RingBufferCache},
-    vdaf::{poplar1::Poplar1IdpfValue, prg::Seed},
+    field::{Field255, FieldElement, FieldPrio2},
+    idpf::{Idpf, IdpfInput, IdpfPublicShare, RingBufferCache},
+    vdaf::{
+        poplar1::Poplar1IdpfValue,
+        prio2::{Prio2, Prio2PrepareShare},
+        xof::Seed,
+        Aggregator, Share,
+    },
 };
-#[cfg(feature = "prio2")]
-use prio::{field::FieldPrio2, server::VerificationMessage};
 use prio::{
     field::{random_vector, Field128, Field64},
     vdaf::{
@@ -41,83 +42,59 @@ fn prng_4096() -> Vec<Field128> {
     prng(4096)
 }
 
-#[cfg(feature = "prio2")]
-const PRIO2_PUBKEY1: &str =
-    "BIl6j+J6dYttxALdjISDv6ZI4/VWVEhUzaS05LgrsfswmbLOgNt9HUC2E0w+9RqZx3XMkdEHBHfNuCSMpOwofVQ=";
-#[cfg(feature = "prio2")]
-const PRIO2_PUBKEY2: &str =
-    "BNNOqoU54GPo+1gTPv+hCgA9U2ZCKd76yOMrWa1xTWgeb4LhFLMQIQoRwDVaW64g/WTdcxT4rDULoycUNFB60LE=";
-
-#[cfg(feature = "prio2")]
-fn prio2_prove(size: usize) -> Vec<FieldPrio2> {
-    use prio::{benchmarked::benchmarked_v2_prove, client::Client, encrypt::PublicKey};
-
-    let input = vec![FieldPrio2::zero(); size];
-    let pk1 = PublicKey::from_base64(PRIO2_PUBKEY1).unwrap();
-    let pk2 = PublicKey::from_base64(PRIO2_PUBKEY2).unwrap();
-    let mut client: Client<FieldPrio2> = Client::new(input.len(), pk1, pk2).unwrap();
-    benchmarked_v2_prove(&black_box(input), &mut client)
+#[cfg(feature = "experimental")]
+fn prio2_client(size: usize) -> Vec<Share<FieldPrio2, 32>> {
+    let prio2 = Prio2::new(size).unwrap();
+    let input = vec![0u32; size];
+    let nonce = [0; 16];
+    prio2.shard(&black_box(input), &black_box(nonce)).unwrap().1
 }
 
-#[cfg(feature = "prio2")]
-fn prio2_prove_10() -> Vec<FieldPrio2> {
-    prio2_prove(10)
+#[cfg(feature = "experimental")]
+fn prio2_client_10() -> Vec<Share<FieldPrio2, 32>> {
+    prio2_client(10)
 }
 
-#[cfg(feature = "prio2")]
-fn prio2_prove_100() -> Vec<FieldPrio2> {
-    prio2_prove(100)
+#[cfg(feature = "experimental")]
+fn prio2_client_100() -> Vec<Share<FieldPrio2, 32>> {
+    prio2_client(100)
 }
 
-#[cfg(feature = "prio2")]
-fn prio2_prove_1000() -> Vec<FieldPrio2> {
-    prio2_prove(1_000)
+#[cfg(feature = "experimental")]
+fn prio2_client_1000() -> Vec<Share<FieldPrio2, 32>> {
+    prio2_client(1000)
 }
 
-#[cfg(feature = "prio2")]
-fn prio2_prove_and_verify(size: usize) -> VerificationMessage<FieldPrio2> {
-    use prio::{
-        benchmarked::benchmarked_v2_prove,
-        client::Client,
-        encrypt::PublicKey,
-        server::{generate_verification_message, ValidationMemory},
-    };
-
-    let input = vec![FieldPrio2::zero(); size];
-    let pk1 = PublicKey::from_base64(PRIO2_PUBKEY1).unwrap();
-    let pk2 = PublicKey::from_base64(PRIO2_PUBKEY2).unwrap();
-    let mut client: Client<FieldPrio2> = Client::new(input.len(), pk1, pk2).unwrap();
-    let input_and_proof = benchmarked_v2_prove(&input, &mut client);
-    let mut validator = ValidationMemory::new(input.len());
-    let eval_at = random_vector(1).unwrap()[0];
-    generate_verification_message(
-        input.len(),
-        eval_at,
-        &black_box(input_and_proof),
-        true,
-        &mut validator,
-    )
-    .unwrap()
+#[cfg(feature = "experimental")]
+fn prio2_shard_and_prepare(size: usize) -> Prio2PrepareShare {
+    let prio2 = Prio2::new(size).unwrap();
+    let input = vec![0u32; size];
+    let nonce = [0; 16];
+    let (public_share, input_shares) = prio2.shard(&black_box(input), &black_box(nonce)).unwrap();
+    prio2
+        .prepare_init(&[0; 32], 0, &(), &nonce, &public_share, &input_shares[0])
+        .unwrap()
+        .1
 }
 
-#[cfg(feature = "prio2")]
-fn prio2_prove_and_verify_10() -> VerificationMessage<FieldPrio2> {
-    prio2_prove_and_verify(10)
+#[cfg(feature = "experimental")]
+fn prio2_shard_and_prepare_10() -> Prio2PrepareShare {
+    prio2_shard_and_prepare(10)
 }
 
-#[cfg(feature = "prio2")]
-fn prio2_prove_and_verify_100() -> VerificationMessage<FieldPrio2> {
-    prio2_prove_and_verify(100)
+#[cfg(feature = "experimental")]
+fn prio2_shard_and_prepare_100() -> Prio2PrepareShare {
+    prio2_shard_and_prepare(100)
 }
 
-#[cfg(feature = "prio2")]
-fn prio2_prove_and_verify_1000() -> VerificationMessage<FieldPrio2> {
-    prio2_prove_and_verify(1_000)
+#[cfg(feature = "experimental")]
+fn prio2_shard_and_prepare_1000() -> Prio2PrepareShare {
+    prio2_shard_and_prepare(1000)
 }
 
 fn prio3_client_count() -> Vec<Prio3InputShare<Field64, 16>> {
     let prio3 = Prio3::new_count(2).unwrap();
-    let measurement = 1;
+    let measurement = true;
     let nonce = [0; 16];
     prio3
         .shard(&black_box(measurement), &black_box(nonce))
@@ -125,10 +102,9 @@ fn prio3_client_count() -> Vec<Prio3InputShare<Field64, 16>> {
         .1
 }
 
-fn prio3_client_histogram_11() -> Vec<Prio3InputShare<Field128, 16>> {
-    let buckets: Vec<u64> = (1..10).collect();
-    let prio3 = Prio3::new_histogram(2, &buckets).unwrap();
-    let measurement = 17;
+fn prio3_client_histogram_10() -> Vec<Prio3InputShare<Field128, 16>> {
+    let prio3 = Prio3::new_histogram(2, 10, 3).unwrap();
+    let measurement = 9;
     let nonce = [0; 16];
     prio3
         .shard(&black_box(measurement), &black_box(nonce))
@@ -148,7 +124,7 @@ fn prio3_client_sum_32() -> Vec<Prio3InputShare<Field128, 16>> {
 
 fn prio3_client_count_vec_1000() -> Vec<Prio3InputShare<Field128, 16>> {
     let len = 1000;
-    let prio3 = Prio3::new_sum_vec(2, 1, len).unwrap();
+    let prio3 = Prio3::new_sum_vec(2, 1, len, 31).unwrap();
     let measurement = vec![0; len];
     let nonce = [0; 16];
     prio3
@@ -160,7 +136,7 @@ fn prio3_client_count_vec_1000() -> Vec<Prio3InputShare<Field128, 16>> {
 #[cfg(feature = "multithreaded")]
 fn prio3_client_count_vec_multithreaded_1000() -> Vec<Prio3InputShare<Field128, 16>> {
     let len = 1000;
-    let prio3 = Prio3::new_sum_vec_multithreaded(2, 1, len).unwrap();
+    let prio3 = Prio3::new_sum_vec_multithreaded(2, 1, len, 31).unwrap();
     let measurement = vec![0; len];
     let nonce = [0; 16];
     prio3
@@ -175,7 +151,8 @@ fn idpf_poplar_gen(
     inner_values: Vec<Poplar1IdpfValue<Field64>>,
     leaf_value: Poplar1IdpfValue<Field255>,
 ) {
-    idpf::gen(input, inner_values, leaf_value, &[0; 16]).unwrap();
+    let idpf = Idpf::new((), ());
+    idpf.gen(input, inner_values, leaf_value, &[0; 16]).unwrap();
 }
 
 #[cfg(feature = "experimental")]
@@ -218,7 +195,9 @@ fn idpf_poplar_eval(
     key: &Seed<16>,
 ) {
     let mut cache = RingBufferCache::new(1);
-    idpf::eval(0, public_share, key, input, &[0; 16], &mut cache).unwrap();
+    let idpf = Idpf::new((), ());
+    idpf.eval(0, public_share, key, input, &[0; 16], &mut cache)
+        .unwrap();
 }
 
 #[cfg(feature = "experimental")]
@@ -259,7 +238,7 @@ fn idpf_codec() {
     .unwrap();
     let bits = 4;
     let public_share = IdpfPublicShare::<Poplar1IdpfValue<Field64>, Poplar1IdpfValue<Field255>>::get_decoded_with_param(&bits, &data).unwrap();
-    let encoded = public_share.get_encoded();
+    let encoded = public_share.get_encoded().unwrap();
     let _ = black_box(encoded.len());
 }
 
@@ -271,33 +250,9 @@ macro_rules! main_base {
             prng_1024,
             prng_4096,
             prio3_client_count,
-            prio3_client_histogram_11,
+            prio3_client_histogram_10,
             prio3_client_sum_32,
             prio3_client_count_vec_1000,
-            $( $func_name, )*
-        );
-    };
-}
-
-#[cfg(feature = "prio2")]
-macro_rules! main_add_prio2 {
-    ( $( $func_name:ident ),* $(,)* ) => {
-        main_base!(
-            prio2_prove_10,
-            prio2_prove_100,
-            prio2_prove_1000,
-            prio2_prove_and_verify_10,
-            prio2_prove_and_verify_100,
-            prio2_prove_and_verify_1000,
-            $( $func_name, )*
-        );
-    };
-}
-
-#[cfg(not(feature = "prio2"))]
-macro_rules! main_add_prio2 {
-    ( $( $func_name:ident ),* $(,)* ) => {
-        main_base!(
             $( $func_name, )*
         );
     };
@@ -306,7 +261,7 @@ macro_rules! main_add_prio2 {
 #[cfg(feature = "multithreaded")]
 macro_rules! main_add_multithreaded {
     ( $( $func_name:ident ),* $(,)* ) => {
-        main_add_prio2!(
+        main_base!(
             prio3_client_count_vec_multithreaded_1000,
             $( $func_name, )*
         );
@@ -316,7 +271,7 @@ macro_rules! main_add_multithreaded {
 #[cfg(not(feature = "multithreaded"))]
 macro_rules! main_add_multithreaded {
     ( $( $func_name:ident ),* $(,)* ) => {
-        main_add_prio2!(
+        main_base!(
             $( $func_name, )*
         );
     };
@@ -326,6 +281,12 @@ macro_rules! main_add_multithreaded {
 macro_rules! main_add_experimental {
     ( $( $func_name:ident ),* $(,)* ) => {
         main_add_multithreaded!(
+            prio2_client_10,
+            prio2_client_100,
+            prio2_client_1000,
+            prio2_shard_and_prepare_10,
+            prio2_shard_and_prepare_100,
+            prio2_shard_and_prepare_1000,
             idpf_codec,
             idpf_poplar_gen_8,
             idpf_poplar_gen_128,

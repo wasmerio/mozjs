@@ -6,11 +6,9 @@
 #ifndef LIB_JPEGLI_MEMORY_MANAGER_H_
 #define LIB_JPEGLI_MEMORY_MANAGER_H_
 
-/* clang-format off */
-#include <stdio.h>
-#include <jpeglib.h>
 #include <stdlib.h>
-/* clang-format on */
+
+#include "lib/jpegli/common.h"
 
 #define JPOOL_PERMANENT_ALIGNED (JPOOL_NUMPOOLS + JPOOL_PERMANENT)
 #define JPOOL_IMAGE_ALIGNED (JPOOL_NUMPOOLS + JPOOL_IMAGE)
@@ -21,7 +19,8 @@ void InitMemoryManager(j_common_ptr cinfo);
 
 template <typename T>
 T* Allocate(j_common_ptr cinfo, size_t len, int pool_id = JPOOL_PERMANENT) {
-  void* p = (*cinfo->mem->alloc_small)(cinfo, pool_id, len * sizeof(T));
+  const size_t size = len * sizeof(T);  // NOLINT
+  void* p = (*cinfo->mem->alloc_small)(cinfo, pool_id, size);
   return reinterpret_cast<T*>(p);
 }
 

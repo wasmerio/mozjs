@@ -160,11 +160,6 @@ class CycleCollectedJSContext : dom::PerThreadAtomCache, private JS::JobQueue {
   void CleanupIDBTransactions(uint32_t aRecursionDepth);
 
  public:
-  enum DeferredFinalizeType {
-    FinalizeIncrementally,
-    FinalizeNow,
-  };
-
   virtual dom::WorkerJSContext* GetAsWorkerJSContext() { return nullptr; }
   virtual dom::WorkletJSContext* GetAsWorkletJSContext() { return nullptr; }
 
@@ -301,6 +296,7 @@ class CycleCollectedJSContext : dom::PerThreadAtomCache, private JS::JobQueue {
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   void runJobs(JSContext* cx) override;
   bool empty() const override;
+  bool isDrainingStopped() const override { return false; }
   class SavedMicroTaskQueue;
   js::UniquePtr<SavedJobQueue> saveJobQueue(JSContext*) override;
 

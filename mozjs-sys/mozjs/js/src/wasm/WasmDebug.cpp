@@ -23,6 +23,7 @@
 #include "debugger/Debugger.h"
 #include "ds/Sort.h"
 #include "jit/MacroAssembler.h"
+#include "js/ColumnNumber.h"  // JS::WasmFunctionIndex
 #include "wasm/WasmJS.h"
 #include "wasm/WasmStubs.h"
 #include "wasm/WasmValidate.h"
@@ -41,7 +42,7 @@ DebugState::DebugState(const Code& code, const Module& module)
       module_(&module),
       enterFrameTrapsEnabled_(false),
       enterAndLeaveFrameTrapsCounter_(0) {
-  MOZ_RELEASE_ASSERT(code.metadata().debugEnabled);
+  MOZ_RELEASE_ASSERT(code.codeMeta().debugEnabled);
   MOZ_RELEASE_ASSERT(code.hasTier(Tier::Debug));
 }
 
@@ -58,8 +59,6 @@ void DebugState::finalize(JS::GCContext* gcx) {
     site->delete_(gcx);
   }
 }
-
-static const uint32_t DefaultBinarySourceColumnNumber = 1;
 
 static const CallSite* SlowCallSiteSearchByOffset(const MetadataTier& metadata,
                                                   uint32_t offset) {
@@ -84,21 +83,24 @@ bool DebugState::getAllColumnOffsets(Vector<ExprLoc>* offsets) {
       continue;
     }
     uint32_t offset = callSite.lineOrBytecode();
-    if (!offsets->emplaceBack(offset, DefaultBinarySourceColumnNumber,
-                              offset)) {
+    if (!offsets->emplaceBack(
+            offset,
+            JS::WasmFunctionIndex::DefaultBinarySourceColumnNumberOneOrigin,
+            offset)) {
       return false;
     }
   }
   return true;
 }
 
-bool DebugState::getOffsetLocation(uint32_t offset, size_t* lineno,
-                                   size_t* column) {
+bool DebugState::getOffsetLocation(uint32_t offset, uint32_t* lineno,
+                                   JS::LimitedColumnNumberOneOrigin* column) {
   if (!SlowCallSiteSearchByOffset(metadata(Tier::Debug), offset)) {
     return false;
   }
   *lineno = offset;
-  *column = DefaultBinarySourceColumnNumber;
+  *column = JS::LimitedColumnNumberOneOrigin(
+      JS::WasmFunctionIndex::DefaultBinarySourceColumnNumberOneOrigin);
   return true;
 }
 
@@ -317,8 +319,9 @@ void DebugState::adjustEnterAndLeaveFrameTrapsState(JSContext* cx,
     return;
   }
 
-  MOZ_RELEASE_ASSERT(&instance->metadata() == &metadata());
-  uint32_t numFuncs = metadata().debugNumFuncs();
+  MOZ_RELEASE_ASSERT(&instance->codeMeta() == &codeMeta());
+  MOZ_RELEASE_ASSERT(instance->codeMetaForAsmJS() == codeMetaForAsmJS());
+  uint32_t numFuncs = codeMeta().debugNumFuncs();
   if (enabled) {
     MOZ_ASSERT(enterAndLeaveFrameTrapsCounter_ > 0);
     for (uint32_t funcIdx = 0; funcIdx < numFuncs; funcIdx++) {
@@ -372,8 +375,8 @@ void DebugState::ensureEnterFrameTrapsState(JSContext* cx, Instance* instance,
 bool DebugState::debugGetLocalTypes(uint32_t funcIndex, ValTypeVector* locals,
                                     size_t* argsLength,
                                     StackResults* stackResults) {
-  const TypeContext& types = *metadata().types;
-  const FuncType& funcType = metadata().debugFuncType(funcIndex);
+  const TypeContext& types = *codeMeta().types;
+  const FuncType& funcType = codeMeta().debugFuncType(funcIndex);
   const ValTypeVector& args = funcType.args();
   const ValTypeVector& results = funcType.results();
   ResultType resultType(ResultType::Vector(results));
@@ -398,7 +401,7 @@ bool DebugState::debugGetLocalTypes(uint32_t funcIndex, ValTypeVector* locals,
 
 bool DebugState::getGlobal(Instance& instance, uint32_t globalIndex,
                            MutableHandleValue vp) {
-  const GlobalDesc& global = metadata().globals[globalIndex];
+  const GlobalDesc& global = codeMeta().globals[globalIndex];
 
   if (global.isConstant()) {
     LitVal value = global.constantValue();
@@ -506,7 +509,7 @@ bool DebugState::getSourceMappingURL(JSContext* cx,
   }
 
   // Check presence of "SourceMap:" HTTP response header.
-  char* sourceMapURL = metadata().sourceMapURL.get();
+  char* sourceMapURL = codeMeta().sourceMapURL.get();
   if (sourceMapURL && strlen(sourceMapURL)) {
     JS::UTF8Chars utf8Chars(sourceMapURL, strlen(sourceMapURL));
     JSString* str = JS_NewStringCopyUTF8N(cx, utf8Chars);
@@ -518,11 +521,12 @@ bool DebugState::getSourceMappingURL(JSContext* cx,
   return true;
 }
 
-void DebugState::addSizeOfMisc(MallocSizeOf mallocSizeOf,
-                               Metadata::SeenSet* seenMetadata,
-                               Code::SeenSet* seenCode, size_t* code,
-                               size_t* data) const {
-  code_->addSizeOfMiscIfNotSeen(mallocSizeOf, seenMetadata, seenCode, code,
-                                data);
-  module_->addSizeOfMisc(mallocSizeOf, seenMetadata, seenCode, code, data);
+void DebugState::addSizeOfMisc(
+    MallocSizeOf mallocSizeOf, CodeMetadata::SeenSet* seenCodeMeta,
+    CodeMetadataForAsmJS::SeenSet* seenCodeMetaForAsmJS,
+    Code::SeenSet* seenCode, size_t* code, size_t* data) const {
+  code_->addSizeOfMiscIfNotSeen(mallocSizeOf, seenCodeMeta,
+                                seenCodeMetaForAsmJS, seenCode, code, data);
+  module_->addSizeOfMisc(mallocSizeOf, seenCodeMeta, seenCodeMetaForAsmJS,
+                         seenCode, code, data);
 }

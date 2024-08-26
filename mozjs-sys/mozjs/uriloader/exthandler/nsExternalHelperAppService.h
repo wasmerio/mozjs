@@ -253,7 +253,7 @@ class nsExternalHelperAppService : public nsIExternalHelperAppService,
 
  private:
   nsresult DoContentContentProcessHelper(
-      const nsACString& aMimeContentType, nsIRequest* aRequest,
+      const nsACString& aMimeContentType, nsIChannel* aChannel,
       mozilla::dom::BrowsingContext* aContentContext, bool aForceSave,
       nsIInterfaceRequestor* aWindowContext,
       nsIStreamListener** aStreamListener);
@@ -361,6 +361,12 @@ class nsExternalAppHandler final : public nsIStreamListener,
    * unknown content type handling dialog.
    */
   bool mForceSave;
+
+  /**
+   * If set, any internally handled type that has a disposition of
+     nsIChannel::DISPOSITION_ATTACHMENT will be saved to disk.
+   */
+  bool mForceSaveInternallyHandled;
 
   /**
    * The canceled flag is set if the user canceled the launching of this
@@ -538,8 +544,8 @@ class nsExternalAppHandler final : public nsIStreamListener,
                         const nsString& path);
 
   /**
-   * Set in HelperAppDlg.jsm. This is always null after the user has chosen an
-   * action.
+   * Set in HelperAppDlg.sys.mjs. This is always null after the user has chosen
+   * an action.
    */
   nsCOMPtr<nsIWebProgressListener2> mDialogProgressListener;
   /**

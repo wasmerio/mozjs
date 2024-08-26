@@ -264,6 +264,12 @@ nsSimpleURI::GetHasRef(bool* result) {
   return NS_OK;
 }
 
+NS_IMETHODIMP
+nsSimpleURI::GetHasUserPass(bool* result) {
+  *result = false;
+  return NS_OK;
+}
+
 nsresult nsSimpleURI::SetSpecInternal(const nsACString& aSpec,
                                       bool aStripWhitespace) {
   if (StaticPrefs::network_url_max_length() &&
@@ -347,7 +353,7 @@ nsSimpleURI::GetHostPort(nsACString& result) {
   return NS_ERROR_FAILURE;
 }
 
-nsresult nsSimpleURI::SetHostPort(const nsACString& result) {
+nsresult nsSimpleURI::SetHostPort(const nsACString& aValue) {
   return NS_ERROR_FAILURE;
 }
 
@@ -425,9 +431,13 @@ nsresult nsSimpleURI::SetPathQueryRefInternal(const nsACString& aPath) {
   const auto* queryEnd =
       std::find_if(pathEnd, end, [](char c) { return c == '#'; });
 
-  rv = SetQuery(Substring(pathEnd, queryEnd));
-  if (NS_FAILED(rv)) {
-    return rv;
+  // Bug 1874118: If the URL does not contain a '?' or '?' appears after '#',
+  // SetQuery will not execute, preventing TrimTrailingCharactersFromPath
+  if (pathEnd != end && *pathEnd == '?') {
+    rv = SetQuery(Substring(pathEnd, queryEnd));
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
   }
 
   if (queryEnd == end) {
@@ -702,6 +712,12 @@ nsSimpleURI::GetQuery(nsACString& aQuery) {
   } else {
     aQuery = mQuery;
   }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsSimpleURI::GetHasQuery(bool* result) {
+  *result = mIsQueryValid;
   return NS_OK;
 }
 

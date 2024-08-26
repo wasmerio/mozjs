@@ -45,6 +45,30 @@ migration-wizard-migrator-display-name-opera-gx = Opera GX
 migration-wizard-migrator-display-name-safari = Safari
 migration-wizard-migrator-display-name-vivaldi = Vivaldi
 
+migration-source-name-ie = Internet Explorer
+migration-source-name-edge = Microsoft Edge
+migration-source-name-chrome = Google Chrome
+
+migration-imported-safari-reading-list = Reading List (From Safari)
+migration-imported-edge-reading-list = Reading List (From Edge)
+
+## These strings are shown if the selected browser data directory is unreadable.
+## In practice, this tends to only occur on Linux when Firefox
+## is installed as a Snap.
+
+migration-no-permissions-message = { -brand-short-name } does not have access to other browsers’ profiles installed on this device.
+
+migration-no-permissions-instructions = To continue importing data from another browser, grant { -brand-short-name } access to its profile folder.
+
+migration-no-permissions-instructions-step1 = Select “Continue”
+
+# The second step in getting permissions to read data for the selected
+# browser type.
+#
+# Variables:
+#  $permissionsPath (String): the file system path that the user will need to grant read permission to.
+migration-no-permissions-instructions-step2 = In the file picker, navigate to <code>{ $permissionsPath }</code> and choose “Select”
+
 ## These strings will be displayed based on how many resources are selected to import
 
 migration-all-available-data-label = Import all available data
@@ -60,7 +84,7 @@ migration-bookmarks-option-label = Bookmarks
 # Edge, as this is the terminology for bookmarks on those browsers.
 migration-favorites-option-label = Favorites
 
-migration-logins-and-passwords-option-label = Saved logins and passwords
+migration-passwords-option-label = Saved passwords
 migration-history-option-label = Browsing history
 migration-extensions-option-label = Extensions
 migration-form-autofill-option-label = Form autofill data
@@ -173,7 +197,17 @@ migration-list-payment-methods-label = payment methods
 ##
 
 migration-wizard-progress-header = Importing Data
+
+# This header appears in the final page of the migration wizard only if
+# all resources were imported successfully.
 migration-wizard-progress-done-header = Data Imported Successfully
+
+# This header appears in the final page of the migration wizard if only
+# some of the resources were imported successfully. This is meant to be
+# distinct from migration-wizard-progress-done-header, which is only shown
+# if all resources were imported successfully.
+migration-wizard-progress-done-with-warnings-header = Data Import Complete
+
 migration-wizard-progress-icon-in-progress =
   .aria-label = Importing…
 migration-wizard-progress-icon-completed =

@@ -4,10 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/Components.h"
+#include "mozilla/CredentialChosenCallback.h"
 #include "mozilla/dom/Credential.h"
 #include "mozilla/dom/CredentialsContainer.h"
+#include "mozilla/dom/FeaturePolicyUtils.h"
 #include "mozilla/dom/IdentityCredential.h"
 #include "mozilla/dom/Promise.h"
+#include "mozilla/dom/Promise-inl.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_security.h"
 #include "mozilla/dom/WebAuthnManager.h"
@@ -15,10 +19,12 @@
 #include "mozilla/dom/WindowContext.h"
 #include "nsContentUtils.h"
 #include "nsFocusManager.h"
+#include "nsICredentialChooserService.h"
 #include "nsIDocShell.h"
-#include "nsGlobalWindowInner.h"
 
 namespace mozilla::dom {
+
+using mozilla::CredentialChosenCallback;
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(CredentialsContainer, mParent, mManager)
 NS_IMPL_CYCLE_COLLECTING_ADDREF(CredentialsContainer)
@@ -80,6 +86,19 @@ static bool IsInActiveTab(nsPIDOMWindowInner* aParent) {
   return IsInActiveTab(doc);
 }
 
+static bool ConsumeUserActivation(nsPIDOMWindowInner* aParent) {
+  // Returns whether aParent has transient activation, and consumes the
+  // activation.
+  MOZ_ASSERT(aParent);
+
+  RefPtr<Document> doc = aParent->GetExtantDoc();
+  if (NS_WARN_IF(!doc)) {
+    return false;
+  }
+
+  return doc->ConsumeTransientUserGestureActivation();
+}
+
 static bool IsSameOriginWithAncestors(nsPIDOMWindowInner* aParent) {
   // This method returns true if aParent is either not in a frame / iframe, or
   // is in a frame or iframe and all ancestors for aParent are the same origin.
@@ -124,6 +143,14 @@ void CredentialsContainer::EnsureWebAuthnManager() {
   }
 }
 
+already_AddRefed<WebAuthnManager> CredentialsContainer::GetWebAuthnManager() {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  EnsureWebAuthnManager();
+  RefPtr<WebAuthnManager> ref = mManager;
+  return ref.forget();
+}
+
 JSObject* CredentialsContainer::WrapObject(JSContext* aCx,
                                            JS::Handle<JSObject*> aGivenProto) {
   return CredentialsContainer_Binding::Wrap(aCx, this, aGivenProto);
@@ -144,20 +171,45 @@ already_AddRefed<Promise> CredentialsContainer::Get(
     return CreateAndRejectWithNotSupported(mParent, aRv);
   }
 
+  bool conditionallyMediated =
+      aOptions.mMediation == CredentialMediationRequirement::Conditional;
   if (aOptions.mPublicKey.WasPassed() &&
       StaticPrefs::security_webauth_webauthn()) {
-    if (!IsSameOriginWithAncestors(mParent) || !IsInActiveTab(mParent)) {
+    MOZ_ASSERT(mParent);
+    if (!FeaturePolicyUtils::IsFeatureAllowed(
+            mParent->GetExtantDoc(), u"publickey-credentials-get"_ns) ||
+        !IsInActiveTab(mParent)) {
       return CreateAndRejectWithNotAllowed(mParent, aRv);
     }
 
+    if (conditionallyMediated &&
+        !StaticPrefs::security_webauthn_enable_conditional_mediation()) {
+      RefPtr<Promise> promise = CreatePromise(mParent, aRv);
+      if (!promise) {
+        return nullptr;
+      }
+      promise->MaybeRejectWithTypeError<MSG_INVALID_ENUM_VALUE>(
+          "mediation", "conditional", "CredentialMediationRequirement");
+      return promise.forget();
+    }
+
     EnsureWebAuthnManager();
-    return mManager->GetAssertion(aOptions.mPublicKey.Value(), aOptions.mSignal,
-                                  aRv);
+    return mManager->GetAssertion(aOptions.mPublicKey.Value(),
+                                  conditionallyMediated, aOptions.mSignal, aRv);
   }
 
   if (aOptions.mIdentity.WasPassed() &&
       StaticPrefs::dom_security_credentialmanagement_identity_enabled()) {
     RefPtr<Promise> promise = CreatePromise(mParent, aRv);
+    if (!promise) {
+      return nullptr;
+    }
+
+    if (conditionallyMediated) {
+      promise->MaybeRejectWithTypeError<MSG_INVALID_ENUM_VALUE>(
+          "mediation", "conditional", "CredentialMediationRequirement");
+      return promise.forget();
+    }
 
     if (mActiveIdentityRequest) {
       promise->MaybeRejectWithInvalidStateError(
@@ -168,19 +220,62 @@ already_AddRefed<Promise> CredentialsContainer::Get(
 
     RefPtr<CredentialsContainer> self = this;
 
-    IdentityCredential::DiscoverFromExternalSource(
-        mParent, aOptions, IsSameOriginWithAncestors(mParent))
-        ->Then(
-            GetCurrentSerialEventTarget(), __func__,
-            [self, promise](const RefPtr<IdentityCredential>& credential) {
-              self->mActiveIdentityRequest = false;
-              promise->MaybeResolve(credential);
-            },
-            [self, promise](nsresult error) {
-              self->mActiveIdentityRequest = false;
-              promise->MaybeReject(error);
-            });
+    promise->AddCallbacksWithCycleCollectedArgs(
+        [](JSContext* aCx, JS::Handle<JS::Value> aValue, ErrorResult& aRv,
+           const RefPtr<CredentialsContainer>& aContainer) {
+          aContainer->mActiveIdentityRequest = false;
+        },
+        [](JSContext* aCx, JS::Handle<JS::Value> aValue, ErrorResult& aRv,
+           const RefPtr<CredentialsContainer>& aContainer) {
+          aContainer->mActiveIdentityRequest = false;
+        },
+        self);
 
+    IdentityCredentialRequestOptions options(aOptions.mIdentity.Value());
+
+    if (StaticPrefs::
+            dom_security_credentialmanagement_identity_lightweight_enabled()) {
+      IdentityCredential::CollectFromCredentialStore(
+          mParent, aOptions, IsSameOriginWithAncestors(mParent))
+          ->Then(
+              GetCurrentSerialEventTarget(), __func__,
+              [self, promise, options = std::move(options)](
+                  const nsTArray<RefPtr<IdentityCredential>>& credentials) {
+                if (credentials.Length() == 0) {
+                  IdentityCredential::DiscoverFromExternalSource(
+                      self->mParent, options,
+                      IsSameOriginWithAncestors(self->mParent), promise);
+                } else {
+                  nsresult rv;
+                  nsCOMPtr<nsICredentialChooserService> ccService =
+                      mozilla::components::CredentialChooserService::Service(
+                          &rv);
+                  if (NS_WARN_IF(!ccService)) {
+                    promise->MaybeReject(rv);
+                    return;
+                  }
+                  RefPtr<CredentialChosenCallback> callback =
+                      new CredentialChosenCallback(promise);
+                  nsTArray<RefPtr<Credential>> argumentCredential;
+                  for (const RefPtr<IdentityCredential>& cred : credentials) {
+                    argumentCredential.AppendElement(cred);
+                  }
+                  rv = ccService->ShowCredentialChooser(
+                      self->mParent->GetBrowsingContext()->Top(),
+                      argumentCredential, callback);
+                  if (NS_FAILED(rv)) {
+                    promise->MaybeReject(rv);
+                    return;
+                  }
+                }
+              },
+              [self, promise](nsresult rv) { promise->MaybeReject(rv); });
+
+      return promise.forget();
+    }
+
+    IdentityCredential::DiscoverFromExternalSource(
+        mParent, options, IsSameOriginWithAncestors(mParent), promise);
     return promise.forget();
   }
 
@@ -201,13 +296,43 @@ already_AddRefed<Promise> CredentialsContainer::Create(
 
   if (aOptions.mPublicKey.WasPassed() &&
       StaticPrefs::security_webauth_webauthn()) {
-    if (!IsSameOriginWithAncestors(mParent) || !IsInActiveTab(mParent)) {
+    MOZ_ASSERT(mParent);
+    // In a cross-origin iframe this request consumes user activation, i.e.
+    // subsequent requests cannot be made without further user interaction.
+    // See step 2.2 of https://w3c.github.io/webauthn/#sctn-createCredential
+    bool hasRequiredActivation =
+        IsInActiveTab(mParent) &&
+        (IsSameOriginWithAncestors(mParent) || ConsumeUserActivation(mParent));
+    if (!FeaturePolicyUtils::IsFeatureAllowed(
+            mParent->GetExtantDoc(), u"publickey-credentials-create"_ns) ||
+        !hasRequiredActivation) {
       return CreateAndRejectWithNotAllowed(mParent, aRv);
     }
 
     EnsureWebAuthnManager();
     return mManager->MakeCredential(aOptions.mPublicKey.Value(),
                                     aOptions.mSignal, aRv);
+  }
+
+  if (aOptions.mIdentity.WasPassed() &&
+      StaticPrefs::dom_security_credentialmanagement_identity_enabled() &&
+      StaticPrefs::
+          dom_security_credentialmanagement_identity_lightweight_enabled()) {
+    MOZ_ASSERT(mParent);
+    RefPtr<Promise> promise = CreatePromise(mParent, aRv);
+    if (!promise) {
+      return nullptr;
+    }
+
+    IdentityCredential::Create(mParent, aOptions,
+                               IsSameOriginWithAncestors(mParent))
+        ->Then(
+            GetCurrentSerialEventTarget(), __func__,
+            [promise](const RefPtr<IdentityCredential>& credential) {
+              promise->MaybeResolve(credential);
+            },
+            [promise](nsresult error) { promise->MaybeReject(error); });
+    return promise.forget();
   }
 
   return CreateAndRejectWithNotSupported(mParent, aRv);
@@ -228,10 +353,24 @@ already_AddRefed<Promise> CredentialsContainer::Store(
   }
 
   if (type.EqualsLiteral("identity") &&
-      StaticPrefs::dom_security_credentialmanagement_identity_enabled()) {
-    return CreateAndRejectWithNotSupported(mParent, aRv);
-  }
+      StaticPrefs::dom_security_credentialmanagement_identity_enabled() &&
+      StaticPrefs::
+          dom_security_credentialmanagement_identity_lightweight_enabled()) {
+    MOZ_ASSERT(mParent);
+    RefPtr<Promise> promise = CreatePromise(mParent, aRv);
+    if (!promise) {
+      return nullptr;
+    }
 
+    IdentityCredential::Store(
+        mParent, static_cast<const IdentityCredential*>(&aCredential),
+        IsSameOriginWithAncestors(mParent))
+        ->Then(
+            GetCurrentSerialEventTarget(), __func__,
+            [promise](bool success) { promise->MaybeResolveWithUndefined(); },
+            [promise](nsresult error) { promise->MaybeReject(error); });
+    return promise.forget();
+  }
   return CreateAndRejectWithNotSupported(mParent, aRv);
 }
 

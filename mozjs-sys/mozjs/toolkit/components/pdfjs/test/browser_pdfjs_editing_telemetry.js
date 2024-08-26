@@ -79,7 +79,7 @@ add_task(async function test() {
       document.getElementById("cmd_print").doCommand();
       await BrowserTestUtils.waitForCondition(() => {
         let preview = document.querySelector(".printPreviewBrowser");
-        return preview && BrowserTestUtils.is_visible(preview);
+        return preview && BrowserTestUtils.isVisible(preview);
       });
       EventUtils.synthesizeKey("KEY_Escape");
 
@@ -87,10 +87,8 @@ add_task(async function test() {
 
       Assert.equal(Glean.pdfjs.editing.print.testGetValue(), 1);
 
-      await SpecialPowers.spawn(browser, [], async function () {
-        var viewer = content.wrappedJSObject.PDFViewerApplication;
-        await viewer.close();
-      });
+      await waitForPdfJSClose(browser);
+      await SpecialPowers.popPrefEnv();
     }
   );
 });

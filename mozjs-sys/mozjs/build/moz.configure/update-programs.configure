@@ -4,11 +4,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+
 # Updater
 # ==============================================================
-@depends(build_project)
-def updater_default(build_project):
-    return build_project != "mobile/android"
+@depends(build_project, target)
+def updater_default(build_project, target):
+    if build_project == "tools/update-programs":
+        return True
+    return build_project != "mobile/android" and target.os != "iOS"
 
 
 option(
@@ -182,7 +185,10 @@ set_config("MOZ_DEFAULT_BROWSER_AGENT", default_agent_flag)
 # ==============================================================================
 @depends(target, build_project)
 def notification_server_default(target, build_project):
-    return target.os == "WINNT" and build_project == "browser"
+    return target.os == "WINNT" and build_project in (
+        "browser",
+        "comm/mail",
+    )
 
 
 option(

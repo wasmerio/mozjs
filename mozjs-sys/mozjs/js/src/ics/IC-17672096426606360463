@@ -1,0 +1,1 @@
+SetElem, 3, 3, 6, JSVAL_TYPE_UNKNOWN, 24, STUBFIELD(String) STUBFIELD(WeakShape) STUBFIELD(RawInt32) , LASTUSED(4) LASTUSED(2) LASTUSED(4) , OP(GuardToObject) ID(0) OP(GuardToString) ID(1) OP(GuardSpecificAtom) ID(1) OFFSET(0) OP(GuardShape) ID(0) OFFSET(1) OP(StoreFixedSlot) ID(0) OFFSET(2) ID(2) OP(ReturnFromIC)  

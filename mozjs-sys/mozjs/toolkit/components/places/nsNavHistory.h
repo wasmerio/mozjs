@@ -57,6 +57,8 @@
 #define TAGS_ROOT_GUID "tags________"
 #define MOBILE_ROOT_GUID "mobile______"
 
+#define SQL_QUOTE(text) "'" text "'"
+
 class mozIStorageValueArray;
 class nsIAutoCompleteController;
 class nsIEffectiveTLDService;
@@ -184,6 +186,9 @@ class nsNavHistory final : public nsSupportsWeakReference,
   static const int32_t kGetInfoIndex_VisitId;
   static const int32_t kGetInfoIndex_FromVisitId;
   static const int32_t kGetInfoIndex_VisitType;
+  static const int32_t kGetTargetFolder_Guid;
+  static const int32_t kGetTargetFolder_ItemId;
+  static const int32_t kGetTargetFolder_Title;
 
   int64_t GetTagsFolder();
 
@@ -199,15 +204,15 @@ class nsNavHistory final : public nsSupportsWeakReference,
   nsresult RowToResult(mozIStorageValueArray* aRow,
                        nsNavHistoryQueryOptions* aOptions,
                        nsNavHistoryResultNode** aResult);
-  nsresult QueryRowToResult(int64_t aItemId, const nsACString& aBookmarkGuid,
-                            const nsACString& aURI, const nsACString& aTitle,
+
+  nsresult QueryUriToResult(const nsACString& aQueryURI, int64_t aItemId,
+                            const nsACString& aBookmarkGuid,
+                            const nsACString& aTitle,
+                            int64_t aTargetFolderItemId,
+                            const nsACString& aTargetFolderGuid,
+                            const nsACString& aTargetFolderTitle,
                             uint32_t aAccessCount, PRTime aTime,
                             nsNavHistoryResultNode** aNode);
-  nsresult VisitIdToResultNode(int64_t visitId,
-                               nsNavHistoryQueryOptions* aOptions,
-                               nsNavHistoryResultNode** aResult);
-  nsresult URIToResultNode(nsIURI* aURI, nsNavHistoryQueryOptions* aOptions,
-                           nsNavHistoryResultNode** aResult);
 
   /**
    * Returns current number of days stored in history.
@@ -305,6 +310,20 @@ class nsNavHistory final : public nsSupportsWeakReference,
   void UpdateDaysOfHistory(PRTime visitTime);
 
   /**
+   * Get a SQL fragment to pre-cache all the tagged bookmark into a `tagged`
+   * CTE.
+   */
+  static nsLiteralCString GetTagsSqlFragment(const uint16_t aQueryType,
+                                             bool aExcludeItems);
+
+  /**
+   * Get target folder guid from given query URI.
+   * If the folder guid is not found, returns Nonthing().
+   */
+  static mozilla::Maybe<nsCString> GetTargetFolderGuid(
+      const nsACString& aQueryURI);
+
+  /**
    * Store last insterted id for a table.
    */
   static mozilla::Atomic<int64_t> sLastInsertedPlaceId;
@@ -331,6 +350,18 @@ class nsNavHistory final : public nsSupportsWeakReference,
 
   static void InvalidateDaysOfHistory();
 
+  static nsresult TokensToQuery(
+      const nsTArray<mozilla::places::QueryKeyValuePair>& aTokens,
+      nsNavHistoryQuery* aQuery, nsNavHistoryQueryOptions* aOptions);
+
+  /**
+   * Calculates and returns value for mCachedNow.
+   * This is an hack to avoid calling PR_Now() too often, as is the case when
+   * we're asked the ageindays of many history entries in a row.  A timer is
+   * set which will clear our valid flag after a short timeout.
+   */
+  PRTime GetNow();
+
  private:
   ~nsNavHistory();
 
@@ -350,13 +381,6 @@ class nsNavHistory final : public nsSupportsWeakReference,
    */
   void LoadPrefs();
 
-  /**
-   * Calculates and returns value for mCachedNow.
-   * This is an hack to avoid calling PR_Now() too often, as is the case when
-   * we're asked the ageindays of many history entries in a row.  A timer is
-   * set which will clear our valid flag after a short timeout.
-   */
-  PRTime GetNow();
   PRTime mCachedNow;
   nsCOMPtr<nsITimer> mExpireNowTimer;
   /**
@@ -431,15 +455,7 @@ class nsNavHistory final : public nsSupportsWeakReference,
   int32_t mUnvisitedTypedBonus;
   int32_t mReloadVisitBonus;
 
-  nsresult RecalculateOriginFrecencyStatsInternal();
-
-  // in nsNavHistoryQuery.cpp
-  nsresult TokensToQuery(
-      const nsTArray<mozilla::places::QueryKeyValuePair>& aTokens,
-      nsNavHistoryQuery* aQuery, nsNavHistoryQueryOptions* aOptions);
-
   int64_t mTagsFolder;
-
   int64_t mLastCachedStartOfDay;
   int64_t mLastCachedEndOfDay;
 };
@@ -447,7 +463,7 @@ class nsNavHistory final : public nsSupportsWeakReference,
 #define PLACES_URI_PREFIX "place:"
 
 /* Returns true if the given URI represents a history query. */
-inline bool IsQueryURI(const nsCString& uri) {
+inline static bool IsQueryURI(const nsACString& uri) {
   return StringBeginsWith(uri, nsLiteralCString(PLACES_URI_PREFIX));
 }
 

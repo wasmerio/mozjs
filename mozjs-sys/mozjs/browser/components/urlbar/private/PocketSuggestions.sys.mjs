@@ -8,10 +8,7 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   QuickSuggest: "resource:///modules/QuickSuggest.sys.mjs",
-  QuickSuggestRemoteSettings:
-    "resource:///modules/urlbar/private/QuickSuggestRemoteSettings.sys.mjs",
-  SuggestionsMap:
-    "resource:///modules/urlbar/private/QuickSuggestRemoteSettings.sys.mjs",
+  SuggestionsMap: "resource:///modules/urlbar/private/SuggestBackendJs.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
@@ -36,7 +33,6 @@ export class PocketSuggestions extends BaseFeature {
 
   get shouldEnable() {
     return (
-      lazy.UrlbarPrefs.get("quickSuggestRemoteSettingsEnabled") &&
       lazy.UrlbarPrefs.get("pocketFeatureGate") &&
       lazy.UrlbarPrefs.get("suggest.pocket") &&
       lazy.UrlbarPrefs.get("suggest.quicksuggest.nonsponsored")
@@ -51,6 +47,10 @@ export class PocketSuggestions extends BaseFeature {
     return "pocket";
   }
 
+  get rustSuggestionTypes() {
+    return ["Pocket"];
+  }
+
   get showLessFrequentlyCount() {
     let count = lazy.UrlbarPrefs.get("pocket.showLessFrequentlyCount") || 0;
     return Math.max(count, 0);
@@ -59,16 +59,16 @@ export class PocketSuggestions extends BaseFeature {
   get canShowLessFrequently() {
     let cap =
       lazy.UrlbarPrefs.get("pocketShowLessFrequentlyCap") ||
-      lazy.QuickSuggestRemoteSettings.config.show_less_frequently_cap ||
+      lazy.QuickSuggest.backend.config?.showLessFrequentlyCap ||
       0;
     return !cap || this.showLessFrequentlyCount < cap;
   }
 
   enable(enabled) {
     if (enabled) {
-      lazy.QuickSuggestRemoteSettings.register(this);
+      lazy.QuickSuggest.jsBackend.register(this);
     } else {
-      lazy.QuickSuggestRemoteSettings.unregister(this);
+      lazy.QuickSuggest.jsBackend.unregister(this);
       this.#lowConfidenceSuggestionsMap.clear();
       this.#highConfidenceSuggestionsMap.clear();
     }
@@ -166,20 +166,51 @@ export class PocketSuggestions extends BaseFeature {
       }
     }
 
-    let isBestMatch =
-      suggestion.is_top_pick &&
-      lazy.UrlbarPrefs.get("bestMatchEnabled") &&
-      lazy.UrlbarPrefs.get("suggest.bestmatch");
+    if (suggestion.source == "rust") {
+      suggestion.is_top_pick = suggestion.isTopPick;
+      delete suggestion.isTopPick;
+
+      // The Rust component doesn't implement these properties. For now we use
+      // dummy values. See issue #5878 in application-services.
+      suggestion.description = suggestion.title;
+      suggestion.full_keyword = searchString;
+    }
+
+    let url = new URL(suggestion.url);
+    url.searchParams.set("utm_medium", "firefox-desktop");
+    url.searchParams.set("utm_source", "firefox-suggest");
+    url.searchParams.set(
+      "utm_campaign",
+      "pocket-collections-in-the-address-bar"
+    );
+    url.searchParams.set("utm_content", "treatment");
+
+    let resultProperties = {
+      isRichSuggestion: true,
+      richSuggestionIconSize: suggestion.is_top_pick ? 24 : 16,
+      showFeedbackMenu: true,
+    };
+
+    if (!suggestion.is_top_pick) {
+      resultProperties.isSuggestedIndexRelativeToGroup = true;
+      resultProperties.suggestedIndex =
+        lazy.UrlbarPrefs.get("pocketSuggestIndex");
+    }
 
     return Object.assign(
       new lazy.UrlbarResult(
         lazy.UrlbarUtils.RESULT_TYPE.URL,
         lazy.UrlbarUtils.RESULT_SOURCE.OTHER_NETWORK,
         ...lazy.UrlbarResult.payloadAndSimpleHighlights(queryContext.tokens, {
-          url: suggestion.url,
+          url: url.href,
+          originalUrl: suggestion.url,
           title: [suggestion.title, lazy.UrlbarUtils.HIGHLIGHT.TYPED],
-          description: isBestMatch ? suggestion.description : "",
-          icon: "chrome://global/skin/icons/pocket.svg",
+          description: suggestion.is_top_pick ? suggestion.description : "",
+          // Use the favicon for non-best matches so the icon exactly matches
+          // the Pocket favicon in the user's history and tabs.
+          icon: suggestion.is_top_pick
+            ? "chrome://global/skin/icons/pocket.svg"
+            : "chrome://global/skin/icons/pocket-favicon.ico",
           shouldShowUrl: true,
           bottomTextL10n: {
             id: "firefox-suggest-pocket-bottom-text",
@@ -193,15 +224,11 @@ export class PocketSuggestions extends BaseFeature {
           helpUrl: lazy.QuickSuggest.HELP_URL,
         })
       ),
-      {
-        isRichSuggestion: true,
-        richSuggestionIconSize: isBestMatch ? 24 : 16,
-        showFeedbackMenu: true,
-      }
+      resultProperties
     );
   }
 
-  handleCommand(queryContext, result, selType) {
+  handleCommand(view, result, selType) {
     switch (selType) {
       case RESULT_MENU_COMMAND.HELP:
         // "help" is handled by UrlbarInput, no need to do anything here.
@@ -209,16 +236,30 @@ export class PocketSuggestions extends BaseFeature {
       // selType == "dismiss" when the user presses the dismiss key shortcut.
       case "dismiss":
       case RESULT_MENU_COMMAND.NOT_RELEVANT:
-        lazy.QuickSuggest.blockedSuggestions.add(result.payload.url);
-        queryContext.view.acknowledgeDismissal(result, false);
+        // PocketSuggestions adds the UTM parameters to the original URL and
+        // returns it as payload.url in the result. However, as
+        // UrlbarProviderQuickSuggest filters suggestions with original URL of
+        // provided suggestions, need to use the original URL when adding to the
+        // block list.
+        lazy.QuickSuggest.blockedSuggestions.add(result.payload.originalUrl);
+        result.acknowledgeDismissalL10n = {
+          id: "firefox-suggest-dismissal-acknowledgment-one",
+        };
+        view.controller.removeResult(result);
         break;
       case RESULT_MENU_COMMAND.NOT_INTERESTED:
         lazy.UrlbarPrefs.set("suggest.pocket", false);
-        queryContext.view.acknowledgeDismissal(result, true);
+        result.acknowledgeDismissalL10n = {
+          id: "firefox-suggest-dismissal-acknowledgment-all",
+        };
+        view.controller.removeResult(result);
         break;
       case RESULT_MENU_COMMAND.SHOW_LESS_FREQUENTLY:
-        queryContext.view.acknowledgeFeedback(result);
+        view.acknowledgeFeedback(result);
         this.incrementShowLessFrequentlyCount();
+        if (!this.canShowLessFrequently) {
+          view.invalidateResultMenuCommands();
+        }
         break;
     }
   }
@@ -226,7 +267,7 @@ export class PocketSuggestions extends BaseFeature {
   getResultCommands(result) {
     let commands = [];
 
-    if (this.canShowLessFrequently) {
+    if (!result.isBestMatch && this.canShowLessFrequently) {
       commands.push({
         name: RESULT_MENU_COMMAND.SHOW_LESS_FREQUENTLY,
         l10n: {

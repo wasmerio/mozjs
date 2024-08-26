@@ -10,7 +10,6 @@ EXPORTS += [
 
 EXPORTS.mozilla.a11y += [
     "AccessibleWrap.h",
-    "HyperTextAccessibleWrap.h",
     "PlatformExtTypes.h",
 ]
 
@@ -22,6 +21,7 @@ UNIFIED_SOURCES += [
     "MOXAccessibleBase.mm",
     "MOXLandmarkAccessibles.mm",
     "MOXMathAccessibles.mm",
+    "MOXOuterDoc.mm",
     "MOXSearchInfo.mm",
     "MOXTextMarkerDelegate.mm",
     "MOXWebAreaAccessible.mm",

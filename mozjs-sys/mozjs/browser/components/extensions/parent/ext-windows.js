@@ -61,11 +61,13 @@ function sanitizePositionParams(params, window = null, positionOffset = 0) {
     availDeviceWidth,
     availDeviceHeight
   );
+  const slopX = window?.screenEdgeSlopX || 0;
+  const slopY = window?.screenEdgeSlopY || 0;
   const factor = screen.defaultCSSScaleFactor;
-  const availLeft = Math.floor(availDeviceLeft.value / factor);
-  const availTop = Math.floor(availDeviceTop.value / factor);
-  const availWidth = Math.floor(availDeviceWidth.value / factor);
-  const availHeight = Math.floor(availDeviceHeight.value / factor);
+  const availLeft = Math.floor(availDeviceLeft.value / factor) - slopX;
+  const availTop = Math.floor(availDeviceTop.value / factor) - slopY;
+  const availWidth = Math.floor(availDeviceWidth.value / factor) + slopX;
+  const availHeight = Math.floor(availDeviceHeight.value / factor) + slopY;
   params.left = Math.min(
     availLeft + availWidth - width,
     Math.max(availLeft, params.left)
@@ -110,7 +112,7 @@ this.windows = class extends ExtensionAPIPersistent {
       // Keep track of the last windowId used to fire an onFocusChanged event
       let lastOnFocusChangedWindowId;
 
-      let listener = event => {
+      let listener = () => {
         // Wait a tick to avoid firing a superfluous WINDOW_ID_NONE
         // event when switching focus between two Firefox windows.
         Promise.resolve().then(() => {
@@ -143,26 +145,6 @@ this.windows = class extends ExtensionAPIPersistent {
     let { extension } = context;
 
     const { windowManager } = extension;
-
-    function getTriggeringPrincipalForUrl(url) {
-      if (context.checkLoadURL(url, { dontReportErrors: true })) {
-        return context.principal;
-      }
-      let window = context.currentWindow || windowTracker.topWindow;
-      // The extension principal cannot directly load about:-URLs except for about:blank, and
-      // possibly some other loads such as moz-extension.  Ensure any page set as a home page
-      // will load by using a content principal.
-      return Services.scriptSecurityManager.createContentPrincipal(
-        Services.io.newURI(url),
-        {
-          privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(
-            window.gBrowser
-          )
-            ? 1
-            : 0,
-        }
-      );
-    }
 
     return {
       windows: {
@@ -259,11 +241,23 @@ this.windows = class extends ExtensionAPIPersistent {
             Ci.nsIMutableArray
           );
 
+          // Whether there is only one URL to load, and it is a moz-extension:-URL.
+          let isOnlyMozExtensionUrl = false;
+
           // Creating a new window allows one single triggering principal for all tabs that
           // are created in the window.  Due to that, if we need a browser principal to load
           // some urls, we fallback to using a content principal like we do in the tabs api.
           // Throws if url is an array and any url can't be loaded by the extension principal.
-          let { allowScriptsToClose, principal } = createData;
+          let principal = context.principal;
+          function setContentTriggeringPrincipal(url) {
+            principal = Services.scriptSecurityManager.createContentPrincipal(
+              Services.io.newURI(url),
+              {
+                // Note: privateBrowsingAllowed was already checked before.
+                privateBrowsingId: createData.incognito ? 1 : 0,
+              }
+            );
+          }
 
           if (createData.tabId !== null) {
             if (createData.url !== null) {
@@ -324,12 +318,22 @@ this.windows = class extends ExtensionAPIPersistent {
                 array.appendElement(mkstr(url));
               }
               args.appendElement(array);
+              // TODO bug 1780583: support multiple triggeringPrincipals to
+              // avoid having to use the system principal here.
+              principal = Services.scriptSecurityManager.getSystemPrincipal();
             } else {
               let url = context.uri.resolve(createData.url);
               args.appendElement(mkstr(url));
-              principal = getTriggeringPrincipalForUrl(url);
-              if (allowScriptsToClose === null) {
-                allowScriptsToClose = url.startsWith("moz-extension://");
+              isOnlyMozExtensionUrl = url.startsWith("moz-extension://");
+              if (!context.checkLoadURL(url, { dontReportErrors: true })) {
+                if (isOnlyMozExtensionUrl) {
+                  // For backwards-compatibility (also in tabs APIs), we allow
+                  // extensions to open other moz-extension:-URLs even if that
+                  // other resource is not listed in web_accessible_resources.
+                  setContentTriggeringPrincipal(url);
+                } else {
+                  throw new ExtensionError(`Illegal URL: ${url}`);
+                }
               }
             }
           } else {
@@ -339,7 +343,15 @@ this.windows = class extends ExtensionAPIPersistent {
                 ? "about:privatebrowsing"
                 : HomePage.get().split("|", 1)[0];
             args.appendElement(mkstr(url));
-            principal = getTriggeringPrincipalForUrl(url);
+            isOnlyMozExtensionUrl = url.startsWith("moz-extension://");
+
+            if (!context.checkLoadURL(url, { dontReportErrors: true })) {
+              // The extension principal cannot directly load about:-URLs,
+              // except for about:blank, or other moz-extension:-URLs that are
+              // not in web_accessible_resources. Ensure any page set as a home
+              // page will load by using a content principal.
+              setContentTriggeringPrincipal(url);
+            }
           }
 
           args.appendElement(null); // extraOptions
@@ -426,6 +438,10 @@ this.windows = class extends ExtensionAPIPersistent {
             window.addEventListener(
               "DOMContentLoaded",
               function () {
+                let { allowScriptsToClose } = createData;
+                if (allowScriptsToClose === null && isOnlyMozExtensionUrl) {
+                  allowScriptsToClose = true;
+                }
                 if (allowScriptsToClose) {
                   window.gBrowserAllowScriptsToCloseInitialTabs = true;
                 }

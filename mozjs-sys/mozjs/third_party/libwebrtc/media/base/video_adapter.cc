@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <utility>
@@ -39,7 +40,8 @@ struct Fraction {
   // Determines number of output pixels if both width and height of an input of
   // `input_pixels` pixels is scaled with the fraction numerator / denominator.
   int scale_pixel_count(int input_pixels) {
-    return (numerator * numerator * input_pixels) / (denominator * denominator);
+    return (numerator * numerator * static_cast<int64_t>(input_pixels)) /
+           (denominator * denominator);
   }
 };
 
@@ -356,12 +358,6 @@ void VideoAdapter::OnSinkWants(const rtc::VideoSinkWants& sink_wants) {
   // that are NOT using requested_resolution (aka newapi), then override
   // calls to OnOutputFormatRequest and use values from requested_resolution
   // instead (combined with qualityscaling based on pixel counts above).
-  if (webrtc::field_trial::IsDisabled(
-          "WebRTC-Video-RequestedResolutionOverrideOutputFormatRequest")) {
-    // kill-switch...
-    return;
-  }
-
   if (!sink_wants.requested_resolution) {
     if (stashed_output_format_request_) {
       // because current active_output_format_request is based on

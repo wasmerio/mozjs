@@ -461,13 +461,14 @@ impl ErrorReporter {
             _ => {
                 let mut desugared = selectors.last().unwrap().clone();
                 for parent in selectors.iter().rev().skip(1) {
-                    desugared = desugared.replace_parent_selector(&parent.0);
+                    desugared = desugared.replace_parent_selector(&parent);
                 }
                 Some(desugared.to_css_string())
             },
         };
-        let selector_list_ptr =
-            desugared_selector_list.as_ref().map_or(ptr::null(), |s| s.as_ptr()) as *const _;
+        let selector_list_ptr = desugared_selector_list
+            .as_ref()
+            .map_or(ptr::null(), |s| s.as_ptr()) as *const _;
         let params = error.error_params();
         let param = params.main_param;
         let pre_param = params.prefix_param;
@@ -491,7 +492,9 @@ impl ErrorReporter {
                 source.as_ptr() as *const _,
                 source.len() as u32,
                 selector_list_ptr,
-                desugared_selector_list.as_ref().map_or(0, |string| string.len()) as u32,
+                desugared_selector_list
+                    .as_ref()
+                    .map_or(0, |string| string.len()) as u32,
                 location.line,
                 location.column,
             );

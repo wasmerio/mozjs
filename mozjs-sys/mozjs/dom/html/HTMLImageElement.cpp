@@ -6,23 +6,22 @@
 
 #include "mozilla/dom/HTMLImageElement.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/FocusModel.h"
 #include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/HTMLImageElementBinding.h"
 #include "mozilla/dom/NameSpaceConstants.h"
+#include "mozilla/dom/UnbindContext.h"
 #include "nsGenericHTMLElement.h"
 #include "nsGkAtoms.h"
-#include "nsStyleConsts.h"
 #include "nsPresContext.h"
 #include "nsSize.h"
 #include "mozilla/dom/Document.h"
 #include "nsImageFrame.h"
-#include "nsIScriptContext.h"
 #include "nsContentUtils.h"
 #include "nsContainerFrame.h"
 #include "nsNodeInfoManager.h"
 #include "mozilla/MouseEvents.h"
-#include "nsContentPolicyUtils.h"
 #include "nsFocusManager.h"
 #include "mozilla/dom/DOMIntersectionObserver.h"
 #include "mozilla/dom/HTMLFormElement.h"
@@ -30,7 +29,6 @@
 #include "mozilla/dom/UserActivation.h"
 #include "nsAttrValueOrString.h"
 #include "imgLoader.h"
-#include "Image.h"
 
 // Responsive images!
 #include "mozilla/dom/HTMLSourceElement.h"
@@ -84,8 +82,7 @@ class ImageLoadTask final : public MicroTaskRunnable {
  public:
   ImageLoadTask(HTMLImageElement* aElement, bool aAlwaysLoad,
                 bool aUseUrgentStartForChannel)
-      : MicroTaskRunnable(),
-        mElement(aElement),
+      : mElement(aElement),
         mAlwaysLoad(aAlwaysLoad),
         mUseUrgentStartForChannel(aUseUrgentStartForChannel) {
     mDocument = aElement->OwnerDoc();
@@ -121,10 +118,7 @@ class ImageLoadTask final : public MicroTaskRunnable {
 
 HTMLImageElement::HTMLImageElement(
     already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
-    : nsGenericHTMLElement(std::move(aNodeInfo)),
-      mForm(nullptr),
-      mInDocResponsiveContent(false),
-      mCurrentDensity(1.0) {
+    : nsGenericHTMLElement(std::move(aNodeInfo)) {
   // We start out broken
   AddStatesSilently(ElementState::BROKEN);
 }
@@ -203,24 +197,6 @@ void HTMLImageElement::GetDecoding(nsAString& aValue) {
   GetEnumAttr(nsGkAtoms::decoding, kDecodingTableDefault->tag, aValue);
 }
 
-// https://whatpr.org/html/3752/urls-and-fetching.html#lazy-loading-attributes
-static const nsAttrValue::EnumTable kLoadingTable[] = {
-    {"eager", HTMLImageElement::Loading::Eager},
-    {"lazy", HTMLImageElement::Loading::Lazy},
-    {nullptr, 0}};
-
-void HTMLImageElement::GetLoading(nsAString& aValue) const {
-  GetEnumAttr(nsGkAtoms::loading, kLoadingTable[0].tag, aValue);
-}
-
-HTMLImageElement::Loading HTMLImageElement::LoadingState() const {
-  const nsAttrValue* val = mAttrs.GetAttr(nsGkAtoms::loading);
-  if (!val) {
-    return HTMLImageElement::Loading::Eager;
-  }
-  return static_cast<HTMLImageElement::Loading>(val->GetEnumValue());
-}
-
 already_AddRefed<Promise> HTMLImageElement::Decode(ErrorResult& aRv) {
   return nsImageLoadingContent::QueueDecodeAsync(aRv);
 }
@@ -243,9 +219,11 @@ bool HTMLImageElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                                     kDecodingTableDefault);
     }
     if (aAttribute == nsGkAtoms::loading) {
-      return aResult.ParseEnumValue(aValue, kLoadingTable,
-                                    /* aCaseSensitive = */ false,
-                                    kLoadingTable);
+      return ParseLoadingAttribute(aValue, aResult);
+    }
+    if (aAttribute == nsGkAtoms::fetchpriority) {
+      ParseFetchPriority(aValue, aResult);
+      return true;
     }
     if (ParseImageAttribute(aAttribute, aValue, aResult)) {
       return true;
@@ -299,7 +277,7 @@ void HTMLImageElement::BeforeSetAttr(int32_t aNameSpaceID, nsAtom* aName,
   if (aNameSpaceID == kNameSpaceID_None && mForm &&
       (aName == nsGkAtoms::name || aName == nsGkAtoms::id)) {
     // remove the image from the hashtable as needed
-    if (auto* old = GetParsedAttr(aName); old && !old->IsEmptyString()) {
+    if (const auto* old = GetParsedAttr(aName); old && !old->IsEmptyString()) {
       mForm->RemoveImageElementFromTable(
           this, nsDependentAtomString(old->GetAtomValue()));
     }
@@ -321,6 +299,12 @@ void HTMLImageElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
   }
 
   nsAttrValueOrString attrVal(aValue);
+  if (aName == nsGkAtoms::src) {
+    mSrcURI = nullptr;
+    if (aValue && !aValue->IsEmptyString()) {
+      StringToURI(attrVal.String(), OwnerDoc(), getter_AddRefs(mSrcURI));
+    }
+  }
 
   if (aValue) {
     AfterMaybeChangeAttr(aNameSpaceID, aName, attrVal, aOldValue,
@@ -338,8 +322,7 @@ void HTMLImageElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
 
   bool forceReload = false;
 
-  if (aName == nsGkAtoms::loading &&
-      !ImageState().HasState(ElementState::LOADING)) {
+  if (aName == nsGkAtoms::loading && !mLoading) {
     if (aValue && Loading(aValue->GetEnumValue()) == Loading::Lazy) {
       SetLazyLoading();
     } else if (aOldValue &&
@@ -458,8 +441,7 @@ void HTMLImageElement::AfterMaybeChangeAttr(
 
   if (InResponsiveMode()) {
     if (mResponsiveSelector && mResponsiveSelector->Content() == this) {
-      mResponsiveSelector->SetDefaultSource(aValue.String(),
-                                            mSrcTriggeringPrincipal);
+      mResponsiveSelector->SetDefaultSource(mSrcURI, mSrcTriggeringPrincipal);
     }
     UpdateSourceSyncAndQueueImageTask(true);
   } else if (aNotify && ShouldLoadImage()) {
@@ -507,28 +489,24 @@ nsINode* HTMLImageElement::GetScopeChainParent() const {
   return nsGenericHTMLElement::GetScopeChainParent();
 }
 
-bool HTMLImageElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
-                                       int32_t* aTabIndex) {
+bool HTMLImageElement::IsHTMLFocusable(IsFocusableFlags aFlags,
+                                       bool* aIsFocusable, int32_t* aTabIndex) {
   int32_t tabIndex = TabIndex();
 
   if (IsInComposedDoc() && FindImageMap()) {
-    if (aTabIndex) {
-      // Use tab index on individual map areas
-      *aTabIndex = (sTabFocusModel & eTabFocus_linksMask) ? 0 : -1;
-    }
+    // Use tab index on individual map areas.
+    *aTabIndex = FocusModel::IsTabFocusable(TabFocusableType::Links) ? 0 : -1;
     // Image map is not focusable itself, but flag as tabbable
     // so that image map areas get walked into.
     *aIsFocusable = false;
-
     return false;
   }
 
-  if (aTabIndex) {
-    // Can be in tab order if tabindex >=0 and form controls are tabbable.
-    *aTabIndex = (sTabFocusModel & eTabFocus_formElementsMask) ? tabIndex : -1;
-  }
-
-  *aIsFocusable = IsFormControlDefaultFocusable(aWithMouse) &&
+  // Can be in tab order if tabindex >=0 and form controls are tabbable.
+  *aTabIndex = FocusModel::IsTabFocusable(TabFocusableType::FormElements)
+                   ? tabIndex
+                   : -1;
+  *aIsFocusable = IsFormControlDefaultFocusable(aFlags) &&
                   (tabIndex >= 0 || GetTabIndexAttrValue().isSome());
 
   return false;
@@ -590,9 +568,9 @@ nsresult HTMLImageElement::BindToTree(BindContext& aContext, nsINode& aParent) {
   return rv;
 }
 
-void HTMLImageElement::UnbindFromTree(bool aNullParent) {
+void HTMLImageElement::UnbindFromTree(UnbindContext& aContext) {
   if (mForm) {
-    if (aNullParent || !FindAncestorForm(mForm)) {
+    if (aContext.IsUnbindRoot(this) || !FindAncestorForm(mForm)) {
       ClearForm(true);
     } else {
       UnsetFlags(MAYBE_ORPHAN_FORM_ELEMENT);
@@ -604,8 +582,8 @@ void HTMLImageElement::UnbindFromTree(bool aNullParent) {
     mInDocResponsiveContent = false;
   }
 
-  nsImageLoadingContent::UnbindFromTree(aNullParent);
-  nsGenericHTMLElement::UnbindFromTree(aNullParent);
+  nsImageLoadingContent::UnbindFromTree();
+  nsGenericHTMLElement::UnbindFromTree(aContext);
 }
 
 void HTMLImageElement::UpdateFormOwner() {
@@ -648,25 +626,20 @@ void HTMLImageElement::MaybeLoadImage(bool aAlwaysForceLoad) {
   }
 }
 
-ElementState HTMLImageElement::IntrinsicState() const {
-  return nsGenericHTMLElement::IntrinsicState() |
-         nsImageLoadingContent::ImageState();
-}
-
 void HTMLImageElement::NodeInfoChanged(Document* aOldDoc) {
   nsGenericHTMLElement::NodeInfoChanged(aOldDoc);
 
-  // Unlike the LazyLoadImageObserver, the intersection observer
-  // for the viewport could contain the element even if
-  // it's not lazy-loading. For instance, the element has
-  // started to load, but haven't reached to the viewport.
-  // So here we always try to unobserve it.
-  if (auto* observer = aOldDoc->GetLazyLoadImageObserverViewport()) {
-    observer->Unobserve(*this);
+  // Reparse the URI if needed. Note that we can't check whether we already have
+  // a parsed URI, because it might be null even if we have a valid src
+  // attribute, if we tried to parse with a different base.
+  mSrcURI = nullptr;
+  nsAutoString src;
+  if (GetAttr(nsGkAtoms::src, src) && !src.IsEmpty()) {
+    StringToURI(src, OwnerDoc(), getter_AddRefs(mSrcURI));
   }
 
   if (mLazyLoading) {
-    aOldDoc->GetLazyLoadImageObserver()->Unobserve(*this);
+    aOldDoc->GetLazyLoadObserver()->Unobserve(*this);
     mLazyLoading = false;
     SetLazyLoading();
   }
@@ -911,12 +884,10 @@ nsresult HTMLImageElement::LoadSelectedImage(bool aForce, bool aNotify,
     triggeringPrincipal =
         mResponsiveSelector->GetSelectedImageTriggeringPrincipal();
     type = eImageLoadType_Imageset;
-  } else {
-    nsAutoString src;
-    hasSrc = GetAttr(nsGkAtoms::src, src);
-    if (hasSrc && !src.IsEmpty()) {
-      Document* doc = OwnerDoc();
-      StringToURI(src, doc, getter_AddRefs(selectedSource));
+  } else if (mSrcURI || HasAttr(nsGkAtoms::src)) {
+    hasSrc = true;
+    if (mSrcURI) {
+      selectedSource = mSrcURI;
       if (HaveSrcsetOrInPicture()) {
         // If we have a srcset attribute or are in a <picture> element, we
         // always use the Imageset load type, even if we parsed no valid
@@ -1154,12 +1125,8 @@ bool HTMLImageElement::SourceElementMatches(Element* aSourceElement) {
   }
 
   nsAutoString type;
-  if (src->GetAttr(nsGkAtoms::type, type) &&
-      !SupportedPictureSourceType(type)) {
-    return false;
-  }
-
-  return true;
+  return !src->GetAttr(nsGkAtoms::type, type) ||
+         SupportedPictureSourceType(type);
 }
 
 already_AddRefed<ResponsiveImageSelector>
@@ -1205,9 +1172,8 @@ HTMLImageElement::TryCreateResponsiveSelector(Element* aSourceElement) {
   // If this is the <img> tag, also pull in src as the default source
   if (!isSourceTag) {
     MOZ_ASSERT(aSourceElement == this);
-    nsAutoString src;
-    if (GetAttr(nsGkAtoms::src, src) && !src.IsEmpty()) {
-      sel->SetDefaultSource(src, mSrcTriggeringPrincipal);
+    if (mSrcURI) {
+      sel->SetDefaultSource(mSrcURI, mSrcTriggeringPrincipal);
     }
   }
 
@@ -1292,10 +1258,6 @@ void HTMLImageElement::SetLazyLoading() {
     return;
   }
 
-  if (!StaticPrefs::dom_image_lazy_loading_enabled()) {
-    return;
-  }
-
   // If scripting is disabled don't do lazy load.
   // https://whatpr.org/html/3752/images.html#updating-the-image-data
   //
@@ -1305,7 +1267,7 @@ void HTMLImageElement::SetLazyLoading() {
     return;
   }
 
-  doc->EnsureLazyLoadImageObserver().Observe(*this);
+  doc->EnsureLazyLoadObserver().Observe(*this);
   mLazyLoading = true;
   UpdateImageState(true);
 }
@@ -1333,7 +1295,7 @@ void HTMLImageElement::StopLazyLoading(StartLoading aStartLoading) {
   }
   mLazyLoading = false;
   Document* doc = OwnerDoc();
-  if (auto* obs = doc->GetLazyLoadImageObserver()) {
+  if (auto* obs = doc->GetLazyLoadObserver()) {
     obs->Unobserve(*this);
   }
 
@@ -1417,6 +1379,10 @@ void HTMLImageElement::QueueImageLoadTask(bool aAlwaysLoad) {
   // queued event, and so earlier tasks are implicitly canceled.
   mPendingImageLoadTask = task;
   CycleCollectedJSContext::Get()->DispatchToMicroTask(task.forget());
+}
+
+FetchPriority HTMLImageElement::GetFetchPriorityForImage() const {
+  return nsGenericHTMLElement::GetFetchPriority();
 }
 
 }  // namespace mozilla::dom

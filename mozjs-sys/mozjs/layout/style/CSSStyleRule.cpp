@@ -10,7 +10,6 @@
 #include "mozilla/DeclarationBlock.h"
 #include "mozilla/PseudoStyleType.h"
 #include "mozilla/ServoBindings.h"
-#include "mozilla/dom/CSSStyleRuleBinding.h"
 #include "mozilla/dom/ShadowRoot.h"
 #include "nsCSSPseudoElements.h"
 
@@ -79,7 +78,7 @@ already_AddRefed<StyleLockedCssRules> CSSStyleRule::GetOrCreateRawRules() {
 
 void CSSStyleRuleDeclaration::SetRawAfterClone(
     RefPtr<StyleLockedDeclarationBlock> aRaw) {
-  RefPtr<DeclarationBlock> block = new DeclarationBlock(aRaw.forget());
+  auto block = MakeRefPtr<DeclarationBlock>(aRaw.forget());
   mDecls->SetOwningRule(nullptr);
   mDecls = std::move(block);
   mDecls->SetOwningRule(Rule());
@@ -101,8 +100,6 @@ nsresult CSSStyleRuleDeclaration::SetCSSDeclaration(
   }
   return NS_OK;
 }
-
-Document* CSSStyleRuleDeclaration::DocToUpdate() { return nullptr; }
 
 nsDOMCSSDeclaration::ParsingEnvironment
 CSSStyleRuleDeclaration::GetParsingEnvironment(
@@ -291,6 +288,40 @@ bool CSSStyleRule::SelectorMatchesElement(uint32_t aSelectorIndex,
 
 NotNull<DeclarationBlock*> CSSStyleRule::GetDeclarationBlock() const {
   return WrapNotNull(mDecls.mDecls);
+}
+
+SelectorWarningKind ToWebIDLSelectorWarningKind(
+    StyleSelectorWarningKind aKind) {
+  switch (aKind) {
+    case StyleSelectorWarningKind::UnconstraintedRelativeSelector:
+      return SelectorWarningKind::UnconstrainedHas;
+  }
+  MOZ_ASSERT_UNREACHABLE("Unhandled selector warning kind");
+  // Return something for assert-disabled builds.
+  return SelectorWarningKind::UnconstrainedHas;
+}
+
+void CSSStyleRule::GetSelectorWarnings(
+    nsTArray<SelectorWarning>& aResult) const {
+  nsTArray<StyleSelectorWarningData> result;
+  Servo_GetSelectorWarnings(mRawRule, &result);
+  for (const auto& warning : result) {
+    auto& entry = *aResult.AppendElement();
+    entry.mIndex = warning.index;
+    entry.mKind = ToWebIDLSelectorWarningKind(warning.kind);
+  }
+}
+
+already_AddRefed<nsINodeList> CSSStyleRule::QuerySelectorAll(nsINode& aRoot) {
+  AutoTArray<const StyleLockedStyleRule*, 8> rules;
+  CollectStyleRules(*this, /* aDesugared = */ true, rules);
+  StyleSelectorList* list = Servo_StyleRule_GetSelectorList(&rules);
+
+  auto contentList = MakeRefPtr<nsSimpleContentList>(&aRoot);
+  Servo_SelectorList_QueryAll(&aRoot, list, contentList.get(),
+                              /* useInvalidation */ false);
+  Servo_SelectorList_Drop(list);
+  return contentList.forget();
 }
 
 /* virtual */

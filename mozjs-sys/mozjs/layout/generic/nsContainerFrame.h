@@ -46,19 +46,19 @@ class nsContainerFrame : public nsSplittableFrame {
   NS_DECL_QUERYFRAME
 
   // nsIFrame overrides
-  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
-                    nsIFrame* aPrevInFlow) override;
-  virtual nsContainerFrame* GetContentInsertionFrame() override { return this; }
+  void Init(nsIContent* aContent, nsContainerFrame* aParent,
+            nsIFrame* aPrevInFlow) override;
+  nsContainerFrame* GetContentInsertionFrame() override { return this; }
 
-  virtual const nsFrameList& GetChildList(ChildListID aList) const override;
-  virtual void GetChildLists(nsTArray<ChildList>* aLists) const override;
-  virtual void DestroyFrom(nsIFrame* aDestructRoot,
-                           PostDestroyData& aPostDestroyData) override;
-  virtual void ChildIsDirty(nsIFrame* aChild) override;
+  const nsFrameList& GetChildList(ChildListID aList) const override;
+  void GetChildLists(nsTArray<ChildList>* aLists) const override;
+  void Destroy(DestroyContext&) override;
 
-  virtual FrameSearchResult PeekOffsetNoAmount(bool aForward,
-                                               int32_t* aOffset) override;
-  virtual FrameSearchResult PeekOffsetCharacter(
+  void ChildIsDirty(nsIFrame* aChild) override;
+
+  FrameSearchResult PeekOffsetNoAmount(bool aForward,
+                                       int32_t* aOffset) override;
+  FrameSearchResult PeekOffsetCharacter(
       bool aForward, int32_t* aOffset,
       PeekOffsetCharacterOptions aOptions =
           PeekOffsetCharacterOptions()) override;
@@ -123,12 +123,9 @@ class nsContainerFrame : public nsSplittableFrame {
    * This method is responsible for removing a frame in the frame
    * list.  The implementation should do something with the removed frame
    * and then generate a reflow command. The implementation is responsible
-   * for destroying aOldFrame (the caller mustn't destroy aOldFrame).
-   *
-   * @param   aListID the child list identifier.
-   * @param   aOldFrame the frame to remove
+   * for destroying the frame (the caller mustn't destroy it).
    */
-  virtual void RemoveFrame(ChildListID aListID, nsIFrame* aOldFrame);
+  virtual void RemoveFrame(DestroyContext&, ChildListID, nsIFrame*);
 
   /**
    * Helper method to create next-in-flows if necessary. If aFrame
@@ -149,7 +146,7 @@ class nsContainerFrame : public nsSplittableFrame {
    * content was complete before aNextInFlow, so aNextInFlow and its
    * next-in-flows no longer map any real content.
    */
-  virtual void DeleteNextInFlowChild(nsIFrame* aNextInFlow,
+  virtual void DeleteNextInFlowChild(DestroyContext&, nsIFrame* aNextInFlow,
                                      bool aDeletingEmptyFrames);
 
   // Positions the frame's view based on the frame's origin
@@ -329,7 +326,8 @@ class nsContainerFrame : public nsSplittableFrame {
    * overflow containers and adding them to the appropriate list.
    * See nsBlockFrame::Reflow for a sample implementation.
    *
-   * For more information, see https://wiki.mozilla.org/Gecko:Continuation_Model
+   * For more information, see
+   * https://firefox-source-docs.mozilla.org/layout/LayoutOverview.html#fragmentation
    *
    * Note that Flex/GridContainerFrame doesn't use nsOverflowContinuationTracker
    * so the above doesn't apply.  Flex/Grid containers may have items that
@@ -523,8 +521,7 @@ class nsContainerFrame : public nsSplittableFrame {
    * Derived classes must do that too, if they destroy such frame lists.
    * See nsBlockFrame::DestroyFrom for an example.
    */
-  void DestroyAbsoluteFrames(nsIFrame* aDestructRoot,
-                             PostDestroyData& aPostDestroyData);
+  void DestroyAbsoluteFrames(DestroyContext&);
 
   /**
    * Helper for StealFrame.  Returns true if aChild was removed from its list.
@@ -632,7 +629,7 @@ class nsContainerFrame : public nsSplittableFrame {
     MOZ_ASSERT(aOverflowContainers.NotEmpty(), "Shouldn't set an empty list!");
     MOZ_ASSERT(!GetProperty(OverflowContainersProperty()),
                "Shouldn't override existing list!");
-    MOZ_ASSERT(IsFrameOfType(nsIFrame::eCanContainOverflowContainers),
+    MOZ_ASSERT(CanContainOverflowContainers(),
                "This type of frame can't have overflow containers!");
     auto* list = new (PresShell()) nsFrameList(std::move(aOverflowContainers));
     SetProperty(OverflowContainersProperty(), list);
@@ -644,7 +641,7 @@ class nsContainerFrame : public nsSplittableFrame {
                "Shouldn't set an empty list!");
     MOZ_ASSERT(!GetProperty(ExcessOverflowContainersProperty()),
                "Shouldn't override existing list!");
-    MOZ_ASSERT(IsFrameOfType(nsIFrame::eCanContainOverflowContainers),
+    MOZ_ASSERT(CanContainOverflowContainers(),
                "This type of frame can't have overflow containers!");
     auto* list =
         new (PresShell()) nsFrameList(std::move(aExcessOverflowContainers));
@@ -740,16 +737,6 @@ class nsContainerFrame : public nsSplittableFrame {
    *          It's an error to push a parent's first child frame.
    */
   void PushChildrenToOverflow(nsIFrame* aFromChild, nsIFrame* aPrevSibling);
-
-  /**
-   * Same as above, except that this pushes frames to the next-in-flow
-   * frame and changes the geometric parent of the pushed frames when
-   * there is a next-in-flow frame.
-   *
-   * Updates the next-in-flow's child count. Does <b>not</b> update the
-   * pusher's child count.
-   */
-  void PushChildren(nsIFrame* aFromChild, nsIFrame* aPrevSibling);
 
   /**
    * Iterate our children in our principal child list in the normal document
@@ -852,8 +839,7 @@ class nsContainerFrame : public nsSplittableFrame {
    * frame then remove the property and delete the frame list.
    * Nothing happens if the property doesn't exist.
    */
-  void SafelyDestroyFrameListProp(nsIFrame* aDestructRoot,
-                                  PostDestroyData& aPostDestroyData,
+  void SafelyDestroyFrameListProp(DestroyContext&,
                                   mozilla::PresShell* aPresShell,
                                   FrameListPropertyDescriptor aProp);
 
@@ -1090,127 +1076,5 @@ class nsOverflowContinuationTracker {
   /* Tells us whether to pay attention to OOF frames or non-OOF frames */
   bool mWalkOOFFrames;
 };
-
-// Start Display Reflow Debugging
-#ifdef DEBUG
-
-struct DR_cookie {
-  DR_cookie(nsPresContext* aPresContext, nsIFrame* aFrame,
-            const mozilla::ReflowInput& aReflowInput,
-            mozilla::ReflowOutput& aMetrics, nsReflowStatus& aStatus);
-  ~DR_cookie();
-  void Change() const;
-
-  nsPresContext* mPresContext;
-  nsIFrame* mFrame;
-  const mozilla::ReflowInput& mReflowInput;
-  mozilla::ReflowOutput& mMetrics;
-  nsReflowStatus& mStatus;
-  void* mValue;
-};
-
-struct DR_layout_cookie {
-  explicit DR_layout_cookie(nsIFrame* aFrame);
-  ~DR_layout_cookie();
-
-  nsIFrame* mFrame;
-  void* mValue;
-};
-
-struct DR_intrinsic_inline_size_cookie {
-  DR_intrinsic_inline_size_cookie(nsIFrame* aFrame, const char* aType,
-                                  nscoord& aResult);
-  ~DR_intrinsic_inline_size_cookie();
-
-  nsIFrame* mFrame;
-  const char* mType;
-  nscoord& mResult;
-  void* mValue;
-};
-
-struct DR_intrinsic_size_cookie {
-  DR_intrinsic_size_cookie(nsIFrame* aFrame, const char* aType,
-                           nsSize& aResult);
-  ~DR_intrinsic_size_cookie();
-
-  nsIFrame* mFrame;
-  const char* mType;
-  nsSize& mResult;
-  void* mValue;
-};
-
-struct DR_init_constraints_cookie {
-  DR_init_constraints_cookie(
-      nsIFrame* aFrame, mozilla::ReflowInput* aState, nscoord aCBWidth,
-      nscoord aCBHeight, const mozilla::Maybe<mozilla::LogicalMargin> aBorder,
-      const mozilla::Maybe<mozilla::LogicalMargin> aPadding);
-  ~DR_init_constraints_cookie();
-
-  nsIFrame* mFrame;
-  mozilla::ReflowInput* mState;
-  void* mValue;
-};
-
-struct DR_init_offsets_cookie {
-  DR_init_offsets_cookie(nsIFrame* aFrame,
-                         mozilla::SizeComputationInput* aState,
-                         nscoord aPercentBasis,
-                         mozilla::WritingMode aCBWritingMode,
-                         const mozilla::Maybe<mozilla::LogicalMargin> aBorder,
-                         const mozilla::Maybe<mozilla::LogicalMargin> aPadding);
-  ~DR_init_offsets_cookie();
-
-  nsIFrame* mFrame;
-  mozilla::SizeComputationInput* mState;
-  void* mValue;
-};
-
-#  define DISPLAY_REFLOW(dr_pres_context, dr_frame, dr_rf_state,               \
-                         dr_rf_metrics, dr_rf_status)                          \
-    DR_cookie dr_cookie(dr_pres_context, dr_frame, dr_rf_state, dr_rf_metrics, \
-                        dr_rf_status);
-#  define DISPLAY_REFLOW_CHANGE() dr_cookie.Change();
-#  define DISPLAY_LAYOUT(dr_frame) DR_layout_cookie dr_cookie(dr_frame);
-#  define DISPLAY_MIN_INLINE_SIZE(dr_frame, dr_result) \
-    DR_intrinsic_inline_size_cookie dr_cookie(dr_frame, "Min", dr_result)
-#  define DISPLAY_PREF_INLINE_SIZE(dr_frame, dr_result) \
-    DR_intrinsic_inline_size_cookie dr_cookie(dr_frame, "Pref", dr_result)
-#  define DISPLAY_PREF_SIZE(dr_frame, dr_result) \
-    DR_intrinsic_size_cookie dr_cookie(dr_frame, "Pref", dr_result)
-#  define DISPLAY_MIN_SIZE(dr_frame, dr_result) \
-    DR_intrinsic_size_cookie dr_cookie(dr_frame, "Min", dr_result)
-#  define DISPLAY_MAX_SIZE(dr_frame, dr_result) \
-    DR_intrinsic_size_cookie dr_cookie(dr_frame, "Max", dr_result)
-#  define DISPLAY_INIT_CONSTRAINTS(dr_frame, dr_state, dr_cbw, dr_cbh, dr_bdr, \
-                                   dr_pad)                                     \
-    DR_init_constraints_cookie dr_cookie(dr_frame, dr_state, dr_cbw, dr_cbh,   \
-                                         dr_bdr, dr_pad)
-#  define DISPLAY_INIT_OFFSETS(dr_frame, dr_state, dr_pb, dr_cbwm, dr_bdr, \
-                               dr_pad)                                     \
-    DR_init_offsets_cookie dr_cookie(dr_frame, dr_state, dr_pb, dr_cbwm,   \
-                                     dr_bdr, dr_pad)
-
-#else
-
-#  define DISPLAY_REFLOW(dr_pres_context, dr_frame, dr_rf_state, \
-                         dr_rf_metrics, dr_rf_status)
-#  define DISPLAY_REFLOW_CHANGE()
-#  define DISPLAY_LAYOUT(dr_frame) PR_BEGIN_MACRO PR_END_MACRO
-#  define DISPLAY_MIN_INLINE_SIZE(dr_frame, dr_result) \
-    PR_BEGIN_MACRO PR_END_MACRO
-#  define DISPLAY_PREF_INLINE_SIZE(dr_frame, dr_result) \
-    PR_BEGIN_MACRO PR_END_MACRO
-#  define DISPLAY_PREF_SIZE(dr_frame, dr_result) PR_BEGIN_MACRO PR_END_MACRO
-#  define DISPLAY_MIN_SIZE(dr_frame, dr_result) PR_BEGIN_MACRO PR_END_MACRO
-#  define DISPLAY_MAX_SIZE(dr_frame, dr_result) PR_BEGIN_MACRO PR_END_MACRO
-#  define DISPLAY_INIT_CONSTRAINTS(dr_frame, dr_state, dr_cbw, dr_cbh, dr_bdr, \
-                                   dr_pad)                                     \
-    PR_BEGIN_MACRO PR_END_MACRO
-#  define DISPLAY_INIT_OFFSETS(dr_frame, dr_state, dr_pb, dr_cbwm, dr_bdr, \
-                               dr_pad)                                     \
-    PR_BEGIN_MACRO PR_END_MACRO
-
-#endif
-// End Display Reflow Debugging
 
 #endif /* nsContainerFrame_h___ */

@@ -22,6 +22,7 @@
 #include "mozilla/layers/PImageBridgeParent.h"
 #include "mozilla/layers/TextureHostOGL.h"  // for TextureHostOGL
 #include "mozilla/layers/Compositor.h"
+#include "mozilla/layers/RemoteTextureMap.h"
 #include "mozilla/Monitor.h"
 #include "mozilla/mozalloc.h"  // for operator new, etc
 #include "mozilla/ProfilerLabels.h"
@@ -62,12 +63,15 @@ void ImageBridgeParent::Setup() {
 }
 
 ImageBridgeParent::ImageBridgeParent(nsISerialEventTarget* aThread,
-                                     ProcessId aChildProcessId)
+                                     ProcessId aChildProcessId,
+                                     dom::ContentParentId aContentId)
     : mThread(aThread),
+      mContentId(aContentId),
       mClosed(false),
       mCompositorThreadHolder(CompositorThreadHolder::GetSingleton()) {
   MOZ_ASSERT(NS_IsMainThread());
   SetOtherProcessId(aChildProcessId);
+  mRemoteTextureTxnScheduler = RemoteTextureTxnScheduler::Create(this);
 }
 
 ImageBridgeParent::~ImageBridgeParent() = default;
@@ -76,7 +80,7 @@ ImageBridgeParent::~ImageBridgeParent() = default;
 ImageBridgeParent* ImageBridgeParent::CreateSameProcess() {
   base::ProcessId pid = base::GetCurrentProcId();
   RefPtr<ImageBridgeParent> parent =
-      new ImageBridgeParent(CompositorThread(), pid);
+      new ImageBridgeParent(CompositorThread(), pid, dom::ContentParentId());
 
   {
     MonitorAutoLock lock(*sImageBridgesLock);
@@ -98,8 +102,8 @@ bool ImageBridgeParent::CreateForGPUProcess(
     return false;
   }
 
-  RefPtr<ImageBridgeParent> parent =
-      new ImageBridgeParent(compositorThread, aEndpoint.OtherPid());
+  RefPtr<ImageBridgeParent> parent = new ImageBridgeParent(
+      compositorThread, aEndpoint.OtherPid(), dom::ContentParentId());
 
   compositorThread->Dispatch(NewRunnableMethod<Endpoint<PImageBridgeParent>&&>(
       "layers::ImageBridgeParent::Bind", parent, &ImageBridgeParent::Bind,
@@ -140,6 +144,9 @@ void ImageBridgeParent::ActorDestroy(ActorDestroyReason aWhy) {
   // Can't alloc/dealloc shmems from now on.
   mClosed = true;
 
+  if (mRemoteTextureTxnScheduler) {
+    mRemoteTextureTxnScheduler = nullptr;
+  }
   for (const auto& entry : mCompositables) {
     entry.second->OnReleased();
   }
@@ -196,13 +203,16 @@ mozilla::ipc::IPCResult ImageBridgeParent::RecvUpdate(
                                                                  &aToDestroy);
   UpdateFwdTransactionId(aFwdTransactionId);
 
+  auto result = IPC_OK();
+
   for (const auto& edit : aEdits) {
     RefPtr<CompositableHost> compositable =
         FindCompositable(edit.compositable());
     if (!compositable ||
         !ReceiveCompositableUpdate(edit.detail(), WrapNotNull(compositable),
                                    edit.compositable())) {
-      return IPC_FAIL_NO_REASON(this);
+      result = IPC_FAIL_NO_REASON(this);
+      break;
     }
     uint32_t dropped = compositable->GetDroppedFrames();
     if (dropped) {
@@ -210,19 +220,23 @@ mozilla::ipc::IPCResult ImageBridgeParent::RecvUpdate(
     }
   }
 
-  return IPC_OK();
+  if (mRemoteTextureTxnScheduler) {
+    mRemoteTextureTxnScheduler->NotifyTxn(aFwdTransactionId);
+  }
+
+  return result;
 }
 
 /* static */
 bool ImageBridgeParent::CreateForContent(
-    Endpoint<PImageBridgeParent>&& aEndpoint) {
+    Endpoint<PImageBridgeParent>&& aEndpoint, dom::ContentParentId aContentId) {
   nsCOMPtr<nsISerialEventTarget> compositorThread = CompositorThread();
   if (!compositorThread) {
     return false;
   }
 
   RefPtr<ImageBridgeParent> bridge =
-      new ImageBridgeParent(compositorThread, aEndpoint.OtherPid());
+      new ImageBridgeParent(compositorThread, aEndpoint.OtherPid(), aContentId);
   compositorThread->Dispatch(NewRunnableMethod<Endpoint<PImageBridgeParent>&&>(
       "layers::ImageBridgeParent::Bind", bridge, &ImageBridgeParent::Bind,
       std::move(aEndpoint)));
@@ -292,8 +306,8 @@ PTextureParent* ImageBridgeParent::AllocPTextureParent(
     const LayersBackend& aLayersBackend, const TextureFlags& aFlags,
     const uint64_t& aSerial, const wr::MaybeExternalImageId& aExternalImageId) {
   return TextureHost::CreateIPDLActor(this, aSharedData, std::move(aReadLock),
-                                      aLayersBackend, aFlags, aSerial,
-                                      aExternalImageId);
+                                      aLayersBackend, aFlags, mContentId,
+                                      aSerial, aExternalImageId);
 }
 
 bool ImageBridgeParent::DeallocPTextureParent(PTextureParent* actor) {

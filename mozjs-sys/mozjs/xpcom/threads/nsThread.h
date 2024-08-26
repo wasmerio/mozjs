@@ -43,11 +43,10 @@ class Array;
 using mozilla::NotNull;
 
 class nsIRunnable;
-class nsThreadEnumerator;
 class nsThreadShutdownContext;
 
 // See https://www.w3.org/TR/longtasks
-#define LONGTASK_BUSY_WINDOW_MS 50
+#define W3_LONGTASK_BUSY_WINDOW_MS 50
 
 // Time a Runnable executes before we accumulate telemetry on it
 #define LONGTASK_TELEMETRY_MS 30
@@ -56,10 +55,12 @@ class nsThreadShutdownContext;
 namespace mozilla {
 class PerformanceCounterState {
  public:
-  explicit PerformanceCounterState(const uint32_t& aNestedEventLoopDepthRef,
-                                   bool aIsMainThread)
+  explicit PerformanceCounterState(
+      const uint32_t& aNestedEventLoopDepthRef, bool aIsMainThread = false,
+      const Maybe<uint32_t>& aLongTaskLength = Nothing())
       : mNestedEventLoopDepth(aNestedEventLoopDepthRef),
         mIsMainThread(aIsMainThread),
+        mLongTaskLength(aLongTaskLength),
         // Does it really make sense to initialize these to "now" when we
         // haven't run any tasks?
         mLastLongTaskEnd(TimeStamp::Now()),
@@ -130,6 +131,9 @@ class PerformanceCounterState {
 
   // Whether we're attached to the mainthread nsThread.
   const bool mIsMainThread;
+
+  // what is considered a LongTask (in ms)
+  const Maybe<uint32_t> mLongTaskLength;
 
   // The timestamp from which time to be accounted for should be measured.  This
   // can be the start of a runnable running or the end of a nested runnable
@@ -228,8 +232,6 @@ class nsThread : public nsIThreadInternal,
 
   size_t SizeOfEventQueues(mozilla::MallocSizeOf aMallocSizeOf) const;
 
-  static nsThreadEnumerator Enumerate();
-
   void SetUseHangMonitor(bool aValue) {
     MOZ_ASSERT(IsOnCurrentThread());
     mUseHangMonitor = aValue;
@@ -240,8 +242,6 @@ class nsThread : public nsIThreadInternal,
 
  protected:
   friend class nsThreadShutdownEvent;
-
-  friend class nsThreadEnumerator;
 
   virtual ~nsThread();
 
@@ -259,10 +259,6 @@ class nsThread : public nsIThreadInternal,
   friend class nsThreadManager;
   friend class nsThreadPool;
 
-  static mozilla::OffTheBooksMutex& ThreadListMutex();
-  static mozilla::LinkedList<nsThread>& ThreadList();
-
-  void AddToThreadList();
   void MaybeRemoveFromThreadList();
 
   // Whether or not these members have a value determines whether the nsThread
@@ -356,17 +352,6 @@ class nsThreadShutdownContext final : public nsIThreadShutdown {
   mozilla::Mutex mJoiningThreadMutex;
   RefPtr<nsThread> mJoiningThread MOZ_GUARDED_BY(mJoiningThreadMutex);
   bool mThreadLeaked MOZ_GUARDED_BY(mJoiningThreadMutex) = false;
-};
-
-class MOZ_STACK_CLASS nsThreadEnumerator final {
- public:
-  nsThreadEnumerator() = default;
-
-  auto begin() { return nsThread::ThreadList().begin(); }
-  auto end() { return nsThread::ThreadList().end(); }
-
- private:
-  mozilla::OffTheBooksMutexAutoLock mMal{nsThread::ThreadListMutex()};
 };
 
 #if defined(XP_UNIX) && !defined(ANDROID) && !defined(DEBUG) && HAVE_UALARM && \

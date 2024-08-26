@@ -11,8 +11,8 @@
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/HighlightRegistry.h"
 #include "mozilla/ServoBindings.h"
-#include "nsGlobalWindow.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include "nsStyleUtil.h"
 #include "xpcpublic.h"
 
@@ -65,8 +65,7 @@ void CSS::RegisterProperty(const GlobalObject& aGlobal,
   if (!doc) {
     return aRv.ThrowUnknownError("No document associated to this global?");
   }
-  doc->StyleSetForPresShellOrMediaQueryEvaluation()->RegisterProperty(
-      aDefinition, aRv);
+  doc->EnsureStyleSet().RegisterProperty(aDefinition, aRv);
 }
 
 }  // namespace mozilla::dom

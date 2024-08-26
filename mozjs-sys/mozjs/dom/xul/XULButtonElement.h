@@ -29,7 +29,7 @@ class XULButtonElement : public nsXULElement {
 
   ~XULButtonElement() override;
 
-  MOZ_CAN_RUN_SCRIPT_BOUNDARY bool MouseClicked(WidgetGUIEvent&);
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY bool OnPointerClicked(WidgetGUIEvent&);
   MOZ_CAN_RUN_SCRIPT nsresult PostHandleEvent(EventChainPostVisitor&) override;
   MOZ_CAN_RUN_SCRIPT void PostHandleEventForMenus(EventChainPostVisitor&);
   MOZ_CAN_RUN_SCRIPT void HandleEnterKeyPress(WidgetEvent&);
@@ -55,7 +55,7 @@ class XULButtonElement : public nsXULElement {
 
   XULMenuParentElement* GetMenuParent() const;
 
-  void UnbindFromTree(bool aNullParent) override;
+  void UnbindFromTree(UnbindContext&) override;
 
   MOZ_CAN_RUN_SCRIPT bool HandleKeyPress(KeyboardEvent& keyEvent);
   bool OpenedWithKey() const;

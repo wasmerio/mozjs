@@ -5,6 +5,8 @@
 
 #include "lib/jxl/enc_fields.h"
 
+#include <cinttypes>  // PRIu64
+
 #include "lib/jxl/enc_aux_out.h"
 #include "lib/jxl/fields.h"
 
@@ -70,9 +72,10 @@ class WriteVisitor : public VisitorBase {
 };
 }  // namespace
 
-Status Bundle::Write(const Fields& fields, BitWriter* writer, size_t layer,
+Status Bundle::Write(const Fields& fields, BitWriter* writer, LayerType layer,
                      AuxOut* aux_out) {
-  size_t extension_bits, total_bits;
+  size_t extension_bits;
+  size_t total_bits;
   JXL_RETURN_IF_ERROR(Bundle::CanEncode(fields, &extension_bits, &total_bits));
 
   BitWriter::Allotment allotment(writer, total_bits);
@@ -171,7 +174,8 @@ Status F16Coder::Write(float value, BitWriter* JXL_RESTRICT writer) {
     return true;
   }
 
-  uint32_t biased_exp16, mantissa16;
+  uint32_t biased_exp16;
+  uint32_t mantissa16;
 
   // exp = [-24, -15] => subnormal
   if (JXL_UNLIKELY(exp < -14)) {
@@ -199,40 +203,40 @@ Status WriteCodestreamHeaders(CodecMetadata* metadata, BitWriter* writer,
   BitWriter::Allotment allotment(writer, 16);
   writer->Write(8, 0xFF);
   writer->Write(8, kCodestreamMarker);
-  allotment.ReclaimAndCharge(writer, kLayerHeader, aux_out);
+  allotment.ReclaimAndCharge(writer, LayerType::Header, aux_out);
 
   JXL_RETURN_IF_ERROR(
-      WriteSizeHeader(metadata->size, writer, kLayerHeader, aux_out));
+      WriteSizeHeader(metadata->size, writer, LayerType::Header, aux_out));
 
   JXL_RETURN_IF_ERROR(
-      WriteImageMetadata(metadata->m, writer, kLayerHeader, aux_out));
+      WriteImageMetadata(metadata->m, writer, LayerType::Header, aux_out));
 
   metadata->transform_data.nonserialized_xyb_encoded = metadata->m.xyb_encoded;
-  JXL_RETURN_IF_ERROR(
-      Bundle::Write(metadata->transform_data, writer, kLayerHeader, aux_out));
+  JXL_RETURN_IF_ERROR(Bundle::Write(metadata->transform_data, writer,
+                                    LayerType::Header, aux_out));
 
   return true;
 }
 
 Status WriteFrameHeader(const FrameHeader& frame,
                         BitWriter* JXL_RESTRICT writer, AuxOut* aux_out) {
-  return Bundle::Write(frame, writer, kLayerHeader, aux_out);
+  return Bundle::Write(frame, writer, LayerType::Header, aux_out);
 }
 
 Status WriteImageMetadata(const ImageMetadata& metadata,
-                          BitWriter* JXL_RESTRICT writer, size_t layer,
+                          BitWriter* JXL_RESTRICT writer, LayerType layer,
                           AuxOut* aux_out) {
   return Bundle::Write(metadata, writer, layer, aux_out);
 }
 
 Status WriteQuantizerParams(const QuantizerParams& params,
-                            BitWriter* JXL_RESTRICT writer, size_t layer,
+                            BitWriter* JXL_RESTRICT writer, LayerType layer,
                             AuxOut* aux_out) {
   return Bundle::Write(params, writer, layer, aux_out);
 }
 
 Status WriteSizeHeader(const SizeHeader& size, BitWriter* JXL_RESTRICT writer,
-                       size_t layer, AuxOut* aux_out) {
+                       LayerType layer, AuxOut* aux_out) {
   return Bundle::Write(size, writer, layer, aux_out);
 }
 

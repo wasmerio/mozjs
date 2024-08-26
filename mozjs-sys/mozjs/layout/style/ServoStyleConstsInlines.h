@@ -45,6 +45,7 @@ template struct StyleStrong<StyleLockedKeyframesRule>;
 template struct StyleStrong<StyleMediaRule>;
 template struct StyleStrong<StyleDocumentRule>;
 template struct StyleStrong<StyleNamespaceRule>;
+template struct StyleStrong<StyleMarginRule>;
 template struct StyleStrong<StyleLockedPageRule>;
 template struct StyleStrong<StylePropertyRule>;
 template struct StyleStrong<StyleSupportsRule>;
@@ -53,6 +54,8 @@ template struct StyleStrong<StyleFontPaletteValuesRule>;
 template struct StyleStrong<StyleLockedFontFaceRule>;
 template struct StyleStrong<StyleLockedCounterStyleRule>;
 template struct StyleStrong<StyleContainerRule>;
+template struct StyleStrong<StyleScopeRule>;
+template struct StyleStrong<StyleStartingStyleRule>;
 
 template <typename T>
 inline void StyleOwnedSlice<T>::Clear() {
@@ -175,22 +178,40 @@ inline bool StyleArcInner<T>::DecrementRef() {
   return true;
 }
 
+template <typename H, typename T>
+inline bool StyleHeaderSlice<H, T>::operator==(
+    const StyleHeaderSlice& aOther) const {
+  return header == aOther.header && AsSpan() == aOther.AsSpan();
+}
+
+template <typename H, typename T>
+inline bool StyleHeaderSlice<H, T>::operator!=(
+    const StyleHeaderSlice& aOther) const {
+  return !(*this == aOther);
+}
+
+template <typename H, typename T>
+inline StyleHeaderSlice<H, T>::~StyleHeaderSlice() {
+  for (T& elem : Span(data, len)) {
+    elem.~T();
+  }
+}
+
+template <typename H, typename T>
+inline Span<const T> StyleHeaderSlice<H, T>::AsSpan() const {
+  // Explicitly specify template argument here to avoid instantiating Span<T>
+  // first and then implicitly converting to Span<const T>
+  return Span<const T>{data, len};
+}
+
 static constexpr const uint64_t kArcSliceCanary = 0xf3f3f3f3f3f3f3f3;
 
 #define ASSERT_CANARY \
-  MOZ_DIAGNOSTIC_ASSERT(_0.ptr->data.header.header == kArcSliceCanary, "Uh?");
+  MOZ_DIAGNOSTIC_ASSERT(_0.p->data.header == kArcSliceCanary, "Uh?");
 
 template <typename T>
-inline StyleArcSlice<T>::StyleArcSlice() {
-  _0.ptr = reinterpret_cast<decltype(_0.ptr)>(Servo_StyleArcSlice_EmptyPtr());
-  ASSERT_CANARY
-}
-
-template <typename T>
-inline StyleArcSlice<T>::StyleArcSlice(const StyleArcSlice& aOther) {
-  MOZ_DIAGNOSTIC_ASSERT(aOther._0.ptr);
-  _0.ptr = aOther._0.ptr;
-  _0.ptr->IncrementRef();
+inline StyleArcSlice<T>::StyleArcSlice()
+    : _0(reinterpret_cast<decltype(_0.p)>(Servo_StyleArcSlice_EmptyPtr())) {
   ASSERT_CANARY
 }
 
@@ -198,82 +219,26 @@ template <typename T>
 inline StyleArcSlice<T>::StyleArcSlice(
     const StyleForgottenArcSlicePtr<T>& aPtr) {
   // See the forget() implementation to see why reinterpret_cast() is ok.
-  _0.ptr = reinterpret_cast<decltype(_0.ptr)>(aPtr._0);
+  _0.p = reinterpret_cast<decltype(_0.p)>(aPtr._0);
   ASSERT_CANARY
 }
 
 template <typename T>
 inline size_t StyleArcSlice<T>::Length() const {
   ASSERT_CANARY
-  return _0.ptr->data.header.length;
+  return _0->Length();
 }
 
 template <typename T>
 inline bool StyleArcSlice<T>::IsEmpty() const {
   ASSERT_CANARY
-  return Length() == 0;
+  return _0->IsEmpty();
 }
 
 template <typename T>
 inline Span<const T> StyleArcSlice<T>::AsSpan() const {
   ASSERT_CANARY
-  // Explicitly specify template argument here to avoid instantiating Span<T>
-  // first and then implicitly converting to Span<const T>
-  return Span<const T>{_0.ptr->data.slice, Length()};
-}
-
-template <typename T>
-inline bool StyleArcSlice<T>::operator==(const StyleArcSlice& aOther) const {
-  ASSERT_CANARY
-  return _0.ptr == aOther._0.ptr || AsSpan() == aOther.AsSpan();
-}
-
-template <typename T>
-inline bool StyleArcSlice<T>::operator!=(const StyleArcSlice& aOther) const {
-  return !(*this == aOther);
-}
-
-template <typename T>
-inline void StyleArcSlice<T>::Release() {
-  ASSERT_CANARY
-  if (MOZ_LIKELY(!_0.ptr->DecrementRef())) {
-    return;
-  }
-  for (T& elem : Span(_0.ptr->data.slice, Length())) {
-    elem.~T();
-  }
-  free(_0.ptr);  // Drop the allocation now.
-}
-
-template <typename T>
-inline StyleArcSlice<T>::~StyleArcSlice() {
-  Release();
-}
-
-template <typename T>
-inline StyleArcSlice<T>& StyleArcSlice<T>::operator=(StyleArcSlice&& aOther) {
-  ASSERT_CANARY
-  std::swap(_0.ptr, aOther._0.ptr);
-  ASSERT_CANARY
-  return *this;
-}
-
-template <typename T>
-inline StyleArcSlice<T>& StyleArcSlice<T>::operator=(
-    const StyleArcSlice& aOther) {
-  ASSERT_CANARY
-
-  if (_0.ptr == aOther._0.ptr) {
-    return *this;
-  }
-
-  Release();
-
-  _0.ptr = aOther._0.ptr;
-  _0.ptr->IncrementRef();
-
-  ASSERT_CANARY
-  return *this;
+  return _0->AsSpan();
 }
 
 #undef ASSERT_CANARY
@@ -317,10 +282,7 @@ inline bool StyleAtom::IsStatic() const { return !!(_0 & 1); }
 
 inline nsAtom* StyleAtom::AsAtom() const {
   if (IsStatic()) {
-    auto* atom = reinterpret_cast<const nsStaticAtom*>(
-        reinterpret_cast<const uint8_t*>(&detail::gGkAtoms) + (_0 >> 1));
-    MOZ_ASSERT(atom->IsStatic());
-    return const_cast<nsStaticAtom*>(atom);
+    return const_cast<nsStaticAtom*>(&detail::gGkAtoms.mAtoms[_0 >> 1]);
   }
   return reinterpret_cast<nsAtom*>(_0);
 }
@@ -340,15 +302,17 @@ inline void StyleAtom::Release() {
 inline StyleAtom::StyleAtom(already_AddRefed<nsAtom> aAtom) {
   nsAtom* atom = aAtom.take();
   if (atom->IsStatic()) {
-    ptrdiff_t offset = reinterpret_cast<const uint8_t*>(atom->AsStatic()) -
-                       reinterpret_cast<const uint8_t*>(&detail::gGkAtoms);
-    _0 = (offset << 1) | 1;
+    size_t index = atom->AsStatic() - &detail::gGkAtoms.mAtoms[0];
+    _0 = (index << 1) | 1;
   } else {
     _0 = reinterpret_cast<uintptr_t>(atom);
   }
   MOZ_ASSERT(IsStatic() == atom->IsStatic());
   MOZ_ASSERT(AsAtom() == atom);
 }
+
+inline StyleAtom::StyleAtom(nsStaticAtom* aAtom)
+    : StyleAtom(do_AddRef(static_cast<nsAtom*>(aAtom))) {}
 
 inline StyleAtom::StyleAtom(const StyleAtom& aOther) : _0(aOther._0) {
   AddRef();
@@ -488,22 +452,32 @@ inline imgRequestProxy* StyleComputedImageUrl::GetImage() const {
 template <>
 inline bool StyleGradient::Repeating() const {
   if (IsLinear()) {
-    return AsLinear().repeating;
+    return bool(AsLinear().flags & StyleGradientFlags::REPEATING);
   }
   if (IsRadial()) {
-    return AsRadial().repeating;
+    return bool(AsRadial().flags & StyleGradientFlags::REPEATING);
   }
-  return AsConic().repeating;
+  return bool(AsConic().flags & StyleGradientFlags::REPEATING);
 }
 
 template <>
 bool StyleGradient::IsOpaque() const;
 
+template <>
+inline const StyleColorInterpolationMethod&
+StyleGradient::ColorInterpolationMethod() const {
+  if (IsLinear()) {
+    return AsLinear().color_interpolation_method;
+  }
+  if (IsRadial()) {
+    return AsRadial().color_interpolation_method;
+  }
+  return AsConic().color_interpolation_method;
+}
+
 template <typename Integer>
 inline StyleGenericGridLine<Integer>::StyleGenericGridLine()
-    : ident(do_AddRef(static_cast<nsAtom*>(nsGkAtoms::_empty))),
-      line_num(0),
-      is_span(false) {}
+    : ident{StyleAtom(nsGkAtoms::_empty)}, line_num(0), is_span(false) {}
 
 template <>
 inline nsAtom* StyleGridLine::LineName() const {
@@ -536,20 +510,15 @@ StyleCSSPixelLength StyleCSSPixelLength::ScaledBy(float aScale) const {
   return FromPixels(ToCSSPixels() * aScale);
 }
 
-nscoord StyleCSSPixelLength::ToAppUnits() const {
-  // We want to resolve the length part of the calc() expression rounding 0.5
-  // away from zero, instead of the default behavior of
-  // NSToCoordRound{,WithClamp} which do floor(x + 0.5).
-  //
-  // This is what the rust code in the app_units crate does, and not doing this
-  // would regress bug 1323735, for example.
-  //
-  // FIXME(emilio, bug 1528114): Probably we should do something smarter.
-  if (IsZero()) {
-    // Avoid the expensive FP math below.
-    return 0;
-  }
-  float length = _0 * float(mozilla::AppUnitsPerCSSPixel());
+namespace detail {
+static inline nscoord DefaultPercentLengthToAppUnits(float aPixelLength) {
+  return NSToCoordTruncClamped(aPixelLength);
+}
+
+static inline nscoord DefaultLengthToAppUnits(float aPixelLength) {
+  // We want to round lengths rounding 0.5 away from zero, instead of the
+  // default behavior of NSToCoordRound{,WithClamp} which do floor(x + 0.5).
+  float length = aPixelLength * float(mozilla::AppUnitsPerCSSPixel());
   if (length >= float(nscoord_MAX)) {
     return nscoord_MAX;
   }
@@ -557,6 +526,15 @@ nscoord StyleCSSPixelLength::ToAppUnits() const {
     return nscoord_MIN;
   }
   return NSToIntRound(length);
+}
+}  // namespace detail
+
+nscoord StyleCSSPixelLength::ToAppUnits() const {
+  if (IsZero()) {
+    // Avoid the expensive FP math below.
+    return 0;
+  }
+  return detail::DefaultLengthToAppUnits(_0);
 }
 
 bool LengthPercentage::IsLength() const { return Tag() == TAG_LENGTH; }
@@ -718,8 +696,17 @@ bool LengthPercentage::IsDefinitelyZero() const {
   return false;
 }
 
-template <>
-CSSCoord StyleCalcNode::ResolveToCSSPixels(CSSCoord aPercentageBasis) const;
+CSSCoord StyleCalcLengthPercentage::ResolveToCSSPixels(CSSCoord aBasis) const {
+  return Servo_ResolveCalcLengthPercentage(this, aBasis);
+}
+
+template <typename Rounder>
+nscoord StyleCalcLengthPercentage::Resolve(nscoord aBasis,
+                                           Rounder aRounder) const {
+  static_assert(std::is_same_v<decltype(aRounder(1.0f)), nscoord>);
+  CSSCoord result = ResolveToCSSPixels(CSSPixel::FromAppUnits(aBasis));
+  return aRounder(result * AppUnitsPerCSSPixel());
+}
 
 template <>
 void StyleCalcNode::ScaleLengthsBy(float);
@@ -731,56 +718,49 @@ CSSCoord LengthPercentage::ResolveToCSSPixels(CSSCoord aPercentageBasis) const {
   if (IsPercentage()) {
     return AsPercentage()._0 * aPercentageBasis;
   }
-  return AsCalc().node.ResolveToCSSPixels(aPercentageBasis);
+  return AsCalc().ResolveToCSSPixels(aPercentageBasis);
 }
 
 template <typename T>
 CSSCoord LengthPercentage::ResolveToCSSPixelsWith(T aPercentageGetter) const {
-  static_assert(std::is_same<decltype(aPercentageGetter()), CSSCoord>::value,
-                "Should return CSS pixels");
+  static_assert(std::is_same_v<decltype(aPercentageGetter()), CSSCoord>);
   if (ConvertsToLength()) {
     return ToLengthInCSSPixels();
   }
   return ResolveToCSSPixels(aPercentageGetter());
 }
 
-template <typename T, typename U>
-nscoord LengthPercentage::Resolve(T aPercentageGetter, U aRounder) const {
-  static_assert(std::is_same<decltype(aPercentageGetter()), nscoord>::value,
-                "Should return app units");
-  static_assert(std::is_same<decltype(aRounder(1.0f)), nscoord>::value,
-                "Should return app units");
+template <typename T, typename Rounder>
+nscoord LengthPercentage::Resolve(T aPercentageGetter, Rounder aRounder) const {
+  static_assert(std::is_same_v<decltype(aPercentageGetter()), nscoord>);
+  static_assert(std::is_same_v<decltype(aRounder(1.0f)), nscoord>);
   if (ConvertsToLength()) {
     return ToLength();
   }
   if (IsPercentage() && AsPercentage()._0 == 0.0f) {
-    return 0.0f;
+    return 0;
   }
   nscoord basis = aPercentageGetter();
   if (IsPercentage()) {
     return aRounder(basis * AsPercentage()._0);
   }
-  return AsCalc().node.Resolve(basis, aRounder);
+  return AsCalc().Resolve(basis, aRounder);
 }
 
-// Note: the static_cast<> wrappers below are needed to disambiguate between
-// the versions of NSToCoordTruncClamped that take float vs. double as the arg.
 nscoord LengthPercentage::Resolve(nscoord aPercentageBasis) const {
   return Resolve([=] { return aPercentageBasis; },
-                 static_cast<nscoord (*)(float)>(NSToCoordTruncClamped));
+                 detail::DefaultPercentLengthToAppUnits);
 }
 
 template <typename T>
 nscoord LengthPercentage::Resolve(T aPercentageGetter) const {
-  return Resolve(aPercentageGetter,
-                 static_cast<nscoord (*)(float)>(NSToCoordTruncClamped));
+  return Resolve(aPercentageGetter, detail::DefaultPercentLengthToAppUnits);
 }
 
-template <typename T>
+template <typename Rounder>
 nscoord LengthPercentage::Resolve(nscoord aPercentageBasis,
-                                  T aPercentageRounder) const {
-  return Resolve([aPercentageBasis] { return aPercentageBasis; },
-                 aPercentageRounder);
+                                  Rounder aRounder) const {
+  return Resolve([aPercentageBasis] { return aPercentageBasis; }, aRounder);
 }
 
 void LengthPercentage::ScaleLengthsBy(float aScale) {
@@ -980,7 +960,7 @@ inline bool RestyleHint::DefinitelyRecascadesAllSubtree() const {
 }
 
 template <>
-ImageResolution StyleImage::GetResolution() const;
+ImageResolution StyleImage::GetResolution(const ComputedStyle&) const;
 
 template <>
 inline const StyleImage& StyleImage::FinalImage() const {
@@ -997,12 +977,9 @@ inline const StyleImage& StyleImage::FinalImage() const {
 }
 
 template <>
-Maybe<CSSIntSize> StyleImage::GetIntrinsicSize() const;
-
-template <>
 inline bool StyleImage::IsImageRequestType() const {
   const auto& finalImage = FinalImage();
-  return finalImage.IsUrl() || finalImage.IsRect();
+  return finalImage.IsUrl();
 }
 
 template <>
@@ -1011,9 +988,6 @@ inline const StyleComputedImageUrl* StyleImage::GetImageRequestURLValue()
   const auto& finalImage = FinalImage();
   if (finalImage.IsUrl()) {
     return &finalImage.AsUrl();
-  }
-  if (finalImage.IsRect()) {
-    return &finalImage.AsRect()->url;
   }
   return nullptr;
 }
@@ -1036,8 +1010,6 @@ template <>
 bool StyleImage::IsSizeAvailable() const;
 template <>
 bool StyleImage::IsComplete() const;
-template <>
-Maybe<StyleImage::ActualCropRect> StyleImage::ComputeActualCropRect() const;
 template <>
 void StyleImage::ResolveImage(dom::Document&, const StyleImage*);
 
@@ -1121,6 +1093,131 @@ template <>
 inline StyleViewTimelineInset::StyleGenericViewTimelineInset()
     : start(LengthPercentageOrAuto::Auto()),
       end(LengthPercentageOrAuto::Auto()) {}
+
+inline StyleDisplayOutside StyleDisplay::Outside() const {
+  return StyleDisplayOutside((_0 & OUTSIDE_MASK) >> OUTSIDE_SHIFT);
+}
+
+inline StyleDisplayInside StyleDisplay::Inside() const {
+  return StyleDisplayInside(_0 & INSIDE_MASK);
+}
+
+inline bool StyleDisplay::IsListItem() const { return _0 & LIST_ITEM_MASK; }
+
+inline bool StyleDisplay::IsInternalTable() const {
+  return Outside() == StyleDisplayOutside::InternalTable;
+}
+
+inline bool StyleDisplay::IsInternalTableExceptCell() const {
+  return IsInternalTable() && *this != TableCell;
+}
+
+inline bool StyleDisplay::IsInternalRuby() const {
+  return Outside() == StyleDisplayOutside::InternalRuby;
+}
+
+inline bool StyleDisplay::IsRuby() const {
+  return Inside() == StyleDisplayInside::Ruby || IsInternalRuby();
+}
+
+inline bool StyleDisplay::IsInlineFlow() const {
+  return Outside() == StyleDisplayOutside::Inline &&
+         Inside() == StyleDisplayInside::Flow;
+}
+
+inline bool StyleDisplay::IsInlineInside() const {
+  return IsInlineFlow() || IsRuby();
+}
+
+inline bool StyleDisplay::IsInlineOutside() const {
+  return Outside() == StyleDisplayOutside::Inline || IsInternalRuby();
+}
+
+inline float StyleZoom::Zoom(float aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return ToFloat() * aValue;
+}
+
+inline float StyleZoom::Unzoom(float aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return aValue / ToFloat();
+}
+
+inline nscoord StyleZoom::ZoomCoord(nscoord aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return NSToCoordRoundWithClamp(Zoom(float(aValue)));
+}
+
+inline nscoord StyleZoom::UnzoomCoord(nscoord aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return NSToCoordRoundWithClamp(Unzoom(float(aValue)));
+}
+
+inline nsSize StyleZoom::Zoom(const nsSize& aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return nsSize(ZoomCoord(aValue.Width()), ZoomCoord(aValue.Height()));
+}
+
+inline nsSize StyleZoom::Unzoom(const nsSize& aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return nsSize(UnzoomCoord(aValue.Width()), UnzoomCoord(aValue.Height()));
+}
+
+inline nsPoint StyleZoom::Zoom(const nsPoint& aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return nsPoint(ZoomCoord(aValue.X()), ZoomCoord(aValue.Y()));
+}
+
+inline nsPoint StyleZoom::Unzoom(const nsPoint& aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return nsPoint(UnzoomCoord(aValue.X()), UnzoomCoord(aValue.Y()));
+}
+
+inline nsRect StyleZoom::Zoom(const nsRect& aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return nsRect(ZoomCoord(aValue.X()), ZoomCoord(aValue.Y()),
+                ZoomCoord(aValue.Width()), ZoomCoord(aValue.Height()));
+}
+
+inline nsRect StyleZoom::Unzoom(const nsRect& aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return nsRect(UnzoomCoord(aValue.X()), UnzoomCoord(aValue.Y()),
+                UnzoomCoord(aValue.Width()), UnzoomCoord(aValue.Height()));
+}
+
+template <>
+inline gfx::Point StyleCoordinatePair<StyleCSSFloat>::ToGfxPoint(
+    const CSSSize* aBasis) const {
+  return gfx::Point(x, y);
+}
+
+template <>
+inline gfx::Point StyleCoordinatePair<LengthPercentage>::ToGfxPoint(
+    const CSSSize* aBasis) const {
+  MOZ_ASSERT(aBasis);
+  return gfx::Point(x.ResolveToCSSPixels(aBasis->Width()),
+                    y.ResolveToCSSPixels(aBasis->Height()));
+}
 
 }  // namespace mozilla
 

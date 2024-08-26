@@ -650,3 +650,114 @@ addAccessibleTask(
   },
   { chrome: true, topLevel: true }
 );
+
+/**
+ * Test the placeholder attribute.
+ */
+addAccessibleTask(
+  `
+<input id="htmlWithLabel" aria-label="label" placeholder="HTML">
+<input id="htmlNoLabel" placeholder="HTML">
+<input id="ariaWithLabel" aria-label="label" aria-placeholder="ARIA">
+<input id="ariaNoLabel" aria-placeholder="ARIA">
+<input id="both" aria-label="label" placeholder="HTML" aria-placeholder="ARIA">
+<input id="mutate" placeholder="HTML">
+  `,
+  async function (browser, docAcc) {
+    const htmlWithLabel = findAccessibleChildByID(docAcc, "htmlWithLabel");
+    testAttrs(htmlWithLabel, { placeholder: "HTML" }, true);
+    const htmlNoLabel = findAccessibleChildByID(docAcc, "htmlNoLabel");
+    // placeholder is used as name, so not exposed as attribute.
+    testAbsentAttrs(htmlNoLabel, { placeholder: "" });
+    const ariaWithLabel = findAccessibleChildByID(docAcc, "ariaWithLabel");
+    testAttrs(ariaWithLabel, { placeholder: "ARIA" }, true);
+    const ariaNoLabel = findAccessibleChildByID(docAcc, "ariaNoLabel");
+    // No label doesn't impact aria-placeholder.
+    testAttrs(ariaNoLabel, { placeholder: "ARIA" }, true);
+    const both = findAccessibleChildByID(docAcc, "both");
+    testAttrs(both, { placeholder: "HTML" }, true);
+
+    const mutate = findAccessibleChildByID(docAcc, "mutate");
+    testAbsentAttrs(mutate, { placeholder: "" });
+    info("Adding label to mutate");
+    await invokeContentTask(browser, [], () => {
+      content.document
+        .getElementById("mutate")
+        .setAttribute("aria-label", "label");
+    });
+    await untilCacheAttrIs(
+      mutate,
+      "placeholder",
+      "HTML",
+      "mutate placeholder correct"
+    );
+    info("Removing mutate placeholder");
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("mutate").removeAttribute("placeholder");
+    });
+    await untilCacheAttrAbsent(
+      mutate,
+      "placeholder",
+      "mutate placeholder not present"
+    );
+    info("Setting mutate aria-placeholder");
+    await invokeContentTask(browser, [], () => {
+      content.document
+        .getElementById("mutate")
+        .setAttribute("aria-placeholder", "ARIA");
+    });
+    await untilCacheAttrIs(
+      mutate,
+      "placeholder",
+      "ARIA",
+      "mutate placeholder correct"
+    );
+    info("Setting mutate placeholder");
+    await invokeContentTask(browser, [], () => {
+      content.document
+        .getElementById("mutate")
+        .setAttribute("placeholder", "HTML");
+    });
+    await untilCacheAttrIs(
+      mutate,
+      "placeholder",
+      "HTML",
+      "mutate placeholder correct"
+    );
+  },
+  { chrome: true, topLevel: true }
+);
+
+/**
+ * Test the ispopup attribute.
+ */
+addAccessibleTask(
+  `<div id="popover" popover>popover</div>`,
+  async function testIspopup(browser) {
+    info("Showing popover");
+    let shown = waitForEvent(EVENT_SHOW, "popover");
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("popover").showPopover();
+    });
+    let popover = (await shown).accessible;
+    testAttrs(popover, { ispopup: "auto" }, true);
+    info("Setting popover to null");
+    // Setting popover causes the Accessible to be recreated.
+    shown = waitForEvent(EVENT_SHOW, "popover");
+    await invokeContentTask(browser, [], () => {
+      content.document.getElementById("popover").popover = null;
+    });
+    popover = (await shown).accessible;
+    testAbsentAttrs(popover, { ispopup: "" });
+    info("Setting popover to manual and showing");
+    shown = waitForEvent(EVENT_SHOW, "popover");
+    await invokeContentTask(browser, [], () => {
+      const popoverDom = content.document.getElementById("popover");
+      popoverDom.popover = "manual";
+      popoverDom.showPopover();
+    });
+    popover = (await shown).accessible;
+    testAttrs(popover, { ispopup: "manual" }, true);
+  },
+  { chrome: true, topLevel: true }
+);

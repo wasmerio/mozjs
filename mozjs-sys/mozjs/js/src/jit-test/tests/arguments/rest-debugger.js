@@ -1,4 +1,3 @@
-// |jit-test| skip-if: getBuildConfiguration()['pbl']
 var g = newGlobal({newCompartment: true});
 g.eval("function f(...x) {}");
 var dbg = new Debugger;

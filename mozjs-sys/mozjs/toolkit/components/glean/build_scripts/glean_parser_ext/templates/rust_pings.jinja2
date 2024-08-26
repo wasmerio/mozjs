@@ -19,6 +19,10 @@ pub static {{ obj.name|snake_case }}: Lazy<Ping> = Lazy::new(|| {
         "{{ obj.name }}",
         {{ obj.include_client_id|rust }},
         {{ obj.send_if_empty|rust }},
+        {{ obj.precise_timestamps|rust }},
+        {{ obj.include_info_sections|rust }},
+        {{ obj.enabled|rust }},
+        {{ obj.schedules_pings|rust }},
         {{ obj.reason_codes|rust }},
     )
 });
@@ -48,6 +52,20 @@ pub fn register_pings(application_id: Option<&str>) {
             {% endfor %}
         }
     }
+}
+
+/// Map from pings to the pings scheduled along with them.
+///
+#[doc(hidden)]
+pub fn ping_schedule() -> std::collections::HashMap<String, Vec<String>> {
+  std::collections::HashMap::from([
+      {% for ping, schedule in ping_schedule_reverse_map.items() %}
+      (
+        {{ ping|rust }},
+        {{ schedule|rust }}
+      ),
+      {% endfor %}
+  ])
 }
 
 #[cfg(feature = "with_gecko")]

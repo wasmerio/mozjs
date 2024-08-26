@@ -13,13 +13,9 @@ ChromeUtils.defineESModuleGetters(this, {
   Downloads: "resource://gre/modules/Downloads.sys.mjs",
   DownloadsCommon: "resource:///modules/DownloadsCommon.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  HttpServer: "resource://testing-common/httpd.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  this,
-  "HttpServer",
-  "resource://testing-common/httpd.js"
-);
 
 let gTestTargetFile = new FileUtils.File(
   PathUtils.join(
@@ -55,7 +51,7 @@ const TEST_DATA_SHORT = "This test string is downloaded.";
 /**
  * This is an internal reference that should not be used directly by tests.
  */
-var _gDeferResponses = PromiseUtils.defer();
+var _gDeferResponses = Promise.withResolvers();
 
 /**
  * Ensures that all the interruptible requests started after this function is
@@ -83,7 +79,7 @@ function mustInterruptResponses() {
   _gDeferResponses.resolve();
 
   info("Interruptible responses will be blocked midway.");
-  _gDeferResponses = PromiseUtils.defer();
+  _gDeferResponses = Promise.withResolvers();
 }
 
 /**

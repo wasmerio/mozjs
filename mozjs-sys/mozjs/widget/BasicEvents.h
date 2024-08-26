@@ -99,8 +99,6 @@ struct BaseEventFlags {
   // the first <label> element is clicked, that one may set this true.
   // Then, the second <label> element won't handle the event.
   bool mMultipleActionsPrevented : 1;
-  // Similar to above but expected to be used during PreHandleEvent phase.
-  bool mMultiplePreActionsPrevented : 1;
   // If mIsBeingDispatched is true, the DOM event created from the event is
   // dispatching into the DOM tree and not completed.
   bool mIsBeingDispatched : 1;
@@ -417,6 +415,12 @@ class WidgetEventTime {
 
   WidgetEventTime() : mTimeStamp(TimeStamp::Now()) {}
 
+  explicit WidgetEventTime(const WidgetEventTime* aTime)
+      : mTimeStamp(aTime ? aTime->mTimeStamp : TimeStamp::Now()) {
+    MOZ_ASSERT(aTime != this);
+    MOZ_ASSERT_IF(aTime, !aTime->mTimeStamp.IsNull());
+  }
+
   explicit WidgetEventTime(TimeStamp aTimeStamp) : mTimeStamp(aTimeStamp) {}
 
   void AssignEventTime(const WidgetEventTime& aOther) {
@@ -435,6 +439,10 @@ class WidgetEvent : public WidgetEventTime {
       case eEditorInputEventClass:
         mFlags.mCancelable = false;
         mFlags.mBubbles = mFlags.mIsTrusted;
+        break;
+      case eLegacyTextEventClass:
+        mFlags.mCancelable = mFlags.mIsTrusted && mMessage == eLegacyTextInput;
+        mFlags.mBubbles = mFlags.mIsTrusted && mMessage == eLegacyTextInput;
         break;
       case eMouseEventClass:
         mFlags.mCancelable =
@@ -485,8 +493,9 @@ class WidgetEvent : public WidgetEventTime {
 
  protected:
   WidgetEvent(bool aIsTrusted, EventMessage aMessage,
-              EventClassID aEventClassID)
-      : WidgetEventTime(),
+              EventClassID aEventClassID,
+              const WidgetEventTime* aTime = nullptr)
+      : WidgetEventTime(aTime),
         mClass(aEventClassID),
         mMessage(aMessage),
         mRefPoint(0, 0),
@@ -503,17 +512,16 @@ class WidgetEvent : public WidgetEventTime {
     SetDefaultComposedInNativeAnonymousContent();
   }
 
-  WidgetEvent() : WidgetEventTime(), mPath(nullptr) {
-    MOZ_COUNT_CTOR(WidgetEvent);
-  }
+  WidgetEvent() : mPath(nullptr) { MOZ_COUNT_CTOR(WidgetEvent); }
 
  public:
-  WidgetEvent(bool aIsTrusted, EventMessage aMessage)
-      : WidgetEvent(aIsTrusted, aMessage, eBasicEventClass) {}
+  WidgetEvent(bool aIsTrusted, EventMessage aMessage,
+              const WidgetEventTime* aTime = nullptr)
+      : WidgetEvent(aIsTrusted, aMessage, eBasicEventClass, aTime) {}
 
   MOZ_COUNTED_DTOR_VIRTUAL(WidgetEvent)
 
-  WidgetEvent(const WidgetEvent& aOther) : WidgetEventTime() {
+  WidgetEvent(const WidgetEvent& aOther) : WidgetEventTime(aOther) {
     MOZ_COUNT_CTOR(WidgetEvent);
     *this = aOther;
   }
@@ -542,7 +550,7 @@ class WidgetEvent : public WidgetEventTime {
   virtual WidgetEvent* Duplicate() const {
     MOZ_ASSERT(mClass == eBasicEventClass,
                "Duplicate() must be overridden by sub class");
-    WidgetEvent* result = new WidgetEvent(false, mMessage);
+    WidgetEvent* result = new WidgetEvent(false, mMessage, this);
     result->AssignEventData(*this, true);
     result->mFlags = mFlags;
     return result;
@@ -766,6 +774,13 @@ class WidgetEvent : public WidgetEventTime {
    * Returns true if the event mMessage is one of mouse events.
    */
   bool HasMouseEventMessage() const;
+
+  /**
+   * Returns true if the event class is eMouseEventClass or the event message
+   * is ePointerClick.
+   */
+  [[nodiscard]] bool IsMouseEventClassOrHasClickRelatedPointerEvent() const;
+
   /**
    * Returns true if the event mMessage is one of drag events.
    */
@@ -841,6 +856,10 @@ class WidgetEvent : public WidgetEventTime {
    */
   bool IsBlockedForFingerprintingResistance() const;
   /**
+   * Whether the event handler can flush pending notifications or not.
+   */
+  bool AllowFlushingPendingNotifications() const;
+  /**
    * Initialize mComposed
    */
   void SetDefaultComposed() {
@@ -874,21 +893,29 @@ class WidgetEvent : public WidgetEventTime {
         break;
       case eMouseEventClass:
         mFlags.mComposed =
-            mMessage == eMouseClick || mMessage == eMouseDoubleClick ||
-            mMessage == eMouseAuxClick || mMessage == eMouseDown ||
+            mMessage == eMouseDoubleClick || mMessage == eMouseDown ||
             mMessage == eMouseUp || mMessage == eMouseOver ||
             mMessage == eMouseOut || mMessage == eMouseMove ||
-            mMessage == eContextMenu || mMessage == eXULPopupShowing ||
-            mMessage == eXULPopupHiding || mMessage == eXULPopupShown ||
-            mMessage == eXULPopupHidden;
+            mMessage == eXULPopupShowing || mMessage == eXULPopupHiding ||
+            mMessage == eXULPopupShown || mMessage == eXULPopupHidden ||
+            // `click` event, `auxclick` event and `contextmenu` event should be
+            // created as a PointerEvent, but they were MouseEvent before.
+            // Additionally, we support dispatching untrusted these events to
+            // some elements may cause a default action of it even if they are
+            // created with MouseEvent.  Therefore, we need to allow these event
+            // messages here.
+            mMessage == ePointerClick || mMessage == ePointerAuxClick ||
+            mMessage == eContextMenu;
         break;
       case ePointerEventClass:
         // All pointer events are composed
         mFlags.mComposed =
-            mMessage == ePointerDown || mMessage == ePointerMove ||
-            mMessage == ePointerUp || mMessage == ePointerCancel ||
-            mMessage == ePointerOver || mMessage == ePointerOut ||
-            mMessage == ePointerGotCapture || mMessage == ePointerLostCapture;
+            mMessage == ePointerClick || mMessage == ePointerAuxClick ||
+            mMessage == eContextMenu || mMessage == ePointerDown ||
+            mMessage == ePointerMove || mMessage == ePointerUp ||
+            mMessage == ePointerCancel || mMessage == ePointerOver ||
+            mMessage == ePointerOut || mMessage == ePointerGotCapture ||
+            mMessage == ePointerLostCapture;
         break;
       case eTouchEventClass:
         // All touch events are composed
@@ -1002,22 +1029,26 @@ class WidgetEvent : public WidgetEventTime {
 class WidgetGUIEvent : public WidgetEvent {
  protected:
   WidgetGUIEvent(bool aIsTrusted, EventMessage aMessage, nsIWidget* aWidget,
-                 EventClassID aEventClassID)
-      : WidgetEvent(aIsTrusted, aMessage, aEventClassID), mWidget(aWidget) {}
+                 EventClassID aEventClassID,
+                 const WidgetEventTime* aTime = nullptr)
+      : WidgetEvent(aIsTrusted, aMessage, aEventClassID, aTime),
+        mWidget(aWidget) {}
 
   WidgetGUIEvent() = default;
 
  public:
   virtual WidgetGUIEvent* AsGUIEvent() override { return this; }
 
-  WidgetGUIEvent(bool aIsTrusted, EventMessage aMessage, nsIWidget* aWidget)
-      : WidgetEvent(aIsTrusted, aMessage, eGUIEventClass), mWidget(aWidget) {}
+  WidgetGUIEvent(bool aIsTrusted, EventMessage aMessage, nsIWidget* aWidget,
+                 const WidgetEventTime* aTime = nullptr)
+      : WidgetEvent(aIsTrusted, aMessage, eGUIEventClass, aTime),
+        mWidget(aWidget) {}
 
   virtual WidgetEvent* Duplicate() const override {
     MOZ_ASSERT(mClass == eGUIEventClass,
                "Duplicate() must be overridden by sub class");
     // Not copying widget, it is a weak reference.
-    WidgetGUIEvent* result = new WidgetGUIEvent(false, mMessage, nullptr);
+    WidgetGUIEvent* result = new WidgetGUIEvent(false, mMessage, nullptr, this);
     result->AssignGUIEventData(*this, true);
     result->mFlags = mFlags;
     return result;
@@ -1053,7 +1084,6 @@ enum Modifier {
   MODIFIER_SHIFT = 0x0200,
   MODIFIER_SYMBOL = 0x0400,
   MODIFIER_SYMBOLLOCK = 0x0800,
-  MODIFIER_OS = 0x1000
 };
 
 /******************************************************************************
@@ -1130,10 +1160,6 @@ class MOZ_STACK_CLASS GetModifiersName final : public nsAutoCString {
       MaybeAppendSeparator();
       AppendLiteral(NS_DOM_KEYNAME_SYMBOLLOCK);
     }
-    if (aModifiers & MODIFIER_OS) {
-      MaybeAppendSeparator();
-      AppendLiteral(NS_DOM_KEYNAME_OS);
-    }
     if (IsEmpty()) {
       AssignLiteral("none");
     }
@@ -1154,8 +1180,9 @@ class MOZ_STACK_CLASS GetModifiersName final : public nsAutoCString {
 class WidgetInputEvent : public WidgetGUIEvent {
  protected:
   WidgetInputEvent(bool aIsTrusted, EventMessage aMessage, nsIWidget* aWidget,
-                   EventClassID aEventClassID)
-      : WidgetGUIEvent(aIsTrusted, aMessage, aWidget, aEventClassID),
+                   EventClassID aEventClassID,
+                   const WidgetEventTime* aTime = nullptr)
+      : WidgetGUIEvent(aIsTrusted, aMessage, aWidget, aEventClassID, aTime),
         mModifiers(0) {}
 
   WidgetInputEvent() : mModifiers(0) {}
@@ -1163,15 +1190,17 @@ class WidgetInputEvent : public WidgetGUIEvent {
  public:
   virtual WidgetInputEvent* AsInputEvent() override { return this; }
 
-  WidgetInputEvent(bool aIsTrusted, EventMessage aMessage, nsIWidget* aWidget)
-      : WidgetGUIEvent(aIsTrusted, aMessage, aWidget, eInputEventClass),
+  WidgetInputEvent(bool aIsTrusted, EventMessage aMessage, nsIWidget* aWidget,
+                   const WidgetEventTime* aTime = nullptr)
+      : WidgetGUIEvent(aIsTrusted, aMessage, aWidget, eInputEventClass, aTime),
         mModifiers(0) {}
 
   virtual WidgetEvent* Duplicate() const override {
     MOZ_ASSERT(mClass == eInputEventClass,
                "Duplicate() must be overridden by sub class");
     // Not copying widget, it is a weak reference.
-    WidgetInputEvent* result = new WidgetInputEvent(false, mMessage, nullptr);
+    WidgetInputEvent* result =
+        new WidgetInputEvent(false, mMessage, nullptr, this);
     result->AssignInputEventData(*this, true);
     result->mFlags = mFlags;
     return result;
@@ -1197,11 +1226,9 @@ class WidgetInputEvent : public WidgetGUIEvent {
   bool IsControl() const { return ((mModifiers & MODIFIER_CONTROL) != 0); }
   // true indicates the alt key is down
   bool IsAlt() const { return ((mModifiers & MODIFIER_ALT) != 0); }
-  // true indicates the meta key is down (or, on Mac, the Command key)
+  // true indicates the meta key is down (Command key on macOS, Windows logo key
+  // on Windows, Super/Hyper key on Linux, Meta key on Android).
   bool IsMeta() const { return ((mModifiers & MODIFIER_META) != 0); }
-  // true indicates the win key is down on Windows. Or the Super or Hyper key
-  // is down on Linux.
-  bool IsOS() const { return ((mModifiers & MODIFIER_OS) != 0); }
   // true indicates the alt graph key is down
   // NOTE: on Mac, the option key press causes both IsAlt() and IsAltGrpah()
   //       return true.
@@ -1267,14 +1294,16 @@ class InternalUIEvent : public WidgetGUIEvent {
   InternalUIEvent() : mDetail(0), mCausedByUntrustedEvent(false) {}
 
   InternalUIEvent(bool aIsTrusted, EventMessage aMessage, nsIWidget* aWidget,
-                  EventClassID aEventClassID)
-      : WidgetGUIEvent(aIsTrusted, aMessage, aWidget, aEventClassID),
+                  EventClassID aEventClassID,
+                  const WidgetEventTime* aTime = nullptr)
+      : WidgetGUIEvent(aIsTrusted, aMessage, aWidget, aEventClassID, aTime),
         mDetail(0),
         mCausedByUntrustedEvent(false) {}
 
   InternalUIEvent(bool aIsTrusted, EventMessage aMessage,
-                  EventClassID aEventClassID)
-      : WidgetGUIEvent(aIsTrusted, aMessage, nullptr, aEventClassID),
+                  EventClassID aEventClassID,
+                  const WidgetEventTime* aTime = nullptr)
+      : WidgetGUIEvent(aIsTrusted, aMessage, nullptr, aEventClassID, aTime),
         mDetail(0),
         mCausedByUntrustedEvent(false) {}
 
@@ -1287,8 +1316,9 @@ class InternalUIEvent : public WidgetGUIEvent {
    * this should be nullptr.
    */
   InternalUIEvent(bool aIsTrusted, EventMessage aMessage,
-                  const WidgetEvent* aEventCausesThisEvent)
-      : WidgetGUIEvent(aIsTrusted, aMessage, nullptr, eUIEventClass),
+                  const WidgetEvent* aEventCausesThisEvent,
+                  const WidgetEventTime* aTime = nullptr)
+      : WidgetGUIEvent(aIsTrusted, aMessage, nullptr, eUIEventClass, aTime),
         mDetail(0),
         mCausedByUntrustedEvent(aEventCausesThisEvent &&
                                 !aEventCausesThisEvent->IsTrusted()) {}
@@ -1296,7 +1326,8 @@ class InternalUIEvent : public WidgetGUIEvent {
   virtual WidgetEvent* Duplicate() const override {
     MOZ_ASSERT(mClass == eUIEventClass,
                "Duplicate() must be overridden by sub class");
-    InternalUIEvent* result = new InternalUIEvent(false, mMessage, nullptr);
+    InternalUIEvent* result =
+        new InternalUIEvent(false, mMessage, nullptr, this);
     result->AssignUIEventData(*this, true);
     result->mFlags = mFlags;
     return result;

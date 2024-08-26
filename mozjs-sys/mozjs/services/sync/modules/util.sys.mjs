@@ -19,9 +19,7 @@ import {
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
-const FxAccountsCommon = ChromeUtils.import(
-  "resource://gre/modules/FxAccountsCommon.js"
-);
+import * as FxAccountsCommon from "resource://gre/modules/FxAccountsCommon.sys.mjs";
 
 XPCOMUtils.defineLazyServiceGetter(
   lazy,
@@ -757,7 +755,7 @@ export class SerializableSet extends Set {
   }
 }
 
-XPCOMUtils.defineLazyGetter(Utils, "_utf8Converter", function () {
+ChromeUtils.defineLazyGetter(Utils, "_utf8Converter", function () {
   let converter = Cc[
     "@mozilla.org/intl/scriptableunicodeconverter"
   ].createInstance(Ci.nsIScriptableUnicodeConverter);
@@ -765,7 +763,7 @@ XPCOMUtils.defineLazyGetter(Utils, "_utf8Converter", function () {
   return converter;
 });
 
-XPCOMUtils.defineLazyGetter(Utils, "utf8Encoder", () => new TextEncoder());
+ChromeUtils.defineLazyGetter(Utils, "utf8Encoder", () => new TextEncoder());
 
 /*
  * Commonly-used services

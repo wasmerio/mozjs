@@ -32,7 +32,6 @@
  */
 
 import { PrivateBrowsingUtils } from "resource://gre/modules/PrivateBrowsingUtils.sys.mjs";
-import { PromiseUtils } from "resource://gre/modules/PromiseUtils.sys.mjs";
 
 const SESSIONSTORE_WINDOWS_RESTORED_TOPIC = "sessionstore-windows-restored";
 const SESSIONSTORE_FINAL_STATE_WRITE_COMPLETE_TOPIC =
@@ -65,7 +64,7 @@ var CrashMonitorInternal = {
   /**
    * A deferred promise that resolves when all checkpoints have been written.
    */
-  sessionStoreFinalWriteComplete: PromiseUtils.defer(),
+  sessionStoreFinalWriteComplete: Promise.withResolvers(),
 
   /**
    * Notifications received during previous session.
@@ -190,7 +189,7 @@ export var CrashMonitor = {
    *
    * Update checkpoint file for every new notification received.
    */
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     this.writeCheckpoint(aTopic);
 
     if (

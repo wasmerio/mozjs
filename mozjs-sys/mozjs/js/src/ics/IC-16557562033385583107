@@ -1,0 +1,1 @@
+HasOwn, 2, 3, 6, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(2) LASTUSED(4) LASTUSED(4) , OP(GuardToObject) ID(1) OP(GuardToString) ID(0) OP(GuardStringToIndex) ID(0) ID(2) OP(GuardIsNativeObject) ID(1) OP(CallObjectHasSparseElementResult) ID(1) ID(2) OP(ReturnFromIC)  

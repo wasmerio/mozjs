@@ -17,9 +17,9 @@
 namespace mozilla::net {
 
 NS_IMPL_ISUPPORTS(ObliviousHttpChannel, nsIChannel, nsIHttpChannel,
-                  nsIHttpChannelInternal, nsIIdentChannel, nsIRequest,
-                  nsIRequestObserver, nsIStreamListener, nsIUploadChannel2,
-                  nsITimedChannel)
+                  nsIObliviousHttpChannel, nsIHttpChannelInternal,
+                  nsIIdentChannel, nsIRequest, nsIRequestObserver,
+                  nsIStreamListener, nsIUploadChannel2, nsITimedChannel)
 
 ObliviousHttpChannel::ObliviousHttpChannel(
     nsIURI* targetURI, const nsTArray<uint8_t>& encodedConfig,
@@ -351,6 +351,16 @@ ObliviousHttpChannel::UpgradeToSecure() {
 }
 
 NS_IMETHODIMP
+ObliviousHttpChannel::GetRequestObserversCalled(bool* aCalled) {
+  return mInnerChannel->GetRequestObserversCalled(aCalled);
+}
+
+NS_IMETHODIMP
+ObliviousHttpChannel::SetRequestObserversCalled(bool aCalled) {
+  return mInnerChannel->SetRequestObserversCalled(aCalled);
+}
+
+NS_IMETHODIMP
 ObliviousHttpChannel::GetRequestContextID(uint64_t* _retval) {
   return mInnerChannel->GetRequestContextID(_retval);
 }
@@ -419,10 +429,10 @@ void ObliviousHttpChannel::SetAltDataForChild(bool aIsForChild) {
 
 void ObliviousHttpChannel::SetCorsPreflightParameters(
     nsTArray<nsTString<char>> const& aUnsafeHeaders,
-    bool aShouldStripRequestBodyHeader) {
+    bool aShouldStripRequestBodyHeader, bool aShouldStripAuthHeader) {
   if (mInnerChannelInternal) {
     mInnerChannelInternal->SetCorsPreflightParameters(
-        aUnsafeHeaders, aShouldStripRequestBodyHeader);
+        aUnsafeHeaders, aShouldStripRequestBodyHeader, aShouldStripAuthHeader);
   }
 }
 
@@ -765,6 +775,19 @@ ObliviousHttpChannel::OnStopRequest(nsIRequest* aRequest,
   }
   Unused << mStreamListener->OnStopRequest(this, aStatusCode);
 
+  return NS_OK;
+}
+
+//-----------------------------------------------------------------------------
+// ObliviousHttpChannel::nsIObliviousHttpChannel
+//-----------------------------------------------------------------------------
+
+NS_IMETHODIMP
+ObliviousHttpChannel::GetRelayChannel(nsIHttpChannel** aChannel) {
+  if (!aChannel) {
+    return NS_ERROR_INVALID_ARG;
+  }
+  *aChannel = do_AddRef(mInnerChannel).take();
   return NS_OK;
 }
 

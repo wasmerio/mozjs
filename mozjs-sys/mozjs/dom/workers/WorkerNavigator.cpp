@@ -91,31 +91,24 @@ JSObject* WorkerNavigator::WrapObject(JSContext* aCx,
   return WorkerNavigator_Binding::Wrap(aCx, this, aGivenProto);
 }
 
+bool WorkerNavigator::GlobalPrivacyControl() const {
+  bool gpcStatus = StaticPrefs::privacy_globalprivacycontrol_enabled();
+  if (!gpcStatus) {
+    JSObject* jso = GetWrapper();
+    if (const nsCOMPtr<nsIGlobalObject> global = xpc::NativeGlobal(jso)) {
+      if (const nsCOMPtr<nsIPrincipal> principal = global->PrincipalOrNull()) {
+        gpcStatus = principal->GetPrivateBrowsingId() > 0 &&
+                    StaticPrefs::privacy_globalprivacycontrol_pbmode_enabled();
+      }
+    }
+  }
+  return StaticPrefs::privacy_globalprivacycontrol_functionality_enabled() &&
+         gpcStatus;
+}
+
 void WorkerNavigator::SetLanguages(const nsTArray<nsString>& aLanguages) {
   WorkerNavigator_Binding::ClearCachedLanguagesValue(this);
   mProperties.mLanguages = aLanguages.Clone();
-}
-
-void WorkerNavigator::GetAppName(nsString& aAppName,
-                                 CallerType aCallerType) const {
-  WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
-  MOZ_ASSERT(workerPrivate);
-
-  if (aCallerType != CallerType::System) {
-    if (workerPrivate->ShouldResistFingerprinting(
-            RFPTarget::NavigatorAppName)) {
-      // See nsRFPService.h for spoofed value.
-      aAppName.AssignLiteral(SPOOFED_APPNAME);
-      return;
-    }
-
-    if (!mProperties.mAppNameOverridden.IsEmpty()) {
-      aAppName = mProperties.mAppNameOverridden;
-      return;
-    }
-  }
-
-  aAppName = mProperties.mAppName;
 }
 
 void WorkerNavigator::GetAppVersion(nsString& aAppVersion,
@@ -234,6 +227,8 @@ StorageManager* WorkerNavigator::Storage() {
     MOZ_ASSERT(global);
 
     mStorageManager = new StorageManager(global);
+
+    workerPrivate->NotifyStorageKeyUsed();
   }
 
   return mStorageManager;
@@ -284,7 +279,7 @@ dom::LockManager* WorkerNavigator::Locks() {
     nsIGlobalObject* global = workerPrivate->GlobalScope();
     MOZ_ASSERT(global);
 
-    mLocks = new dom::LockManager(global);
+    mLocks = dom::LockManager::Create(*global);
   }
   return mLocks;
 }

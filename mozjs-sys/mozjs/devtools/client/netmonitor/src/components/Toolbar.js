@@ -336,7 +336,7 @@ class Toolbar extends Component {
   /**
    * Render a blocking button.
    */
-  renderBlockingButton(toggleSearchPanel) {
+  renderBlockingButton() {
     const {
       networkActionBarOpen,
       toggleRequestBlockingPanel,
@@ -666,7 +666,8 @@ module.exports = connect(
     selectedRequest: getSelectedRequest(state),
   }),
   dispatch => ({
-    clearRequests: () => dispatch(Actions.clearRequests()),
+    clearRequests: () =>
+      dispatch(Actions.clearRequests({ isExplicitClear: true })),
     disableBrowserCache: disabled =>
       dispatch(Actions.disableBrowserCache(disabled)),
     enablePersistentLogs: (enabled, skipTelemetry) =>

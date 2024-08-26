@@ -18,6 +18,12 @@ if CONFIG["JS_ENABLE_SMOOSH"]:
 if CONFIG["MOZ_MEMORY"]:
     features += ["moz_memory"]
 
+if CONFIG["MOZ_ICU4X"]:
+    features += ["icu4x"]
+
+if CONFIG["JS_HAS_TEMPORAL_API"]:
+    features += ["icu4x_calendar"]
+
 RustLibrary("jsrust", features)
 
 if CONFIG["JS_SHARED_LIBRARY"]:
@@ -34,3 +40,6 @@ elif CONFIG["OS_ARCH"] == "WINNT":
         "userenv",
         "ws2_32",
     ]
+
+COMPILE_FLAGS["BASE_INCLUDES"] = []
+HOST_COMPILE_FLAGS["BASE_INCLUDES"] = []

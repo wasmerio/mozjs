@@ -275,7 +275,7 @@ void nsBlockReflowContext::ReflowBlock(const LogicalRect& aSpace,
     tI = space.LineLeft(mWritingMode, mContainerSize);
     tB = mBCoord;
 
-    if (!mFrame->HasAnyStateBits(NS_BLOCK_FLOAT_MGR)) {
+    if (!mFrame->HasAnyStateBits(NS_BLOCK_BFC)) {
       aFrameRI.mBlockDelta =
           mOuterReflowInput.mBlockDelta + mBCoord - aLine->BStart();
     }
@@ -330,7 +330,9 @@ void nsBlockReflowContext::ReflowBlock(const LogicalRect& aSpace,
       // which detaches the placeholder from the float.
       nsOverflowContinuationTracker::AutoFinish fini(aState.mOverflowTracker,
                                                      mFrame);
-      kidNextInFlow->GetParent()->DeleteNextInFlowChild(kidNextInFlow, true);
+      nsIFrame::DestroyContext context(mPresContext->PresShell());
+      kidNextInFlow->GetParent()->DeleteNextInFlowChild(context, kidNextInFlow,
+                                                        true);
     }
   }
 }

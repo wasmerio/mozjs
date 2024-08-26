@@ -70,12 +70,22 @@ static mozilla::BackgroundHangMonitor* sBackgroundHangMonitor;
 #ifdef DEBUG
 static bool sRenderThreadEverStarted = false;
 #endif
+size_t RenderThread::sRendererCount = 0;
+size_t RenderThread::sActiveRendererCount = 0;
+
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
+static bool USE_DEDICATED_GLYPH_RASTER_THREAD = true;
+#else
+static bool USE_DEDICATED_GLYPH_RASTER_THREAD = false;
+#endif
 
 RenderThread::RenderThread(RefPtr<nsIThread> aThread)
     : mThread(std::move(aThread)),
       mThreadPool(false),
       mThreadPoolLP(true),
+      mGlyphRasterThread(USE_DEDICATED_GLYPH_RASTER_THREAD),
       mSingletonGLIsForHardwareWebRender(true),
+      mBatteryInfo("RenderThread.mBatteryInfo"),
       mWindowInfos("RenderThread.mWindowInfos"),
       mRenderTextureMapLock("RenderThread.mRenderTextureMapLock"),
       mHasShutdown(false),
@@ -149,6 +159,11 @@ void RenderThread::Start(uint32_t aNamespace) {
   }
 
   sRenderThread = new RenderThread(thread);
+  CrashReporter::RegisterAnnotationUSize(
+      CrashReporter::Annotation::GraphicsNumRenderers, &sRendererCount);
+  CrashReporter::RegisterAnnotationUSize(
+      CrashReporter::Annotation::GraphicsNumActiveRenderers,
+      &sActiveRendererCount);
 #ifdef XP_WIN
   widget::WinCompositorWindowThread::Start();
 #endif
@@ -291,6 +306,26 @@ RefPtr<MemoryReportPromise> RenderThread::AccumulateMemoryReport(
   return p;
 }
 
+void RenderThread::SetBatteryInfo(const hal::BatteryInformation& aBatteryInfo) {
+  MOZ_ASSERT(XRE_IsGPUProcess());
+
+  auto batteryInfo = mBatteryInfo.Lock();
+  batteryInfo.ref() = Some(aBatteryInfo);
+}
+
+bool RenderThread::GetPowerIsCharging() {
+  MOZ_ASSERT(XRE_IsGPUProcess());
+
+  auto batteryInfo = mBatteryInfo.Lock();
+  if (batteryInfo.ref().isSome()) {
+    return batteryInfo.ref().ref().charging();
+  }
+
+  gfxCriticalNoteOnce << "BatteryInfo is not set";
+  MOZ_ASSERT_UNREACHABLE("unexpected to be called");
+  return false;
+}
+
 void RenderThread::AddRenderer(wr::WindowId aWindowId,
                                UniquePtr<RendererOGL> aRenderer) {
   MOZ_ASSERT(IsInRenderThread());
@@ -301,9 +336,7 @@ void RenderThread::AddRenderer(wr::WindowId aWindowId,
   }
 
   mRenderers[aWindowId] = std::move(aRenderer);
-  CrashReporter::AnnotateCrashReport(
-      CrashReporter::Annotation::GraphicsNumRenderers,
-      (unsigned int)mRenderers.size());
+  sRendererCount = mRenderers.size();
 
   auto windows = mWindowInfos.Lock();
   windows->emplace(AsUint64(aWindowId), new WindowInfo());
@@ -321,9 +354,7 @@ void RenderThread::RemoveRenderer(wr::WindowId aWindowId) {
   }
 
   mRenderers.erase(aWindowId);
-  CrashReporter::AnnotateCrashReport(
-      CrashReporter::Annotation::GraphicsNumRenderers,
-      (unsigned int)mRenderers.size());
+  sRendererCount = mRenderers.size();
 
   if (mRenderers.empty()) {
     if (mHandlingDeviceReset) {
@@ -370,7 +401,7 @@ size_t RenderThread::RendererCount() const {
   return mRenderers.size();
 }
 
-size_t RenderThread::ActiveRendererCount() const {
+void RenderThread::UpdateActiveRendererCount() {
   MOZ_ASSERT(IsInRenderThread());
   size_t num_active = 0;
   for (const auto& it : mRenderers) {
@@ -378,7 +409,7 @@ size_t RenderThread::ActiveRendererCount() const {
       num_active++;
     }
   }
-  return num_active;
+  sActiveRendererCount = num_active;
 }
 
 void RenderThread::WrNotifierEvent_WakeUp(WrWindowId aWindowId,
@@ -630,8 +661,7 @@ void RenderThread::HandleFrameOneDocInner(wr::WindowId aWindowId, bool aRender,
   // point until now (when the frame is finally pushed to the screen) is
   // equivalent to the COMPOSITE_TIME metric in the non-WR codepath.
   TimeDuration compositeDuration = TimeStamp::Now() - frame.mStartTime;
-  mozilla::Telemetry::Accumulate(mozilla::Telemetry::COMPOSITE_TIME,
-                                 uint32_t(compositeDuration.ToMilliseconds()));
+  mozilla::glean::gfx::composite_time.AccumulateRawDuration(compositeDuration);
   PerfStats::RecordMeasurement(PerfStats::Metric::Compositing,
                                compositeDuration);
 }
@@ -784,7 +814,9 @@ void RenderThread::UpdateAndRender(
     renderer->Update();
   }
   // Check graphics reset status even when rendering is skipped.
-  renderer->CheckGraphicsResetStatus("PostUpdate", /* aForce */ false);
+  renderer->CheckGraphicsResetStatus(
+      gfx::DeviceResetDetectPlace::WR_POST_UPDATE,
+      /* aForce */ false);
 
   TimeStamp end = TimeStamp::Now();
   RefPtr<const WebRenderPipelineInfo> info = renderer->GetLastPipelineInfo();
@@ -843,9 +875,7 @@ void RenderThread::Pause(wr::WindowId aWindowId) {
   auto& renderer = it->second;
   renderer->Pause();
 
-  CrashReporter::AnnotateCrashReport(
-      CrashReporter::Annotation::GraphicsNumActiveRenderers,
-      (unsigned int)ActiveRendererCount());
+  UpdateActiveRendererCount();
 }
 
 bool RenderThread::Resume(wr::WindowId aWindowId) {
@@ -862,9 +892,7 @@ bool RenderThread::Resume(wr::WindowId aWindowId) {
   auto& renderer = it->second;
   bool resumed = renderer->Resume();
 
-  CrashReporter::AnnotateCrashReport(
-      CrashReporter::Annotation::GraphicsNumActiveRenderers,
-      (unsigned int)ActiveRendererCount());
+  UpdateActiveRendererCount();
 
   return resumed;
 }
@@ -960,6 +988,21 @@ void RenderThread::RegisterExternalImage(
     mSyncObjectNeededRenderTextures.emplace(aExternalImageId, texture);
   }
   mRenderTextures.emplace(aExternalImageId, texture);
+
+#ifdef DEBUG
+  int32_t maxAllowedIncrease =
+      StaticPrefs::gfx_testing_assert_render_textures_increase();
+
+  if (maxAllowedIncrease <= 0) {
+    mRenderTexturesLastTime = -1;
+  } else {
+    if (mRenderTexturesLastTime < 0) {
+      mRenderTexturesLastTime = static_cast<int32_t>(mRenderTextures.size());
+    }
+    MOZ_ASSERT((static_cast<int32_t>(mRenderTextures.size()) -
+                mRenderTexturesLastTime) < maxAllowedIncrease);
+  }
+#endif
 }
 
 void RenderThread::UnregisterExternalImage(
@@ -1112,7 +1155,6 @@ void RenderThread::UnregisterExternalImageDuringShutdown(
   MOZ_ASSERT(IsInRenderThread());
   MutexAutoLock lock(mRenderTextureMapLock);
   MOZ_ASSERT(mHasShutdown);
-  MOZ_ASSERT(mRenderTextures.find(aExternalImageId) != mRenderTextures.end());
   mRenderTextures.erase(aExternalImageId);
 }
 
@@ -1163,32 +1205,12 @@ void RenderThread::PostRunnable(already_AddRefed<nsIRunnable> aRunnable) {
   mThread->Dispatch(runnable.forget());
 }
 
-#ifndef XP_WIN
-static DeviceResetReason GLenumToResetReason(GLenum aReason) {
-  switch (aReason) {
-    case LOCAL_GL_NO_ERROR:
-      return DeviceResetReason::FORCED_RESET;
-    case LOCAL_GL_INNOCENT_CONTEXT_RESET_ARB:
-      return DeviceResetReason::DRIVER_ERROR;
-    case LOCAL_GL_PURGED_CONTEXT_RESET_NV:
-      return DeviceResetReason::NVIDIA_VIDEO;
-    case LOCAL_GL_GUILTY_CONTEXT_RESET_ARB:
-      return DeviceResetReason::RESET;
-    case LOCAL_GL_UNKNOWN_CONTEXT_RESET_ARB:
-      return DeviceResetReason::UNKNOWN;
-    case LOCAL_GL_OUT_OF_MEMORY:
-      return DeviceResetReason::OUT_OF_MEMORY;
-    default:
-      return DeviceResetReason::OTHER;
-  }
-}
-#endif
-
-void RenderThread::HandleDeviceReset(const char* aWhere, GLenum aReason) {
+void RenderThread::HandleDeviceReset(gfx::DeviceResetDetectPlace aPlace,
+                                     gfx::DeviceResetReason aReason) {
   MOZ_ASSERT(IsInRenderThread());
 
   // This happens only on simulate device reset.
-  if (aReason == LOCAL_GL_NO_ERROR) {
+  if (aReason == gfx::DeviceResetReason::FORCED_RESET) {
     if (!mHandlingDeviceReset) {
       mHandlingDeviceReset = true;
 
@@ -1201,15 +1223,8 @@ void RenderThread::HandleDeviceReset(const char* aWhere, GLenum aReason) {
       // All RenderCompositors will be destroyed by the GPUProcessManager in
       // either OnRemoteProcessDeviceReset via the GPUChild, or
       // OnInProcessDeviceReset here directly.
-      if (XRE_IsGPUProcess()) {
-        gfx::GPUParent::GetSingleton()->NotifyDeviceReset();
-      } else {
-        NS_DispatchToMainThread(NS_NewRunnableFunction(
-            "gfx::GPUProcessManager::OnInProcessDeviceReset", []() -> void {
-              gfx::GPUProcessManager::Get()->OnInProcessDeviceReset(
-                  /* aTrackThreshold */ false);
-            }));
-      }
+      gfx::GPUProcessManager::GPUProcessManager::NotifyDeviceReset(
+          gfx::DeviceResetReason::FORCED_RESET, aPlace);
     }
     return;
   }
@@ -1222,7 +1237,7 @@ void RenderThread::HandleDeviceReset(const char* aWhere, GLenum aReason) {
 
 #ifndef XP_WIN
   // On Windows, see DeviceManagerDx::MaybeResetAndReacquireDevices.
-  gfx::GPUProcessManager::RecordDeviceReset(GLenumToResetReason(aReason));
+  gfx::GPUProcessManager::RecordDeviceReset(aReason);
 #endif
 
   {
@@ -1237,18 +1252,15 @@ void RenderThread::HandleDeviceReset(const char* aWhere, GLenum aReason) {
   // either OnRemoteProcessDeviceReset via the GPUChild, or
   // OnInProcessDeviceReset here directly.
   // On Windows, device will be re-created before sessions re-creation.
-  gfxCriticalNote << "GFX: RenderThread detected a device reset in " << aWhere;
   if (XRE_IsGPUProcess()) {
-    gfx::GPUParent::GetSingleton()->NotifyDeviceReset();
+    gfx::GPUProcessManager::GPUProcessManager::NotifyDeviceReset(aReason,
+                                                                 aPlace);
   } else {
 #ifndef XP_WIN
     // FIXME(aosmond): Do we need to do this on Windows? nsWindow::OnPaint
     // seems to do its own detection for the parent process.
-    bool guilty = aReason == LOCAL_GL_GUILTY_CONTEXT_RESET_ARB;
-    NS_DispatchToMainThread(NS_NewRunnableFunction(
-        "gfx::GPUProcessManager::OnInProcessDeviceReset", [guilty]() -> void {
-          gfx::GPUProcessManager::Get()->OnInProcessDeviceReset(guilty);
-        }));
+    gfx::GPUProcessManager::GPUProcessManager::NotifyDeviceReset(aReason,
+                                                                 aPlace);
 #endif
   }
 }
@@ -1266,7 +1278,8 @@ void RenderThread::SimulateDeviceReset() {
     // When this function is called GPUProcessManager::SimulateDeviceReset()
     // already triggers destroying all CompositorSessions before re-creating
     // them.
-    HandleDeviceReset("SimulateDeviceReset", LOCAL_GL_NO_ERROR);
+    HandleDeviceReset(gfx::DeviceResetDetectPlace::WR_SIMULATE,
+                      gfx::DeviceResetReason::FORCED_RESET);
   }
 }
 
@@ -1282,6 +1295,7 @@ void RenderThread::NotifyWebRenderError(WebRenderError aError) {
 }
 
 void RenderThread::HandleWebRenderError(WebRenderError aError) {
+  MOZ_ASSERT(IsInRenderThread());
   if (mHandlingWebRenderError) {
     return;
   }
@@ -1356,7 +1370,12 @@ void RenderThread::ClearSingletonGL() {
     mProgramsForCompositorOGL->Clear();
     mProgramsForCompositorOGL = nullptr;
   }
-  mShaders = nullptr;
+  if (mShaders) {
+    if (mSingletonGL) {
+      mSingletonGL->MakeCurrent();
+    }
+    mShaders = nullptr;
+  }
   mSingletonGL = nullptr;
 }
 
@@ -1374,7 +1393,7 @@ RenderThread::GetProgramsForCompositorOGL() {
 }
 
 RefPtr<layers::SurfacePool> RenderThread::SharedSurfacePool() {
-#if defined(XP_MACOSX) || defined(MOZ_WAYLAND)
+#if defined(XP_DARWIN) || defined(MOZ_WAYLAND)
   if (!mSurfacePool) {
     size_t poolSizeLimit =
         StaticPrefs::gfx_webrender_compositor_surface_pool_size_AtStartup();
@@ -1452,6 +1471,20 @@ void WebRenderThreadPool::Release() {
   if (mThreadPool) {
     wr_thread_pool_delete(mThreadPool);
     mThreadPool = nullptr;
+  }
+}
+
+MaybeWebRenderGlyphRasterThread::MaybeWebRenderGlyphRasterThread(bool aEnable) {
+  if (aEnable) {
+    mThread = wr_glyph_raster_thread_new();
+  } else {
+    mThread = nullptr;
+  }
+}
+
+MaybeWebRenderGlyphRasterThread::~MaybeWebRenderGlyphRasterThread() {
+  if (mThread) {
+    wr_glyph_raster_thread_delete(mThread);
   }
 }
 
@@ -1551,7 +1584,7 @@ static already_AddRefed<gl::GLContext> CreateGLContextEGL() {
 }
 #endif
 
-#ifdef XP_MACOSX
+#ifdef XP_DARWIN
 static already_AddRefed<gl::GLContext> CreateGLContextCGL() {
   nsCString failureUnused;
   return gl::GLContextProvider::CreateHeadless(
@@ -1574,7 +1607,7 @@ static already_AddRefed<gl::GLContext> CreateGLContext(nsACString& aError) {
   if (gfx::gfxVars::UseEGL()) {
     gl = CreateGLContextEGL();
   }
-#elif XP_MACOSX
+#elif XP_DARWIN
   gl = CreateGLContextCGL();
 #endif
 

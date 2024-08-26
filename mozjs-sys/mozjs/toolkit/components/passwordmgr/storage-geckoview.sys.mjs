@@ -6,8 +6,6 @@
  * LoginManagerStorage implementation for GeckoView
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { LoginManagerStorage_json } from "resource://gre/modules/storage-json.sys.mjs";
 
 const lazy = {};
@@ -51,15 +49,15 @@ export class LoginManagerStorage extends LoginManagerStorage_json {
    */
   terminate() {}
 
-  async addLoginsAsync(logins, continueOnDuplicates = false) {
+  async addLoginsAsync(_logins, _continueOnDuplicates = false) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  removeLogin(login) {
+  removeLogin(_login) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  modifyLogin(oldLogin, newLoginData) {
+  modifyLogin(_oldLogin, _newLoginData) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
@@ -69,16 +67,12 @@ export class LoginManagerStorage extends LoginManagerStorage_json {
     );
   }
 
-  getAllLogins() {
-    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
-  }
-
   /**
    * Returns a promise resolving to an array of all saved logins that can be decrypted.
    *
    * @resolve {nsILoginInfo[]}
    */
-  getAllLoginsAsync(includeDeleted) {
+  getAllLogins(includeDeleted) {
     return this._getLoginsAsync({}, includeDeleted);
   }
 
@@ -186,7 +180,7 @@ export class LoginManagerStorage extends LoginManagerStorage_json {
   /**
    * Use `searchLoginsAsync` instead.
    */
-  searchLogins(matchData) {
+  searchLogins(_matchData) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
@@ -197,7 +191,7 @@ export class LoginManagerStorage extends LoginManagerStorage_json {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  countLogins(origin, formActionOrigin, httpRealm) {
+  countLogins(_origin, _formActionOrigin, _httpRealm) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
@@ -232,7 +226,7 @@ export class LoginManagerStorage extends LoginManagerStorage_json {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  async setSyncID(syncID) {
+  async setSyncID(_syncID) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
@@ -240,12 +234,12 @@ export class LoginManagerStorage extends LoginManagerStorage_json {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 
-  async setLastSync(timestamp) {
+  async setLastSync(_timestamp) {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   }
 }
 
-XPCOMUtils.defineLazyGetter(LoginManagerStorage.prototype, "log", () => {
+ChromeUtils.defineLazyGetter(LoginManagerStorage.prototype, "log", () => {
   let logger = lazy.LoginHelper.createLogger("Login storage");
   return logger.log.bind(logger);
 });

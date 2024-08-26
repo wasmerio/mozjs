@@ -50,19 +50,17 @@ using Tier2Listener = RefPtr<JS::OptimizedEncodingListener>;
 struct ImportValues {
   JSObjectVector funcs;
   WasmTableObjectVector tables;
-  WasmMemoryObject* memory;
+  WasmMemoryObjectVector memories;
   WasmTagObjectVector tagObjs;
   WasmGlobalObjectVector globalObjs;
   ValVector globalValues;
 
-  ImportValues() : memory(nullptr) {}
+  ImportValues() {}
 
   void trace(JSTracer* trc) {
     funcs.trace(trc);
     tables.trace(trc);
-    if (memory) {
-      TraceRoot(trc, &memory, "import values memory");
-    }
+    memories.trace(trc);
     tagObjs.trace(trc);
     globalObjs.trace(trc);
     globalValues.trace(trc);
@@ -81,14 +79,16 @@ struct ImportValues {
 // ModuleSegment) can be shared between instances.
 
 class Module : public JS::WasmModule {
+  // This has the same lifetime end as Module itself -- it can be dropped when
+  // Module itself is dropped.
+  const SharedModuleMetadata moduleMeta_;
+
   const SharedCode code_;
-  const ImportVector imports_;
-  const ExportVector exports_;
   const DataSegmentVector dataSegments_;
-  const ElemSegmentVector elemSegments_;
+  const ModuleElemSegmentVector elemSegments_;
   const CustomSectionVector customSections_;
 
-  // This field is only meaningful when code_->metadata().debugEnabled.
+  // This field is only meaningful when code_->codeMeta().debugEnabled.
 
   const SharedBytes debugBytecode_;
 
@@ -114,8 +114,9 @@ class Module : public JS::WasmModule {
 
   bool instantiateFunctions(JSContext* cx,
                             const JSObjectVector& funcImports) const;
-  bool instantiateMemory(JSContext* cx,
-                         MutableHandle<WasmMemoryObject*> memory) const;
+  bool instantiateMemories(
+      JSContext* cx, const WasmMemoryObjectVector& memoryImports,
+      MutableHandle<WasmMemoryObjectVector> memoryObjs) const;
   bool instantiateTags(JSContext* cx, WasmTagObjectVector& tagObjs) const;
   bool instantiateImportedTable(JSContext* cx, const TableDesc& td,
                                 Handle<WasmTableObject*> table,
@@ -130,20 +131,18 @@ class Module : public JS::WasmModule {
                          SharedTableVector* tables) const;
   bool instantiateGlobals(JSContext* cx, const ValVector& globalImportValues,
                           WasmGlobalObjectVector& globalObjs) const;
-  bool initSegments(JSContext* cx, Handle<WasmInstanceObject*> instance,
-                    Handle<WasmMemoryObject*> memory) const;
 
   class Tier2GeneratorTaskImpl;
 
  public:
-  Module(const Code& code, ImportVector&& imports, ExportVector&& exports,
-         DataSegmentVector&& dataSegments, ElemSegmentVector&& elemSegments,
+  Module(const ModuleMetadata& moduleMeta, const Code& code,
+         DataSegmentVector&& dataSegments,
+         ModuleElemSegmentVector&& elemSegments,
          CustomSectionVector&& customSections,
          const ShareableBytes* debugBytecode = nullptr,
          bool loggingDeserialized = false)
-      : code_(&code),
-        imports_(std::move(imports)),
-        exports_(std::move(exports)),
+      : moduleMeta_(&moduleMeta),
+        code_(&code),
         dataSegments_(std::move(dataSegments)),
         elemSegments_(std::move(elemSegments)),
         customSections_(std::move(customSections)),
@@ -156,10 +155,12 @@ class Module : public JS::WasmModule {
 
   const Code& code() const { return *code_; }
   const ModuleSegment& moduleSegment(Tier t) const { return code_->segment(t); }
-  const Metadata& metadata() const { return code_->metadata(); }
+  const ModuleMetadata& moduleMeta() const { return *moduleMeta_; }
+  const CodeMetadata& codeMeta() const { return code_->codeMeta(); }
+  const CodeMetadataForAsmJS* codeMetaForAsmJS() const {
+    return code_->codeMetaForAsmJS();
+  }
   const MetadataTier& metadata(Tier t) const { return code_->metadata(t); }
-  const ImportVector& imports() const { return imports_; }
-  const ExportVector& exports() const { return exports_; }
   const CustomSectionVector& customSections() const { return customSections_; }
   const Bytes& debugBytecode() const { return debugBytecode_->bytes; }
   uint32_t codeLength(Tier t) const { return code_->segment(t).length(); }
@@ -195,7 +196,9 @@ class Module : public JS::WasmModule {
 
   // about:memory reporting:
 
-  void addSizeOfMisc(MallocSizeOf mallocSizeOf, Metadata::SeenSet* seenMetadata,
+  void addSizeOfMisc(MallocSizeOf mallocSizeOf,
+                     CodeMetadata::SeenSet* seenCodeMeta,
+                     CodeMetadataForAsmJS::SeenSet* seenCodeMetaForAsmJS,
                      Code::SeenSet* seenCode, size_t* code, size_t* data) const;
 
   // GC malloc memory tracking:

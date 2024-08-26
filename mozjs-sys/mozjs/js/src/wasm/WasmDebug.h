@@ -19,7 +19,9 @@
 #ifndef wasm_debug_h
 #define wasm_debug_h
 
+#include "js/ColumnNumber.h"  // JS::LimitedColumnNumberOneOrigin
 #include "js/HashTable.h"
+#include "wasm/AsmJS.h"  // CodeMetadataForAsmJS::SeenSet
 #include "wasm/WasmCode.h"
 #include "wasm/WasmCodegenTypes.h"
 #include "wasm/WasmConstants.h"
@@ -106,8 +108,9 @@ class DebugState {
 
   [[nodiscard]] bool getLineOffsets(size_t lineno, Vector<uint32_t>* offsets);
   [[nodiscard]] bool getAllColumnOffsets(Vector<ExprLoc>* offsets);
-  [[nodiscard]] bool getOffsetLocation(uint32_t offset, size_t* lineno,
-                                       size_t* column);
+  [[nodiscard]] bool getOffsetLocation(
+      uint32_t offset, uint32_t* lineno,
+      JS::LimitedColumnNumberOneOrigin* column);
 
   // The Code can track enter/leave frame events. Any such event triggers
   // debug trap. The enter/leave frame events enabled or disabled across
@@ -161,7 +164,10 @@ class DebugState {
   // Accessors for commonly used elements of linked structures.
 
   const MetadataTier& metadata(Tier t) const { return code_->metadata(t); }
-  const Metadata& metadata() const { return code_->metadata(); }
+  const CodeMetadata& codeMeta() const { return code_->codeMeta(); }
+  const CodeMetadataForAsmJS* codeMetaForAsmJS() const {
+    return code_->codeMetaForAsmJS();
+  }
   const CodeRangeVector& codeRanges(Tier t) const {
     return metadata(t).codeRanges;
   }
@@ -175,7 +181,9 @@ class DebugState {
 
   // about:memory reporting:
 
-  void addSizeOfMisc(MallocSizeOf mallocSizeOf, Metadata::SeenSet* seenMetadata,
+  void addSizeOfMisc(MallocSizeOf mallocSizeOf,
+                     CodeMetadata::SeenSet* seenCodeMeta,
+                     CodeMetadataForAsmJS::SeenSet* seenCodeMetaForAsmJS,
                      Code::SeenSet* seenCode, size_t* code, size_t* data) const;
 };
 

@@ -12,7 +12,6 @@ import buildconfig
 from mozpack.executables import ELF, UNKNOWN, get_type
 from packaging.version import Version
 
-from mozbuild.action.util import log_build_task
 from mozbuild.util import memoize
 
 STDCXX_MAX_VERSION = Version("3.4.19")
@@ -65,12 +64,20 @@ def iter_elf_symbols(binary, all=False):
     if ty == UNKNOWN and open(binary, "rb").read(8) == b"!<arch>\n":
         ty = ELF
     assert ty == ELF
+
+    def looks_like_readelf_data(data):
+        return len(data) >= 8 and data[0].endswith(":") and data[0][:-1].isdigit()
+
     for line in get_output(
         READELF, "--wide", "--syms" if all else "--dyn-syms", binary
     ):
         data = line.split()
-        if not (len(data) >= 8 and data[0].endswith(":") and data[0][:-1].isdigit()):
-            continue
+        if not looks_like_readelf_data(data):
+            # Older versions of llvm-readelf would use .hash for --dyn-syms,
+            # which would add an extra column at the beginning.
+            data = data[1:]
+            if not looks_like_readelf_data(data):
+                continue
         n, addr, size, type, bind, vis, index, name = data[:8]
 
         if "@" in name:
@@ -123,7 +130,7 @@ def check_binary_compat(binary):
                     if version > max_version:
                         unwanted.setdefault(prefix, []).append(sym)
     except Empty:
-        raise RuntimeError("Could not parse llvm-objdump output?")
+        raise RuntimeError("Could not parse readelf output?")
     if unwanted:
         error = []
         for lib, prefix, _ in checks:
@@ -206,8 +213,6 @@ def check_networking(binary):
             "connect",
             "accept",
             "listen",
-            "getsockname",
-            "getsockopt",
             "recv",
             "send",
             # We would be concerned by recvmsg and sendmsg; but we believe
@@ -240,7 +245,7 @@ def check_networking(binary):
             if sym["addr"] == 0 and sym["name"] in networking_functions:
                 bad_occurences_names.add(sym["name"])
     except Empty:
-        raise RuntimeError("Could not parse llvm-objdump output?")
+        raise RuntimeError("Could not parse readelf output?")
 
     basename = os.path.basename(binary)
     if bad_occurences_names:
@@ -317,4 +322,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    sys.exit(log_build_task(main, sys.argv[1:]))
+    sys.exit(main(sys.argv[1:]))

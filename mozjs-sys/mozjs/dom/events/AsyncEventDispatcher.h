@@ -84,7 +84,7 @@ class AsyncEventDispatcher : public CancelableRunnable {
    * destroyed).
    */
   AsyncEventDispatcher(
-      dom::EventTarget* aTarget, dom::Event* aEvent,
+      dom::EventTarget* aTarget, already_AddRefed<dom::Event> aEvent,
       ChromeOnlyDispatch aOnlyChromeDispatch = ChromeOnlyDispatch::eNo)
       : CancelableRunnable("AsyncEventDispatcher"),
         mTarget(aTarget),
@@ -92,7 +92,7 @@ class AsyncEventDispatcher : public CancelableRunnable {
         mEventMessage(eUnidentifiedEvent),
         mOnlyChromeDispatch(aOnlyChromeDispatch) {
     MOZ_ASSERT(
-        aEvent->IsSafeToBeDispatchedAsynchronously(),
+        mEvent->IsSafeToBeDispatchedAsynchronously(),
         "The DOM event should be created without Widget*Event and "
         "Internal*Event "
         "because if it needs to be safe to be dispatched asynchronously");
@@ -151,8 +151,12 @@ class AsyncEventDispatcher : public CancelableRunnable {
   // assert.
   void RequireNodeInDocument();
 
- protected:
+  // NOTE: The static version of this should be preferred when possible, because
+  // it avoids the allocation but this is useful when used in combination with
+  // LoadBlockingAsyncEventDispatcher.
   void RunDOMEventWhenSafe();
+
+ protected:
   MOZ_CAN_RUN_SCRIPT static void DispatchEventOnTarget(
       dom::EventTarget* aTarget, dom::Event* aEvent,
       ChromeOnlyDispatch aOnlyChromeDispatch, Composed aComposed);
@@ -188,13 +192,9 @@ class LoadBlockingAsyncEventDispatcher final : public AsyncEventDispatcher {
     mBlockedDoc->BlockOnload();
   }
 
-  // The static version of AsyncEventDispatcher::RunDOMEventWhenSafe should be
-  // preferred when possible, but for LoadBlockingAsyncEventDispatcher it makes
-  // sense to expose the helper so that the load event is blocked appropriately.
-  using AsyncEventDispatcher::RunDOMEventWhenSafe;
-
-  LoadBlockingAsyncEventDispatcher(nsINode* aEventNode, dom::Event* aEvent)
-      : AsyncEventDispatcher(aEventNode, aEvent),
+  LoadBlockingAsyncEventDispatcher(nsINode* aEventNode,
+                                   already_AddRefed<dom::Event> aEvent)
+      : AsyncEventDispatcher(aEventNode, std::move(aEvent)),
         mBlockedDoc(aEventNode->OwnerDoc()) {
     mBlockedDoc->BlockOnload();
   }
@@ -203,6 +203,19 @@ class LoadBlockingAsyncEventDispatcher final : public AsyncEventDispatcher {
 
  private:
   RefPtr<dom::Document> mBlockedDoc;
+};
+
+class AsyncSelectionChangeEventDispatcher : public AsyncEventDispatcher {
+ public:
+  AsyncSelectionChangeEventDispatcher(dom::EventTarget* aTarget,
+                                      EventMessage aEventMessage,
+                                      CanBubble aCanBubble)
+      : AsyncEventDispatcher(aTarget, aEventMessage, aCanBubble) {}
+
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHOD Run() override {
+    mTarget->GetAsNode()->ClearHasScheduledSelectionChangeEvent();
+    return AsyncEventDispatcher::Run();
+  }
 };
 
 }  // namespace mozilla

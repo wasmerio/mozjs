@@ -34,6 +34,14 @@ interface WindowContext {
 
   readonly attribute boolean shouldResistFingerprinting;
 
+  // The granular fingerprinting protection overrides for the context. We will
+  // use the granular overrides to decide which fingerprinting protection we
+  // want to enable in the context due to the WebCompat reason. The value can be
+  // null, which means we are using default fingerprinting protection in the
+  // context.
+  [BinaryName="OverriddenFingerprintingSettingsWebIDL"]
+  readonly attribute unsigned long long? overriddenFingerprintingSettings;
+
   /**
    * Partially determines whether script execution is allowed in this
    * BrowsingContext. Script execution will be permitted only if this
@@ -45,7 +53,7 @@ interface WindowContext {
   [SetterThrows] attribute boolean allowJavascript;
 };
 
-// Keep this in sync with nsIContentViewer::PermitUnloadAction.
+// Keep this in sync with nsIDocumentViewer::PermitUnloadAction.
 enum PermitUnloadAction {
   "prompt",
   "dontUnload",
@@ -57,6 +65,11 @@ interface WindowGlobalParent : WindowContext {
   readonly attribute boolean isClosed;
 
   readonly attribute boolean isCurrentGlobal;
+
+  // This should return true if the window is currently visible in its tab.
+  // (A more technically accurate name would be something like
+  // "isActiveInRootNavigable".)
+  readonly attribute boolean isActiveInTab;
 
   readonly attribute unsigned long long outerWindowId;
   readonly attribute unsigned long long contentParentId;

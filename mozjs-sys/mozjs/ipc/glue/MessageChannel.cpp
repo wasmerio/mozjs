@@ -473,9 +473,8 @@ MessageChannel::~MessageChannel() {
   // would be unsafe to invoke our listener's callbacks, and we may be being
   // destroyed on a thread other than `mWorkerThread`.
   if (!IsClosedLocked()) {
-    CrashReporter::AnnotateCrashReport(
-        CrashReporter::Annotation::IPCFatalErrorProtocol,
-        nsDependentCString(mName));
+    CrashReporter::RecordAnnotationCString(
+        CrashReporter::Annotation::IPCFatalErrorProtocol, mName);
     switch (mChannelState) {
       case ChannelConnected:
         MOZ_CRASH(
@@ -537,6 +536,12 @@ int32_t MessageChannel::CurrentNestedInsideSyncTransaction() const {
   return mTransactionStack->TransactionID();
 }
 
+bool MessageChannel::TestOnlyIsTransactionComplete() const {
+  AssertWorkerThread();
+  MonitorAutoLock lock(*mMonitor);
+  return !mTransactionStack || mTransactionStack->IsComplete();
+}
+
 bool MessageChannel::AwaitingSyncReply() const {
   mMonitor->AssertCurrentThreadOwns();
   return mTransactionStack ? mTransactionStack->AwaitingSyncReply() : false;
@@ -559,17 +564,6 @@ int MessageChannel::DispatchingSyncMessageNestedLevel() const {
   return mTransactionStack
              ? mTransactionStack->DispatchingSyncMessageNestedLevel()
              : 0;
-}
-
-static const char* StringFromIPCSide(Side side) {
-  switch (side) {
-    case ChildSide:
-      return "Child";
-    case ParentSide:
-      return "Parent";
-    default:
-      return "Unknown";
-  }
 }
 
 static void PrintErrorMessage(Side side, const char* channelName,
@@ -941,13 +935,13 @@ bool MessageChannel::MaybeInterceptSpecialIOMessage(const Message& aMsg) {
       // ourselves as "Closing".
       mLink->Close();
       mChannelState = ChannelClosing;
-      if (LoggingEnabled()) {
+      if (LoggingEnabledFor(mListener->GetProtocolName(), mSide)) {
         printf(
-            "[%s %u] NOTE: %s actor received `Goodbye' message.  Closing "
+            "[%s %u] NOTE: %s%s actor received `Goodbye' message.  Closing "
             "channel.\n",
             XRE_GeckoProcessTypeToString(XRE_GetProcessType()),
             static_cast<uint32_t>(base::GetCurrentProcId()),
-            (mSide == ChildSide) ? "child" : "parent");
+            mListener->GetProtocolName(), StringFromIPCSide(mSide));
       }
 
       // Notify the worker thread that the connection has been closed, as we
@@ -1610,9 +1604,13 @@ nsresult MessageChannel::MessageTask::Run() {
     return NS_OK;
   }
 
+  Channel()->AssertWorkerThread();
+  mMonitor->AssertSameMonitor(*Channel()->mMonitor);
+
 #ifdef FUZZING_SNAPSHOT
   if (!mIsFuzzMsg) {
-    if (fuzzing::Nyx::instance().started()) {
+    if (fuzzing::Nyx::instance().started() && XRE_IsParentProcess() &&
+        Channel()->IsCrossProcess()) {
       // Once we started fuzzing, prevent non-fuzzing tasks from being
       // run and potentially blocking worker threads.
       //
@@ -1628,8 +1626,6 @@ nsresult MessageChannel::MessageTask::Run() {
   }
 #endif
 
-  Channel()->AssertWorkerThread();
-  mMonitor->AssertSameMonitor(*Channel()->mMonitor);
   proxy = Channel()->Listener()->GetLifecycleProxy();
   Channel()->RunMessage(proxy, *this);
 
@@ -1714,6 +1710,13 @@ void MessageChannel::DispatchMessage(ActorLifecycleProxy* aProxy,
 
   UniquePtr<Message> reply;
 
+#ifdef FUZZING_SNAPSHOT
+  if (IsCrossProcess()) {
+    aMsg = mozilla::fuzzing::IPCFuzzController::instance().replaceIPCMessage(
+        std::move(aMsg));
+  }
+#endif
+
   IPC_LOG("DispatchMessage: seqno=%d, xid=%d", aMsg->seqno(),
           aMsg->transaction_id());
   AddProfilerMarker(*aMsg, MessageDirection::eReceiving);
@@ -1746,6 +1749,12 @@ void MessageChannel::DispatchMessage(ActorLifecycleProxy* aProxy,
       reply = nullptr;
     }
   }
+
+#ifdef FUZZING_SNAPSHOT
+  if (aMsg->IsFuzzMsg()) {
+    mozilla::fuzzing::IPCFuzzController::instance().syncAfterReplace();
+  }
+#endif
 
   if (reply && ChannelConnected == mChannelState) {
     IPC_LOG("Sending reply seqno=%d, xid=%d", aMsg->seqno(),
@@ -1945,6 +1954,10 @@ void MessageChannel::ReportMessageRouteError(const char* channelName) const {
 bool MessageChannel::MaybeHandleError(Result code, const Message& aMsg,
                                       const char* channelName) {
   if (MsgProcessed == code) return true;
+
+#ifdef FUZZING_SNAPSHOT
+  mozilla::fuzzing::IPCFuzzController::instance().OnMessageError(code, aMsg);
+#endif
 
   const char* errorMsg = nullptr;
   switch (code) {
@@ -2216,8 +2229,7 @@ void MessageChannel::DebugAbort(const char* file, int line, const char* cond,
   printf_stderr(
       "###!!! [MessageChannel][%s][%s:%d] "
       "Assertion (%s) failed.  %s %s\n",
-      mSide == ChildSide ? "Child" : "Parent", file, line, cond, why,
-      reply ? "(reply)" : "");
+      StringFromIPCSide(mSide), file, line, cond, why, reply ? "(reply)" : "");
 
   MessageQueue pending = std::move(mPending);
   while (!pending.isEmpty()) {

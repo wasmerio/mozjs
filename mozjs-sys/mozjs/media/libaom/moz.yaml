@@ -20,11 +20,11 @@ origin:
 
   # Human-readable identifier for this version/release
   # Generally "version NNN", "tag SSS", "bookmark SSS"
-  release: commit 1e227d41f0616de9548a673a83a21ef990b62591 (Tue Sep 18 17:30:35 2018 +0000).
+  release: 17aff846ba539ea287ec2b3ad12a17ac126e715e (Thu Jun 06 16:32:50 2024 -0700).
 
   # Revision to pull in
   # Must be a long or short commit SHA (long preferred)
-  revision: 1e227d41f0616de9548a673a83a21ef990b62591
+  revision: 17aff846ba539ea287ec2b3ad12a17ac126e715e
 
   # The package's license, where possible using the mnemonic from
   # https://spdx.org/licenses/
@@ -32,18 +32,28 @@ origin:
   # A "LICENSE" file must exist containing the full license text
   license: BSD-2-Clause
 
+updatebot:
+    maintainer-phab: padenot
+    maintainer-bz: padenot@mozilla.com
+    tasks:
+      - type: vendoring
+        enabled: true
+        frequency: release
+
 vendoring:
   url: https://aomedia.googlesource.com/aom
   source-hosting: googlesource
   vendor-directory: third_party/aom
 
   exclude:
-    - build/.gitattributes
-    - build/.gitignore
+    - "build/.git*"
 
   update-actions:
     - action: delete-path
       path: '{yaml_dir}/config'
     - action: run-script
-      script: '{cwd}/generate_sources_mozbuild.sh'
+      script: '{yaml_dir}/generate_sources_mozbuild.sh'
       cwd: '{yaml_dir}'
+
+  patches:
+    - mmloadusi64.patch

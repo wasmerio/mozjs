@@ -2,18 +2,15 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 ChromeUtils.defineESModuleGetters(this, {
+  ASRouter: "resource:///modules/asrouter/ASRouter.sys.mjs",
   ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
   ExperimentFakes: "resource://testing-common/NimbusTestUtils.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
-  PanelTestProvider: "resource://activity-stream/lib/PanelTestProvider.sys.mjs",
+  PanelTestProvider: "resource:///modules/asrouter/PanelTestProvider.sys.mjs",
   PlacesTestUtils: "resource://testing-common/PlacesTestUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  sinon: "resource://testing-common/Sinon.sys.mjs",
   TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  ASRouter: "resource://activity-stream/lib/ASRouter.jsm",
+  sinon: "resource://testing-common/Sinon.sys.mjs",
 });
 
 function whenNewWindowLoaded(aOptions, aCallback) {
@@ -31,11 +28,10 @@ function whenNewWindowLoaded(aOptions, aCallback) {
 }
 
 function openWindow(aParent, aOptions) {
-  let win = aParent.OpenBrowserWindow(aOptions);
-  return TestUtils.topicObserved(
-    "browser-delayed-startup-finished",
-    subject => subject == win
-  ).then(() => win);
+  return BrowserWindowTracker.promiseOpenWindow({
+    openerWindow: aParent,
+    ...aOptions,
+  });
 }
 
 /**
@@ -124,10 +120,13 @@ async function setupMSExperimentWithMessage(message) {
     Ci.nsITelemetry.DATASET_PRERELEASE_CHANNELS,
     true
   );
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
-    featureId: "pbNewtab",
-    value: message,
-  });
+  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig(
+    {
+      featureId: "pbNewtab",
+      value: message,
+    },
+    { slug: message.id }
+  );
   await SpecialPowers.pushPrefEnv({
     set: [
       [

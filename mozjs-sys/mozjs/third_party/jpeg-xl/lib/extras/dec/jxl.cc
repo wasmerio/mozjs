@@ -5,28 +5,41 @@
 
 #include "lib/extras/dec/jxl.h"
 
+#include <jxl/cms.h>
+#include <jxl/codestream_header.h>
 #include <jxl/decode.h>
 #include <jxl/decode_cxx.h>
 #include <jxl/types.h>
 
+#include <cinttypes>  // PRIu32
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <limits>
+#include <vector>
+
+#include "lib/extras/common.h"
 #include "lib/extras/dec/color_description.h"
-#include "lib/extras/enc/encode.h"
+#include "lib/jxl/base/common.h"
+#include "lib/jxl/base/exif.h"
 #include "lib/jxl/base/printf_macros.h"
-#include "lib/jxl/exif.h"
+#include "lib/jxl/base/status.h"
 
 namespace jxl {
 namespace extras {
 namespace {
 
 struct BoxProcessor {
-  BoxProcessor(JxlDecoder* dec) : dec_(dec) { Reset(); }
+  explicit BoxProcessor(JxlDecoder* dec) : dec_(dec) { Reset(); }
 
   void InitializeOutput(std::vector<uint8_t>* out) {
+    JXL_ASSERT(out != nullptr);
     box_data_ = out;
     AddMoreOutput();
   }
 
   bool AddMoreOutput() {
+    JXL_ASSERT(box_data_ != nullptr);
     Flush();
     static const size_t kBoxOutputChunkSize = 1 << 16;
     box_data_->resize(box_data_->size() + kBoxOutputChunkSize);
@@ -112,7 +125,7 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
   // silently return false if this is not a JXL file
   if (sig == JXL_SIG_INVALID) return false;
 
-  auto decoder = JxlDecoderMake(/*memory_manager=*/nullptr);
+  auto decoder = JxlDecoderMake(dparams.memory_manager);
   JxlDecoder* dec = decoder.get();
   ppf->frames.clear();
 
@@ -123,14 +136,9 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
     return false;
   }
 
-  JxlPixelFormat format;
+  JxlPixelFormat format = {};  // Initialize to calm down clang-tidy.
   std::vector<JxlPixelFormat> accepted_formats = dparams.accepted_formats;
-  if (accepted_formats.empty()) {
-    for (const uint32_t num_channels : {1, 2, 3, 4}) {
-      accepted_formats.push_back(
-          {num_channels, JXL_TYPE_FLOAT, JXL_LITTLE_ENDIAN, /*align=*/0});
-    }
-  }
+
   JxlColorEncoding color_encoding;
   size_t num_color_channels = 0;
   if (!dparams.color_space.empty()) {
@@ -169,24 +177,28 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
   } else {
     events |= (JXL_DEC_COLOR_ENCODING | JXL_DEC_FRAME | JXL_DEC_PREVIEW_IMAGE |
                JXL_DEC_BOX);
+    if (accepted_formats.empty()) {
+      // decoding just the metadata, not the pixel data
+      events ^= (JXL_DEC_FULL_IMAGE | JXL_DEC_PREVIEW_IMAGE);
+    }
   }
   if (JXL_DEC_SUCCESS != JxlDecoderSubscribeEvents(dec, events)) {
     fprintf(stderr, "JxlDecoderSubscribeEvents failed\n");
     return false;
   }
   if (jpeg_bytes == nullptr) {
-    if (JXL_DEC_SUCCESS !=
-        JxlDecoderSetRenderSpotcolors(dec, dparams.render_spotcolors)) {
+    if (JXL_DEC_SUCCESS != JxlDecoderSetRenderSpotcolors(
+                               dec, TO_JXL_BOOL(dparams.render_spotcolors))) {
       fprintf(stderr, "JxlDecoderSetRenderSpotColors failed\n");
       return false;
     }
-    if (JXL_DEC_SUCCESS !=
-        JxlDecoderSetKeepOrientation(dec, dparams.keep_orientation)) {
+    if (JXL_DEC_SUCCESS != JxlDecoderSetKeepOrientation(
+                               dec, TO_JXL_BOOL(dparams.keep_orientation))) {
       fprintf(stderr, "JxlDecoderSetKeepOrientation failed\n");
       return false;
     }
-    if (JXL_DEC_SUCCESS !=
-        JxlDecoderSetUnpremultiplyAlpha(dec, dparams.unpremultiply_alpha)) {
+    if (JXL_DEC_SUCCESS != JxlDecoderSetUnpremultiplyAlpha(
+                               dec, TO_JXL_BOOL(dparams.unpremultiply_alpha))) {
       fprintf(stderr, "JxlDecoderSetUnpremultiplyAlpha failed\n");
       return false;
     }
@@ -206,7 +218,7 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
     return false;
   }
   uint32_t progression_index = 0;
-  bool codestream_done = false;
+  bool codestream_done = jpeg_bytes == nullptr && accepted_formats.empty();
   BoxProcessor boxes(dec);
   for (;;) {
     JxlDecoderStatus status = JxlDecoderProcessInput(dec);
@@ -247,6 +259,8 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
         box_data = &ppf->metadata.iptc;
       } else if (memcmp(box_type, "jumb", 4) == 0) {
         box_data = &ppf->metadata.jumbf;
+      } else if (memcmp(box_type, "jhgm", 4) == 0) {
+        box_data = &ppf->metadata.jhgm;
       } else if (memcmp(box_type, "xml ", 4) == 0) {
         box_data = &ppf->metadata.xmp;
       }
@@ -265,6 +279,7 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
         return false;
       }
     } else if (status == JXL_DEC_JPEG_NEED_MORE_OUTPUT) {
+      JXL_ASSERT(jpeg_bytes != nullptr);  // Help clang-tidy.
       // Decoded a chunk to JPEG.
       size_t used_jpeg_output =
           jpeg_data_chunk.size() - JxlDecoderReleaseJPEGBuffer(dec);
@@ -285,6 +300,7 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
         fprintf(stderr, "JxlDecoderGetBasicInfo failed\n");
         return false;
       }
+      if (accepted_formats.empty()) continue;
       if (num_color_channels != 0) {
         // Mark the change in number of color channels due to the requested
         // color space.
@@ -306,7 +322,7 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
       } else {
         if (dparams.unpremultiply_alpha) {
           // Mark in the basic info that alpha was unpremultiplied.
-          ppf->info.alpha_premultiplied = false;
+          ppf->info.alpha_premultiplied = JXL_FALSE;
         }
       }
       bool alpha_found = false;
@@ -324,7 +340,8 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
         }
         std::string name(eci.name_length + 1, 0);
         if (JXL_DEC_SUCCESS !=
-            JxlDecoderGetExtraChannelName(dec, i, &name[0], name.size())) {
+            JxlDecoderGetExtraChannelName(
+                dec, i, const_cast<char*>(name.data()), name.size())) {
           fprintf(stderr, "JxlDecoderGetExtraChannelName failed\n");
           return false;
         }
@@ -338,6 +355,7 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
                   "Warning: --color_space ignored because the image is "
                   "not XYB encoded.\n");
         } else {
+          JxlDecoderSetCms(dec, *JxlGetDefaultCms());
           if (JXL_DEC_SUCCESS !=
               JxlDecoderSetPreferredColorProfile(dec, &color_encoding)) {
             fprintf(stderr, "Failed to set color space.\n");
@@ -352,6 +370,7 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
         fprintf(stderr, "JxlDecoderGetICCProfileSize failed\n");
       }
       if (icc_size != 0) {
+        ppf->primary_color_representation = PackedPixelFile::kIccIsPrimary;
         ppf->icc.resize(icc_size);
         if (JXL_DEC_SUCCESS != JxlDecoderGetColorAsICCProfile(
                                    dec, target, ppf->icc.data(), icc_size)) {
@@ -359,8 +378,11 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
           return false;
         }
       }
-      if (JXL_DEC_SUCCESS != JxlDecoderGetColorAsEncodedProfile(
+      if (JXL_DEC_SUCCESS == JxlDecoderGetColorAsEncodedProfile(
                                  dec, target, &ppf->color_encoding)) {
+        ppf->primary_color_representation =
+            PackedPixelFile::kColorEncodingIsPrimary;
+      } else {
         ppf->color_encoding.color_space = JXL_COLOR_SPACE_UNKNOWN;
       }
       icc_size = 0;
@@ -379,14 +401,21 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
         }
       }
     } else if (status == JXL_DEC_FRAME) {
-      jxl::extras::PackedFrame frame(ppf->info.xsize, ppf->info.ysize, format);
+      auto frame_or = jxl::extras::PackedFrame::Create(ppf->info.xsize,
+                                                       ppf->info.ysize, format);
+      if (!frame_or.status()) {
+        fprintf(stderr, "Failed to create image frame.");
+        return false;
+      }
+      jxl::extras::PackedFrame frame = std::move(frame_or).value();
       if (JXL_DEC_SUCCESS != JxlDecoderGetFrameHeader(dec, &frame.frame_info)) {
         fprintf(stderr, "JxlDecoderGetFrameHeader failed\n");
         return false;
       }
       frame.name.resize(frame.frame_info.name_length + 1, 0);
       if (JXL_DEC_SUCCESS !=
-          JxlDecoderGetFrameName(dec, &frame.name[0], frame.name.size())) {
+          JxlDecoderGetFrameName(dec, const_cast<char*>(frame.name.data()),
+                                 frame.name.size())) {
         fprintf(stderr, "JxlDecoderGetFrameName failed\n");
         return false;
       }
@@ -417,9 +446,16 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
         fprintf(stderr, "JxlDecoderPreviewOutBufferSize failed\n");
         return false;
       }
-      ppf->preview_frame = std::unique_ptr<jxl::extras::PackedFrame>(
-          new jxl::extras::PackedFrame(ppf->info.preview.xsize,
-                                       ppf->info.preview.ysize, format));
+      auto preview_image_or = jxl::extras::PackedImage::Create(
+          ppf->info.preview.xsize, ppf->info.preview.ysize, format);
+      if (!preview_image_or.status()) {
+        fprintf(stderr, "Failed to create preview image\n");
+        return false;
+      }
+      jxl::extras::PackedImage preview_image =
+          std::move(preview_image_or).value();
+      ppf->preview_frame =
+          jxl::make_unique<jxl::extras::PackedFrame>(std::move(preview_image));
       if (buffer_size != ppf->preview_frame->color.pixels_size) {
         fprintf(stderr, "Invalid out buffer size %" PRIuS " %" PRIuS "\n",
                 buffer_size, ppf->preview_frame->color.pixels_size);
@@ -486,8 +522,13 @@ bool DecodeImageJXL(const uint8_t* bytes, size_t bytes_size,
       JxlPixelFormat ec_format = format;
       ec_format.num_channels = 1;
       for (auto& eci : ppf->extra_channels_info) {
-        frame.extra_channels.emplace_back(jxl::extras::PackedImage(
-            ppf->info.xsize, ppf->info.ysize, ec_format));
+        auto image = jxl::extras::PackedImage::Create(
+            ppf->info.xsize, ppf->info.ysize, ec_format);
+        if (!image.status()) {
+          fprintf(stderr, "Failed to create extra channel image\n");
+          return false;
+        }
+        frame.extra_channels.emplace_back(std::move(image).value());
         auto& ec = frame.extra_channels.back();
         size_t buffer_size;
         if (JXL_DEC_SUCCESS != JxlDecoderExtraChannelBufferSize(

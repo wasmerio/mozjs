@@ -165,7 +165,7 @@ function promiseOpenAndLoadWindow(aOptions, aWaitForDelayedStartup = false) {
   return new Promise(resolve => {
     let win = OpenBrowserWindow(aOptions);
     if (aWaitForDelayedStartup) {
-      Services.obs.addObserver(function onDS(aSubject, aTopic, aData) {
+      Services.obs.addObserver(function onDS(aSubject) {
         if (aSubject != win) {
           return;
         }
@@ -185,7 +185,7 @@ function promiseOpenAndLoadWindow(aOptions, aWaitForDelayedStartup = false) {
 }
 
 async function whenNewTabLoaded(aWindow, aCallback) {
-  aWindow.BrowserOpenTab();
+  aWindow.BrowserCommands.openTab();
 
   let expectedURL = AboutNewTab.newTabURL;
   let browser = aWindow.gBrowser.selectedBrowser;
@@ -238,7 +238,7 @@ function promiseTabLoadEvent(tab, url) {
   let loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, handle);
 
   if (url) {
-    BrowserTestUtils.loadURIString(tab.linkedBrowser, url);
+    BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, url);
   }
 
   return loaded;
@@ -281,7 +281,7 @@ function is_hidden(element) {
 
 function is_element_visible(element, msg) {
   isnot(element, null, "Element should not be null, when checking visibility");
-  ok(BrowserTestUtils.is_visible(element), msg || "Element should be visible");
+  ok(BrowserTestUtils.isVisible(element), msg || "Element should be visible");
 }
 
 function is_element_hidden(element, msg) {
@@ -329,7 +329,7 @@ function promiseOnBookmarkItemAdded(aExpectedURI) {
 
 async function loadBadCertPage(url) {
   let loaded = BrowserTestUtils.waitForErrorPage(gBrowser.selectedBrowser);
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, url);
+  BrowserTestUtils.startLoadingURIString(gBrowser.selectedBrowser, url);
   await loaded;
 
   await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async function () {

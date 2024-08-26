@@ -1,27 +1,30 @@
 <!DOCTYPE HTML>
 <html>
+
 <head>
   <meta charset="utf-8">
   <title>MozMessageBar tests</title>
   <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
   <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
-  <link rel="stylesheet" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
+  <link rel="stylesheet" href="chrome://mochikit/content/tests/SimpleTest/test.css" />
   <script type="module" src="chrome://global/content/elements/moz-message-bar.mjs"></script>
 </head>
+
 <body>
-<p id="display"></p>
-<div id="content">
-  <moz-message-bar id="infoMessage" message="Test message"></moz-message-bar>
-  <moz-message-bar id="infoMessage2" dismissable message="Test message"></moz-message-bar>
-  <moz-message-bar id="warningMessage" type="warning" message="Test message"></moz-message-bar>
-  <moz-message-bar id="successMessage" type="success" message="Test message"></moz-message-bar>
-  <moz-message-bar id="errorMessage" type="error" message="Test message"></moz-message-bar>
-</div>
-<pre id="test">
+  <p id="display"></p>
+  <div id="content">
+    <moz-message-bar id="infoMessage" heading="Heading" message="Test message"></moz-message-bar>
+    <moz-message-bar id="infoMessage2" dismissable message="Test message"></moz-message-bar>
+    <moz-message-bar id="warningMessage" type="warning" message="Test message"></moz-message-bar>
+    <moz-message-bar id="successMessage" type="success" message="Test message"></moz-message-bar>
+    <moz-message-bar id="errorMessage" type="error" message="Test message"></moz-message-bar>
+  </div>
+  <pre id="test">
   <script class="testbody" type="application/javascript">
     add_task(async function test_component_declaration() {
       const mozMessageBar = document.querySelector("#infoMessage");
       ok(mozMessageBar, "moz-message-bar component is rendered.");
+      is(mozMessageBar.getAttribute("role"), "alert", "moz-message-bar component is marked up as alert.");
 
       const icon = mozMessageBar.shadowRoot.querySelector(".icon");
       const iconUrl = icon.src;
@@ -29,20 +32,31 @@
       const iconAlt = icon.alt;
       is(iconAlt, "Info", "Alternate text for the info icon is present.");
 
+      const heading = mozMessageBar.shadowRoot.querySelector(".heading");
+      is(heading.textContent.trim(), "Heading", "Heading is showing up.");
       const message = mozMessageBar.shadowRoot.querySelector(".message");
       is(message.textContent.trim(), "Test message", "Message is showing up.");
     });
 
+    add_task(async function test_heading_display() {
+      const mozMessageBar = document.querySelector("#infoMessage2");
+      let heading = mozMessageBar.shadowRoot.querySelector(".heading");
+      ok(!heading, "The heading element isn't displayed if it hasn't been initialized.");
+
+      mozMessageBar.heading = "Now there's a heading";
+      await mozMessageBar.updateComplete;
+      heading = mozMessageBar.renderRoot.querySelector(".heading");
+      is(heading.textContent.trim(), "Now there's a heading", "New heading element is displayed.");
+    });
+
     add_task(async function test_close_button() {
       const notDismissableComponent = document.querySelector("#infoMessage");
-      let closeButton = notDismissableComponent.shadowRoot.querySelector(".close");
-      let closeButtonDislay = window.getComputedStyle(closeButton).display;
-      is(closeButtonDislay, "none", "Close button doesn't show when the message bar isn't dismissable.");
+      let closeButton = notDismissableComponent.closeButton;
+      ok(!closeButton, "Close button doesn't show when the message bar isn't dismissable.");
 
       let dismissableComponent = document.querySelector("#infoMessage2");
-      closeButton = dismissableComponent.shadowRoot.querySelector(".close");
-      closeButtonDislay = window.getComputedStyle(closeButton).display;
-      is(closeButtonDislay, "block", "Close button is displayed when the message bar is dismissable.");
+      closeButton = dismissableComponent.closeButton;
+      ok(closeButton, "Close button is shown when the message bar is dismissable.");
 
       closeButton.click();
       dismissableComponent = document.querySelector("#infoMessage2");
@@ -62,7 +76,7 @@
       const mozMessageBar = document.querySelector("#successMessage");
       const icon = mozMessageBar.shadowRoot.querySelector(".icon");
       const iconUrl = icon.src;
-      ok(iconUrl.includes("check.svg"), "Success icon is showing up.");
+      ok(iconUrl.includes("check-filled.svg"), "Success icon is showing up.");
       const iconAlt = icon.alt;
       is(iconAlt, "Success", "Alternate text for the success icon is present.");
     });
@@ -78,4 +92,5 @@
   </script>
 </pre>
 </body>
+
 </html>

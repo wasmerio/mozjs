@@ -1,0 +1,1 @@
+ToPropertyKey, 1, 1, 3, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(1) , OP(GuardToString) ID(0) OP(LoadStringResult) ID(0) OP(ReturnFromIC)  

@@ -277,8 +277,7 @@ rtc::scoped_refptr<AudioTrackInterface> PeerConnectionWrapper::CreateAudioTrack(
 
 rtc::scoped_refptr<VideoTrackInterface> PeerConnectionWrapper::CreateVideoTrack(
     const std::string& label) {
-  return pc_factory()->CreateVideoTrack(label,
-                                        FakeVideoTrackSource::Create().get());
+  return pc_factory()->CreateVideoTrack(FakeVideoTrackSource::Create(), label);
 }
 
 rtc::scoped_refptr<RtpSenderInterface> PeerConnectionWrapper::AddTrack(
@@ -340,8 +339,7 @@ bool PeerConnectionWrapper::IsIceConnected() {
   return observer()->ice_connected_;
 }
 
-rtc::scoped_refptr<const webrtc::RTCStatsReport>
-PeerConnectionWrapper::GetStats() {
+rtc::scoped_refptr<const RTCStatsReport> PeerConnectionWrapper::GetStats() {
   auto callback = rtc::make_ref_counted<MockRTCStatsCollectorCallback>();
   pc()->GetStats(callback.get());
   EXPECT_TRUE_WAIT(callback->called(), kDefaultTimeout);

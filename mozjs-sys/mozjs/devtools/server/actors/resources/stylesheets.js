@@ -4,10 +4,6 @@
 
 "use strict";
 
-const {
-  TYPES: { STYLESHEET },
-} = require("resource://devtools/server/actors/resources/index.js");
-
 loader.lazyRequireGetter(
   this,
   "CssLogic",
@@ -19,6 +15,7 @@ class StyleSheetWatcher {
     this._onApplicableStylesheetAdded =
       this._onApplicableStylesheetAdded.bind(this);
     this._onStylesheetUpdated = this._onStylesheetUpdated.bind(this);
+    this._onStylesheetRemoved = this._onStylesheetRemoved.bind(this);
   }
 
   /**
@@ -31,33 +28,50 @@ class StyleSheetWatcher {
    *        - onAvailable: mandatory function
    *          This will be called for each resource.
    */
-  async watch(targetActor, { onAvailable, onUpdated }) {
+  async watch(targetActor, { onAvailable, onUpdated, onDestroyed }) {
     this._targetActor = targetActor;
     this._onAvailable = onAvailable;
     this._onUpdated = onUpdated;
+    this._onDestroyed = onDestroyed;
 
     this._styleSheetsManager = targetActor.getStyleSheetsManager();
 
-    // Add event listener for new additions and updates
-    this._styleSheetsManager.on(
-      "applicable-stylesheet-added",
-      this._onApplicableStylesheetAdded
-    );
-    this._styleSheetsManager.on(
-      "stylesheet-updated",
-      this._onStylesheetUpdated
-    );
-
-    // startWatching will emit applicable-stylesheet-added for already existing stylesheet
-    await this._styleSheetsManager.startWatching();
+    // watch will call onAvailable for already existing stylesheets
+    await this._styleSheetsManager.watch({
+      onAvailable: this._onApplicableStylesheetAdded,
+      onUpdated: this._onStylesheetUpdated,
+      onDestroyed: this._onStylesheetRemoved,
+    });
   }
 
-  _onApplicableStylesheetAdded(styleSheetData) {
-    return this._notifyResourcesAvailable([styleSheetData]);
+  async _onApplicableStylesheetAdded(styleSheetData) {
+    const { resourceId, styleSheet, creationData } = styleSheetData;
+    const resource = await this._toResource(styleSheet, {
+      resourceId,
+      isCreatedByDevTools: creationData?.isCreatedByDevTools,
+      fileName: creationData?.fileName,
+    });
+
+    this._onAvailable([resource]);
   }
 
   _onStylesheetUpdated({ resourceId, updateKind, updates = {} }) {
-    this._notifyResourceUpdated(resourceId, updateKind, updates);
+    const { resourceUpdates, nestedResourceUpdates, event } = updates;
+    this._onUpdated([
+      {
+        browsingContextID: this._targetActor.browsingContextID,
+        innerWindowId: this._targetActor.innerWindowId,
+        resourceId,
+        updateType: updateKind,
+        resourceUpdates,
+        nestedResourceUpdates,
+        event,
+      },
+    ]);
+  }
+
+  _onStylesheetRemoved({ resourceId }) {
+    return this._onDestroyed([resourceId]);
   }
 
   async _toResource(
@@ -69,19 +83,18 @@ class StyleSheetWatcher {
 
     const resource = {
       resourceId,
-      resourceType: STYLESHEET,
       disabled: styleSheet.disabled,
       constructed: styleSheet.constructed,
       fileName,
       href: styleSheet.href,
       isNew: isCreatedByDevTools,
       atRules,
-      nodeHref: this._styleSheetsManager._getNodeHref(styleSheet),
+      nodeHref: this._styleSheetsManager.getNodeHref(styleSheet),
       ruleCount,
       sourceMapBaseURL:
-        this._styleSheetsManager._getSourcemapBaseURL(styleSheet),
+        this._styleSheetsManager.getSourcemapBaseURL(styleSheet),
       sourceMapURL: styleSheet.sourceMapURL,
-      styleSheetIndex: this._styleSheetsManager._getStyleSheetIndex(styleSheet),
+      styleSheetIndex: this._styleSheetsManager.getStyleSheetIndex(resourceId),
       system: CssLogic.isAgentStylesheet(styleSheet),
       title: styleSheet.title,
     };
@@ -89,50 +102,12 @@ class StyleSheetWatcher {
     return resource;
   }
 
-  async _notifyResourcesAvailable(styleSheets) {
-    const resources = await Promise.all(
-      styleSheets.map(async ({ resourceId, styleSheet, creationData }) => {
-        const resource = await this._toResource(styleSheet, {
-          resourceId,
-          isCreatedByDevTools: creationData?.isCreatedByDevTools,
-          fileName: creationData?.fileName,
-        });
-
-        return resource;
-      })
-    );
-
-    await this._onAvailable(resources);
-  }
-
-  _notifyResourceUpdated(
-    resourceId,
-    updateType,
-    { resourceUpdates, nestedResourceUpdates, event }
-  ) {
-    this._onUpdated([
-      {
-        browsingContextID: this._targetActor.browsingContextID,
-        innerWindowId: this._targetActor.innerWindowId,
-        resourceType: STYLESHEET,
-        resourceId,
-        updateType,
-        resourceUpdates,
-        nestedResourceUpdates,
-        event,
-      },
-    ]);
-  }
-
   destroy() {
-    this._styleSheetsManager.off(
-      "applicable-stylesheet-added",
-      this._onApplicableStylesheetAdded
-    );
-    this._styleSheetsManager.off(
-      "stylesheet-updated",
-      this._onStylesheetUpdated
-    );
+    this._styleSheetsManager.unwatch({
+      onAvailable: this._onApplicableStylesheetAdded,
+      onUpdated: this._onStylesheetUpdated,
+      onDestroyed: this._onStylesheetRemoved,
+    });
   }
 }
 

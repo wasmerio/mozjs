@@ -90,7 +90,7 @@ impl GeckoElementSnapshot {
         local_name: &LocalName,
         operation: &AttrSelectorOperation<&AttrValue>,
     ) -> bool {
-        snapshot_helpers::attr_matches(self.mAttrs.iter(), ns, local_name, operation)
+        snapshot_helpers::attr_matches(&self.mAttrs, ns, local_name, operation)
     }
 }
 
@@ -169,6 +169,34 @@ impl ElementSnapshot for GeckoElementSnapshot {
             None
         } else {
             Some(AtomString(unsafe { Atom::from_addrefed(ptr) }))
+        }
+    }
+
+    /// Returns true if the snapshot has stored state for custom states
+    #[inline]
+    fn has_custom_states(&self) -> bool {
+        self.has_any(Flags::CustomState)
+    }
+
+    /// Returns true if the snapshot has a given CustomState
+    #[inline]
+    fn has_custom_state(&self, state: &AtomIdent) -> bool {
+        unsafe {
+            self.mCustomStates
+                .iter()
+                .any(|setstate| AtomIdent::with(setstate.mRawPtr, |setstate| state == setstate))
+        }
+    }
+
+    #[inline]
+    fn each_custom_state<F>(&self, mut callback: F)
+    where
+        F: FnMut(&AtomIdent),
+    {
+        unsafe {
+            for atom in self.mCustomStates.iter() {
+                AtomIdent::with(atom.mRawPtr, &mut callback)
+            }
         }
     }
 }

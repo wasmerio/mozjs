@@ -40,17 +40,17 @@ ChromeUtils.defineESModuleGetters(this, {
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(this, "nsBinaryStream", () =>
+ChromeUtils.defineLazyGetter(this, "nsBinaryStream", () =>
   CC(
     "@mozilla.org/binaryinputstream;1",
     "nsIBinaryInputStream",
     "setInputStream"
   )
 );
-XPCOMUtils.defineLazyGetter(this, "nsFile", () =>
+ChromeUtils.defineLazyGetter(this, "nsFile", () =>
   CC("@mozilla.org/file/local;1", "nsIFile", "initWithPath")
 );
-XPCOMUtils.defineLazyGetter(this, "nsGzipConverter", () =>
+ChromeUtils.defineLazyGetter(this, "nsGzipConverter", () =>
   CC(
     "@mozilla.org/streamconv;1?from=gzip&to=uncompressed",
     "nsIStreamConverter"
@@ -608,7 +608,7 @@ function dumpGCLogAndCCLog(aVerbose) {
   );
   let section = appendElement(gMain, "div", "section");
 
-  function displayInfo(aGCLog, aCCLog, aIsParent) {
+  function displayInfo(aGCLog, aCCLog) {
     appendElementWithText(section, "div", "", "Saved GC log to " + aGCLog.path);
 
     let ccLogType = aVerbose ? "verbose" : "concise";
@@ -824,7 +824,7 @@ function loadMemoryReportsFromFile(aFilename, aTitleNote, aFn) {
       "uncompressed",
       {
         data: [],
-        onStartRequest(aR, aC) {},
+        onStartRequest() {},
         onDataAvailable(aR, aStream, aO, aCount) {
           let bi = new nsBinaryStream(aStream);
           this.data.push(bi.readBytes(aCount));
@@ -1445,6 +1445,7 @@ function appendAboutMemoryMain(
 
     let filterInput = appendElement(filterItem, "input", "filterInput");
     filterInput.placeholder = "Memory report path filter";
+    filterInput.setAttribute("type", "text");
 
     let filterOptions = appendElement(filterItem, "div");
     let filterRegExLabel = appendElement(filterOptions, "label");
@@ -2469,7 +2470,11 @@ function saveReportsToFile() {
   };
 
   try {
-    fp.init(window, "Save Memory Reports", Ci.nsIFilePicker.modeSave);
+    fp.init(
+      window.browsingContext,
+      "Save Memory Reports",
+      Ci.nsIFilePicker.modeSave
+    );
   } catch (ex) {
     // This will fail on Android, since there is no Save as file picker there.
     // Just save to the default downloads dir if it does.

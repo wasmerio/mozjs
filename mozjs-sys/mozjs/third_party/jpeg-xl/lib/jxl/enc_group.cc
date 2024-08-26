@@ -6,7 +6,6 @@
 #include "lib/jxl/enc_group.h"
 
 #include <hwy/aligned_allocator.h>
-#include <utility>
 
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "lib/jxl/enc_group.cc"
@@ -16,7 +15,8 @@
 #include "lib/jxl/ac_strategy.h"
 #include "lib/jxl/base/bits.h"
 #include "lib/jxl/base/compiler_specific.h"
-#include "lib/jxl/common.h"
+#include "lib/jxl/base/rect.h"
+#include "lib/jxl/common.h"  // kMaxNumPasses
 #include "lib/jxl/dct_util.h"
 #include "lib/jxl/dec_transforms-inl.h"
 #include "lib/jxl/enc_aux_out.h"
@@ -26,6 +26,7 @@
 #include "lib/jxl/image.h"
 #include "lib/jxl/quantizer-inl.h"
 #include "lib/jxl/quantizer.h"
+#include "lib/jxl/simd_util.h"
 HWY_BEFORE_NAMESPACE();
 namespace jxl {
 namespace HWY_NAMESPACE {
@@ -40,18 +41,18 @@ using hwy::HWY_NAMESPACE::Round;
 
 // NOTE: caller takes care of extracting quant from rect of RawQuantField.
 void QuantizeBlockAC(const Quantizer& quantizer, const bool error_diffusion,
-                     size_t c, float qm_multiplier, size_t quant_kind,
+                     size_t c, float qm_multiplier, AcStrategyType quant_kind,
                      size_t xsize, size_t ysize, float* thresholds,
-                     const float* JXL_RESTRICT block_in, int32_t* quant,
+                     const float* JXL_RESTRICT block_in, const int32_t* quant,
                      int32_t* JXL_RESTRICT block_out) {
   const float* JXL_RESTRICT qm = quantizer.InvDequantMatrix(quant_kind, c);
   float qac = quantizer.Scale() * (*quant);
-  // Not SIMD-fied for now.
-  if (c != 1 && (xsize > 1 || ysize > 1)) {
+  // Not SIMD-ified for now.
+  if (c != 1 && xsize * ysize >= 4) {
     for (int i = 0; i < 4; ++i) {
-      thresholds[i] -= Clamp1(0.003f * xsize * ysize, 0.f, 0.08f);
-      if (thresholds[i] < 0.54) {
-        thresholds[i] = 0.54;
+      thresholds[i] -= 0.00744f * xsize * ysize;
+      if (thresholds[i] < 0.5) {
+        thresholds[i] = 0.5;
       }
     }
   }
@@ -63,22 +64,22 @@ void QuantizeBlockAC(const Quantizer& quantizer, const bool error_diffusion,
     size_t yfix = static_cast<size_t>(y >= ysize * kBlockDim / 2) * 2;
     const size_t off = y * kBlockDim * xsize;
     for (size_t x = 0; x < xsize * kBlockDim; x += Lanes(df)) {
-      auto thr = Zero(df);
+      auto threshold = Zero(df);
       if (xsize == 1) {
         HWY_ALIGN uint32_t kMask[kBlockDim] = {0, 0, 0, 0, ~0u, ~0u, ~0u, ~0u};
         const auto mask = MaskFromVec(BitCast(df, Load(du, kMask + x)));
-        thr = IfThenElse(mask, Set(df, thresholds[yfix + 1]),
-                         Set(df, thresholds[yfix]));
+        threshold = IfThenElse(mask, Set(df, thresholds[yfix + 1]),
+                               Set(df, thresholds[yfix]));
       } else {
         // Same for all lanes in the vector.
-        thr = Set(
+        threshold = Set(
             df,
             thresholds[yfix + static_cast<size_t>(x >= xsize * kBlockDim / 2)]);
       }
       const auto q = Mul(Load(df, qm + off + x), quantv);
       const auto in = Load(df, block_in + off + x);
       const auto val = Mul(q, in);
-      const auto nzero_mask = Ge(Abs(val), thr);
+      const auto nzero_mask = Ge(Abs(val), threshold);
       const auto v = ConvertTo(di, IfThenElseZero(nzero_mask, Round(val)));
       Store(v, di, block_out + off + x);
     }
@@ -86,20 +87,24 @@ void QuantizeBlockAC(const Quantizer& quantizer, const bool error_diffusion,
 }
 
 void AdjustQuantBlockAC(const Quantizer& quantizer, size_t c,
-                        float qm_multiplier, size_t quant_kind, size_t xsize,
-                        size_t ysize, float* thresholds,
+                        float qm_multiplier, AcStrategyType quant_kind,
+                        size_t xsize, size_t ysize, float* thresholds,
                         const float* JXL_RESTRICT block_in, int32_t* quant) {
   // No quantization adjusting for these small blocks.
   // Quantization adjusting attempts to fix some known issues
   // with larger blocks and on the 8x8 dct's emerging 8x8 blockiness
   // when there are not many non-zeros.
   constexpr size_t kPartialBlockKinds =
-      (1 << AcStrategy::Type::IDENTITY) | (1 << AcStrategy::Type::DCT2X2) |
-      (1 << AcStrategy::Type::DCT4X4) | (1 << AcStrategy::Type::DCT4X8) |
-      (1 << AcStrategy::Type::DCT8X4) | (1 << AcStrategy::Type::AFV0) |
-      (1 << AcStrategy::Type::AFV1) | (1 << AcStrategy::Type::AFV2) |
-      (1 << AcStrategy::Type::AFV3);
-  if ((1 << quant_kind) & kPartialBlockKinds) {
+      (1 << static_cast<size_t>(AcStrategyType::IDENTITY)) |
+      (1 << static_cast<size_t>(AcStrategyType::DCT2X2)) |
+      (1 << static_cast<size_t>(AcStrategyType::DCT4X4)) |
+      (1 << static_cast<size_t>(AcStrategyType::DCT4X8)) |
+      (1 << static_cast<size_t>(AcStrategyType::DCT8X4)) |
+      (1 << static_cast<size_t>(AcStrategyType::AFV0)) |
+      (1 << static_cast<size_t>(AcStrategyType::AFV1)) |
+      (1 << static_cast<size_t>(AcStrategyType::AFV2)) |
+      (1 << static_cast<size_t>(AcStrategyType::AFV3));
+  if ((1 << static_cast<size_t>(quant_kind)) & kPartialBlockKinds) {
     return;
   }
 
@@ -139,14 +144,17 @@ void AdjustQuantBlockAC(const Quantizer& quantizer, size_t c,
       }
       if (v != 0.0f) {
         hfNonZeros[hfix] += std::abs(v);
-        if ((y == ysize * kBlockDim - 1 || x == xsize * kBlockDim - 1) &&
-            (x >= xsize * 4 && y >= ysize * 4)) {
+        bool in_corner = y >= 7 * ysize && x >= 7 * xsize;
+        bool on_border =
+            y == ysize * kBlockDim - 1 || x == xsize * kBlockDim - 1;
+        bool in_larger_corner = x >= 4 * xsize && y >= 4 * ysize;
+        if (in_corner || (on_border && in_larger_corner)) {
           sum_of_highest_freq_row_and_column += std::abs(val);
         }
       }
     }
   }
-  if (c == 1 && sum_of_vals < std::max(xsize, ysize)) {
+  if (c == 1 && sum_of_vals * 8 < xsize * ysize) {
     static const double kLimit[4] = {
         0.46,
         0.46,
@@ -181,26 +189,19 @@ void AdjustQuantBlockAC(const Quantizer& quantizer, size_t c,
   }
   // Heuristic for improving accuracy of high-frequency patterns
   // occurring in an environment with no medium-frequency masking
-  // patterns. This should be improved later to be done in X and B
-  // planes too as 32x32 and larger transforms become rather ugly
-  // when this is not compensated for.
-  if (15 * sum_of_highest_freq_row_and_column >= hfNonZeros[0] + 1) {
-    constexpr int inc = 5;
-    *quant += inc;
-    if (8 * sum_of_highest_freq_row_and_column >= hfNonZeros[0] + 1) {
-      *quant += inc;
-    }
-    if (5 * sum_of_highest_freq_row_and_column >= hfNonZeros[0] + 1) {
-      *quant += inc;
-    }
-    if (3 * sum_of_highest_freq_row_and_column >= hfNonZeros[0] + 1) {
-      *quant += inc;
-    }
-    if (*quant >= Quantizer::kQuantMax) {
-      *quant = Quantizer::kQuantMax - 1;
+  // patterns.
+  {
+    float all =
+        hfNonZeros[0] + hfNonZeros[1] + hfNonZeros[2] + hfNonZeros[3] + 1;
+    float mul[3] = {70, 30, 60};
+    if (mul[c] * sum_of_highest_freq_row_and_column >= all) {
+      *quant += mul[c] * sum_of_highest_freq_row_and_column / all;
+      if (*quant >= Quantizer::kQuantMax) {
+        *quant = Quantizer::kQuantMax - 1;
+      }
     }
   }
-  if (quant_kind == AcStrategy::Type::DCT) {
+  if (quant_kind == AcStrategyType::DCT) {
     // If this 8x8 block is too flat, increase the adaptive quantization level
     // a bit to reduce visible block boundaries and requantize the block.
     if (hfNonZeros[0] + hfNonZeros[1] + hfNonZeros[2] + hfNonZeros[3] < 11) {
@@ -211,54 +212,75 @@ void AdjustQuantBlockAC(const Quantizer& quantizer, size_t c,
     }
   }
   {
-    static const double kMul1[3][3] = {
+    static const double kMul1[4][3] = {
         {
-            0.30628347689416235,
-            0.19096514988140451,
-            0.10092267072278764,
+            0.22080615753848404,
+            0.45797479824262011,
+            0.29859235095977965,
         },
         {
-            0.68175730483344243,
-            0.19038660767376803,
-            0.14069887255219371,
+            0.70109486510286834,
+            0.16185281305512639,
+            0.14387691730035473,
         },
         {
-            0.74599469660659012,
-            0.10465705596003883,
-            0.075491104183520744,
-        },
-    };
-    static const double kMul2[3][3] = {
-        {
-            0.022707896753424779,
-            0.84465309720205983,
-            5.2275313293658812,
+            0.114985964456218638,
+            0.44656840441027695,
+            0.10587658215149048,
         },
         {
-            0.17545973555482378,
-            0.97395015736868384,
-            1.9659234163151995,
-        },
-        {
-            0.75243833661051895,
-            1.7774383804879366,
-            0.3793181712352986,
+            0.46849665264409396,
+            0.41239077937781954,
+            0.088667407767185444,
         },
     };
-    const float kQuantNormalizer = 2.9037220690527175;
+    static const double kMul2[4][3] = {
+        {
+            0.27450281941822197,
+            1.1255766549984996,
+            0.98950459134128388,
+        },
+        {
+            0.4652168675598285,
+            0.40945807983455818,
+            0.36581899811751367,
+        },
+        {
+            0.28034972424715715,
+            0.9182653201929738,
+            1.5581531543057416,
+        },
+        {
+            0.26873118114033728,
+            0.68863712390392484,
+            1.2082185408666786,
+        },
+    };
+    static const double kQuantNormalizer = 2.2942708343284721;
     sum_of_error *= kQuantNormalizer;
     sum_of_vals *= kQuantNormalizer;
-    if (quant_kind >= AcStrategy::Type::DCT16X16) {
-      int ix = 2;
-      if (quant_kind == AcStrategy::Type::DCT32X16 ||
-          quant_kind == AcStrategy::Type::DCT16X32) {
+    if (quant_kind >= AcStrategyType::DCT16X16) {
+      int ix = 3;
+      if (quant_kind == AcStrategyType::DCT32X16 ||
+          quant_kind == AcStrategyType::DCT16X32) {
         ix = 1;
-      } else if (quant_kind == AcStrategy::Type::DCT16X16) {
+      } else if (quant_kind == AcStrategyType::DCT16X16) {
         ix = 0;
+      } else if (quant_kind == AcStrategyType::DCT32X32) {
+        ix = 2;
       }
-      if (sum_of_error > kMul1[ix][c] * xsize * ysize * kBlockDim * kBlockDim &&
-          sum_of_error > kMul2[ix][c] * sum_of_vals) {
-        *quant += 1;
+      int step =
+          sum_of_error / (kMul1[ix][c] * xsize * ysize * kBlockDim * kBlockDim +
+                          kMul2[ix][c] * sum_of_vals);
+      if (step >= 2) {
+        step = 2;
+      }
+      if (step < 0) {
+        step = 0;
+      }
+      if (sum_of_error > kMul1[ix][c] * xsize * ysize * kBlockDim * kBlockDim +
+                             kMul2[ix][c] * sum_of_vals) {
+        *quant += step;
         if (*quant >= Quantizer::kQuantMax) {
           *quant = Quantizer::kQuantMax - 1;
         }
@@ -267,11 +289,12 @@ void AdjustQuantBlockAC(const Quantizer& quantizer, size_t c,
   }
   {
     // Reduce quant in highly active areas.
-    int32_t div = (xsize + ysize) / 2;
-    int32_t activity = (hfNonZeros[0] + div / 2) / div;
+    int32_t div = (xsize * ysize);
+    int32_t activity = (static_cast<int32_t>(hfNonZeros[0]) + div / 2) / div;
     int32_t orig_qp_limit = std::max(4, *quant / 2);
     for (int i = 1; i < 4; ++i) {
-      activity = std::min<int32_t>(activity, (hfNonZeros[i] + div / 2) / div);
+      activity = std::min(
+          activity, (static_cast<int32_t>(hfNonZeros[i]) + div / 2) / div);
     }
     if (activity >= 15) {
       activity = 15;
@@ -292,21 +315,19 @@ void AdjustQuantBlockAC(const Quantizer& quantizer, size_t c,
 // NOTE: caller takes care of extracting quant from rect of RawQuantField.
 void QuantizeRoundtripYBlockAC(PassesEncoderState* enc_state, const size_t size,
                                const Quantizer& quantizer,
-                               const bool error_diffusion, size_t quant_kind,
-                               size_t xsize, size_t ysize,
-                               const float* JXL_RESTRICT biases, int32_t* quant,
-                               float* JXL_RESTRICT inout,
+                               const bool error_diffusion,
+                               AcStrategyType quant_kind, size_t xsize,
+                               size_t ysize, const float* JXL_RESTRICT biases,
+                               int32_t* quant, float* JXL_RESTRICT inout,
                                int32_t* JXL_RESTRICT quantized) {
   float thres_y[4] = {0.58f, 0.64f, 0.64f, 0.64f};
-  {
+  if (enc_state->cparams.speed_tier <= SpeedTier::kHare) {
     int32_t max_quant = 0;
     int quant_orig = *quant;
     float val[3] = {enc_state->x_qm_multiplier, 1.0f,
                     enc_state->b_qm_multiplier};
-    int clut[3] = {1, 0, 2};
-    for (int ii = 0; ii < 3; ++ii) {
+    for (int c : {1, 0, 2}) {
       float thres[4] = {0.58f, 0.64f, 0.64f, 0.64f};
-      int c = clut[ii];
       *quant = quant_orig;
       AdjustQuantBlockAC(quantizer, c, val[c], quant_kind, xsize, ysize,
                          &thres[0], inout + c * size, quant);
@@ -319,6 +340,11 @@ void QuantizeRoundtripYBlockAC(PassesEncoderState* enc_state, const size_t size,
       max_quant = std::max(*quant, max_quant);
     }
     *quant = max_quant;
+  } else {
+    thres_y[0] = 0.56;
+    thres_y[1] = 0.62;
+    thres_y[2] = 0.62;
+    thres_y[3] = 0.62;
   }
 
   QuantizeBlockAC(quantizer, error_diffusion, 1, 1.0f, quant_kind, xsize, ysize,
@@ -339,14 +365,17 @@ void QuantizeRoundtripYBlockAC(PassesEncoderState* enc_state, const size_t size,
 }
 
 void ComputeCoefficients(size_t group_idx, PassesEncoderState* enc_state,
-                         const Image3F& opsin, Image3F* dc) {
-  const Rect block_group_rect = enc_state->shared.BlockGroupRect(group_idx);
-  const Rect group_rect = enc_state->shared.GroupRect(group_idx);
+                         const Image3F& opsin, const Rect& rect, Image3F* dc) {
+  const Rect block_group_rect =
+      enc_state->shared.frame_dim.BlockGroupRect(group_idx);
   const Rect cmap_rect(
       block_group_rect.x0() / kColorTileDimInBlocks,
       block_group_rect.y0() / kColorTileDimInBlocks,
       DivCeil(block_group_rect.xsize(), kColorTileDimInBlocks),
       DivCeil(block_group_rect.ysize(), kColorTileDimInBlocks));
+  const Rect group_rect =
+      enc_state->shared.frame_dim.GroupRect(group_idx).Translate(rect.x0(),
+                                                                 rect.y0());
 
   const size_t xsize_blocks = block_group_rect.xsize();
   const size_t ysize_blocks = block_group_rect.ysize();
@@ -357,9 +386,13 @@ void ComputeCoefficients(size_t group_idx, PassesEncoderState* enc_state,
   ImageI& full_quant_field = enc_state->shared.raw_quant_field;
   const CompressParams& cparams = enc_state->cparams;
 
+  const size_t dct_scratch_size =
+      3 * (MaxVectorSize() / sizeof(float)) * AcStrategy::kMaxBlockDim;
+
   // TODO(veluca): consider strategies to reduce this memory.
   auto mem = hwy::AllocateAligned<int32_t>(3 * AcStrategy::kMaxCoeffArea);
-  auto fmem = hwy::AllocateAligned<float>(5 * AcStrategy::kMaxCoeffArea);
+  auto fmem = hwy::AllocateAligned<float>(5 * AcStrategy::kMaxCoeffArea +
+                                          dct_scratch_size);
   float* JXL_RESTRICT scratch_space =
       fmem.get() + 3 * AcStrategy::kMaxCoeffArea;
   {
@@ -405,9 +438,9 @@ void ComputeCoefficients(size_t group_idx, PassesEncoderState* enc_state,
       for (size_t tx = 0; tx < DivCeil(xsize_blocks, kColorTileDimInBlocks);
            tx++) {
         const auto x_factor =
-            Set(d, enc_state->shared.cmap.YtoXRatio(row_cmap[0][tx]));
+            Set(d, enc_state->shared.cmap.base().YtoXRatio(row_cmap[0][tx]));
         const auto b_factor =
-            Set(d, enc_state->shared.cmap.YtoBRatio(row_cmap[2][tx]));
+            Set(d, enc_state->shared.cmap.base().YtoBRatio(row_cmap[2][tx]));
         for (size_t bx = tx * kColorTileDimInBlocks;
              bx < xsize_blocks && bx < (tx + 1) * kColorTileDimInBlocks; ++bx) {
           const AcStrategy acs = ac_strategy_row[bx];
@@ -432,7 +465,7 @@ void ComputeCoefficients(size_t group_idx, PassesEncoderState* enc_state,
 
           QuantizeRoundtripYBlockAC(
               enc_state, size, enc_state->shared.quantizer, error_diffusion,
-              acs.RawStrategy(), xblocks, yblocks, kDefaultQuantBias, &quant_ac,
+              acs.Strategy(), xblocks, yblocks, kDefaultQuantBias, &quant_ac,
               coeffs_in, quantized);
 
           // Unapply color correlation
@@ -452,7 +485,7 @@ void ComputeCoefficients(size_t group_idx, PassesEncoderState* enc_state,
             QuantizeBlockAC(enc_state->shared.quantizer, error_diffusion, c,
                             c == 0 ? enc_state->x_qm_multiplier
                                    : enc_state->b_qm_multiplier,
-                            acs.RawStrategy(), xblocks, yblocks, &thres[0],
+                            acs.Strategy(), xblocks, yblocks, &thres[0],
                             coeffs_in + c * size, &quant_ac,
                             quantized + c * size);
             DCFromLowestFrequencies(acs.Strategy(), coeffs_in + c * size,
@@ -481,9 +514,9 @@ HWY_AFTER_NAMESPACE();
 namespace jxl {
 HWY_EXPORT(ComputeCoefficients);
 void ComputeCoefficients(size_t group_idx, PassesEncoderState* enc_state,
-                         const Image3F& opsin, Image3F* dc) {
-  return HWY_DYNAMIC_DISPATCH(ComputeCoefficients)(group_idx, enc_state, opsin,
-                                                   dc);
+                         const Image3F& opsin, const Rect& rect, Image3F* dc) {
+  HWY_DYNAMIC_DISPATCH(ComputeCoefficients)
+  (group_idx, enc_state, opsin, rect, dc);
 }
 
 Status EncodeGroupTokenizedCoefficients(size_t group_idx, size_t pass_idx,
@@ -499,12 +532,14 @@ Status EncodeGroupTokenizedCoefficients(size_t group_idx, size_t pass_idx,
   if (histo_selector_bits != 0) {
     BitWriter::Allotment allotment(writer, histo_selector_bits);
     writer->Write(histo_selector_bits, histogram_idx);
-    allotment.ReclaimAndCharge(writer, kLayerAC, aux_out);
+    allotment.ReclaimAndCharge(writer, LayerType::Ac, aux_out);
   }
+  size_t context_offset =
+      histogram_idx * enc_state.shared.block_ctx_map.NumACContexts();
   WriteTokens(enc_state.passes[pass_idx].ac_tokens[group_idx],
               enc_state.passes[pass_idx].codes,
-              enc_state.passes[pass_idx].context_map, writer, kLayerACTokens,
-              aux_out);
+              enc_state.passes[pass_idx].context_map, context_offset, writer,
+              LayerType::AcTokens, aux_out);
 
   return true;
 }

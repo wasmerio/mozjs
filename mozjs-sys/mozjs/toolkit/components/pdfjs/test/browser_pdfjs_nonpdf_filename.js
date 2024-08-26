@@ -13,7 +13,7 @@ const LINK_PAGE_URL = TESTROOT + "file_pdf_download_link.html";
 
 add_task(async function test_filename_nonpdf_extension() {
   var MockFilePicker = SpecialPowers.MockFilePicker;
-  MockFilePicker.init(window);
+  MockFilePicker.init(window.browsingContext);
   let filepickerNamePromise = new Promise(resolve => {
     MockFilePicker.showCallback = function (fp) {
       resolve(fp.defaultString);
@@ -67,7 +67,9 @@ add_task(async function test_filename_nonpdf_extension() {
         "Fido-2022-04-28.pdf",
         "Should have gotten the provided filename with pdf suffixed."
       );
-      BrowserTestUtils.removeTab(newTab);
+      await waitForPdfJSClose(newTab.linkedBrowser, /* closeTab = */ true);
     }
   );
+
+  await SpecialPowers.popPrefEnv();
 });

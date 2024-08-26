@@ -4,28 +4,24 @@
 // license that can be found in the LICENSE file.
 #include "lib/jxl/quant_weights.h"
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <jxl/memory_manager.h>
 
-#include <algorithm>
 #include <cmath>
-#include <limits>
-#include <utility>
+#include <cstdio>
+#include <cstdlib>
 
-#include "lib/jxl/base/bits.h"
+#include "lib/jxl/base/compiler_specific.h"
 #include "lib/jxl/base/status.h"
-#include "lib/jxl/common.h"
 #include "lib/jxl/dct_scales.h"
 #include "lib/jxl/dec_modular.h"
 #include "lib/jxl/fields.h"
-#include "lib/jxl/image.h"
 
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "lib/jxl/quant_weights.cc"
 #include <hwy/foreach_target.h>
 #include <hwy/highway.h>
 
-#include "lib/jxl/fast_math-inl.h"
+#include "lib/jxl/base/fast_math-inl.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace jxl {
@@ -159,10 +155,11 @@ Status GetQuantWeights(
 Status ComputeQuantTable(const QuantEncoding& encoding,
                          float* JXL_RESTRICT table,
                          float* JXL_RESTRICT inv_table, size_t table_num,
-                         DequantMatrices::QuantTable kind, size_t* pos) {
+                         QuantTable kind, size_t* pos) {
   constexpr size_t N = kBlockDim;
-  size_t wrows = 8 * DequantMatrices::required_size_x[kind],
-         wcols = 8 * DequantMatrices::required_size_y[kind];
+  size_t quant_table_idx = static_cast<size_t>(kind);
+  size_t wrows = 8 * DequantMatrices::required_size_x[quant_table_idx];
+  size_t wcols = 8 * DequantMatrices::required_size_y[quant_table_idx];
   size_t num = wrows * wcols;
 
   std::vector<float> weights(3 * num);
@@ -232,9 +229,9 @@ Status ComputeQuantTable(const QuantEncoding& encoding,
       if (!encoding.qraw.qtable || encoding.qraw.qtable->size() != 3 * num) {
         return JXL_FAILURE("Invalid table encoding");
       }
+      int* qtable = encoding.qraw.qtable->data();
       for (size_t i = 0; i < 3 * num; i++) {
-        weights[i] =
-            1.f / (encoding.qraw.qtable_den * (*encoding.qraw.qtable)[i]);
+        weights[i] = 1.f / (encoding.qraw.qtable_den * qtable[i]);
       }
       break;
     }
@@ -336,8 +333,8 @@ Status ComputeQuantTable(const QuantEncoding& encoding,
   // Ensure that the lowest frequencies have a 0 inverse table.
   // This does not affect en/decoding, but allows AC strategy selection to be
   // slightly simpler.
-  size_t xs = DequantMatrices::required_size_x[kind];
-  size_t ys = DequantMatrices::required_size_y[kind];
+  size_t xs = DequantMatrices::required_size_x[quant_table_idx];
+  size_t ys = DequantMatrices::required_size_y[quant_table_idx];
   CoefficientLayout(&ys, &xs);
   for (size_t c = 0; c < 3; c++) {
     for (size_t y = 0; y < ys; y++) {
@@ -362,7 +359,7 @@ namespace {
 
 HWY_EXPORT(ComputeQuantTable);
 
-static constexpr const float kAlmostZero = 1e-8f;
+constexpr const float kAlmostZero = 1e-8f;
 
 Status DecodeDctParams(BitReader* br, DctQuantWeightParams* params) {
   params->num_distance_bands =
@@ -379,7 +376,8 @@ Status DecodeDctParams(BitReader* br, DctQuantWeightParams* params) {
   return true;
 }
 
-Status Decode(BitReader* br, QuantEncoding* encoding, size_t required_size_x,
+Status Decode(JxlMemoryManager* memory_manager, BitReader* br,
+              QuantEncoding* encoding, size_t required_size_x,
               size_t required_size_y, size_t idx,
               ModularFrameDecoder* modular_frame_decoder) {
   size_t required_size = required_size_x * required_size_y;
@@ -468,42 +466,43 @@ Status Decode(BitReader* br, QuantEncoding* encoding, size_t required_size_x,
       // Set mode early, to avoid mem-leak.
       encoding->mode = QuantEncoding::kQuantModeRAW;
       JXL_RETURN_IF_ERROR(ModularFrameDecoder::DecodeQuantTable(
-          required_size_x, required_size_y, br, encoding, idx,
+          memory_manager, required_size_x, required_size_y, br, encoding, idx,
           modular_frame_decoder));
       break;
     }
     default:
       return JXL_FAILURE("Invalid quantization table encoding");
   }
-  encoding->mode = QuantEncoding::Mode(mode);
+  encoding->mode = static_cast<QuantEncoding::Mode>(mode);
   return true;
 }
 
 }  // namespace
 
-// These definitions are needed before C++17.
-constexpr size_t DequantMatrices::required_size_[];
-constexpr size_t DequantMatrices::required_size_x[];
-constexpr size_t DequantMatrices::required_size_y[];
-constexpr DequantMatrices::QuantTable DequantMatrices::kQuantTable[];
+#if JXL_CXX_LANG < JXL_CXX_17
+constexpr const std::array<int, 17> DequantMatrices::required_size_x;
+constexpr const std::array<int, 17> DequantMatrices::required_size_y;
+constexpr const size_t DequantMatrices::kSumRequiredXy;
+#endif
 
-Status DequantMatrices::Decode(BitReader* br,
+Status DequantMatrices::Decode(JxlMemoryManager* memory_manager, BitReader* br,
                                ModularFrameDecoder* modular_frame_decoder) {
   size_t all_default = br->ReadBits(1);
-  size_t num_tables = all_default ? 0 : static_cast<size_t>(kNum);
+  size_t num_tables = all_default ? 0 : static_cast<size_t>(kNumQuantTables);
   encodings_.clear();
-  encodings_.resize(kNum, QuantEncoding::Library(0));
+  encodings_.resize(kNumQuantTables, QuantEncoding::Library(0));
   for (size_t i = 0; i < num_tables; i++) {
-    JXL_RETURN_IF_ERROR(
-        jxl::Decode(br, &encodings_[i], required_size_x[i % kNum],
-                    required_size_y[i % kNum], i, modular_frame_decoder));
+    JXL_RETURN_IF_ERROR(jxl::Decode(memory_manager, br, &encodings_[i],
+                                    required_size_x[i % kNumQuantTables],
+                                    required_size_y[i % kNumQuantTables], i,
+                                    modular_frame_decoder));
   }
   computed_mask_ = 0;
   return true;
 }
 
 Status DequantMatrices::DecodeDC(BitReader* br) {
-  bool all_default = br->ReadBits(1);
+  bool all_default = static_cast<bool>(br->ReadBits(1));
   if (!br->AllReadsWithinBounds()) return JXL_FAILURE("EOS during DecodeDC");
   if (!all_default) {
     for (size_t c = 0; c < 3; c++) {
@@ -1104,30 +1103,47 @@ struct DequantMatricesLibraryDef {
 }  // namespace
 
 DequantMatrices::DequantLibraryInternal DequantMatrices::LibraryInit() {
-  static_assert(kNum == 17,
+  static_assert(kNumQuantTables == 17,
                 "Update this function when adding new quantization kinds.");
   static_assert(kNumPredefinedTables == 1,
                 "Update this function when adding new quantization matrices to "
                 "the library.");
 
   // The library and the indices need to be kept in sync manually.
-  static_assert(0 == DCT, "Update the DequantLibrary array below.");
-  static_assert(1 == IDENTITY, "Update the DequantLibrary array below.");
-  static_assert(2 == DCT2X2, "Update the DequantLibrary array below.");
-  static_assert(3 == DCT4X4, "Update the DequantLibrary array below.");
-  static_assert(4 == DCT16X16, "Update the DequantLibrary array below.");
-  static_assert(5 == DCT32X32, "Update the DequantLibrary array below.");
-  static_assert(6 == DCT8X16, "Update the DequantLibrary array below.");
-  static_assert(7 == DCT8X32, "Update the DequantLibrary array below.");
-  static_assert(8 == DCT16X32, "Update the DequantLibrary array below.");
-  static_assert(9 == DCT4X8, "Update the DequantLibrary array below.");
-  static_assert(10 == AFV0, "Update the DequantLibrary array below.");
-  static_assert(11 == DCT64X64, "Update the DequantLibrary array below.");
-  static_assert(12 == DCT32X64, "Update the DequantLibrary array below.");
-  static_assert(13 == DCT128X128, "Update the DequantLibrary array below.");
-  static_assert(14 == DCT64X128, "Update the DequantLibrary array below.");
-  static_assert(15 == DCT256X256, "Update the DequantLibrary array below.");
-  static_assert(16 == DCT128X256, "Update the DequantLibrary array below.");
+  static_assert(0 == static_cast<uint8_t>(QuantTable::DCT),
+                "Update the DequantLibrary array below.");
+  static_assert(1 == static_cast<uint8_t>(QuantTable::IDENTITY),
+                "Update the DequantLibrary array below.");
+  static_assert(2 == static_cast<uint8_t>(QuantTable::DCT2X2),
+                "Update the DequantLibrary array below.");
+  static_assert(3 == static_cast<uint8_t>(QuantTable::DCT4X4),
+                "Update the DequantLibrary array below.");
+  static_assert(4 == static_cast<uint8_t>(QuantTable::DCT16X16),
+                "Update the DequantLibrary array below.");
+  static_assert(5 == static_cast<uint8_t>(QuantTable::DCT32X32),
+                "Update the DequantLibrary array below.");
+  static_assert(6 == static_cast<uint8_t>(QuantTable::DCT8X16),
+                "Update the DequantLibrary array below.");
+  static_assert(7 == static_cast<uint8_t>(QuantTable::DCT8X32),
+                "Update the DequantLibrary array below.");
+  static_assert(8 == static_cast<uint8_t>(QuantTable::DCT16X32),
+                "Update the DequantLibrary array below.");
+  static_assert(9 == static_cast<uint8_t>(QuantTable::DCT4X8),
+                "Update the DequantLibrary array below.");
+  static_assert(10 == static_cast<uint8_t>(QuantTable::AFV0),
+                "Update the DequantLibrary array below.");
+  static_assert(11 == static_cast<uint8_t>(QuantTable::DCT64X64),
+                "Update the DequantLibrary array below.");
+  static_assert(12 == static_cast<uint8_t>(QuantTable::DCT32X64),
+                "Update the DequantLibrary array below.");
+  static_assert(13 == static_cast<uint8_t>(QuantTable::DCT128X128),
+                "Update the DequantLibrary array below.");
+  static_assert(14 == static_cast<uint8_t>(QuantTable::DCT64X128),
+                "Update the DequantLibrary array below.");
+  static_assert(15 == static_cast<uint8_t>(QuantTable::DCT256X256),
+                "Update the DequantLibrary array below.");
+  static_assert(16 == static_cast<uint8_t>(QuantTable::DCT128X256),
+                "Update the DequantLibrary array below.");
   return DequantMatrices::DequantLibraryInternal{{
       DequantMatricesLibraryDef::DCT(),
       DequantMatricesLibraryDef::IDENTITY(),
@@ -1163,11 +1179,11 @@ const QuantEncoding* DequantMatrices::Library() {
 }
 
 DequantMatrices::DequantMatrices() {
-  encodings_.resize(size_t(QuantTable::kNum), QuantEncoding::Library(0));
+  encodings_.resize(kNumQuantTables, QuantEncoding::Library(0));
   size_t pos = 0;
-  size_t offsets[kNum * 3];
-  for (size_t i = 0; i < size_t(QuantTable::kNum); i++) {
-    size_t num = required_size_[i] * kDCTBlockSize;
+  size_t offsets[kNumQuantTables * 3];
+  for (size_t i = 0; i < static_cast<size_t>(kNumQuantTables); i++) {
+    size_t num = required_size_x[i] * required_size_y[i] * kDCTBlockSize;
     for (size_t c = 0; c < 3; c++) {
       offsets[3 * i + c] = pos + c * num;
     }
@@ -1175,7 +1191,8 @@ DequantMatrices::DequantMatrices() {
   }
   for (size_t i = 0; i < AcStrategy::kNumValidStrategies; i++) {
     for (size_t c = 0; c < 3; c++) {
-      table_offsets_[i * 3 + c] = offsets[kQuantTable[i] * 3 + c];
+      table_offsets_[i * 3 + c] =
+          offsets[static_cast<size_t>(kAcStrategyToQuantTableMap[i]) * 3 + c];
     }
   }
 }
@@ -1189,31 +1206,32 @@ Status DequantMatrices::EnsureComputed(uint32_t acs_mask) {
     inv_table_ = table_storage_.get() + kTotalTableSize;
   }
 
-  size_t offsets[kNum * 3 + 1];
+  size_t offsets[kNumQuantTables * 3 + 1];
   size_t pos = 0;
-  for (size_t i = 0; i < kNum; i++) {
-    size_t num = required_size_[i] * kDCTBlockSize;
+  for (size_t i = 0; i < kNumQuantTables; i++) {
+    size_t num = required_size_x[i] * required_size_y[i] * kDCTBlockSize;
     for (size_t c = 0; c < 3; c++) {
       offsets[3 * i + c] = pos + c * num;
     }
     pos += 3 * num;
   }
-  offsets[kNum * 3] = pos;
+  offsets[kNumQuantTables * 3] = pos;
   JXL_ASSERT(pos == kTotalTableSize);
 
   uint32_t kind_mask = 0;
   for (size_t i = 0; i < AcStrategy::kNumValidStrategies; i++) {
     if (acs_mask & (1u << i)) {
-      kind_mask |= 1u << kQuantTable[i];
+      kind_mask |= 1u << static_cast<uint32_t>(kAcStrategyToQuantTableMap[i]);
     }
   }
   uint32_t computed_kind_mask = 0;
   for (size_t i = 0; i < AcStrategy::kNumValidStrategies; i++) {
     if (computed_mask_ & (1u << i)) {
-      computed_kind_mask |= 1u << kQuantTable[i];
+      computed_kind_mask |=
+          1u << static_cast<uint32_t>(kAcStrategyToQuantTableMap[i]);
     }
   }
-  for (size_t table = 0; table < kNum; table++) {
+  for (size_t table = 0; table < kNumQuantTables; table++) {
     if ((1 << table) & computed_kind_mask) continue;
     if ((1 << table) & ~kind_mask) continue;
     size_t pos = offsets[table * 3];

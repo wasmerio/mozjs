@@ -9,7 +9,7 @@ function IteratorIdentity() {
 /* ECMA262 7.2.7 */
 function IteratorNext(iteratorRecord, value) {
   // Steps 1-2.
-  const result =
+  var result =
     ArgumentsLength() < 2
       ? callContentFunction(iteratorRecord.nextMethod, iteratorRecord.iterator)
       : callContentFunction(
@@ -23,41 +23,6 @@ function IteratorNext(iteratorRecord, value) {
   }
   // Step 4.
   return result;
-}
-
-/**
- * ES2022 draft rev c5f683e61d5dce703650f1c90d2309c46f8c157a
- *
- * GetIterator ( obj [ , hint [ , method ] ] )
- * https://tc39.es/ecma262/#sec-getiterator
- *
- * Optimized for single argument
- */
-function GetIteratorSync(obj) {
-  // Steps 1 & 2 skipped as we know we want the sync iterator method
-  var method = GetMethod(obj, GetBuiltinSymbol("iterator"));
-
-  // Step 3. Let iterator be ? Call(method, obj).
-  var iterator = callContentFunction(method, obj);
-
-  // Step 4. If Type(iterator) is not Object, throw a TypeError exception.
-  if (!IsObject(iterator)) {
-    ThrowTypeError(JSMSG_NOT_ITERABLE, obj === null ? "null" : typeof obj);
-  }
-
-  // Step 5. Let nextMethod be ? GetV(iterator, "next").
-  var nextMethod = iterator.next;
-
-  // Step 6. Let iteratorRecord be the Record { [[Iterator]]: iterator, [[NextMethod]]: nextMethod, [[Done]]: false }.
-  var iteratorRecord = {
-    __proto__: null,
-    iterator,
-    nextMethod,
-    done: false
-  };
-
-  // Step 7. Return iteratorRecord.
-  return iteratorRecord;
 }
 
 // https://tc39.es/ecma262/#sec-getiterator
@@ -111,14 +76,19 @@ function GetIterator(obj, isAsync, method) {
 }
 
 /**
- * GetIteratorFlattenable ( obj )
+ * GetIteratorFlattenable ( obj, stringHandling )
  *
  * https://tc39.es/proposal-iterator-helpers/#sec-getiteratorflattenable
  */
-function GetIteratorFlattenable(obj) {
+function GetIteratorFlattenable(obj, rejectStrings) {
+  assert(typeof rejectStrings === "boolean", "rejectStrings is a boolean");
+
   // Step 1.
   if (!IsObject(obj)) {
-    ThrowTypeError(JSMSG_OBJECT_REQUIRED, obj === null ? "null" : typeof obj);
+    // Step 1.a.
+    if (rejectStrings || typeof obj !== "string") {
+      ThrowTypeError(JSMSG_OBJECT_REQUIRED, obj === null ? "null" : typeof obj);
+    }
   }
 
   // Step 2.
@@ -147,16 +117,11 @@ function GetIteratorFlattenable(obj) {
  * https://tc39.es/proposal-iterator-helpers/#sec-iterator.from
  */
 function IteratorFrom(O) {
-  // Step 1.
-  if (typeof O === "string") {
-    O = ToObject(O);
-  }
-
-  // Step 2. (Inlined call to GetIteratorDirect.)
-  var iterator = GetIteratorFlattenable(O);
+  // Step 1. (Inlined call to GetIteratorDirect.)
+  var iterator = GetIteratorFlattenable(O, /* rejectStrings= */ false);
   var nextMethod = iterator.next;
 
-  // Step 3.
+  // Step 2.
   //
   // Calls |isPrototypeOf| instead of |instanceof| to avoid looking up the
   // `@@hasInstance` property.
@@ -166,15 +131,15 @@ function IteratorFrom(O) {
     iterator
   );
 
-  // Step 4.
+  // Step 3.
   if (hasInstance) {
     return iterator;
   }
 
-  // Step 5.
+  // Step 4.
   var wrapper = NewWrapForValidIterator();
 
-  // Step 6.
+  // Step 5.
   UnsafeSetReservedSlot(
     wrapper,
     WRAP_FOR_VALID_ITERATOR_ITERATOR_SLOT,
@@ -186,7 +151,7 @@ function IteratorFrom(O) {
     nextMethod
   );
 
-  // Step 7.
+  // Step 6.
   return wrapper;
 }
 
@@ -277,7 +242,7 @@ function IteratorHelperNext() {
  */
 function IteratorHelperReturn() {
   // Step 1.
-  let O = this;
+  var O = this;
 
   // Step 2.
   if (!IsObject(O) || (O = GuardToIteratorHelper(O)) === null) {
@@ -291,7 +256,7 @@ function IteratorHelperReturn() {
   // Step 3. (Implicit)
 
   // Steps 4-6.
-  const generator = UnsafeGetReservedSlot(O, ITERATOR_HELPER_GENERATOR_SLOT);
+  var generator = UnsafeGetReservedSlot(O, ITERATOR_HELPER_GENERATOR_SLOT);
   return callFunction(GeneratorReturn, generator, undefined);
 }
 
@@ -721,7 +686,7 @@ function* IteratorFlatMapGenerator(iterator, nextMethod, mapper) {
     // Step 5.b.v. (Implicit through for-of loop)
 
     // Steps 5.b.vi.
-    var innerIterator = GetIteratorFlattenable(mapped);
+    var innerIterator = GetIteratorFlattenable(mapped, /* rejectStrings= */ true);
     var innerIteratorNextMethod = innerIterator.next;
 
     // Step 5.b.vii. (Implicit through for-of loop)

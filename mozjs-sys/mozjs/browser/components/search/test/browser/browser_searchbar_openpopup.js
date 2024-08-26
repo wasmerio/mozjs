@@ -5,7 +5,7 @@ const searchPopup = document.getElementById("PopupSearchAutoComplete");
 const kValues = ["long text", "long text 2", "long text 3"];
 
 async function endCustomizing(aWindow = window) {
-  if (aWindow.document.documentElement.getAttribute("customizing") != "true") {
+  if (!aWindow.document.documentElement.hasAttribute("customizing")) {
     return true;
   }
   let eventPromise = BrowserTestUtils.waitForEvent(
@@ -17,7 +17,7 @@ async function endCustomizing(aWindow = window) {
 }
 
 async function startCustomizing(aWindow = window) {
-  if (aWindow.document.documentElement.getAttribute("customizing") == "true") {
+  if (aWindow.document.documentElement.hasAttribute("customizing")) {
     return true;
   }
   let eventPromise = BrowserTestUtils.waitForEvent(
@@ -40,7 +40,7 @@ add_setup(async function () {
   searchIcon = searchbar.querySelector(".searchbar-search-button");
   goButton = searchbar.querySelector(".search-go-button");
 
-  engine = await SearchTestUtils.promiseNewSearchEngine({
+  engine = await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + "testEngine.xml",
     setAsDefault: true,
   });
@@ -78,7 +78,7 @@ function add_no_popup_task(task) {
 
 // Simulates the full set of events for a context click
 function context_click(target) {
-  for (let event of ["mousedown", "contextmenu", "mouseup"]) {
+  for (let event of ["mousedown", "contextmenu"]) {
     EventUtils.synthesizeMouseAtCenter(target, { type: event, button: 2 });
   }
 }
@@ -104,6 +104,11 @@ add_task(async function open_empty() {
 
   let promise = promiseEvent(searchPopup, "popupshown");
   info("Clicking icon");
+  is(
+    searchIcon.getAttribute("aria-expanded"),
+    "false",
+    "The search icon is not expanded by default"
+  );
   EventUtils.synthesizeMouseAtCenter(searchIcon, {});
   await promise;
   is(
@@ -111,12 +116,17 @@ add_task(async function open_empty() {
     "true",
     "Should only show the settings"
   );
+  is(
+    searchIcon.getAttribute("aria-expanded"),
+    "true",
+    "The search icon is now expanded"
+  );
   is(textbox.mController.searchString, "", "Should be an empty search string");
 
   let image = searchPopup.querySelector(".searchbar-engine-image");
   Assert.equal(
     image.src,
-    engine.getIconURLBySize(16, 16),
+    await engine.getIconURL(16),
     "Should have the correct icon"
   );
 
@@ -139,6 +149,11 @@ add_task(async function open_empty() {
     textbox.mController.searchString,
     "",
     "Should not have started to search for the new text"
+  );
+  is(
+    searchIcon.getAttribute("aria-expanded"),
+    "false",
+    "The search icon should not be expanded"
   );
 
   // Cancel the search if it started.
@@ -213,7 +228,7 @@ add_task(async function open_empty_hiddenOneOffs() {
     "The one-offs buttons container should have the hidden attribute."
   );
   Assert.ok(
-    BrowserTestUtils.is_hidden(searchPopup.searchOneOffsContainer),
+    BrowserTestUtils.isHidden(searchPopup.searchOneOffsContainer),
     "The one-off buttons container should be hidden."
   );
 
@@ -251,6 +266,13 @@ add_no_popup_task(async function right_click_doesnt_open_popup() {
   });
   context_click(textbox);
   let contextPopup = await promise;
+
+  // Assert that the context menu click inside the popup does nothing. If it
+  // opens something, assert_no_popup_task will make us fail. On macOS this
+  // doesn't work because of native context menus.
+  if (!navigator.platform.includes("Mac")) {
+    context_click(contextPopup);
+  }
 
   is(
     Services.focus.focusedElement,

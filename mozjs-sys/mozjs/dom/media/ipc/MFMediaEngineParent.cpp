@@ -99,15 +99,20 @@ void MFMediaEngineParent::DestroyEngineIfExists(
     mMediaSource->ShutdownTaskQueue();
     mMediaSource = nullptr;
   }
+#ifdef MOZ_WMF_CDM
+  if (mContentProtectionManager) {
+    mContentProtectionManager->Shutdown();
+    mContentProtectionManager = nullptr;
+  }
+#endif
   if (mMediaEngine) {
-    mMediaEngine->Shutdown();
+    LOG_IF_FAILED(mMediaEngine->Shutdown());
     mMediaEngine = nullptr;
   }
   mMediaEngineEventListener.DisconnectIfExists();
   mRequestSampleListener.DisconnectIfExists();
   if (mDXGIDeviceManager) {
     mDXGIDeviceManager = nullptr;
-    wmf::MFUnlockDXGIDeviceManager();
   }
   if (aError) {
     Unused << SendNotifyError(*aError);
@@ -156,9 +161,7 @@ void MFMediaEngineParent::CreateMediaEngine() {
   RETURN_VOID_IF_FAILED(CoCreateInstance(CLSID_MFMediaEngineClassFactory,
                                          nullptr, CLSCTX_INPROC_SERVER,
                                          IID_PPV_ARGS(&factory)));
-  const bool isLowLatency =
-      StaticPrefs::media_wmf_low_latency_enabled() &&
-      !StaticPrefs::media_wmf_low_latency_force_disabled();
+  const bool isLowLatency = StaticPrefs::media_wmf_low_latency_enabled();
   static const DWORD MF_MEDIA_ENGINE_DEFAULT = 0;
   RETURN_VOID_IF_FAILED(factory->CreateInstance(
       isLowLatency ? MF_MEDIA_ENGINE_REAL_TIME_MODE : MF_MEDIA_ENGINE_DEFAULT,
@@ -187,6 +190,9 @@ void MFMediaEngineParent::InitializeDXGIDeviceManager() {
   UINT deviceResetToken;
   RETURN_VOID_IF_FAILED(
       wmf::MFLockDXGIDeviceManager(&deviceResetToken, &mDXGIDeviceManager));
+  if (!mDXGIDeviceManager) {
+    return;
+  }
   RETURN_VOID_IF_FAILED(
       mDXGIDeviceManager->ResetDevice(d3d11Device.get(), deviceResetToken));
   LOG("Initialized DXGI manager");
@@ -206,6 +212,7 @@ void MFMediaEngineParent::InitializeDXGIDeviceManager() {
 void MFMediaEngineParent::HandleMediaEngineEvent(
     MFMediaEngineEventWrapper aEvent) {
   AssertOnManagerThread();
+  LOG("Received media engine event %s", MediaEngineEventToStr(aEvent.mEvent));
   ENGINE_MARKER_TEXT(
       "MFMediaEngineParent::HandleMediaEngineEvent",
       nsPrintfCString("%s", MediaEngineEventToStr(aEvent.mEvent)));
@@ -217,7 +224,12 @@ void MFMediaEngineParent::HandleMediaEngineEvent(
       NotifyError(error, result);
       break;
     }
-    case MF_MEDIA_ENGINE_EVENT_FORMATCHANGE:
+    case MF_MEDIA_ENGINE_EVENT_FORMATCHANGE: {
+      if (mMediaEngine->HasVideo()) {
+        NotifyVideoResizing();
+      }
+      break;
+    }
     case MF_MEDIA_ENGINE_EVENT_FIRSTFRAMEREADY: {
       if (mMediaEngine->HasVideo()) {
         EnsureDcompSurfaceHandle();
@@ -326,17 +338,17 @@ mozilla::ipc::IPCResult MFMediaEngineParent::RecvInitMediaEngine(
     // TODO : really need this?
     Unused << mMediaEngine->SetPreload(MF_MEDIA_ENGINE_PRELOAD_AUTOMATIC);
   }
+  RETURN_PARAM_IF_FAILED(SetMediaInfo(aInfo.mediaInfo()), IPC_OK());
   aResolver(mMediaEngineId);
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult MFMediaEngineParent::RecvNotifyMediaInfo(
-    const MediaInfoIPDL& aInfo) {
+HRESULT MFMediaEngineParent::SetMediaInfo(const MediaInfoIPDL& aInfo) {
   AssertOnManagerThread();
   MOZ_ASSERT(mIsCreatedMediaEngine, "Hasn't created media engine?");
   MOZ_ASSERT(!mMediaSource);
 
-  LOG("RecvNotifyMediaInfo");
+  LOG("SetMediaInfo");
 
   auto errorExit = MakeScopeExit([&] {
     MediaResult error(NS_ERROR_DOM_MEDIA_FATAL_ERR,
@@ -366,9 +378,8 @@ mozilla::ipc::IPCResult MFMediaEngineParent::RecvNotifyMediaInfo(
 
   if (aInfo.videoInfo()) {
     ComPtr<IMFMediaEngineEx> mediaEngineEx;
-    RETURN_PARAM_IF_FAILED(mMediaEngine.As(&mediaEngineEx), IPC_OK());
-    RETURN_PARAM_IF_FAILED(mediaEngineEx->EnableWindowlessSwapchainMode(true),
-                           IPC_OK());
+    RETURN_IF_FAILED(mMediaEngine.As(&mediaEngineEx));
+    RETURN_IF_FAILED(mediaEngineEx->EnableWindowlessSwapchainMode(true));
     LOG("Enabled dcomp swap chain mode");
     ENGINE_MARKER("MFMediaEngineParent,EnabledSwapChain");
   }
@@ -380,7 +391,7 @@ mozilla::ipc::IPCResult MFMediaEngineParent::RecvNotifyMediaInfo(
 #ifdef MOZ_WMF_CDM
   if (isEncryted && !mContentProtectionManager) {
     // We will set the source later when the CDM proxy is ready.
-    return IPC_OK();
+    return S_OK;
   }
 
   if (isEncryted && mContentProtectionManager) {
@@ -391,7 +402,7 @@ mozilla::ipc::IPCResult MFMediaEngineParent::RecvNotifyMediaInfo(
 #endif
 
   SetMediaSourceOnEngine();
-  return IPC_OK();
+  return S_OK;
 }
 
 void MFMediaEngineParent::SetMediaSourceOnEngine() {
@@ -578,6 +589,26 @@ void MFMediaEngineParent::AssertOnManagerThread() const {
   MOZ_ASSERT(mManagerThread->IsOnCurrentThread());
 }
 
+Maybe<gfx::IntSize> MFMediaEngineParent::DetectVideoSizeChange() {
+  AssertOnManagerThread();
+  MOZ_ASSERT(mMediaEngine);
+  MOZ_ASSERT(mMediaEngine->HasVideo());
+
+  DWORD width, height;
+  RETURN_PARAM_IF_FAILED(mMediaEngine->GetNativeVideoSize(&width, &height),
+                         Nothing());
+  if (width != mDisplayWidth || height != mDisplayHeight) {
+    ENGINE_MARKER_TEXT("MFMediaEngineParent,VideoSizeChange",
+                       nsPrintfCString("%lux%lu", width, height));
+    LOG("Updated video size [%lux%lu] -> [%lux%lu] ", mDisplayWidth,
+        mDisplayHeight, width, height);
+    mDisplayWidth = width;
+    mDisplayHeight = height;
+    return Some(gfx::IntSize{width, height});
+  }
+  return Nothing();
+}
+
 void MFMediaEngineParent::EnsureDcompSurfaceHandle() {
   AssertOnManagerThread();
   MOZ_ASSERT(mMediaEngine);
@@ -585,33 +616,34 @@ void MFMediaEngineParent::EnsureDcompSurfaceHandle() {
 
   ComPtr<IMFMediaEngineEx> mediaEngineEx;
   RETURN_VOID_IF_FAILED(mMediaEngine.As(&mediaEngineEx));
-  DWORD width, height;
-  RETURN_VOID_IF_FAILED(mMediaEngine->GetNativeVideoSize(&width, &height));
-  if (width != mDisplayWidth || height != mDisplayHeight) {
-    // Update stream size before asking for a handle. If we don't update the
-    // size, media engine will create the dcomp surface in a wrong size. If
-    // the size isn't changed, then we don't need to recreate the surface.
-    mDisplayWidth = width;
-    mDisplayHeight = height;
-    RECT rect = {0, 0, (LONG)mDisplayWidth, (LONG)mDisplayHeight};
-    RETURN_VOID_IF_FAILED(mediaEngineEx->UpdateVideoStream(
-        nullptr /* pSrc */, &rect, nullptr /* pBorderClr */));
-    LOG("Updated video size for engine=[%lux%lu]", mDisplayWidth,
-        mDisplayHeight);
-    ENGINE_MARKER_TEXT(
-        "MFMediaEngineParent,UpdateVideoSize",
-        nsPrintfCString("%lux%lu", mDisplayWidth, mDisplayHeight));
+
+  // Ensure that the width and height is already up-to-date.
+  gfx::IntSize size{mDisplayWidth, mDisplayHeight};
+  if (auto newSize = DetectVideoSizeChange()) {
+    size = *newSize;
   }
+
+  // Update stream size before asking for a handle. If we don't update the
+  // size, media engine will create the dcomp surface in a wrong size.
+  RECT rect = {0, 0, (LONG)size.width, (LONG)size.height};
+  RETURN_VOID_IF_FAILED(mediaEngineEx->UpdateVideoStream(
+      nullptr /* pSrc */, &rect, nullptr /* pBorderClr */));
 
   HANDLE surfaceHandle = INVALID_HANDLE_VALUE;
   RETURN_VOID_IF_FAILED(mediaEngineEx->GetVideoSwapchainHandle(&surfaceHandle));
   if (surfaceHandle && surfaceHandle != INVALID_HANDLE_VALUE) {
-    LOG("EnsureDcompSurfaceHandle, handle=%p, size=[%lux%lu]", surfaceHandle,
-        width, height);
-    mMediaSource->SetDCompSurfaceHandle(surfaceHandle,
-                                        gfx::IntSize{width, height});
+    LOG("EnsureDcompSurfaceHandle, handle=%p, size=[%dx%d]", surfaceHandle,
+        size.width, size.height);
+    mMediaSource->SetDCompSurfaceHandle(surfaceHandle, size);
   } else {
     NS_WARNING("SurfaceHandle is not ready yet");
+  }
+}
+
+void MFMediaEngineParent::NotifyVideoResizing() {
+  AssertOnManagerThread();
+  if (auto newSize = DetectVideoSizeChange()) {
+    Unused << SendNotifyResizing(newSize->width, newSize->height);
   }
 }
 

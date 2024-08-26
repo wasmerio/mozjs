@@ -347,37 +347,37 @@ PromiseObject* js::ReadableStreamBYOBReaderRead(
     // table for view.[[TypedArrayName]].
     switch (type) {
       case JS::Scalar::Type::Uint8Clamped:
-        ctor.set(cx->global()->maybeGetConstructor(JSProto_Uint8ClampedArray));
+        ctor.set(cx->global()->getOrCreateConstructor(cx, JSProto_Uint8ClampedArray));
         break;
       case JS::Scalar::Type::Int8:
-        ctor.set(cx->global()->maybeGetConstructor(JSProto_Int8Array));
+        ctor.set(cx->global()->getOrCreateConstructor(cx, JSProto_Int8Array));
         break;
       case JS::Scalar::Type::Uint8:
-        ctor.set(cx->global()->maybeGetConstructor(JSProto_Uint8Array));
+        ctor.set(cx->global()->getOrCreateConstructor(cx, JSProto_Uint8Array));
         break;
       case JS::Scalar::Type::Int16:
-        ctor.set(cx->global()->maybeGetConstructor(JSProto_Int16Array));
+        ctor.set(cx->global()->getOrCreateConstructor(cx, JSProto_Int16Array));
         break;
       case JS::Scalar::Type::Uint16:
-        ctor.set(cx->global()->maybeGetConstructor(JSProto_Uint16Array));
+        ctor.set(cx->global()->getOrCreateConstructor(cx, JSProto_Uint16Array));
         break;
       case JS::Scalar::Type::Int32:
-        ctor.set(cx->global()->maybeGetConstructor(JSProto_Int32Array));
+        ctor.set(cx->global()->getOrCreateConstructor(cx, JSProto_Int32Array));
         break;
       case JS::Scalar::Type::Uint32:
-        ctor.set(cx->global()->maybeGetConstructor(JSProto_Uint32Array));
+        ctor.set(cx->global()->getOrCreateConstructor(cx, JSProto_Uint32Array));
         break;
       case JS::Scalar::Type::Float32:
-        ctor.set(cx->global()->maybeGetConstructor(JSProto_Float32Array));
+        ctor.set(cx->global()->getOrCreateConstructor(cx, JSProto_Float32Array));
         break;
       case JS::Scalar::Type::Float64:
-        ctor.set(cx->global()->maybeGetConstructor(JSProto_Float64Array));
+        ctor.set(cx->global()->getOrCreateConstructor(cx, JSProto_Float64Array));
         break;
       case JS::Scalar::Type::BigInt64:
-        ctor.set(cx->global()->maybeGetConstructor(JSProto_BigInt64Array));
+        ctor.set(cx->global()->getOrCreateConstructor(cx, JSProto_BigInt64Array));
         break;
       case JS::Scalar::Type::BigUint64:
-        ctor.set(cx->global()->maybeGetConstructor(JSProto_BigUint64Array));
+        ctor.set(cx->global()->getOrCreateConstructor(cx, JSProto_BigUint64Array));
         break;
 
       case JS::Scalar::Type::MaxTypedArrayViewType:
@@ -414,7 +414,7 @@ PromiseObject* js::ReadableStreamBYOBReaderRead(
   // buffer byte length buffer.[[ArrayBufferByteLength]], byte offset
   // byteOffset, byte length byteLength, bytes filled 0, element size
   // elementSize, view constructor ctor, and reader type "byob".
-  RootedArrayBufferObject buffer(cx, &bufferResult->as<ArrayBufferObject>());
+  Rooted<ArrayBufferObject*> buffer(cx, &bufferResult->as<ArrayBufferObject>());
   Rooted<PullIntoDescriptor*> pullIntoDescriptor(
       cx, PullIntoDescriptor::create(cx, buffer, byteOffset, byteLength, 0,
                                      elementSize, ctor, ReaderType::BYOB));

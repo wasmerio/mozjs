@@ -42,7 +42,8 @@ nsresult nsHttpHeaderArray::SetHeader(
     nsHttpHeaderArray::HeaderVariety variety) {
   MOZ_ASSERT(
       (variety == eVarietyResponse) || (variety == eVarietyRequestDefault) ||
-          (variety == eVarietyRequestOverride),
+          (variety == eVarietyRequestOverride) ||
+          (variety == eVarietyRequestEnforceDefault),
       "Net original headers can only be set using SetHeader_internal().");
 
   nsEntry* entry = nullptr;
@@ -61,8 +62,14 @@ nsresult nsHttpHeaderArray::SetHeader(
     return NS_OK;
   }
 
-  MOZ_ASSERT(!entry || variety != eVarietyRequestDefault,
+  MOZ_ASSERT((variety == eVarietyRequestEnforceDefault) ||
+                 (!entry || variety != eVarietyRequestDefault),
              "Cannot set default entry which overrides existing entry!");
+
+  // Set the variety to default if we are enforcing it.
+  if (variety == eVarietyRequestEnforceDefault) {
+    variety = eVarietyRequestDefault;
+  }
   if (!entry) {
     return SetHeader_internal(header, headerName, value, variety);
   }
@@ -280,12 +287,9 @@ nsresult nsHttpHeaderArray::GetOriginalHeader(const nsHttpAtom& aHeader,
         continue;
       }
 
-      nsAutoCString hdr;
-      if (entry.headerNameOriginal.IsEmpty()) {
-        hdr = nsDependentCString(entry.header);
-      } else {
-        hdr = entry.headerNameOriginal;
-      }
+      const nsCString& hdr = entry.headerNameOriginal.IsEmpty()
+                                 ? entry.header.val()
+                                 : entry.headerNameOriginal;
 
       rv = NS_OK;
       if (NS_FAILED(aVisitor->VisitHeader(hdr, entry.value))) {
@@ -327,12 +331,9 @@ nsresult nsHttpHeaderArray::VisitHeaders(
       continue;
     }
 
-    nsAutoCString hdr;
-    if (entry.headerNameOriginal.IsEmpty()) {
-      hdr = nsDependentCString(entry.header);
-    } else {
-      hdr = entry.headerNameOriginal;
-    }
+    const nsCString& hdr = entry.headerNameOriginal.IsEmpty()
+                               ? entry.header.val()
+                               : entry.headerNameOriginal;
     rv = visitor->VisitHeader(hdr, entry.value);
     if (NS_FAILED(rv)) {
       return rv;
@@ -428,7 +429,7 @@ void nsHttpHeaderArray::Flatten(nsACString& buf, bool pruneProxyHeaders,
     }
 
     if (entry.headerNameOriginal.IsEmpty()) {
-      buf.Append(entry.header);
+      buf.Append(entry.header.val());
     } else {
       buf.Append(entry.headerNameOriginal);
     }
@@ -448,7 +449,7 @@ void nsHttpHeaderArray::FlattenOriginalHeader(nsACString& buf) {
     }
 
     if (entry.headerNameOriginal.IsEmpty()) {
-      buf.Append(entry.header);
+      buf.Append(entry.header.val());
     } else {
       buf.Append(entry.headerNameOriginal);
     }

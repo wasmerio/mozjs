@@ -29,8 +29,9 @@ let gFluentStrings = new Localization([
  * @param {string} description.linkText
  *   The text content for the <a> element that should be displayed to the user
  *   for the particular state.
+ * @returns {Promise<undefined>}
  */
-function assertExtensionsProgressState(wizard, state, description) {
+async function assertExtensionsProgressState(wizard, state, description) {
   let shadow = wizard.openOrClosedShadowRoot;
 
   // Make sure that we're showing the progress page first.
@@ -47,31 +48,82 @@ function assertExtensionsProgressState(wizard, state, description) {
   let progressIcon = progressGroup.querySelector(".progress-icon");
   let messageText = progressGroup.querySelector("span.message-text");
   let supportLink = progressGroup.querySelector(".support-text");
-  let extensionsSuccessLink = progressGroup.querySelector("a.message-text");
+  let extensionsSuccessLink = progressGroup.querySelector(
+    "#extensions-success-link"
+  );
 
   if (state == MigrationWizardConstants.PROGRESS_VALUE.SUCCESS) {
     Assert.stringMatches(progressIcon.getAttribute("state"), "success");
     Assert.stringMatches(messageText.textContent, "");
-
-    Assert.stringMatches(extensionsSuccessLink.href, "about:addons");
-    Assert.stringMatches(
-      extensionsSuccessLink.textContent,
-      description.message
-    );
     Assert.stringMatches(supportLink.textContent, "");
+    await assertSuccessLink(extensionsSuccessLink, description.message);
   } else if (state == MigrationWizardConstants.PROGRESS_VALUE.WARNING) {
     Assert.stringMatches(progressIcon.getAttribute("state"), "warning");
     Assert.stringMatches(messageText.textContent, description.message);
-    Assert.stringMatches(supportLink.textContent, description.linkText);
-    Assert.stringMatches(supportLink.href, description.linkURL);
+    await assertSupportLink(
+      supportLink,
+      description.linkURL,
+      description.linkText
+    );
+    await assertSuccessLink(extensionsSuccessLink, "");
   } else if (state == MigrationWizardConstants.PROGRESS_VALUE.INFO) {
     Assert.stringMatches(progressIcon.getAttribute("state"), "info");
-    Assert.stringMatches(extensionsSuccessLink.href, description.linkURL);
-    Assert.stringMatches(
-      extensionsSuccessLink.textContent,
-      description.message
-    );
     Assert.stringMatches(supportLink.textContent, "");
+    await assertSuccessLink(extensionsSuccessLink, description.message);
+  }
+}
+
+/**
+ * Checks that the extensions migration success link has the right
+ * text content, and if the text content is non-blank, ensures that
+ * clicking on the link opens up about:addons in a background tab.
+ *
+ * The about:addons tab will be automatically closed before proceeding.
+ *
+ * @param {Element} link
+ *   The extensions migration success link element.
+ * @param {string} message
+ *   The expected string to appear in the link textContent. If the
+ *   link is not expected to appear, this should be the empty string.
+ * @returns {Promise<undefined>}
+ */
+async function assertSuccessLink(link, message) {
+  Assert.stringMatches(link.textContent, message);
+  if (message) {
+    let aboutAddonsOpened = BrowserTestUtils.waitForNewTab(
+      gBrowser,
+      "about:addons"
+    );
+    EventUtils.synthesizeMouseAtCenter(link, {}, link.ownerGlobal);
+    let tab = await aboutAddonsOpened;
+    BrowserTestUtils.removeTab(tab);
+  }
+}
+
+/**
+ * Checks that support links have the correct text, correct url,
+ * and if they have both text and a URL, checks that clicking on the link
+ * opens a background tab with the desired URL.
+ *
+ * @param {Element} link
+ *   The support-link link element.
+ * @param {string} url
+ *   The URL that is expected to be in the link. If the link is not
+ *   expected to appear, this should be an emptry string.
+ * @param {string} message
+ *   The expected string to appear in the link textContent. If the
+ *   link is not expected to appear, this should be an empty string.
+ * @returns {Promise<undefined>}
+ */
+async function assertSupportLink(link, url, message) {
+  Assert.stringMatches(link.textContent, message);
+  Assert.stringMatches(link.href, url);
+  if (message && url) {
+    link.href = "about:blank";
+    let linkOpened = BrowserTestUtils.waitForNewTab(gBrowser, link.href);
+    EventUtils.synthesizeMouseAtCenter(link, {}, link.ownerGlobal);
+    let tab = await linkOpened;
+    BrowserTestUtils.removeTab(tab);
   }
 }
 
@@ -101,7 +153,7 @@ add_task(async function test_extension_migration_no_matched_extensions() {
     ]);
     await migration;
     await wizardDone;
-    assertExtensionsProgressState(
+    await assertExtensionsProgressState(
       wizard,
       MigrationWizardConstants.PROGRESS_VALUE.WARNING,
       {
@@ -149,7 +201,7 @@ add_task(
       ]);
       await migration;
       await wizardDone;
-      assertExtensionsProgressState(
+      await assertExtensionsProgressState(
         wizard,
         MigrationWizardConstants.PROGRESS_VALUE.INFO,
         {
@@ -160,7 +212,6 @@ add_task(
               quantity: TOTAL_EXTENSIONS,
             }
           ),
-          linkURL: "about:addons",
           linkText: await gFluentStrings.formatValue(
             "migration-wizard-progress-extensions-support-link"
           ),
@@ -199,7 +250,7 @@ add_task(async function test_extension_migration_fully_matched_extensions() {
     ]);
     await migration;
     await wizardDone;
-    assertExtensionsProgressState(
+    await assertExtensionsProgressState(
       wizard,
       MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
       {

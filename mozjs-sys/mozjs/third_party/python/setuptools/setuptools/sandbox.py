@@ -9,6 +9,7 @@ import contextlib
 import pickle
 import textwrap
 import builtins
+from typing import Union, List
 
 import pkg_resources
 from distutils.errors import DistutilsError
@@ -19,14 +20,17 @@ if sys.platform.startswith('java'):
 else:
     _os = sys.modules[os.name]
 try:
-    _file = file
+    _file = file  # type: ignore[name-defined] # Check for global variable
 except NameError:
     _file = None
 _open = open
 
 
 __all__ = [
-    "AbstractSandbox", "DirectorySandbox", "SandboxViolation", "run_setup",
+    "AbstractSandbox",
+    "DirectorySandbox",
+    "SandboxViolation",
+    "run_setup",
 ]
 
 
@@ -106,12 +110,13 @@ class UnpickleableException(Exception):
         except Exception:
             # get UnpickleableException inside the sandbox
             from setuptools.sandbox import UnpickleableException as cls
+
             return cls.dump(cls, cls(repr(exc)))
 
 
 class ExceptionSaver:
     """
-    A Context Manager that will save an exception, serialized, and restore it
+    A Context Manager that will save an exception, serialize, and restore it
     later.
     """
 
@@ -120,7 +125,7 @@ class ExceptionSaver:
 
     def __exit__(self, type, exc, tb):
         if not exc:
-            return
+            return False
 
         # dump the exception
         self._saved = UnpickleableException.dump(type, exc)
@@ -154,7 +159,8 @@ def save_modules():
     sys.modules.update(saved)
     # remove any modules imported since
     del_modules = (
-        mod_name for mod_name in sys.modules
+        mod_name
+        for mod_name in sys.modules
         if mod_name not in saved
         # exclude any encodings modules. See #285
         and not mod_name.startswith('encodings.')
@@ -232,7 +238,7 @@ def hide_setuptools():
     """
     _distutils_hack = sys.modules.get('_distutils_hack', None)
     if _distutils_hack is not None:
-        _distutils_hack.remove_shim()
+        _distutils_hack._remove_shim()
 
     modules = filter(_needs_hiding, sys.modules)
     _clear_modules(modules)
@@ -265,7 +271,8 @@ class AbstractSandbox:
 
     def __init__(self):
         self._attrs = [
-            name for name in dir(_os)
+            name
+            for name in dir(_os)
             if not name.startswith('_') and hasattr(self, name)
         ]
 
@@ -292,7 +299,7 @@ class AbstractSandbox:
         with self:
             return func()
 
-    def _mk_dual_path_wrapper(name):
+    def _mk_dual_path_wrapper(name: str):  # type: ignore[misc] # https://github.com/pypa/setuptools/pull/4099
         original = getattr(_os, name)
 
         def wrap(self, src, dst, *args, **kw):
@@ -302,11 +309,11 @@ class AbstractSandbox:
 
         return wrap
 
-    for name in ["rename", "link", "symlink"]:
-        if hasattr(_os, name):
-            locals()[name] = _mk_dual_path_wrapper(name)
+    for __name in ["rename", "link", "symlink"]:
+        if hasattr(_os, __name):
+            locals()[__name] = _mk_dual_path_wrapper(__name)
 
-    def _mk_single_path_wrapper(name, original=None):
+    def _mk_single_path_wrapper(name: str, original=None):  # type: ignore[misc] # https://github.com/pypa/setuptools/pull/4099
         original = original or getattr(_os, name)
 
         def wrap(self, path, *args, **kw):
@@ -319,15 +326,31 @@ class AbstractSandbox:
     if _file:
         _file = _mk_single_path_wrapper('file', _file)
     _open = _mk_single_path_wrapper('open', _open)
-    for name in [
-        "stat", "listdir", "chdir", "open", "chmod", "chown", "mkdir",
-        "remove", "unlink", "rmdir", "utime", "lchown", "chroot", "lstat",
-        "startfile", "mkfifo", "mknod", "pathconf", "access"
+    for __name in [
+        "stat",
+        "listdir",
+        "chdir",
+        "open",
+        "chmod",
+        "chown",
+        "mkdir",
+        "remove",
+        "unlink",
+        "rmdir",
+        "utime",
+        "lchown",
+        "chroot",
+        "lstat",
+        "startfile",
+        "mkfifo",
+        "mknod",
+        "pathconf",
+        "access",
     ]:
-        if hasattr(_os, name):
-            locals()[name] = _mk_single_path_wrapper(name)
+        if hasattr(_os, __name):
+            locals()[__name] = _mk_single_path_wrapper(__name)
 
-    def _mk_single_with_return(name):
+    def _mk_single_with_return(name: str):  # type: ignore[misc] # https://github.com/pypa/setuptools/pull/4099
         original = getattr(_os, name)
 
         def wrap(self, path, *args, **kw):
@@ -338,11 +361,11 @@ class AbstractSandbox:
 
         return wrap
 
-    for name in ['readlink', 'tempnam']:
-        if hasattr(_os, name):
-            locals()[name] = _mk_single_with_return(name)
+    for __name in ['readlink', 'tempnam']:
+        if hasattr(_os, __name):
+            locals()[__name] = _mk_single_with_return(__name)
 
-    def _mk_query(name):
+    def _mk_query(name: str):  # type: ignore[misc] # https://github.com/pypa/setuptools/pull/4099
         original = getattr(_os, name)
 
         def wrap(self, *args, **kw):
@@ -353,9 +376,9 @@ class AbstractSandbox:
 
         return wrap
 
-    for name in ['getcwd', 'tmpnam']:
-        if hasattr(_os, name):
-            locals()[name] = _mk_query(name)
+    for __name in ['getcwd', 'tmpnam']:
+        if hasattr(_os, __name):
+            locals()[__name] = _mk_query(__name)
 
     def _validate_path(self, path):
         """Called to remap or validate any path, whether input or output"""
@@ -373,7 +396,7 @@ class AbstractSandbox:
         """Called for path pairs like rename, link, and symlink operations"""
         return (
             self._remap_input(operation + '-from', src, *args, **kw),
-            self._remap_input(operation + '-to', dst, *args, **kw)
+            self._remap_input(operation + '-to', dst, *args, **kw),
         )
 
 
@@ -387,27 +410,35 @@ class DirectorySandbox(AbstractSandbox):
     """Restrict operations to a single subdirectory - pseudo-chroot"""
 
     write_ops = dict.fromkeys([
-        "open", "chmod", "chown", "mkdir", "remove", "unlink", "rmdir",
-        "utime", "lchown", "chroot", "mkfifo", "mknod", "tempnam",
+        "open",
+        "chmod",
+        "chown",
+        "mkdir",
+        "remove",
+        "unlink",
+        "rmdir",
+        "utime",
+        "lchown",
+        "chroot",
+        "mkfifo",
+        "mknod",
+        "tempnam",
     ])
 
-    _exception_patterns = [
-        # Allow lib2to3 to attempt to save a pickled grammar object (#121)
-        r'.*lib2to3.*\.pickle$',
-    ]
+    _exception_patterns: List[Union[str, re.Pattern]] = []
     "exempt writing to paths that match the pattern"
 
     def __init__(self, sandbox, exceptions=_EXCEPTIONS):
         self._sandbox = os.path.normcase(os.path.realpath(sandbox))
         self._prefix = os.path.join(self._sandbox, '')
         self._exceptions = [
-            os.path.normcase(os.path.realpath(path))
-            for path in exceptions
+            os.path.normcase(os.path.realpath(path)) for path in exceptions
         ]
         AbstractSandbox.__init__(self)
 
     def _violation(self, operation, *args, **kw):
         from setuptools.sandbox import SandboxViolation
+
         raise SandboxViolation(operation, args, kw)
 
     if _file:
@@ -440,12 +471,10 @@ class DirectorySandbox(AbstractSandbox):
 
     def _exempted(self, filepath):
         start_matches = (
-            filepath.startswith(exception)
-            for exception in self._exceptions
+            filepath.startswith(exception) for exception in self._exceptions
         )
         pattern_matches = (
-            re.match(pattern, filepath)
-            for pattern in self._exception_patterns
+            re.match(pattern, filepath) for pattern in self._exception_patterns
         )
         candidates = itertools.chain(start_matches, pattern_matches)
         return any(candidates)
@@ -470,16 +499,19 @@ class DirectorySandbox(AbstractSandbox):
 
 
 WRITE_FLAGS = functools.reduce(
-    operator.or_, [
-        getattr(_os, a, 0) for a in
-        "O_WRONLY O_RDWR O_APPEND O_CREAT O_TRUNC O_TEMPORARY".split()]
+    operator.or_,
+    [
+        getattr(_os, a, 0)
+        for a in "O_WRONLY O_RDWR O_APPEND O_CREAT O_TRUNC O_TEMPORARY".split()
+    ],
 )
 
 
 class SandboxViolation(DistutilsError):
     """A setup script attempted to modify the filesystem outside the sandbox"""
 
-    tmpl = textwrap.dedent("""
+    tmpl = textwrap.dedent(
+        """
         SandboxViolation: {cmd}{args!r} {kwargs}
 
         The package setup script has attempted to modify files on your system
@@ -489,7 +521,8 @@ class SandboxViolation(DistutilsError):
         support alternate installation locations even if you run its setup
         script by hand.  Please inform the package's author and the EasyInstall
         maintainers to find out if a fix or workaround is available.
-        """).lstrip()
+        """
+    ).lstrip()
 
     def __str__(self):
         cmd, args, kwargs = self.args

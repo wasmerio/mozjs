@@ -47,6 +47,7 @@ class Compositor;
 class CompositorBridgeParentBase;
 class CompositorVsyncScheduler;
 class OMTASampler;
+class RemoteTextureTxnScheduler;
 class UiCompositorControllerParent;
 class WebRenderBridgeParentRef;
 class WebRenderImageHost;
@@ -138,9 +139,6 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
   mozilla::ipc::IPCResult RecvGetSnapshot(NotNull<PTextureParent*> aTexture,
                                           bool* aNeedsYFlip) override;
 
-  mozilla::ipc::IPCResult RecvSetLayersObserverEpoch(
-      const LayersObserverEpoch& aChildEpoch) override;
-
   mozilla::ipc::IPCResult RecvClearCachedResources() override;
   mozilla::ipc::IPCResult RecvClearAnimationResources() override;
   mozilla::ipc::IPCResult RecvInvalidateRenderedFrame() override;
@@ -194,6 +192,7 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
   // CompositableParentManager
   bool IsSameProcess() const override;
   base::ProcessId GetChildProcessId() override;
+  dom::ContentParentId GetContentId() override;
   void NotifyNotUsed(PTextureParent* aTexture,
                      uint64_t aTransactionId) override;
   void SendAsyncMessage(
@@ -245,7 +244,7 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
     return aFontKey.mNamespace == mIdNamespace;
   }
 
-  void FlushRendering(wr::RenderReasons aReasons, bool aWaitForPresent = true);
+  void FlushRendering(wr::RenderReasons aReasons, bool aBlocking = true);
 
   /**
    * Schedule generating WebRender frame definitely at next composite timing.
@@ -324,8 +323,7 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
 
   bool ProcessDisplayListData(DisplayListData& aDisplayList, wr::Epoch aWrEpoch,
                               const TimeStamp& aTxnStartTime,
-                              bool aValidTransaction,
-                              bool aObserveLayersUpdate);
+                              bool aValidTransaction);
 
   bool SetDisplayList(const LayoutDeviceRect& aRect, ipc::ByteBuf&& aDLItems,
                       ipc::ByteBuf&& aDLCache, ipc::ByteBuf&& aSpatialTreeDL,
@@ -334,8 +332,7 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
                       const nsTArray<RefCountedShmem>& aSmallShmems,
                       const nsTArray<ipc::Shmem>& aLargeShmems,
                       const TimeStamp& aTxnStartTime,
-                      wr::TransactionBuilder& aTxn, wr::Epoch aWrEpoch,
-                      bool aObserveLayersUpdate);
+                      wr::TransactionBuilder& aTxn, wr::Epoch aWrEpoch);
 
   void UpdateAPZFocusState(const FocusTarget& aFocus);
   void UpdateAPZScrollData(const wr::Epoch& aEpoch,
@@ -368,6 +365,7 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
                                     wr::TransactionBuilder& aTxn,
                                     wr::TransactionBuilder& aTxnForImageBridge);
   void RemovePipelineIdForCompositable(const wr::PipelineId& aPipelineId,
+                                       AsyncImagePipelineOps* aPendingOps,
                                        wr::TransactionBuilder& aTxn);
 
   void DeleteImage(const wr::ImageKey& aKey, wr::TransactionBuilder& aUpdates);
@@ -379,8 +377,9 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
 
   void ClearResources();
   void ClearAnimationResources();
-  bool ShouldParentObserveEpoch();
   mozilla::ipc::IPCResult HandleShutdown();
+
+  void MaybeNotifyOfLayers(wr::TransactionBuilder&, bool aWillHaveLayers);
 
   void ResetPreviousSampleTime();
 
@@ -472,12 +471,6 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
 
   TimeDuration mVsyncRate;
   TimeStamp mPreviousFrameTimeStamp;
-  // These fields keep track of the latest layer observer epoch values in the
-  // child and the parent. mChildLayersObserverEpoch is the latest epoch value
-  // received from the child. mParentLayersObserverEpoch is the latest epoch
-  // value that we have told BrowserParent about (via ObserveLayerUpdate).
-  LayersObserverEpoch mChildLayersObserverEpoch;
-  LayersObserverEpoch mParentLayersObserverEpoch;
 
   std::deque<PendingTransactionId> mPendingTransactionIds;
   std::queue<CompositorAnimationIdsForEpoch> mCompositorAnimationsToDelete;
@@ -497,13 +490,16 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
   uint16_t mBlobTileSize;
   wr::RenderReasons mSkippedCompositeReasons;
   bool mDestroyed;
-  bool mReceivedDisplayList;
   bool mIsFirstPaint;
-  bool mSkippedComposite;
-  bool mDisablingNativeCompositor;
+  bool mLastNotifiedHasLayers = false;
+  bool mReceivedDisplayList = false;
+  bool mSkippedComposite = false;
+  bool mDisablingNativeCompositor = false;
   // These payloads are being used for SCROLL_PRESENT_LATENCY telemetry
   DataMutex<nsClassHashtable<nsUint64HashKey, nsTArray<CompositionPayload>>>
       mPendingScrollPayloads;
+
+  RefPtr<RemoteTextureTxnScheduler> mRemoteTextureTxnScheduler;
 };
 
 // Use this class, since WebRenderBridgeParent could not supports

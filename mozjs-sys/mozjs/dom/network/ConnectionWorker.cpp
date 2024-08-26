@@ -109,7 +109,7 @@ class ShutdownRunnable : public WorkerMainThreadRunnable {
   }
 };
 
-class NotifyRunnable : public WorkerRunnable {
+class NotifyRunnable final : public WorkerThreadRunnable {
  private:
   RefPtr<ConnectionProxy> mProxy;
 
@@ -120,7 +120,7 @@ class NotifyRunnable : public WorkerRunnable {
  public:
   NotifyRunnable(WorkerPrivate* aWorkerPrivate, ConnectionProxy* aProxy,
                  ConnectionType aType, bool aIsWifi, uint32_t aDHCPGateway)
-      : WorkerRunnable(aWorkerPrivate),
+      : WorkerThreadRunnable("NotifyRunnable"),
         mProxy(aProxy),
         mConnectionType(aType),
         mIsWifi(aIsWifi),
@@ -183,7 +183,7 @@ void ConnectionProxy::Notify(const hal::NetworkInformation& aNetworkInfo) {
       new NotifyRunnable(mWorkerRef->Private(), this,
                          static_cast<ConnectionType>(aNetworkInfo.type()),
                          aNetworkInfo.isWifi(), aNetworkInfo.dhcpGateway());
-  runnable->Dispatch();
+  runnable->Dispatch(mWorkerRef->Private());
 }
 
 void ConnectionProxy::Shutdown() {

@@ -1,0 +1,1 @@
+GetProp, 1, 1, 5, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(Id) , LASTUSED(3) , OP(GuardToObject) ID(0) OP(GuardIsProxy) ID(0) OP(GuardIsNotDOMProxy) ID(0) OP(ProxyGetResult) ID(0) OFFSET(0) OP(ReturnFromIC)  

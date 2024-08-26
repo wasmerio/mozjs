@@ -1,0 +1,1 @@
+GetName, 1, 1, 2, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(RawInt32) , LASTUSED(0) , OP(LoadDynamicSlotResult) ID(0) OFFSET(0) OP(ReturnFromIC)  

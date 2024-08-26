@@ -25,6 +25,50 @@ function resetPrefs() {
   Services.prefs.clearUserPref("browser.fixup.alternate.enabled");
 }
 
+const SSL_ERROR_BASE = -0x3000;
+const SSL_ERROR_NO_CYPHER_OVERLAP = SSL_ERROR_BASE + 2;
+const SSL_ERROR_PROTOCOL_VERSION_ALERT = SSL_ERROR_BASE + 98;
+
+function nssErrorToNSErrorAsString(nssError) {
+  let nssErrorsService = Cc["@mozilla.org/nss_errors_service;1"].getService(
+    Ci.nsINSSErrorsService
+  );
+  return nssErrorsService.getXPCOMFromNSSError(nssError).toString();
+}
+
+async function resetTelemetry() {
+  Services.telemetry.clearEvents();
+  await TestUtils.waitForCondition(() => {
+    let events = Services.telemetry.snapshotEvents(
+      Ci.nsITelemetry.DATASET_PRERELEASE_CHANNELS,
+      true
+    ).content;
+    return !events || !events.length;
+  });
+  Services.telemetry.setEventRecordingEnabled("security.ui.tlserror", true);
+}
+
+async function checkTelemetry(errorString, nssError) {
+  let loadEvent = await TestUtils.waitForCondition(() => {
+    let events = Services.telemetry.snapshotEvents(
+      Ci.nsITelemetry.DATASET_PRERELEASE_CHANNELS,
+      true
+    ).content;
+    return events?.find(e => e[1] == "security.ui.tlserror" && e[2] == "load");
+  }, "recorded telemetry for the load");
+  loadEvent.shift();
+  Assert.deepEqual(loadEvent, [
+    "security.ui.tlserror",
+    "load",
+    "abouttlserror",
+    errorString,
+    {
+      is_frame: "false",
+      channel_status: nssErrorToNSErrorAsString(nssError),
+    },
+  ]);
+}
+
 add_task(async function resetToDefaultConfig() {
   info(
     "Change TLS config to cause page load to fail, check that reset button is shown and that it works"
@@ -33,6 +77,8 @@ add_task(async function resetToDefaultConfig() {
   // Set ourselves up for a TLS error.
   Services.prefs.setIntPref("security.tls.version.min", 1); // TLS 1.0
   Services.prefs.setIntPref("security.tls.version.max", 1);
+
+  await resetTelemetry();
 
   let browser;
   let pageLoaded;
@@ -48,6 +94,11 @@ add_task(async function resetToDefaultConfig() {
 
   info("Loading and waiting for the net error");
   await pageLoaded;
+
+  await checkTelemetry(
+    "SSL_ERROR_PROTOCOL_VERSION_ALERT",
+    SSL_ERROR_PROTOCOL_VERSION_ALERT
+  );
 
   // Setup an observer for the target page.
   const finalLoadComplete = BrowserTestUtils.browserLoaded(
@@ -65,7 +116,7 @@ add_task(async function resetToDefaultConfig() {
 
     const prefResetButton = doc.getElementById("prefResetButton");
     await ContentTaskUtils.waitForCondition(
-      () => ContentTaskUtils.is_visible(prefResetButton),
+      () => ContentTaskUtils.isVisible(prefResetButton),
       "prefResetButton is visible"
     );
 
@@ -92,6 +143,8 @@ add_task(async function checkLearnMoreLink() {
   Services.prefs.setIntPref("security.tls.version.min", 3);
   Services.prefs.setIntPref("security.tls.version.max", 4);
 
+  await resetTelemetry();
+
   let browser;
   let pageLoaded;
   await BrowserTestUtils.openNewForegroundTab(
@@ -107,6 +160,11 @@ add_task(async function checkLearnMoreLink() {
   info("Loading and waiting for the net error");
   await pageLoaded;
 
+  await checkTelemetry(
+    "SSL_ERROR_PROTOCOL_VERSION_ALERT",
+    SSL_ERROR_PROTOCOL_VERSION_ALERT
+  );
+
   const baseURL = Services.urlFormatter.formatURLPref("app.support.baseURL");
 
   await SpecialPowers.spawn(browser, [baseURL], function (_baseURL) {
@@ -118,15 +176,12 @@ add_task(async function checkLearnMoreLink() {
 
     const tlsVersionNotice = doc.getElementById("tlsVersionNotice");
     ok(
-      ContentTaskUtils.is_visible(tlsVersionNotice),
+      ContentTaskUtils.isVisible(tlsVersionNotice),
       "TLS version notice is visible"
     );
 
     const learnMoreLink = doc.getElementById("learnMoreLink");
-    ok(
-      ContentTaskUtils.is_visible(learnMoreLink),
-      "Learn More link is visible"
-    );
+    ok(ContentTaskUtils.isVisible(learnMoreLink), "Learn More link is visible");
     is(learnMoreLink.getAttribute("href"), _baseURL + "connection-not-secure");
 
     const titleEl = doc.querySelector(".title-text");
@@ -182,7 +237,7 @@ add_task(async function checkDomainCorrection() {
     );
 
     const errorNotice = doc.getElementById("errorShortDesc");
-    ok(ContentTaskUtils.is_visible(errorNotice), "Error text is visible");
+    ok(ContentTaskUtils.isVisible(errorNotice), "Error text is visible");
 
     // Wait for the domain suggestion to be resolved and for the text to update
     let link;
@@ -209,13 +264,20 @@ add_task(async function checkDomainCorrection() {
 // Test that ciphersuites that use 3DES (namely, TLS_RSA_WITH_3DES_EDE_CBC_SHA)
 // can only be enabled when deprecated TLS is enabled.
 add_task(async function onlyAllow3DESWithDeprecatedTLS() {
+  await resetTelemetry();
+
   // By default, connecting to a server that only uses 3DES should fail.
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: "about:blank" },
     async browser => {
-      BrowserTestUtils.loadURIString(browser, TRIPLEDES_PAGE);
+      BrowserTestUtils.startLoadingURIString(browser, TRIPLEDES_PAGE);
       await BrowserTestUtils.waitForErrorPage(browser);
     }
+  );
+
+  await checkTelemetry(
+    "SSL_ERROR_NO_CYPHER_OVERLAP",
+    SSL_ERROR_NO_CYPHER_OVERLAP
   );
 
   // Enabling deprecated TLS should also enable 3DES.
@@ -223,7 +285,7 @@ add_task(async function onlyAllow3DESWithDeprecatedTLS() {
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: "about:blank" },
     async browser => {
-      BrowserTestUtils.loadURIString(browser, TRIPLEDES_PAGE);
+      BrowserTestUtils.startLoadingURIString(browser, TRIPLEDES_PAGE);
       await BrowserTestUtils.browserLoaded(browser, false, TRIPLEDES_PAGE);
     }
   );
@@ -236,7 +298,7 @@ add_task(async function onlyAllow3DESWithDeprecatedTLS() {
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: "about:blank" },
     async browser => {
-      BrowserTestUtils.loadURIString(browser, TRIPLEDES_PAGE);
+      BrowserTestUtils.startLoadingURIString(browser, TRIPLEDES_PAGE);
       await BrowserTestUtils.waitForErrorPage(browser);
     }
   );

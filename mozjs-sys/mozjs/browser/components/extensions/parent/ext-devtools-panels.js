@@ -83,9 +83,43 @@ class BaseDevToolsPanel {
       }
     );
 
+    this.syncToolboxZoom();
+    this.toolbox.win.browsingContext.embedderElement.addEventListener(
+      "FullZoomChange",
+      this
+    );
+
     this.browser.fixupAndLoadURIString(url, {
       triggeringPrincipal: this.context.principal,
     });
+  }
+
+  handleEvent(event) {
+    switch (event.type) {
+      case "FullZoomChange": {
+        this.syncToolboxZoom();
+        break;
+      }
+    }
+  }
+
+  /**
+   * The remote `<browser>` that loads the panel content does not inherit
+   * the zoom level of the `<browser>` it's nested inside of.
+   *
+   *   about:devtools-toolbox <browser> (zoom level applied here)
+   *     - ...
+   *     - webext-panels.xhtml <iframe> (inherits zoom)
+   *       - <browser remote="true"> (doesn't inherit zoom)
+   *
+   * To work around this, we manually synchronize the zoom levels.
+   */
+  syncToolboxZoom() {
+    if (!this.browser) {
+      return;
+    }
+
+    this.browser.fullZoom = this.toolbox.win.browsingContext.fullZoom;
   }
 
   destroyBrowserElement() {
@@ -93,6 +127,13 @@ class BaseDevToolsPanel {
     if (unwatchExtensionProxyContextLoad) {
       this.unwatchExtensionProxyContextLoad = null;
       unwatchExtensionProxyContextLoad();
+    }
+
+    if (this.toolbox) {
+      this.toolbox.win.browsingContext.embedderElement.removeEventListener(
+        "FullZoomChange",
+        this
+      );
     }
 
     if (browser) {
@@ -104,20 +145,21 @@ class BaseDevToolsPanel {
 
 /**
  * Represents an addon devtools panel in the main process.
- *
- * @param {ExtensionChildProxyContext} context
- *        A devtools extension proxy context running in a main process.
- * @param {object} options
- * @param {string} options.id
- *        The id of the addon devtools panel.
- * @param {string} options.icon
- *        The icon of the addon devtools panel.
- * @param {string} options.title
- *        The title of the addon devtools panel.
- * @param {string} options.url
- *        The url of the addon devtools panel, relative to the extension base URL.
  */
 class ParentDevToolsPanel extends BaseDevToolsPanel {
+  /**
+   * @param {DevToolsExtensionPageContextParent} context
+   *        A devtools extension proxy context running in a main process.
+   * @param {object} panelOptions
+   * @param {string} panelOptions.id
+   *        The id of the addon devtools panel.
+   * @param {string} panelOptions.icon
+   *        The icon of the addon devtools panel.
+   * @param {string} panelOptions.title
+   *        The title of the addon devtools panel.
+   * @param {string} panelOptions.url
+   *        The url of the addon devtools panel, relative to the extension base URL.
+   */
   constructor(context, panelOptions) {
     super(context, panelOptions);
 
@@ -339,16 +381,17 @@ class DevToolsSelectionObserver extends EventEmitter {
 
 /**
  * Represents an addon devtools inspector sidebar in the main process.
- *
- * @param {ExtensionChildProxyContext} context
- *        A devtools extension proxy context running in a main process.
- * @param {object} options
- * @param {string} options.id
- *        The id of the addon devtools sidebar.
- * @param {string} options.title
- *        The title of the addon devtools sidebar.
  */
 class ParentDevToolsInspectorSidebar extends BaseDevToolsPanel {
+  /**
+   * @param {DevToolsExtensionPageContextParent} context
+   *        A devtools extension proxy context running in a main process.
+   * @param {object} panelOptions
+   * @param {string} panelOptions.id
+   *        The id of the addon devtools sidebar.
+   * @param {string} panelOptions.title
+   *        The title of the addon devtools sidebar.
+   */
   constructor(context, panelOptions) {
     super(context, panelOptions);
 
@@ -593,7 +636,7 @@ this.devtools_panels = class extends ExtensionAPI {
               context,
               name: "devtools.panels.elements.onSelectionChanged",
               register: fire => {
-                const listener = eventName => {
+                const listener = () => {
                   fire.async();
                 };
                 toolboxSelectionObserver.on("selectionChanged", listener);

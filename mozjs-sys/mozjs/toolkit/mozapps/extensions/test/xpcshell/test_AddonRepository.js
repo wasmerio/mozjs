@@ -2,7 +2,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-// Tests AddonRepository.jsm
+// Tests AddonRepository.sys.mjs
 
 var gServer = createHttpServer({ hosts: ["example.com"] });
 
@@ -73,6 +73,7 @@ var ADDON_PROPERTIES = [
   "dailyUsers",
   "sourceURI",
   "updateDate",
+  "amoListingURL",
 ];
 
 // Results of getAddonsByIDs
@@ -119,6 +120,8 @@ var GET_RESULTS = [
     weeklyDownloads: 3333,
     sourceURI: BASE_URL + INSTALL_URL2,
     updateDate: new Date(1265033045000),
+    amoListingURL:
+      "https://addons.mozilla.org/en-US/firefox/addon/test1@tests.mozilla.org/",
   },
   {
     id: "test2@tests.mozilla.org",
@@ -366,7 +369,11 @@ add_task(
     pref_set: [[PREF_GET_BROWSER_MAPPINGS, GET_BROWSER_MAPPINGS_URL]],
   },
   async function test_getMappedAddons() {
-    const result = await AddonRepository.getMappedAddons("valid-browser-id", [
+    const {
+      addons: result,
+      matchedIDs,
+      unmatchedIDs,
+    } = await AddonRepository.getMappedAddons("valid-browser-id", [
       "browser-extension-test-1",
       "browser-extension-test-2",
       // This one is mapped but the search API won't return any data.
@@ -378,6 +385,16 @@ add_task(
     ]);
     Assert.equal(result.length, 3, "expected 3 mapped add-ons");
     check_results(result, GET_RESULTS);
+    Assert.deepEqual(matchedIDs, [
+      "browser-extension-test-1",
+      "browser-extension-test-2",
+      "browser-extension-test-3",
+      "browser-extension-test-4",
+    ]);
+    Assert.deepEqual(unmatchedIDs, [
+      "browser-extension-test-5",
+      "browser-extension-test-6",
+    ]);
   }
 );
 
@@ -386,11 +403,14 @@ add_task(
     pref_set: [[PREF_GET_BROWSER_MAPPINGS, GET_BROWSER_MAPPINGS_URL]],
   },
   async function test_getMappedAddons_empty_list_of_ids() {
-    const result = await AddonRepository.getMappedAddons(
-      "valid-browser-id",
-      []
-    );
+    const {
+      addons: result,
+      matchedIDs,
+      unmatchedIDs,
+    } = await AddonRepository.getMappedAddons("valid-browser-id", []);
     Assert.equal(result.length, 0, "expected 0 mapped add-ons");
+    Assert.equal(matchedIDs.length, 0, "expected 0 matched IDs");
+    Assert.equal(unmatchedIDs.length, 0, "expected 0 unmatched IDs");
   }
 );
 
@@ -399,12 +419,18 @@ add_task(
     pref_set: [[PREF_GET_BROWSER_MAPPINGS, GET_BROWSER_MAPPINGS_URL]],
   },
   async function test_getMappedAddons_invalid_ids() {
-    const result = await AddonRepository.getMappedAddons("valid-browser-id", [
+    const {
+      addons: result,
+      matchedIDs,
+      unmatchedIDs,
+    } = await AddonRepository.getMappedAddons("valid-browser-id", [
       "",
       null,
       undefined,
     ]);
     Assert.equal(result.length, 0, "expected 0 mapped add-ons");
+    Assert.equal(matchedIDs.length, 0, "expected 0 matched IDs");
+    Assert.deepEqual(unmatchedIDs, ["", null, undefined]);
   }
 );
 
@@ -413,15 +439,18 @@ add_task(
     pref_set: [[PREF_GET_BROWSER_MAPPINGS, GET_BROWSER_MAPPINGS_URL]],
   },
   async function test_getMappedAddons_empty_mapping() {
-    const result = await AddonRepository.getMappedAddons(
-      "browser-id-empty-results",
-      [
-        "browser-extension-test-1",
-        "browser-extension-test-2",
-        "browser-extension-test-3",
-      ]
-    );
+    const {
+      addons: result,
+      matchedIDs,
+      unmatchedIDs,
+    } = await AddonRepository.getMappedAddons("browser-id-empty-results", [
+      "browser-extension-test-1",
+      "browser-extension-test-2",
+      "browser-extension-test-3",
+    ]);
     Assert.equal(result.length, 0, "expected no mapped add-ons");
+    Assert.equal(matchedIDs.length, 0, "expected 0 matched IDs");
+    Assert.equal(unmatchedIDs.length, 3, "expected 3 unmatched IDs");
   }
 );
 
@@ -435,7 +464,11 @@ add_task(
     ],
   },
   async function test_getMappedAddons_with_paging() {
-    const result = await AddonRepository.getMappedAddons("valid-browser-id", [
+    const {
+      addons: result,
+      matchedIDs,
+      unmatchedIDs,
+    } = await AddonRepository.getMappedAddons("valid-browser-id", [
       "browser-extension-test-1",
       "browser-extension-test-2",
       // This one is mapped but the search API won't return any data.
@@ -444,5 +477,12 @@ add_task(
     ]);
     Assert.equal(result.length, 3, "expected 3 mapped add-ons");
     check_results(result, GET_RESULTS);
+    Assert.deepEqual(matchedIDs, [
+      "browser-extension-test-1",
+      "browser-extension-test-2",
+      "browser-extension-test-3",
+      "browser-extension-test-4",
+    ]);
+    Assert.deepEqual(unmatchedIDs, []);
   }
 );

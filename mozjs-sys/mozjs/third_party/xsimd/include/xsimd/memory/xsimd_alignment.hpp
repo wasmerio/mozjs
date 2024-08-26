@@ -43,8 +43,8 @@ namespace xsimd
         using type = unaligned_mode;
     };
 
-    template <class T>
-    struct allocator_alignment<aligned_allocator<T>>
+    template <class T, size_t N>
+    struct allocator_alignment<aligned_allocator<T, N>>
     {
         using type = aligned_mode;
     };
@@ -81,7 +81,7 @@ namespace xsimd
      * @return true if the alignment requirements are met
      */
     template <class Arch = default_arch>
-    inline bool is_aligned(void const* ptr)
+    XSIMD_INLINE bool is_aligned(void const* ptr)
     {
         return (reinterpret_cast<uintptr_t>(ptr) % static_cast<uintptr_t>(Arch::alignment())) == 0;
     }

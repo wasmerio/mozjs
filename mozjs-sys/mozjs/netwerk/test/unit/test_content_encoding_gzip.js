@@ -1,6 +1,8 @@
 "use strict";
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserver = new HttpServer();
 var index = 0;
@@ -111,7 +113,7 @@ function startIter() {
   );
 }
 
-function completeIter(request, data, ctx) {
+function completeIter(request, data) {
   if (!(tests[index].flags & CL_EXPECT_FAILURE)) {
     Assert.equal(data.length, tests[index].datalen, "test " + index);
   }

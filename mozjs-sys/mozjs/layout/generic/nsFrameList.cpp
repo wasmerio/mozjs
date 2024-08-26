@@ -18,11 +18,7 @@
 
 using namespace mozilla;
 
-namespace mozilla {
-namespace detail {
-const AlignedFrameListBytes gEmptyFrameListBytes = {0};
-}  // namespace detail
-}  // namespace mozilla
+const nsFrameList nsFrameList::sEmptyList;
 
 void* nsFrameList::operator new(size_t sz, mozilla::PresShell* aPresShell) {
   return aPresShell->AllocateByObjectID(eArenaObjectID_nsFrameList, sz);
@@ -35,21 +31,11 @@ void nsFrameList::Delete(mozilla::PresShell* aPresShell) {
   aPresShell->FreeByObjectID(eArenaObjectID_nsFrameList, this);
 }
 
-void nsFrameList::DestroyFrames() {
-  while (nsIFrame* frame = RemoveFirstChild()) {
-    frame->Destroy();
+void nsFrameList::DestroyFrames(FrameDestroyContext& aContext) {
+  while (nsIFrame* frame = RemoveLastChild()) {
+    frame->Destroy(aContext);
   }
-  mLastChild = nullptr;
-}
-
-void nsFrameList::DestroyFramesFrom(nsIFrame* aDestructRoot,
-                                    PostFrameDestroyData& aPostDestroyData) {
-  MOZ_ASSERT(aDestructRoot, "Missing destruct root");
-
-  while (nsIFrame* frame = RemoveFirstChild()) {
-    frame->DestroyFrom(aDestructRoot, aPostDestroyData);
-  }
-  mLastChild = nullptr;
+  MOZ_ASSERT(!mFirstChild && !mLastChild, "We should've destroyed all frames!");
 }
 
 void nsFrameList::RemoveFrame(nsIFrame* aFrame) {
@@ -105,10 +91,20 @@ nsIFrame* nsFrameList::RemoveFirstChild() {
   return nullptr;
 }
 
-void nsFrameList::DestroyFrame(nsIFrame* aFrame) {
+nsIFrame* nsFrameList::RemoveLastChild() {
+  if (mLastChild) {
+    nsIFrame* lastChild = mLastChild;
+    RemoveFrame(lastChild);
+    return lastChild;
+  }
+  return nullptr;
+}
+
+void nsFrameList::DestroyFrame(FrameDestroyContext& aContext,
+                               nsIFrame* aFrame) {
   MOZ_ASSERT(aFrame, "null ptr");
   RemoveFrame(aFrame);
-  aFrame->Destroy();
+  aFrame->Destroy(aContext);
 }
 
 nsFrameList::Slice nsFrameList::InsertFrames(nsContainerFrame* aParent,
@@ -443,8 +439,6 @@ const char* ChildListName(FrameChildListID aListID) {
   switch (aListID) {
     case FrameChildListID::Principal:
       return "";
-    case FrameChildListID::Popup:
-      return "PopupList";
     case FrameChildListID::Caption:
       return "CaptionList";
     case FrameChildListID::ColGroup:

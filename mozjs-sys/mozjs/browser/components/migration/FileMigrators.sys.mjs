@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const lazy = {};
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 ChromeUtils.defineESModuleGetters(lazy, {
   BookmarkHTMLUtils: "resource://gre/modules/BookmarkHTMLUtils.sys.mjs",
@@ -13,7 +12,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "chrome://browser/content/migration/migration-wizard-constants.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "gFluentStrings", function () {
+ChromeUtils.defineLazyGetter(lazy, "gFluentStrings", function () {
   return new Localization([
     "branding/brand.ftl",
     "browser/migrationWizard.ftl",
@@ -139,11 +138,10 @@ export class FileMigratorBase {
    * from the native file picker. This will not be called if the user
    * chooses to cancel the native file picker.
    *
-   * @param {string} filePath
+   * @param {string} _filePath
    *   The path that the user selected from the native file picker.
    */
-  // eslint-disable-next-line no-unused-vars
-  async migrate(filePath) {
+  async migrate(_filePath) {
     throw new Error("FileMigrator.migrate must be overridden.");
   }
 }

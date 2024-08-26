@@ -1,0 +1,1 @@
+Compare, 2, 3, 5, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(Double) , LASTUSED(0) LASTUSED(3) LASTUSED(3) , OP(GuardIsUndefined) ID(0) OP(LoadDoubleConstant) OFFSET(0) ID(2) OP(GuardToBigInt) ID(1) OP(CompareBigIntNumberResult) JSOP(Gt) ID(1) ID(2) OP(ReturnFromIC)  

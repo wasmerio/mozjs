@@ -166,6 +166,28 @@ impl SwSurface {
         let device_rect = transform.map_rect(&bounds.to_f32()).round_out();
         Some(device_rect.intersection(&clip_rect.to_f32())?.to_i32())
     }
+
+    /// Check that there are no missing tiles in the interior, or rather, that
+    /// the grid of tiles is solidly rectangular.
+    fn has_all_tiles(&self) -> bool {
+        if self.tiles.is_empty() {
+            return false;
+        }
+        // Find the min and max tile ids to identify the tile id bounds.
+        let mut min_x = i32::MAX;
+        let mut min_y = i32::MAX;
+        let mut max_x = i32::MIN;
+        let mut max_y = i32::MIN;
+        for tile in &self.tiles {
+            min_x = min_x.min(tile.x);
+            min_y = min_y.min(tile.y);
+            max_x = max_x.max(tile.x);
+            max_y = max_y.max(tile.y);
+        }
+        // If all tiles are present within the bounds, then the number of tiles
+        // should equal the area of the bounds.
+        (max_x + 1 - min_x) as usize * (max_y + 1 - min_y) as usize == self.tiles.len()
+    }
 }
 
 fn image_rendering_to_gl_filter(filter: ImageRendering) -> gl::GLenum {
@@ -334,6 +356,8 @@ impl DerefMut for SwCompositeGraphNodeRef {
 struct SwCompositeGraphNode {
     /// Job to be queued for this graph node once ready.
     job: Option<SwCompositeJob>,
+    /// Whether there is a job that requires processing.
+    has_job: AtomicBool,
     /// The number of remaining bands associated with this job. When this is
     /// non-zero and the node has no more parents left, then the node is being
     /// actively used by the composite thread to process jobs. Once it hits
@@ -356,6 +380,7 @@ impl SwCompositeGraphNode {
     fn new() -> SwCompositeGraphNodeRef {
         SwCompositeGraphNodeRef::new(SwCompositeGraphNode {
             job: None,
+            has_job: AtomicBool::new(false),
             remaining_bands: AtomicU8::new(0),
             available_bands: AtomicI8::new(0),
             parents: AtomicU32::new(0),
@@ -366,6 +391,7 @@ impl SwCompositeGraphNode {
     /// Reset the node's state for a new frame
     fn reset(&mut self) {
         self.job = None;
+        self.has_job.store(false, Ordering::SeqCst);
         self.remaining_bands.store(0, Ordering::SeqCst);
         self.available_bands.store(0, Ordering::SeqCst);
         // Initialize parents to 1 as sentinel dependency for uninitialized job
@@ -384,6 +410,7 @@ impl SwCompositeGraphNode {
     /// that would block immediate composition.
     fn set_job(&mut self, job: SwCompositeJob, num_bands: u8) -> bool {
         self.job = Some(job);
+        self.has_job.store(true, Ordering::SeqCst);
         self.remaining_bands.store(num_bands, Ordering::SeqCst);
         self.available_bands.store(num_bands as _, Ordering::SeqCst);
         // Subtract off the sentinel parent dependency now that job is initialized and check
@@ -417,6 +444,8 @@ impl SwCompositeGraphNode {
         }
         // Clear the job to release any locked resources.
         self.job = None;
+        // Signal that resources have been released.
+        self.has_job.store(false, Ordering::SeqCst);
         let mut lock = None;
         for child in self.children.drain(..) {
             // Remove the child's parent dependency on this node. If there are no more
@@ -830,6 +859,11 @@ impl SwCompositor {
             base.start.min(extra.start)..base.end.max(extra.end)
         }
 
+        // Ensure an occluder surface is both opaque and has all interior tiles.
+        fn valid_occluder(surface: &SwSurface) -> bool {
+            surface.is_opaque && surface.has_all_tiles()
+        }
+
         // Before we can try to occlude any surfaces, we need to fix their clip rects to tightly
         // bound the valid region. The clip rect might otherwise enclose an invalid area that
         // can't fully occlude anything even if the surface is opaque.
@@ -845,7 +879,7 @@ impl SwCompositor {
         for occlude_index in 0..self.frame_surfaces.len() {
             let (ref occlude_id, _, ref occlude_rect, _) = self.frame_surfaces[occlude_index];
             match self.surfaces.get(occlude_id) {
-                Some(occluder) if occluder.is_opaque && !occlude_rect.is_empty() => {}
+                Some(occluder) if valid_occluder(occluder) && !occlude_rect.is_empty() => {}
                 _ => continue,
             }
 
@@ -866,14 +900,14 @@ impl SwCompositor {
                     if includes(&occlude_x, &clip_x) {
                         if let Some(visible) = overlaps(&occlude_y, &clip_y) {
                             set_y_range(clip_rect, &visible);
-                            if surface.is_opaque && occlude_x == clip_x {
+                            if occlude_x == clip_x && valid_occluder(surface) {
                                 occlude_y = union(occlude_y, visible);
                             }
                         }
                     } else if includes(&occlude_y, &clip_y) {
                         if let Some(visible) = overlaps(&occlude_x, &clip_x) {
                             set_x_range(clip_rect, &visible);
-                            if surface.is_opaque && occlude_y == clip_y {
+                            if occlude_y == clip_y && valid_occluder(surface) {
                                 occlude_x = union(occlude_x, visible);
                             }
                         }
@@ -1304,6 +1338,12 @@ impl Compositor for SwCompositor {
                     if let Some(tile_info) = self.compositor.map_tile(device, id, dirty_rect, valid_rect) {
                         stride = tile_info.stride;
                         buf = tile_info.data;
+                    }
+                } else if let Some(ref composite_thread) = self.composite_thread {
+                    // Check if the tile is currently in use before proceeding to modify it.
+                    if tile.graph_node.get().has_job.load(Ordering::SeqCst) {
+                        // Need to wait for the SwComposite thread to finish any queued jobs.
+                        composite_thread.wait_for_composites(false);
                     }
                 }
                 self.gl.set_texture_buffer(

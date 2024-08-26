@@ -126,7 +126,7 @@ Tart.prototype = {
 
   clickNewTab() {
     this._endDetection = this.tabDetector;
-    this._win.BrowserOpenTab();
+    this._win.BrowserCommands.openTab();
     // Modifying the style for each tab right after opening seems like it could regress performance,
     // However, overlaying a global style over browser.xhtml actually ends up having greater ovrehead,
     // especially while closing the last of many tabs (a noticeable ~250ms delay before expanding the rest).
@@ -146,7 +146,7 @@ Tart.prototype = {
 
   clickCloseCurrentTab() {
     this._endDetection = this.tabDetector;
-    this._win.BrowserCloseTabOrWindow();
+    this._win.BrowserCommands.closeTabOrWindow();
     return this._win.gBrowser.selectedTab;
   },
 
@@ -224,7 +224,7 @@ Tart.prototype = {
     function startRecord() {
       if (self._config.controlProfiler) {
         if (isReportResult) {
-          Profiler.resume(name);
+          Profiler.subtestStart(name);
         }
       } else {
         Profiler.mark("Start: " + (isReportResult ? name : "[warmup]"), true);
@@ -261,7 +261,7 @@ Tart.prototype = {
         window.performance.now() - startRecordTimestamp;
       if (self._config.controlProfiler) {
         if (isReportResult) {
-          Profiler.pause(name);
+          Profiler.subtestEnd(name);
         }
       } else {
         Profiler.mark("End: " + (isReportResult ? name : "[warmup]"), true);

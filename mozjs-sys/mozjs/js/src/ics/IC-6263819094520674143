@@ -1,0 +1,1 @@
+Call, 1, 2, 5, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(WeakObject) , LASTUSED(0) LASTUSED(2) , OP(LoadArgumentFixedSlot) ID(1) BYTE(1) OP(GuardToObject) ID(1) OP(GuardProto) ID(1) OFFSET(0) OP(LoadBooleanResult) BOOL(1) OP(ReturnFromIC)  

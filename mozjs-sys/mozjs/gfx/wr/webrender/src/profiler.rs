@@ -89,12 +89,16 @@ static PROFILER_PRESETS: &'static[(&'static str, &'static str)] = &[
 
     // Misc:
 
-    (&"Memory", &"Image templates,Image templates mem,Font templates,Font templates mem,DisplayList mem,Picture tiles mem"),
-    (&"Interners", "Interned primitives,Interned clips,Interned pictures,Interned text runs,Interned normal borders,Interned image borders,Interned images,Interned YUV images,Interned line decorations,Interned linear gradients,Interned radial gradients,Interned conic gradients,Interned filter data,Interned backdrops"),
+    (&"GPU Memory", &"External image mem, Atlas textures mem, Standalone textures mem, Picture tiles mem, Render targets mem, Depth targets mem, Atlas items mem, GPU cache mem, GPU buffer mem, GPU total mem"),
+    (&"CPU Memory", &"Image templates, Image templates mem, Font templates,Font templates mem, DisplayList mem"),
+    (&"Memory", &"$CPU,CPU Memory, ,$GPU,GPU Memory"),
+    (&"Interners", "Interned primitives,Interned clips,Interned pictures,Interned text runs,Interned normal borders,Interned image borders,Interned images,Interned YUV images,Interned line decorations,Interned linear gradients,Interned radial gradients,Interned conic gradients,Interned filter data,Interned backdrop renders, Interned backdrop captures"),
     // Gpu sampler queries (need the pref gfx.webrender.debug.gpu-sampler-queries).
     (&"GPU samplers", &"Alpha targets samplers,Transparent pass samplers,Opaque pass samplers,Total samplers"),
 
     (&"Render reasons", &"Reason scene, Reason animated property, Reason resource update, Reason async image, Reason clear resources, Reason APZ, Reason resize, Reason widget, Reason cache flush, Reason snapshot, Reason resource hook, Reason config change, Reason content sync, Reason flush, On vsync, Reason testing, Reason other"),
+
+    (&"Slow frame breakdown", &"Total slow frames CPU, Total slow frames GPU, Slow: frame build, Slow: upload, Slow: render, Slow: draw calls, Slow: targets, Slow: blobs, Slow: after scene, Slow scroll frames"),
 ];
 
 fn find_preset(name: &str) -> Option<&'static str> {
@@ -256,19 +260,59 @@ pub const RENDER_REASON_VSYNC: usize = 119;
 pub const TEXTURES_CREATED: usize = 120;
 pub const TEXTURES_DELETED: usize = 121;
 
-pub const NUM_PROFILER_EVENTS: usize = 122;
+pub const SLOW_FRAME_CPU_COUNT: usize = 122;
+pub const SLOW_FRAME_GPU_COUNT: usize = 123;
+pub const SLOW_FRAME_BUILD_COUNT: usize = 124;
+pub const SLOW_UPLOAD_COUNT: usize = 125;
+pub const SLOW_RENDER_COUNT: usize = 126;
+pub const SLOW_DRAW_CALLS_COUNT: usize = 127;
+pub const SLOW_TARGETS_COUNT: usize = 128;
+pub const SLOW_BLOB_COUNT: usize = 129;
+pub const SLOW_SCROLL_AFTER_SCENE_COUNT: usize = 130;
+
+pub const GPU_CACHE_MEM: usize = 131;
+pub const GPU_BUFFER_MEM: usize = 132;
+pub const GPU_TOTAL_MEM: usize = 133;
+
+pub const GPU_CACHE_PREPARE_TIME: usize = 134;
+
+pub const FRAME_SEND_TIME: usize = 135;
+pub const UPDATE_DOCUMENT_TIME: usize = 136;
+
+pub const NUM_PROFILER_EVENTS: usize = 137;
 
 pub struct Profiler {
     counters: Vec<Counter>,
     gpu_frames: ProfilerFrameCollection,
     frame_stats: ProfilerFrameCollection,
+    slow_scroll_frames: ProfilerFrameCollection,
 
     start: u64,
     avg_over_period: u64,
     num_graph_samples: usize,
+    slow_cpu_frame_threshold: f32,
 
     // For FPS computation. Updated in update().
     frame_timestamps_within_last_second: Vec<u64>,
+
+    /// Total number of slow frames on the CPU.
+    slow_frame_cpu_count: u64,
+    /// Total number of slow frames on the GPU.
+    slow_frame_gpu_count: u64,
+    /// Slow frames dominated by frame building.
+    slow_frame_build_count: u64,
+    /// Slow frames dominated by draw call submission.
+    slow_render_count: u64,
+    /// Slow frames dominated by texture uploads.
+    slow_upload_count: u64,
+    /// Slow renders with a high number of draw calls.
+    slow_draw_calls_count: u64,
+    /// Slow renders with a high number of render targets.
+    slow_targets_count: u64,
+    /// Slow uploads with a high number of blob tiles.
+    slow_blob_count: u64,
+    /// Slow scrolling or animation frame after a scene build.
+    slow_scroll_after_scene_count: u64,
 
     ui: Vec<Item>,
 }
@@ -433,6 +477,24 @@ impl Profiler {
 
             int("Textures created", "", TEXTURES_CREATED, expected(0..5)),
             int("Textures deleted", "", TEXTURES_DELETED, Expected::none()),
+
+            int("Total slow frames CPU", "", SLOW_FRAME_CPU_COUNT, Expected::none()),
+            int("Total slow frames GPU", "", SLOW_FRAME_GPU_COUNT, Expected::none()),
+            int("Slow: frame build", "%", SLOW_FRAME_BUILD_COUNT, Expected::none()),
+            int("Slow: upload", "%", SLOW_UPLOAD_COUNT, Expected::none()),
+            int("Slow: render", "%", SLOW_RENDER_COUNT, Expected::none()),
+            int("Slow: draw calls", "%", SLOW_DRAW_CALLS_COUNT, Expected::none()),
+            int("Slow: targets", "%", SLOW_TARGETS_COUNT, Expected::none()),
+            int("Slow: blobs", "%", SLOW_BLOB_COUNT, Expected::none()),
+            int("Slow: after scene", "%", SLOW_SCROLL_AFTER_SCENE_COUNT, Expected::none()),
+
+            float("GPU cache mem", "MB", GPU_CACHE_MEM, Expected::none()),
+            float("GPU buffer mem", "MB", GPU_BUFFER_MEM, Expected::none()),
+            float("GPU total mem", "MB", GPU_TOTAL_MEM, Expected::none()),
+
+            float("GPU cache preapre", "ms", GPU_CACHE_PREPARE_TIME, Expected::none()),
+            float("Frame send", "ms", FRAME_SEND_TIME, Expected::none()),
+            float("Update document", "ms", UPDATE_DOCUMENT_TIME, Expected::none()),
         ];
 
         let mut counters = Vec::with_capacity(profile_counters.len());
@@ -445,14 +507,36 @@ impl Profiler {
         Profiler {
             gpu_frames: ProfilerFrameCollection::new(),
             frame_stats: ProfilerFrameCollection::new(),
+            slow_scroll_frames: ProfilerFrameCollection::new(),
 
             counters,
             start: precise_time_ns(),
             avg_over_period: ONE_SECOND_NS / 2,
+            slow_cpu_frame_threshold: 10.0,
 
             num_graph_samples: 500, // Would it be useful to control this via a pref?
             frame_timestamps_within_last_second: Vec::new(),
+
+            slow_frame_cpu_count: 0,
+            slow_frame_gpu_count: 0,
+            slow_frame_build_count: 0,
+            slow_render_count: 0,
+            slow_upload_count: 0,
+            slow_draw_calls_count: 0,
+            slow_targets_count: 0,
+            slow_blob_count: 0,
+            slow_scroll_after_scene_count: 0,
+
             ui: Vec::new(),
+        }
+    }
+
+    pub fn set_parameter(&mut self, param: &api::Parameter) {
+        match param {
+            api::Parameter::Float(api::FloatParameter::SlowCpuFrameThreshold, threshold) => {
+                self.slow_cpu_frame_threshold = *threshold;
+            }
+            _ => {}
         }
     }
 
@@ -460,7 +544,7 @@ impl Profiler {
     /// a specific counter.
     ///
     /// This is useful to monitor slow frame and slow transactions.
-    fn update_slow_event(&mut self, dst_counter: usize, counters: &[usize], threshold: f64) {
+    fn update_slow_event(&mut self, dst_counter: usize, counters: &[usize], threshold: f64) -> bool {
         let mut total = 0.0;
         for &counter in counters {
             if self.counters[counter].value.is_finite() {
@@ -470,6 +554,67 @@ impl Profiler {
 
         if total > threshold {
             self.counters[dst_counter].set(total);
+            return true;
+        }
+
+        false
+    }
+
+    fn classify_slow_cpu_frame(&mut self) {
+        let is_apz = self.counters[RENDER_REASON_ANIMATED_PROPERTY].value > 0.5
+            || self.counters[RENDER_REASON_APZ].value > 0.5;
+        if !is_apz {
+            // Only consider slow frames affecting scrolling for now.
+            return;
+        }
+
+        let frame = CpuFrameTimings::new(&self.counters);
+        self.slow_scroll_frames.push(frame.to_profiler_frame());
+
+        if self.counters[RENDER_REASON_SCENE].value > 0.5 {
+            self.slow_scroll_after_scene_count += 1;
+        }
+
+        let frame_build = self.counters[FRAME_BUILDING_TIME].value;
+        let uploads = self.counters[TEXTURE_CACHE_UPDATE_TIME].value;
+        let renderer = self.counters[RENDERER_TIME].value - uploads;
+        let mut reasons = [
+            (frame_build, &mut self.slow_frame_build_count, SLOW_FRAME_BUILD_COUNT,),
+            (renderer, &mut self.slow_render_count, SLOW_RENDER_COUNT,),
+            (uploads, &mut self.slow_upload_count, SLOW_UPLOAD_COUNT,),
+        ];
+
+        reasons.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+
+        *reasons[0].1 += 1;
+        let reason = reasons[0].2;
+        std::mem::drop(reasons);
+
+        self.slow_frame_cpu_count += 1;
+
+        if reason == SLOW_RENDER_COUNT {
+            let draw_calls = self.counters[DRAW_CALLS].value;
+            if draw_calls > 200.0 {
+                self.slow_draw_calls_count += 1;
+            }
+
+            let render_passes = self.counters[COLOR_PASSES].value + self.counters[ALPHA_PASSES].value;
+            if render_passes > 20.0 {
+                self.slow_targets_count += 1;
+            }
+        }
+
+        if reason == SLOW_UPLOAD_COUNT {
+            let count = self.counters[TEXTURE_UPLOADS].value;
+            let blob_tiles = self.counters[RASTERIZED_BLOB_TILES].value;
+            // This is an approximation: we rasterize blobs for the whole displayport and
+            // only upload blob tiles for the current viewport. That said, the presence of
+            // a high number of blob tiles compared to the total number of uploads is still
+            // a good indication that blob images are the likely cause of the slow upload
+            // time, or at least contributing to it to a large extent.
+            if blob_tiles > count * 0.5 {
+                self.slow_blob_count += 1;
+            }
         }
     }
 
@@ -484,16 +629,33 @@ impl Profiler {
         self.frame_timestamps_within_last_second.retain(|t| *t > one_second_ago);
         self.frame_timestamps_within_last_second.push(now);
 
-        self.update_slow_event(
+        let slow_cpu = self.update_slow_event(
             SLOW_FRAME,
             &[TOTAL_FRAME_CPU_TIME],
-            15.0,
+            self.slow_cpu_frame_threshold as f64,
         );
         self.update_slow_event(
             SLOW_TXN,
             &[DISPLAY_LIST_BUILD_TIME, CONTENT_SEND_TIME, SCENE_BUILD_TIME],
             80.0
         );
+
+        if slow_cpu {
+            self.classify_slow_cpu_frame();
+        }
+
+        let div = 100.0 / self.slow_frame_cpu_count as f64;
+        self.counters[SLOW_FRAME_CPU_COUNT].set(self.slow_frame_cpu_count as f64);
+        self.counters[SLOW_FRAME_GPU_COUNT].set(self.slow_frame_gpu_count as f64);
+        self.counters[SLOW_FRAME_BUILD_COUNT].set(self.slow_frame_build_count as f64 * div);
+        self.counters[SLOW_RENDER_COUNT].set(self.slow_render_count as f64 * div);
+        self.counters[SLOW_UPLOAD_COUNT].set(self.slow_upload_count as f64 * div);
+        self.counters[SLOW_DRAW_CALLS_COUNT].set(self.slow_draw_calls_count as f64 * div);
+        self.counters[SLOW_TARGETS_COUNT].set(self.slow_targets_count as f64 * div);
+        self.counters[SLOW_BLOB_COUNT].set(self.slow_blob_count as f64 * div);
+        self.counters[SLOW_SCROLL_AFTER_SCENE_COUNT].set(self.slow_scroll_after_scene_count as f64 * div);
+
+        self.update_total_gpu_mem();
 
         for counter in &mut self.counters {
             counter.update(update_avg);
@@ -504,6 +666,26 @@ impl Profiler {
         if stats.gecko_display_list_time != 0.0 {
           self.frame_stats.push(stats.into());
         }
+    }
+
+    pub fn update_total_gpu_mem(&mut self) {
+        let mut total = 0.0;
+        for counter in [
+            EXTERNAL_IMAGE_BYTES,
+            ATLAS_TEXTURES_MEM,
+            STANDALONE_TEXTURES_MEM,
+            PICTURE_TILES_MEM,
+            RENDER_TARGET_MEM,
+            DEPTH_TARGETS_MEM,
+            ATLAS_ITEMS_MEM,
+            GPU_CACHE_MEM,
+            GPU_BUFFER_MEM,
+        ] {
+            if let Some(val) = self.counters[counter].get() {
+                total += val;
+            }
+        }
+        self.counters[GPU_TOTAL_MEM].set(total);
     }
 
     pub fn set_gpu_time_queries(&mut self, gpu_queries: Vec<GpuTimer>) {
@@ -517,7 +699,11 @@ impl Profiler {
           samples: gpu_queries
         });
 
-        self.counters[GPU_TIME].set_f64(ns_to_ms(gpu_time_ns));
+        let gpu_time = ns_to_ms(gpu_time_ns);
+        self.counters[GPU_TIME].set_f64(gpu_time);
+        if gpu_time > 12.0 {
+            self.slow_frame_gpu_count += 1;
+        }
     }
 
     // Find the index of a counter by its name.
@@ -562,6 +748,7 @@ impl Profiler {
             let name = name.trim();
             let is_graph = name.starts_with("#");
             let is_indicator = name.starts_with("*");
+            let is_string = name.starts_with("$");
             let name = if is_graph || is_indicator {
                 &name[1..]
             } else {
@@ -597,8 +784,14 @@ impl Profiler {
                     flush_counters(&mut counters, selection);
                     selection.push(Item::PaintPhaseGraph);
                 }
+                "Slow scroll frames" => {
+                    flush_counters(&mut counters, selection);
+                    selection.push(Item::SlowScrollFrames);
+                }
                 _ => {
-                    if let Some(idx) = self.index_of(name) {
+                    if is_string {
+                        selection.push(Item::Text(name[1..].into()));
+                    } else if let Some(idx) = self.index_of(name) {
                         if is_graph {
                             flush_counters(&mut counters, selection);
                             selection.push(Item::Graph(idx));
@@ -1041,6 +1234,9 @@ impl Profiler {
             y0 = y1;
         }
 
+        let mut tags_present: Vec<_> = tags_present.iter().collect();
+        tags_present.sort_by_key(|item| item.0);
+
         // If the max time is higher than 16ms, show a vertical line at the
         // 16ms mark.
         if max_time > baseline_ns {
@@ -1133,6 +1329,9 @@ impl Profiler {
                 }
                 Item::PaintPhaseGraph => {
                     Profiler::draw_frame_graph(&self.frame_stats, x, y, debug_renderer)
+                }
+                Item::SlowScrollFrames => {
+                    Profiler::draw_frame_graph(&self.slow_scroll_frames, x, y, debug_renderer)
                 }
                 Item::Text(text) => {
                     let p = 10.0;
@@ -1827,6 +2026,92 @@ impl From<FullFrameStats> for ProfilerFrame {
   }
 }
 
+pub struct CpuFrameTimings {
+    pub total: f64,
+    pub api_send: f64,
+    pub update_document: f64,
+    pub visibility: f64,
+    pub prepare: f64,
+    pub glyph_resolve: f64,
+    pub batching: f64,
+    pub frame_building_other: f64,
+    pub frame_send: f64,
+    pub uploads: f64,
+    pub gpu_cache: f64,
+    pub draw_calls: f64,
+    pub unknown: f64,
+}
+
+impl CpuFrameTimings {
+    pub fn new(counters: &[Counter]) -> Self {
+        let total = counters[TOTAL_FRAME_CPU_TIME].get().unwrap_or(0.0);
+        let api_send = counters[API_SEND_TIME].get().unwrap_or(0.0);
+        let visibility = counters[FRAME_VISIBILITY_TIME].get().unwrap_or(0.0);
+        let prepare = counters[FRAME_PREPARE_TIME].get().unwrap_or(0.0);
+        let glyph_resolve = counters[GLYPH_RESOLVE_TIME].get().unwrap_or(0.0);
+        let batching = counters[FRAME_BATCHING_TIME].get().unwrap_or(0.0);
+        let frame_send = counters[FRAME_SEND_TIME].get().unwrap_or(0.0);
+        let renderer = counters[RENDERER_TIME].get().unwrap_or(0.0);
+        let uploads = counters[TEXTURE_CACHE_UPDATE_TIME].get().unwrap_or(0.0);
+        let gpu_cache = counters[GPU_CACHE_PREPARE_TIME].get().unwrap_or(0.0);
+        let frame_build = visibility + prepare + glyph_resolve + batching;
+        let update_document = counters[UPDATE_DOCUMENT_TIME].get().unwrap_or(0.0) - frame_build;
+        let draw_calls = renderer - uploads - gpu_cache;
+        let unknown = (total - (api_send + update_document + frame_build + frame_send + renderer)).max(0.0);
+        let frame_building_other = (counters[FRAME_BUILDING_TIME].get().unwrap_or(0.0) - frame_build).max(0.0);
+
+        CpuFrameTimings {
+            total,
+            api_send,
+            update_document,
+            visibility,
+            prepare,
+            glyph_resolve,
+            batching,
+            frame_building_other,
+            frame_send,
+            uploads,
+            gpu_cache,
+            draw_calls,
+            unknown,
+        }
+    }
+
+    fn to_profiler_frame(&self) -> ProfilerFrame {
+        fn sample(time_ms: f64, label: &'static str, color: ColorF) -> GpuTimer {
+            let time_ns = ms_to_ns(time_ms);
+            GpuTimer {
+                time_ns,
+                tag: GpuProfileTag { label, color },
+            }
+        }
+
+        ProfilerFrame {
+            total_time: ms_to_ns(self.total),
+            // Number the label so that they are displayed in order.
+            samples: vec![
+                // Compositor -> frame building
+                sample(self.api_send, "01. send", ColorF { r: 0.5, g: 0.5, b: 0.5, a: 1.0 }),
+                // Frame building
+                sample(self.update_document, "02. update document", ColorF { r: 0.2, g: 0.2, b: 0.7, a: 1.0 }),
+                sample(self.visibility, "03. visibility", ColorF { r: 0.0, g: 0.5, b: 0.9, a: 1.0 }),
+                sample(self.prepare, "04. prepare", ColorF { r: 0.0, g: 0.4, b: 0.3, a: 1.0 }),
+                sample(self.glyph_resolve, "05. glyph resolve", ColorF { r: 0.0, g: 0.7, b: 0.4, a: 1.0 }),
+                sample(self.batching, "06. batching", ColorF { r: 0.2, g: 0.3, b: 0.7, a: 1.0 }),
+                sample(self.frame_building_other, "07. frame build (other)", ColorF { r: 0.1, g: 0.7, b: 0.7, a: 1.0 }),
+                // Frame building -> renderer
+                sample(self.frame_send, "08. frame send", ColorF { r: 1.0, g: 0.8, b: 0.8, a: 1.0 }),
+                // Renderer
+                sample(self.uploads, "09. texture uploads", ColorF { r: 0.8, g: 0.0, b: 0.3, a: 1.0 }),
+                sample(self.gpu_cache, "10. gpu cache update", ColorF { r: 0.5, g: 0.0, b: 0.4, a: 1.0 }),
+                sample(self.draw_calls, "11. draw calls", ColorF { r: 1.0, g: 0.5, b: 0.0, a: 1.0 }),
+                // Unaccounted time
+                sample(self.unknown, "12. unknown", ColorF { r: 0.3, g: 0.3, b: 0.3, a: 1.0 }),
+            ],
+        }
+    }
+}
+
 pub fn ns_to_ms(ns: u64) -> f64 {
     ns as f64 / 1_000_000.0
 }
@@ -1848,6 +2133,7 @@ enum Item {
     GpuTimeQueries,
     GpuCacheBars,
     PaintPhaseGraph,
+    SlowScrollFrames,
     Text(String),
     Space,
     Column,

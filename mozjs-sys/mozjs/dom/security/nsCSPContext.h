@@ -7,6 +7,7 @@
 #ifndef nsCSPContext_h___
 #define nsCSPContext_h___
 
+#include "mozilla/dom/CSPViolationData.h"
 #include "mozilla/dom/nsCSPUtils.h"
 #include "mozilla/dom/SecurityPolicyViolationEvent.h"
 #include "mozilla/StaticPrefs_security.h"
@@ -80,28 +81,19 @@ class nsCSPContext : public nsIContentSecurityPolicy {
   /**
    * Construct SecurityPolicyViolationEventInit structure.
    *
-   * @param aBlockedURI
-   *        A nsIURI: the source of the violation.
    * @param aOriginalUri
    *        The original URI if the blocked content is a redirect, else null
    * @param aViolatedDirective
    *        the directive that was violated (string).
-   * @param aSourceFile
-   *        name of the file containing the inline script violation
    * @param aScriptSample
    *        a sample of the violating inline script
-   * @param aLineNum
-   *        source line number of the violation (if available)
-   * @param aColumnNum
-   *        source column number of the violation (if available)
    * @param aViolationEventInit
    *        The output
    */
   nsresult GatherSecurityPolicyViolationEventData(
-      nsIURI* aBlockedURI, const nsACString& aBlockedString,
-      nsIURI* aOriginalURI, const nsAString& aViolatedDirective,
-      uint32_t aViolatedPolicyIndex, const nsAString& aSourceFile,
-      const nsAString& aScriptSample, uint32_t aLineNum, uint32_t aColumnNum,
+      nsIURI* aOriginalURI, const nsAString& aEffectiveDirective,
+      const mozilla::dom::CSPViolationData& aCSPViolationData,
+      const nsAString& aScriptSample,
       mozilla::dom::SecurityPolicyViolationEventInit& aViolationEventInit);
 
   nsresult SendReports(
@@ -114,22 +106,12 @@ class nsCSPContext : public nsIContentSecurityPolicy {
       const mozilla::dom::SecurityPolicyViolationEventInit&
           aViolationEventInit);
 
-  enum BlockedContentSource {
-    eUnknown,
-    eInline,
-    eEval,
-    eSelf,
-    eWasmEval,
-  };
-
   nsresult AsyncReportViolation(
-      mozilla::dom::Element* aTriggeringElement,
-      nsICSPEventListener* aCSPEventListener, nsIURI* aBlockedURI,
-      BlockedContentSource aBlockedContentSource, nsIURI* aOriginalURI,
-      const nsAString& aViolatedDirective, const nsAString& aEffectiveDirective,
-      uint32_t aViolatedPolicyIndex, const nsAString& aObserverSubject,
-      const nsAString& aSourceFile, bool aReportSample,
-      const nsAString& aScriptSample, uint32_t aLineNum, uint32_t aColumnNum);
+      nsICSPEventListener* aCSPEventListener,
+      mozilla::dom::CSPViolationData&& aCSPViolationData, nsIURI* aOriginalURI,
+      const nsAString& aViolatedDirectiveName,
+      const nsAString& aViolatedDirectiveNameAndValue,
+      const nsAString& aObserverSubject, bool aReportSample);
 
   // Hands off! Don't call this method unless you know what you
   // are doing. It's only supposed to be called from within
@@ -149,7 +131,9 @@ class nsCSPContext : public nsIContentSecurityPolicy {
       nsTArray<mozilla::ipc::ContentSecurityPolicy>& aPolicies);
 
  private:
-  void EnsureIPCPoliciesRead();
+  bool ShouldThrottleReport(
+      const mozilla::dom::SecurityPolicyViolationEventInit&
+          aViolationEventInit);
 
   bool permitsInternal(CSPDirective aDir,
                        mozilla::dom::Element* aTriggeringElement,
@@ -166,11 +150,12 @@ class nsCSPContext : public nsIContentSecurityPolicy {
                              const nsAString& aNonce, bool aReportSample,
                              const nsAString& aSample,
                              const nsAString& aViolatedDirective,
-                             const nsAString& aEffectiveDirective,
+                             const nsAString& aViolatedDirectiveString,
+                             CSPDirective aEffectiveDirective,
                              uint32_t aViolatedPolicyIndex,
                              uint32_t aLineNumber, uint32_t aColumnNumber);
 
-  nsString mReferrer;
+  nsCString mReferrer;
   uint64_t mInnerWindowID;          // used for web console logging
   bool mSkipAllowInlineStyleCheck;  // used to allow Devtools to edit styles
   // When deserializing an nsCSPContext instance, we initially just keep the
@@ -192,6 +177,10 @@ class nsCSPContext : public nsIContentSecurityPolicy {
   nsTArray<ConsoleMsgQueueElem> mConsoleMsgQueue;
   bool mQueueUpMessages;
   nsCOMPtr<nsIEventTarget> mEventTarget;
+
+  mozilla::TimeStamp mSendReportLimitSpanStart;
+  uint32_t mSendReportLimitCount = 1;
+  bool mWarnedAboutTooManyReports = false;
 };
 
 // Class that listens to violation report transmission and logs errors.

@@ -1,6 +1,891 @@
 {
   "data": [
     {
+      "schema": 1717606866930,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MFAxJDAiBgNVBAsTG0dsb2JhbFNpZ24gRUNDIFJvb3QgQ0EgLSBSNTETMBEGA1UEChMKR2xvYmFsU2lnbjETMBEGA1UEAxMKR2xvYmFsU2lnbg==",
+      "serialNumber": "eSmbgvwPOlXGliHHuCIbXw==",
+      "id": "322dfa7b-ab66-40bf-af29-e32a6dd7cd93",
+      "last_modified": 1717704918940
+    },
+    {
+      "schema": 1717606866367,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEwxIDAeBgNVBAsTF0dsb2JhbFNpZ24gUm9vdCBDQSAtIFIzMRMwEQYDVQQKEwpHbG9iYWxTaWduMRMwEQYDVQQDEwpHbG9iYWxTaWdu",
+      "serialNumber": "fSpKUE1MI+QbVqikKzCRCw==",
+      "id": "4c28c51a-6db7-4899-99ae-0b6ac61202ea",
+      "last_modified": 1717704918936
+    },
+    {
+      "schema": 1717606866751,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MHsxCzAJBgNVBAYTAkdCMRswGQYDVQQIDBJHcmVhdGVyIE1hbmNoZXN0ZXIxEDAOBgNVBAcMB1NhbGZvcmQxGjAYBgNVBAoMEUNvbW9kbyBDQSBMaW1pdGVkMSEwHwYDVQQDDBhBQUEgQ2VydGlmaWNhdGUgU2VydmljZXM=",
+      "serialNumber": "fHxdvf2CERpzvs38JwG48A==",
+      "id": "2b8c2141-f0e1-4506-8d7a-be0e41acde66",
+      "last_modified": 1717704918933
+    },
+    {
+      "schema": 1717606866284,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEUxCzAJBgNVBAYTAkJNMRkwFwYDVQQKExBRdW9WYWRpcyBMaW1pdGVkMRswGQYDVQQDExJRdW9WYWRpcyBSb290IENBIDI=",
+      "serialNumber": "dUFRzBHsibZGSbIwrYCQILseZqU=",
+      "id": "e6a81ddf-cf32-4846-8a91-42e9b1285627",
+      "last_modified": 1717704918929
+    },
+    {
+      "schema": 1717581426701,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MDQxCzAJBgNVBAYTAkZSMRIwEAYDVQQKDAlEaGlteW90aXMxETAPBgNVBAMMCENlcnRpZ25h",
+      "serialNumber": "OUcWep55zFAPGqHlCF5J5BJKEic=",
+      "id": "891e1719-0bf5-45a9-b61b-7f694feb7804",
+      "last_modified": 1717704918925
+    },
+    {
+      "schema": 1717606866455,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEwxIDAeBgNVBAsTF0dsb2JhbFNpZ24gUm9vdCBDQSAtIFIzMRMwEQYDVQQKEwpHbG9iYWxTaWduMRMwEQYDVQQDEwpHbG9iYWxTaWdu",
+      "serialNumber": "eEqpJrbnW++td7NIAblS0A==",
+      "id": "d7fdf988-5bbb-43b1-99df-b5cb534ba121",
+      "last_modified": 1717704918922
+    },
+    {
+      "schema": 1717606866845,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MFoxCzAJBgNVBAYTAkZSMRIwEAYDVQQKDAlEaGlteW90aXMxHDAaBgNVBAsMEzAwMDIgNDgxNDYzMDgxMDAwMzYxGTAXBgNVBAMMEENlcnRpZ25hIFJvb3QgQ0E=",
+      "serialNumber": "Sv8S1Opltybu6pB7fMV4c4tDJxA=",
+      "id": "e2f17410-dc20-4840-b4d9-a345f83cffe9",
+      "last_modified": 1717704918918
+    },
+    {
+      "schema": 1717606866187,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEoxCzAJBgNVBAYTAlVTMRIwEAYDVQQKEwlJZGVuVHJ1c3QxJzAlBgNVBAMTHklkZW5UcnVzdCBDb21tZXJjaWFsIFJvb3QgQ0EgMQ==",
+      "serialNumber": "QAGPK6zlV7rhg+Zdfhm+yw==",
+      "id": "5b70468c-9537-4cf7-b6cc-655781e4958b",
+      "last_modified": 1717704918914
+    },
+    {
+      "schema": 1717606866647,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MFAxJDAiBgNVBAsTG0dsb2JhbFNpZ24gRUNDIFJvb3QgQ0EgLSBSNTETMBEGA1UEChMKR2xvYmFsU2lnbjETMBEGA1UEAxMKR2xvYmFsU2lnbg==",
+      "serialNumber": "eSmbhHLMt1IRJtmqS3w+Hg==",
+      "id": "276d5823-5f40-4a75-ba0b-2fe35144eafc",
+      "last_modified": 1717704918911
+    },
+    {
+      "schema": 1717606865913,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEcxCzAJBgNVBAYTAlVTMRIwEAYDVQQKEwlJZGVuVHJ1c3QxJDAiBgNVBAMTG1RydXN0SUQgRW50ZXJwcmlzZSBUTFMgQ0EgMw==",
+      "serialNumber": "QAGPK2OnXRav9TdQ+n+NOQ==",
+      "id": "33e13515-5564-40dd-89c9-70fd43f65f31",
+      "last_modified": 1717704918907
+    },
+    {
+      "schema": 1717606866552,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEUxCzAJBgNVBAYTAkJNMRkwFwYDVQQKExBRdW9WYWRpcyBMaW1pdGVkMRswGQYDVQQDExJRdW9WYWRpcyBSb290IENBIDI=",
+      "serialNumber": "A1/hN80FUeTB8bAL66Wu5T+VJzQ=",
+      "id": "ab2cbd12-8f84-486f-a998-29898f0ddb93",
+      "last_modified": 1717704918903
+    },
+    {
+      "schema": 1717606866104,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MDQxCzAJBgNVBAYTAkZSMRIwEAYDVQQKDAlEaGlteW90aXMxETAPBgNVBAMMCENlcnRpZ25h",
+      "serialNumber": "Hk9yv7+W0/YZwdKqJa5SuM6j9sg=",
+      "id": "f80248d3-fdfe-4d00-ba1d-063c92184da8",
+      "last_modified": 1717704918900
+    },
+    {
+      "schema": 1717606866008,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1900843",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MFoxCzAJBgNVBAYTAkZSMRIwEAYDVQQKDAlEaGlteW90aXMxHDAaBgNVBAsMEzAwMDIgNDgxNDYzMDgxMDAwMzYxGTAXBgNVBAMMEENlcnRpZ25hIFJvb3QgQ0E=",
+      "serialNumber": "Vpa/MHpWy1YxUNIl27d+tZ1sX5k=",
+      "id": "09f714f1-6ae1-4253-bcad-a8417e610ebd",
+      "last_modified": 1717704918896
+    },
+    {
+      "schema": 1709917272661,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1884400",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEcxCzAJBgNVBAYTAkNOMRwwGgYDVQQKExNpVHJ1c0NoaW5hIENvLixMdGQuMRowGAYDVQQDExF2VHJ1cyBFQ0MgUm9vdCBDQQ==",
+      "serialNumber": "baFk8S+rVizrFzxGvKqfqQvu0kY=",
+      "id": "4a2a8154-e012-418f-8557-a9c3bb5ef380",
+      "last_modified": 1710189695302
+    },
+    {
+      "schema": 1709717394495,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1884400",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEcxCzAJBgNVBAYTAkNOMRwwGgYDVQQKExNpVHJ1c0NoaW5hIENvLixMdGQuMRowGAYDVQQDExF2VHJ1cyBFQ0MgUm9vdCBDQQ==",
+      "serialNumber": "F7oJqB+ONoNowl5eHOOl8oSDne0=",
+      "id": "dd781eef-2b60-4ff1-a1d1-2c65c31915fa",
+      "last_modified": 1710189695297
+    },
+    {
+      "schema": 1709917272890,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1884400",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEMxCzAJBgNVBAYTAkNOMRwwGgYDVQQKExNpVHJ1c0NoaW5hIENvLixMdGQuMRYwFAYDVQQDEw12VHJ1cyBSb290IENB",
+      "serialNumber": "VmPk4uhKrU+Ar6D+FKt4T+wADJs=",
+      "id": "4c28a487-8372-4061-9be2-a4f5090ab231",
+      "last_modified": 1710189695292
+    },
+    {
+      "schema": 1709917272733,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1884400",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEoxCzAJBgNVBAYTAlVTMRIwEAYDVQQKEwlJZGVuVHJ1c3QxJzAlBgNVBAMTHklkZW5UcnVzdCBDb21tZXJjaWFsIFJvb3QgQ0EgMQ==",
+      "serialNumber": "fgr3g+MTaN10FgQg4sbqcA==",
+      "id": "2fe0159b-6ae2-4f7b-a92b-63c27e5056fa",
+      "last_modified": 1710189695287
+    },
+    {
+      "schema": 1709917272813,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1884400",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEMxCzAJBgNVBAYTAkNOMRwwGgYDVQQKExNpVHJ1c0NoaW5hIENvLixMdGQuMRYwFAYDVQQDEw12VHJ1cyBSb290IENB",
+      "serialNumber": "H6Q9cmNee/OBNe7znM/J3cNHeYY=",
+      "id": "f5b7873a-fe31-44a0-b75c-fbbeebfc5a35",
+      "last_modified": 1710189695282
+    },
+    {
+      "schema": 1709632813150,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1879046",
+        "who": "dkeeler@mozilla.com",
+        "why": "Kazakhstan MITM (#10)",
+        "name": "Information Security Certification Authority",
+        "created": ""
+      },
+      "enabled": true,
+      "issuerName": "MFMxNTAzBgNVBAMTLEluZm9ybWF0aW9uIFNlY3VyaXR5IENlcnRpZmljYXRpb24gQXV0aG9yaXR5MQ0wCwYDVQQKEwRJU0NBMQswCQYDVQQGEwJLWg==",
+      "serialNumber": "MgQS30wvsQLzmAyqdrphCuYshJI=",
+      "id": "2e32f465-fab4-4365-94d8-9a83041e660a",
+      "last_modified": 1709673810455
+    },
+    {
+      "schema": 1701882093709,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEwxIDAeBgNVBAsTF0dsb2JhbFNpZ24gUm9vdCBDQSAtIFIzMRMwEQYDVQQKEwpHbG9iYWxTaWduMRMwEQYDVQQDEwpHbG9iYWxTaWdu",
+      "serialNumber": "ebn+9NZ3e1owffcJjCxzZg==",
+      "id": "65d83e3c-5ab9-4590-95b2-ee177b89547f",
+      "last_modified": 1701989913617
+    },
+    {
+      "schema": 1701882093644,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEQxCzAJBgNVBAYTAkZJMRowGAYDVQQKDBFUZWxpYSBGaW5sYW5kIE95ajEZMBcGA1UEAwwQVGVsaWEgUm9vdCBDQSB2Mg==",
+      "serialNumber": "AYvTImnKqrjuZSIFUekO",
+      "id": "301b43d3-faae-4eea-b24e-02b0cc7be59b",
+      "last_modified": 1701989913611
+    },
+    {
+      "schema": 1701882093777,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgUjQ2",
+      "serialNumber": "e/t0kC1D4yfk2h1ZMQtnWQ==",
+      "id": "e173a743-042f-4c36-8e50-b98bdff3dcc1",
+      "last_modified": 1701989913607
+    },
+    {
+      "schema": 1701882093585,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MDsxCzAJBgNVBAYTAlJPMREwDwYDVQQKEwhjZXJ0U0lHTjEZMBcGA1UECxMQY2VydFNJR04gUk9PVCBDQQ==",
+      "serialNumber": "IAYFFnADFaURrma5fvkV",
+      "id": "565e5f90-0c48-487d-9e23-9c964b57d89d",
+      "last_modified": 1701989913602
+    },
+    {
+      "schema": 1701882093526,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MIGIMQswCQYDVQQGEwJVUzETMBEGA1UECBMKTmV3IEplcnNleTEUMBIGA1UEBxMLSmVyc2V5IENpdHkxHjAcBgNVBAoTFVRoZSBVU0VSVFJVU1QgTmV0d29yazEuMCwGA1UEAxMlVVNFUlRydXN0IFJTQSBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eQ==",
+      "serialNumber": "VGFdl5j7DGyBksFR1YNATA==",
+      "id": "454aeab5-3d95-4887-968d-423ab4af7153",
+      "last_modified": 1701989913597
+    },
+    {
+      "schema": 1701882093343,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MIGCMQswCQYDVQQGEwJERTErMCkGA1UECgwiVC1TeXN0ZW1zIEVudGVycHJpc2UgU2VydmljZXMgR21iSDEfMB0GA1UECwwWVC1TeXN0ZW1zIFRydXN0IENlbnRlcjElMCMGA1UEAwwcVC1UZWxlU2VjIEdsb2JhbFJvb3QgQ2xhc3MgMw==",
+      "serialNumber": "HNeGYx7Az7oLUvqbXgKHsQ==",
+      "id": "5576448f-2e6b-4c82-a8f0-dbf690002993",
+      "last_modified": 1701989913592
+    },
+    {
+      "schema": 1701882093467,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgRTQ2",
+      "serialNumber": "e/t0YVkawWMuSUOpB25CTA==",
+      "id": "f3114136-5675-454c-90b5-e583e6d1070a",
+      "last_modified": 1701989913587
+    },
+    {
+      "schema": 1701882093281,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEwxIDAeBgNVBAsTF0dsb2JhbFNpZ24gUm9vdCBDQSAtIFIzMRMwEQYDVQQKEwpHbG9iYWxTaWduMRMwEQYDVQQDEwpHbG9iYWxTaWdu",
+      "serialNumber": "ebn+8/plc0m7j0VAXMe3Uw==",
+      "id": "7315548e-19d6-4de7-ab7e-8c0926fdc7c7",
+      "last_modified": 1701989913582
+    },
+    {
+      "schema": 1701882093406,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEwxIDAeBgNVBAsTF0dsb2JhbFNpZ24gUm9vdCBDQSAtIFIzMRMwEQYDVQQKEwpHbG9iYWxTaWduMRMwEQYDVQQDEwpHbG9iYWxTaWdu",
+      "serialNumber": "ebn+8BfgHWec1wpYnjJfWw==",
+      "id": "6c106e28-6bbd-4687-acb1-9827e8d00e80",
+      "last_modified": 1701989913578
+    },
+    {
+      "schema": 1701882093220,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgUjQ2",
+      "serialNumber": "e/t0l4vp8EFvTZYIZx6sCA==",
+      "id": "487a9ee7-501f-41af-a749-a32c1a84b460",
+      "last_modified": 1701989913573
+    },
+    {
+      "schema": 1701882093159,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgRTQ2",
+      "serialNumber": "ebn+/Yqlu90gx9UvnLIR3A==",
+      "id": "0dabbda1-fccc-4655-92cd-2c522df8ddc9",
+      "last_modified": 1701989913568
+    },
+    {
+      "schema": 1701882092970,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgRTQ2",
+      "serialNumber": "ebn++YolR0KyD62h0lLRCA==",
+      "id": "da8fa73c-a137-40c3-80fc-1e43bc3a3e30",
+      "last_modified": 1701989913562
+    },
+    {
+      "schema": 1701882093097,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MIGIMQswCQYDVQQGEwJVUzETMBEGA1UECBMKTmV3IEplcnNleTEUMBIGA1UEBxMLSmVyc2V5IENpdHkxHjAcBgNVBAoTFVRoZSBVU0VSVFJVU1QgTmV0d29yazEuMCwGA1UEAxMlVVNFUlRydXN0IEVDQyBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eQ==",
+      "serialNumber": "AMPUKMN4jsXBS0QHU7GpitY=",
+      "id": "37643ddd-4c01-4ef6-a947-956b1f922ae7",
+      "last_modified": 1701989913557
+    },
+    {
+      "schema": 1701882092905,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgRTQ2",
+      "serialNumber": "ebn/AqIzpseA3+sPCEyJNQ==",
+      "id": "b8851d23-c0fe-41b0-b0ba-1fd7272e18c4",
+      "last_modified": 1701989913551
+    },
+    {
+      "schema": 1701882093032,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEwxIDAeBgNVBAsTF0dsb2JhbFNpZ24gUm9vdCBDQSAtIFIzMRMwEQYDVQQKEwpHbG9iYWxTaWduMRMwEQYDVQQDEwpHbG9iYWxTaWdu",
+      "serialNumber": "ebn++HV415u57d5JnqCe4Q==",
+      "id": "df1a5381-0327-4dc6-932d-cbc159e0e13c",
+      "last_modified": 1701989913546
+    },
+    {
+      "schema": 1701882092845,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgUjQ2",
+      "serialNumber": "e/t0atOh/Uwt/9H5vCMEBQ==",
+      "id": "2834fc99-2082-468d-9b04-871e343d005c",
+      "last_modified": 1701989913542
+    },
+    {
+      "schema": 1701882092782,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgRTQ2",
+      "serialNumber": "ebn+/9oibkBARSOKUyIxWg==",
+      "id": "30de3b62-e83e-42ab-aeaf-2843347900ca",
+      "last_modified": 1701989913537
+    },
+    {
+      "schema": 1701771234578,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MDsxCzAJBgNVBAYTAlJPMREwDwYDVQQKEwhjZXJ0U0lHTjEZMBcGA1UECxMQY2VydFNJR04gUk9PVCBDQQ==",
+      "serialNumber": "IAYFFnADGFeSYBrLdeEn",
+      "id": "9fa11b1f-6221-4d3d-94d0-505a1e762846",
+      "last_modified": 1701989913532
+    },
+    {
+      "schema": 1701882093846,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgRTQ2",
+      "serialNumber": "e/t0Wa+agKTlghDnapXPGQ==",
+      "id": "33a1ac70-1262-4ee7-b69a-25b437e4ea31",
+      "last_modified": 1701989913527
+    },
+    {
+      "schema": 1701882092657,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgRTQ2",
+      "serialNumber": "e/t0ZHYGHEhBodtF6A4M1A==",
+      "id": "bd9b826f-8c96-4520-8423-2b74b60fa56e",
+      "last_modified": 1701989913522
+    },
+    {
+      "schema": 1701882092719,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgRTQ2",
+      "serialNumber": "e/t0aKogKAc6O5JxqkuL3g==",
+      "id": "5cd67dd7-52d3-48c6-a98d-dafe4fbd52a3",
+      "last_modified": 1701989913518
+    },
+    {
+      "schema": 1701882093919,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1868611",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEYxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRwwGgYDVQQDExNHbG9iYWxTaWduIFJvb3QgUjQ2",
+      "serialNumber": "e/t0hWXMQylnjZPQNaIDwg==",
+      "id": "99ed2fd4-470a-4f90-b8da-b75fea3d6466",
+      "last_modified": 1701989913513
+    },
+    {
+      "schema": 1699660807926,
+      "details": {
+        "bug": "1864724",
+        "who": "dkeeler@mozilla.com",
+        "why": "Kazakhstan MITM (#9)",
+        "name": "Information Security Certification Authority",
+        "created": "2023-11-14T23:39:21Z"
+      },
+      "enabled": true,
+      "issuerName": "MFMxNTAzBgNVBAMTLEluZm9ybWF0aW9uIFNlY3VyaXR5IENlcnRpZmljYXRpb24gQXV0aG9yaXR5MQ0wCwYDVQQKEwRJU0NBMQswCQYDVQQGEwJLWg==",
+      "serialNumber": "RR0ycJaMGZl88uTjuXcI7+J28xg=",
+      "id": "4c0da88a-8e3a-4cf7-ad6e-e162ed953867",
+      "last_modified": 1700154823756
+    },
+    {
+      "schema": 1695233106940,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEUxCzAJBgNVBAYTAkNIMRUwEwYDVQQKEwxTd2lzc1NpZ24gQUcxHzAdBgNVBAMTFlN3aXNzU2lnbiBHb2xkIENBIC0gRzI=",
+      "serialNumber": "AIEIODzAB3XEDG1za+Mwiw==",
+      "id": "c61e3ace-0d80-4231-bb38-1b43eda1a555",
+      "last_modified": 1695656154676
+    },
+    {
+      "schema": 1695233106875,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MIGIMQswCQYDVQQGEwJVUzETMBEGA1UECBMKTmV3IEplcnNleTEUMBIGA1UEBxMLSmVyc2V5IENpdHkxHjAcBgNVBAoTFVRoZSBVU0VSVFJVU1QgTmV0d29yazEuMCwGA1UEAxMlVVNFUlRydXN0IFJTQSBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eQ==",
+      "serialNumber": "AJBuE8344SrHVZEVqVicPc0=",
+      "id": "020dd8e8-f2f3-4df3-9105-c8fe8025dc48",
+      "last_modified": 1695656154672
+    },
+    {
+      "schema": 1695233106813,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MIGIMQswCQYDVQQGEwJVUzETMBEGA1UECBMKTmV3IEplcnNleTEUMBIGA1UEBxMLSmVyc2V5IENpdHkxHjAcBgNVBAoTFVRoZSBVU0VSVFJVU1QgTmV0d29yazEuMCwGA1UEAxMlVVNFUlRydXN0IEVDQyBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eQ==",
+      "serialNumber": "ZVQgp61GpFI5YQ4bRYdLwQ==",
+      "id": "77bb5e0c-284c-44c9-9214-6cf56f99d884",
+      "last_modified": 1695656154666
+    },
+    {
+      "schema": 1695233106625,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MIGIMQswCQYDVQQGEwJVUzETMBEGA1UECBMKTmV3IEplcnNleTEUMBIGA1UEBxMLSmVyc2V5IENpdHkxHjAcBgNVBAoTFVRoZSBVU0VSVFJVU1QgTmV0d29yazEuMCwGA1UEAxMlVVNFUlRydXN0IFJTQSBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eQ==",
+      "serialNumber": "IyygpSElAUZRSSMeuADPTQ==",
+      "id": "e7a8a28c-c37a-4ba4-9838-8758a71d94a9",
+      "last_modified": 1695656154662
+    },
+    {
+      "schema": 1695233106687,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MIGIMQswCQYDVQQGEwJVUzETMBEGA1UECBMKTmV3IEplcnNleTEUMBIGA1UEBxMLSmVyc2V5IENpdHkxHjAcBgNVBAoTFVRoZSBVU0VSVFJVU1QgTmV0d29yazEuMCwGA1UEAxMlVVNFUlRydXN0IFJTQSBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eQ==",
+      "serialNumber": "WAE9mhEYoCYAhMiVAzSf2w==",
+      "id": "ffcc30b7-72fd-4685-8b88-b699f8b5c79b",
+      "last_modified": 1695656154658
+    },
+    {
+      "schema": 1695233106750,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MIGIMQswCQYDVQQGEwJVUzETMBEGA1UECBMKTmV3IEplcnNleTEUMBIGA1UEBxMLSmVyc2V5IENpdHkxHjAcBgNVBAoTFVRoZSBVU0VSVFJVU1QgTmV0d29yazEuMCwGA1UEAxMlVVNFUlRydXN0IEVDQyBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eQ==",
+      "serialNumber": "JGSVSBLLB3o3k9sPvSI4mw==",
+      "id": "3654949f-c25a-406d-8b8d-df8b4034cb4f",
+      "last_modified": 1695656154653
+    },
+    {
+      "schema": 1695233106559,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MFQxCzAJBgNVBAYTAkNOMSYwJAYDVQQKDB1CRUlKSU5HIENFUlRJRklDQVRFIEFVVEhPUklUWTEdMBsGA1UEAwwUQkpDQSBHbG9iYWwgUm9vdCBDQTI=",
+      "serialNumber": "TpwBfSjFJUcBb/KpgVpdYQ==",
+      "id": "39178428-e554-40e7-a140-87ba0b0be0c7",
+      "last_modified": 1695656154649
+    },
+    {
+      "schema": 1695233106361,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEUxCzAJBgNVBAYTAkNIMRUwEwYDVQQKEwxTd2lzc1NpZ24gQUcxHzAdBgNVBAMTFlN3aXNzU2lnbiBHb2xkIENBIC0gRzI=",
+      "serialNumber": "APodqurJs6X6V5gLmXTaMQ==",
+      "id": "8ca2eb18-2c8c-4b4b-b563-602528e055b8",
+      "last_modified": 1695656154642
+    },
+    {
+      "schema": 1695233106424,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MIGIMQswCQYDVQQGEwJVUzETMBEGA1UECBMKTmV3IEplcnNleTEUMBIGA1UEBxMLSmVyc2V5IENpdHkxHjAcBgNVBAoTFVRoZSBVU0VSVFJVU1QgTmV0d29yazEuMCwGA1UEAxMlVVNFUlRydXN0IFJTQSBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eQ==",
+      "serialNumber": "Bw1L/czFd0GTl4v2bxUqqw==",
+      "id": "45b56260-4f0b-4282-bb16-4eb5616f4ac0",
+      "last_modified": 1695656154637
+    },
+    {
+      "schema": 1695233106233,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MFExCzAJBgNVBAYTAkVTMUIwQAYDVQQDDDlBdXRvcmlkYWQgZGUgQ2VydGlmaWNhY2lvbiBGaXJtYXByb2Zlc2lvbmFsIENJRiBBNjI2MzQwNjg=",
+      "serialNumber": "JvosL2pTlZtYGv5T23DhhQ==",
+      "id": "62ce964e-afbf-4559-a423-0e1268199f97",
+      "last_modified": 1695656154631
+    },
+    {
+      "schema": 1695233106494,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MIGIMQswCQYDVQQGEwJVUzETMBEGA1UECBMKTmV3IEplcnNleTEUMBIGA1UEBxMLSmVyc2V5IENpdHkxHjAcBgNVBAoTFVRoZSBVU0VSVFJVU1QgTmV0d29yazEuMCwGA1UEAxMlVVNFUlRydXN0IEVDQyBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eQ==",
+      "serialNumber": "AIyKF6j474AWe01PLn9A6I8=",
+      "id": "44401e05-83ee-4123-aa97-657dac5af39f",
+      "last_modified": 1695656154625
+    },
+    {
+      "schema": 1695233106297,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MIGIMQswCQYDVQQGEwJVUzETMBEGA1UECBMKTmV3IEplcnNleTEUMBIGA1UEBxMLSmVyc2V5IENpdHkxHjAcBgNVBAoTFVRoZSBVU0VSVFJVU1QgTmV0d29yazEuMCwGA1UEAxMlVVNFUlRydXN0IEVDQyBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eQ==",
+      "serialNumber": "AO9kCADxUMyMns2lqg7Meks=",
+      "id": "8df8c0c8-48e4-4e4f-9686-f48878240126",
+      "last_modified": 1695656154620
+    },
+    {
+      "schema": 1695233106167,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEcxCzAJBgNVBAYTAlVTMSIwIAYDVQQKExlHb29nbGUgVHJ1c3QgU2VydmljZXMgTExDMRQwEgYDVQQDEwtHVFMgUm9vdCBSMg==",
+      "serialNumber": "AhnBWsAlobClwdnVAQ==",
+      "id": "ad321118-51d7-4544-9a57-53d0a3eff4ea",
+      "last_modified": 1695656154615
+    },
+    {
+      "schema": 1695233106102,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEcxCzAJBgNVBAYTAlVTMSIwIAYDVQQKExlHb29nbGUgVHJ1c3QgU2VydmljZXMgTExDMRQwEgYDVQQDEwtHVFMgUm9vdCBSMw==",
+      "serialNumber": "AhZo2NZbxDIOW45edg==",
+      "id": "311a723a-6087-4413-a7ff-aa611498b7d2",
+      "last_modified": 1695656154609
+    },
+    {
+      "schema": 1695233105962,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MEcxCzAJBgNVBAYTAkNIMRUwEwYDVQQKEwxTd2lzc1NpZ24gQUcxITAfBgNVBAMTGFN3aXNzU2lnbiBTaWx2ZXIgQ0EgLSBHMg==",
+      "serialNumber": "a8MYySrNF2PrQchvr0f3",
+      "id": "5883c669-dc18-4a23-bffc-377abbdf3510",
+      "last_modified": 1695656154605
+    },
+    {
+      "schema": 1695128491981,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MFAxJDAiBgNVBAsTG0dsb2JhbFNpZ24gRUNDIFJvb3QgQ0EgLSBSNDETMBEGA1UEChMKR2xvYmFsU2lnbjETMBEGA1UEAxMKR2xvYmFsU2lnbg==",
+      "serialNumber": "AhZo8c0KKo+EfYqtNA==",
+      "id": "093bf38b-89f3-4a90-8a2b-6135f27d2d9b",
+      "last_modified": 1695656154600
+    },
+    {
+      "schema": 1695233106030,
+      "details": {
+        "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1854222",
+        "who": "",
+        "why": "",
+        "name": "",
+        "created": ""
+      },
+      "enabled": false,
+      "issuerName": "MFExCzAJBgNVBAYTAlRXMRIwEAYDVQQKEwlUQUlXQU4tQ0ExEDAOBgNVBAsTB1Jvb3QgQ0ExHDAaBgNVBAMTE1RXQ0EgR2xvYmFsIFJvb3QgQ0E=",
+      "serialNumber": "QAE0sQ0AAAAAAAAMzpf7sg==",
+      "id": "372aab81-e6cd-4a31-973c-a11deb1615d9",
+      "last_modified": 1695656154596
+    },
+    {
       "schema": 1687366866913,
       "details": {
         "bug": "https://bugzilla.mozilla.org/show_bug.cgi?id=1839689",
@@ -23431,5 +24316,5 @@
       "last_modified": 1480349158647
     }
   ],
-  "timestamp": 1687555476962
+  "timestamp": 1717704918940
 }

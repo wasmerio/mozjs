@@ -81,27 +81,10 @@ class nsIWidgetListener {
    */
   virtual void SizeModeChanged(nsSizeMode aSizeMode);
 
-  /**
-   * Called when the DPI (device resolution scaling factor) is changed,
-   * such that UI elements may need to be rescaled.
-   */
-  virtual void UIResolutionChanged();
-
 #if defined(MOZ_WIDGET_ANDROID)
   virtual void DynamicToolbarMaxHeightChanged(mozilla::ScreenIntCoord aHeight);
   virtual void DynamicToolbarOffsetChanged(mozilla::ScreenIntCoord aOffset);
 #endif
-
-  /**
-   * Called when the z-order of the window is changed. Returns true if the
-   * notification was handled. aPlacement indicates the new z order. If
-   * placement is nsWindowZRelative, then aRequestBelow should be the
-   * window to place below. On return, aActualBelow will be set to the
-   * window actually behind. This generally only applies to Windows.
-   */
-  virtual bool ZLevelChanged(bool aImmediate, nsWindowZ* aPlacement,
-                             nsIWidget* aRequestBelow,
-                             nsIWidget** aActualBelow);
 
   /**
    * Called when the macOS titlebar is shown while in fullscreen.

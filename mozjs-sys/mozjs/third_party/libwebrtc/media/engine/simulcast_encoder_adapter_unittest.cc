@@ -14,6 +14,9 @@
 #include <memory>
 #include <vector>
 
+#include "api/environment/environment.h"
+#include "api/environment/environment_factory.h"
+#include "api/field_trials_view.h"
 #include "api/test/create_simulcast_test_fixture.h"
 #include "api/test/simulcast_test_fixture.h"
 #include "api/test/video/function_video_decoder_factory.h"
@@ -29,9 +32,9 @@
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/utility/simulcast_test_fixture_impl.h"
 #include "rtc_base/checks.h"
-#include "test/field_trial.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
+#include "test/scoped_key_value_config.h"
 
 using ::testing::_;
 using ::testing::Return;
@@ -54,17 +57,19 @@ std::unique_ptr<SimulcastTestFixture> CreateSpecificSimulcastTestFixture(
     VideoEncoderFactory* internal_encoder_factory) {
   std::unique_ptr<VideoEncoderFactory> encoder_factory =
       std::make_unique<FunctionVideoEncoderFactory>(
-          [internal_encoder_factory]() {
+          [internal_encoder_factory](const Environment& env,
+                                     const SdpVideoFormat& format) {
             return std::make_unique<SimulcastEncoderAdapter>(
-                internal_encoder_factory,
-                SdpVideoFormat(cricket::kVp8CodecName));
+                env, internal_encoder_factory, nullptr, SdpVideoFormat::VP8());
           });
   std::unique_ptr<VideoDecoderFactory> decoder_factory =
       std::make_unique<FunctionVideoDecoderFactory>(
-          []() { return VP8Decoder::Create(); });
+          [](const Environment& env, const SdpVideoFormat& format) {
+            return CreateVp8Decoder(env);
+          });
   return CreateSimulcastTestFixture(std::move(encoder_factory),
                                     std::move(decoder_factory),
-                                    SdpVideoFormat(cricket::kVp8CodecName));
+                                    SdpVideoFormat::VP8());
 }
 }  // namespace
 
@@ -166,8 +171,8 @@ class MockVideoEncoderFactory : public VideoEncoderFactory {
  public:
   std::vector<SdpVideoFormat> GetSupportedFormats() const override;
 
-  std::unique_ptr<VideoEncoder> CreateVideoEncoder(
-      const SdpVideoFormat& format) override;
+  std::unique_ptr<VideoEncoder> Create(const Environment& env,
+                                       const SdpVideoFormat& format) override;
 
   const std::vector<MockVideoEncoder*>& encoders() const;
   void SetEncoderNames(const std::vector<const char*>& encoder_names);
@@ -351,11 +356,11 @@ class MockVideoEncoder : public VideoEncoder {
 
 std::vector<SdpVideoFormat> MockVideoEncoderFactory::GetSupportedFormats()
     const {
-  std::vector<SdpVideoFormat> formats = {SdpVideoFormat("VP8")};
-  return formats;
+  return {SdpVideoFormat::VP8()};
 }
 
-std::unique_ptr<VideoEncoder> MockVideoEncoderFactory::CreateVideoEncoder(
+std::unique_ptr<VideoEncoder> MockVideoEncoderFactory::Create(
+    const Environment& env,
     const SdpVideoFormat& format) {
   if (create_video_encoder_return_nullptr_) {
     return nullptr;
@@ -401,27 +406,28 @@ void MockVideoEncoderFactory::set_init_encode_return_value(int32_t value) {
 class TestSimulcastEncoderAdapterFakeHelper {
  public:
   explicit TestSimulcastEncoderAdapterFakeHelper(
+      const Environment& env,
       bool use_fallback_factory,
       const SdpVideoFormat& video_format)
-      : primary_factory_(new MockVideoEncoderFactory()),
-        fallback_factory_(use_fallback_factory ? new MockVideoEncoderFactory()
-                                               : nullptr),
+      : env_(env),
+        fallback_factory_(use_fallback_factory
+                              ? std::make_unique<MockVideoEncoderFactory>()
+                              : nullptr),
         video_format_(video_format) {}
 
-  // Can only be called once as the SimulcastEncoderAdapter will take the
-  // ownership of `factory_`.
-  VideoEncoder* CreateMockEncoderAdapter() {
-    return new SimulcastEncoderAdapter(primary_factory_.get(),
-                                       fallback_factory_.get(), video_format_);
+  std::unique_ptr<VideoEncoder> CreateMockEncoderAdapter() {
+    return std::make_unique<SimulcastEncoderAdapter>(
+        env_, &primary_factory_, fallback_factory_.get(), video_format_);
   }
 
-  MockVideoEncoderFactory* factory() { return primary_factory_.get(); }
+  MockVideoEncoderFactory* factory() { return &primary_factory_; }
   MockVideoEncoderFactory* fallback_factory() {
     return fallback_factory_.get();
   }
 
  private:
-  std::unique_ptr<MockVideoEncoderFactory> primary_factory_;
+  const Environment env_;
+  MockVideoEncoderFactory primary_factory_;
   std::unique_ptr<MockVideoEncoderFactory> fallback_factory_;
   SdpVideoFormat video_format_;
 };
@@ -440,9 +446,10 @@ class TestSimulcastEncoderAdapterFake : public ::testing::Test,
   }
 
   void SetUp() override {
-    helper_.reset(new TestSimulcastEncoderAdapterFakeHelper(
-        use_fallback_factory_, SdpVideoFormat("VP8", sdp_video_parameters_)));
-    adapter_.reset(helper_->CreateMockEncoderAdapter());
+    helper_ = std::make_unique<TestSimulcastEncoderAdapterFakeHelper>(
+        CreateEnvironment(&field_trials_), use_fallback_factory_,
+        SdpVideoFormat("VP8", sdp_video_parameters_));
+    adapter_ = helper_->CreateMockEncoderAdapter();
     last_encoded_image_width_ = absl::nullopt;
     last_encoded_image_height_ = absl::nullopt;
     last_encoded_image_simulcast_index_ = absl::nullopt;
@@ -464,7 +471,7 @@ class TestSimulcastEncoderAdapterFake : public ::testing::Test,
     last_encoded_image_height_ = encoded_image._encodedHeight;
     last_encoded_image_simulcast_index_ = encoded_image.SimulcastIndex();
 
-    return Result(Result::OK, encoded_image.Timestamp());
+    return Result(Result::OK, encoded_image.RtpTimestamp());
   }
 
   bool GetLastEncodedImageInfo(absl::optional<int>* out_width,
@@ -580,7 +587,8 @@ class TestSimulcastEncoderAdapterFake : public ::testing::Test,
   absl::optional<int> last_encoded_image_simulcast_index_;
   std::unique_ptr<SimulcastRateAllocator> rate_allocator_;
   bool use_fallback_factory_;
-  SdpVideoFormat::Parameters sdp_video_parameters_;
+  CodecParameterMap sdp_video_parameters_;
+  test::ScopedKeyValueConfig field_trials_;
 };
 
 TEST_F(TestSimulcastEncoderAdapterFake, InitEncode) {
@@ -665,7 +673,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, ReusesEncodersInOrder) {
   rtc::scoped_refptr<VideoFrameBuffer> buffer(I420Buffer::Create(1280, 720));
   VideoFrame input_frame = VideoFrame::Builder()
                                .set_video_frame_buffer(buffer)
-                               .set_timestamp_rtp(100)
+                               .set_rtp_timestamp(100)
                                .set_timestamp_ms(1000)
                                .set_rotation(kVideoRotation_180)
                                .build();
@@ -1039,7 +1047,7 @@ TEST_F(TestSimulcastEncoderAdapterFake,
                                                   /*allow_to_i420=*/false));
   VideoFrame input_frame = VideoFrame::Builder()
                                .set_video_frame_buffer(buffer)
-                               .set_timestamp_rtp(100)
+                               .set_rtp_timestamp(100)
                                .set_timestamp_ms(1000)
                                .set_rotation(kVideoRotation_180)
                                .build();
@@ -1076,7 +1084,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, NativeHandleForwardingOnlyIfSupported) {
                                                   /*allow_to_i420=*/true));
   VideoFrame input_frame = VideoFrame::Builder()
                                .set_video_frame_buffer(buffer)
-                               .set_timestamp_rtp(100)
+                               .set_rtp_timestamp(100)
                                .set_timestamp_ms(1000)
                                .set_rotation(kVideoRotation_180)
                                .build();
@@ -1134,7 +1142,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, GeneratesKeyFramesOnRequestedLayers) {
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_OK));
   VideoFrame first_frame = VideoFrame::Builder()
                                .set_video_frame_buffer(buffer)
-                               .set_timestamp_rtp(0)
+                               .set_rtp_timestamp(0)
                                .set_timestamp_ms(0)
                                .build();
   EXPECT_EQ(0, adapter_->Encode(first_frame, &frame_types));
@@ -1154,7 +1162,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, GeneratesKeyFramesOnRequestedLayers) {
   frame_types[2] = VideoFrameType::kVideoFrameDelta;
   VideoFrame second_frame = VideoFrame::Builder()
                                 .set_video_frame_buffer(buffer)
-                                .set_timestamp_rtp(10000)
+                                .set_rtp_timestamp(10000)
                                 .set_timestamp_ms(100000)
                                 .build();
   EXPECT_EQ(0, adapter_->Encode(second_frame, &frame_types));
@@ -1174,7 +1182,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, GeneratesKeyFramesOnRequestedLayers) {
   frame_types[2] = VideoFrameType::kVideoFrameDelta;
   VideoFrame third_frame = VideoFrame::Builder()
                                .set_video_frame_buffer(buffer)
-                               .set_timestamp_rtp(20000)
+                               .set_rtp_timestamp(20000)
                                .set_timestamp_ms(200000)
                                .build();
   EXPECT_EQ(0, adapter_->Encode(third_frame, &frame_types));
@@ -1198,7 +1206,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, TestFailureReturnCodesFromEncodeCalls) {
   input_buffer->InitializeData();
   VideoFrame input_frame = VideoFrame::Builder()
                                .set_video_frame_buffer(input_buffer)
-                               .set_timestamp_rtp(0)
+                               .set_rtp_timestamp(0)
                                .set_timestamp_us(0)
                                .set_rotation(kVideoRotation_0)
                                .build();
@@ -1303,7 +1311,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, ActivatesCorrectStreamsInInitEncode) {
   rtc::scoped_refptr<VideoFrameBuffer> buffer(I420Buffer::Create(1280, 720));
   VideoFrame input_frame = VideoFrame::Builder()
                                .set_video_frame_buffer(buffer)
-                               .set_timestamp_rtp(100)
+                               .set_rtp_timestamp(100)
                                .set_timestamp_ms(1000)
                                .set_rotation(kVideoRotation_180)
                                .build();
@@ -1341,7 +1349,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, TrustedRateControl) {
   rtc::scoped_refptr<VideoFrameBuffer> buffer(I420Buffer::Create(1280, 720));
   VideoFrame input_frame = VideoFrame::Builder()
                                .set_video_frame_buffer(buffer)
-                               .set_timestamp_rtp(100)
+                               .set_rtp_timestamp(100)
                                .set_timestamp_ms(1000)
                                .set_rotation(kVideoRotation_180)
                                .build();
@@ -1435,12 +1443,14 @@ TEST_F(TestSimulcastEncoderAdapterFake,
 TEST_F(
     TestSimulcastEncoderAdapterFake,
     EncoderInfoFromFieldTrialDoesNotOverrideExistingBitrateLimitsInSinglecast) {
-  test::ScopedFieldTrials field_trials(
+  test::ScopedKeyValueConfig field_trials(
+      field_trials_,
       "WebRTC-SimulcastEncoderAdapter-GetEncoderInfoOverride/"
       "frame_size_pixels:123|456|789,"
       "min_start_bitrate_bps:11000|22000|33000,"
       "min_bitrate_bps:44000|55000|66000,"
       "max_bitrate_bps:77000|88000|99000/");
+  SetUp();
 
   std::vector<VideoEncoder::ResolutionBitrateLimits> bitrate_limits;
   bitrate_limits.push_back(
@@ -1463,7 +1473,8 @@ TEST_F(
 }
 
 TEST_F(TestSimulcastEncoderAdapterFake, EncoderInfoFromFieldTrial) {
-  test::ScopedFieldTrials field_trials(
+  test::ScopedKeyValueConfig field_trials(
+      field_trials_,
       "WebRTC-SimulcastEncoderAdapter-GetEncoderInfoOverride/"
       "requested_resolution_alignment:8,"
       "apply_alignment_to_all_simulcast_layers/");
@@ -1483,7 +1494,8 @@ TEST_F(TestSimulcastEncoderAdapterFake, EncoderInfoFromFieldTrial) {
 
 TEST_F(TestSimulcastEncoderAdapterFake,
        EncoderInfoFromFieldTrialForSingleStream) {
-  test::ScopedFieldTrials field_trials(
+  test::ScopedKeyValueConfig field_trials(
+      field_trials_,
       "WebRTC-SimulcastEncoderAdapter-GetEncoderInfoOverride/"
       "requested_resolution_alignment:9,"
       "frame_size_pixels:123|456|789,"
@@ -1644,7 +1656,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, SupportsSimulcast) {
   rtc::scoped_refptr<VideoFrameBuffer> buffer(I420Buffer::Create(1280, 720));
   VideoFrame input_frame = VideoFrame::Builder()
                                .set_video_frame_buffer(buffer)
-                               .set_timestamp_rtp(100)
+                               .set_rtp_timestamp(100)
                                .set_timestamp_ms(1000)
                                .set_rotation(kVideoRotation_180)
                                .build();
@@ -1695,7 +1707,7 @@ TEST_F(TestSimulcastEncoderAdapterFake, SupportsFallback) {
   rtc::scoped_refptr<VideoFrameBuffer> buffer(I420Buffer::Create(1280, 720));
   VideoFrame input_frame = VideoFrame::Builder()
                                .set_video_frame_buffer(buffer)
-                               .set_timestamp_rtp(100)
+                               .set_rtp_timestamp(100)
                                .set_timestamp_ms(1000)
                                .set_rotation(kVideoRotation_180)
                                .build();
@@ -1798,8 +1810,8 @@ TEST_F(TestSimulcastEncoderAdapterFake,
   // Normally SEA reuses encoders. But, when TL-based SW fallback is enabled,
   // the encoder which served the lowest stream should be recreated before it
   // can be used to process an upper layer and vice-versa.
-  test::ScopedFieldTrials field_trials(
-      "WebRTC-Video-PreferTemporalSupportOnBaseLayer/Enabled/");
+  test::ScopedKeyValueConfig field_trials(
+      field_trials_, "WebRTC-Video-PreferTemporalSupportOnBaseLayer/Enabled/");
   use_fallback_factory_ = true;
   ReSetUp();
 

@@ -8,9 +8,7 @@ const TEST_STORE_FILE_NAME = "test-profile.json";
 const COLLECTION_NAME = "addresses";
 
 const TEST_ADDRESS_1 = {
-  "given-name": "Timothy",
-  "additional-name": "John",
-  "family-name": "Berners-Lee",
+  name: "Timothy John Berners-Lee",
   organization: "World Wide Web Consortium",
   "street-address": "32 Vassar Street\nMIT Room 32-G524",
   "address-level2": "Cambridge",
@@ -28,8 +26,7 @@ const TEST_ADDRESS_2 = {
 };
 
 const TEST_ADDRESS_3 = {
-  "given-name": "Timothy",
-  "family-name": "Berners-Lee",
+  name: "Timothy Berners-Lee",
   "street-address": "Other Address",
   "postal-code": "12345",
 };
@@ -40,7 +37,9 @@ const TEST_ADDRESS_WITH_EMPTY_FIELD = {
 };
 
 const TEST_ADDRESS_WITH_EMPTY_COMPUTED_FIELD = {
-  name: "",
+  "given-name": "",
+  "additional-name": "",
+  "family-name": "",
   "address-line1": "",
   "address-line2": "",
   "address-line3": "",
@@ -60,11 +59,6 @@ const TEST_ADDRESS_WITH_INVALID_FIELD = {
 };
 
 const TEST_ADDRESS_EMPTY_AFTER_NORMALIZE = {
-  country: "XXXXXX",
-};
-
-const TEST_ADDRESS_EMPTY_AFTER_UPDATE_ADDRESS_2 = {
-  "street-address": "",
   country: "XXXXXX",
 };
 
@@ -111,13 +105,18 @@ add_task(async function test_getAll() {
   do_check_record_matches(addresses[1], TEST_ADDRESS_2);
 
   // Check computed fields.
-  Assert.equal(addresses[0].name, "Timothy John Berners-Lee");
+  Assert.equal(addresses[0]["given-name"], "Timothy");
+  Assert.equal(addresses[0]["additional-name"], "John");
+  Assert.equal(addresses[0]["family-name"], "Berners-Lee");
   Assert.equal(addresses[0]["address-line1"], "32 Vassar Street");
   Assert.equal(addresses[0]["address-line2"], "MIT Room 32-G524");
 
   // Test with rawData set.
   addresses = await profileStorage.addresses.getAll({ rawData: true });
-  Assert.equal(addresses[0].name, undefined);
+  // For backward-compatibility, we keep *-name fields when `rawData` is true
+  Assert.equal(addresses[0]["given-name"], "Timothy");
+  Assert.equal(addresses[0]["additional-name"], "John");
+  Assert.equal(addresses[0]["family-name"], "Berners-Lee");
   Assert.equal(addresses[0]["address-line1"], undefined);
   Assert.equal(addresses[0]["address-line2"], undefined);
 
@@ -143,7 +142,10 @@ add_task(async function test_get() {
 
   // Test with rawData set.
   address = await profileStorage.addresses.get(guid, { rawData: true });
-  Assert.equal(address.name, undefined);
+  // For backward-compatibility, we keep *-name fields when `rawData` is true
+  Assert.equal(address["given-name"], "Timothy");
+  Assert.equal(address["additional-name"], "John");
+  Assert.equal(address["family-name"], "Berners-Lee");
   Assert.equal(address["address-line1"], undefined);
   Assert.equal(address["address-line2"], undefined);
 
@@ -245,7 +247,7 @@ add_task(async function test_update() {
 
   let address = await profileStorage.addresses.get(guid, { rawData: true });
 
-  Assert.equal(address.country, undefined);
+  Assert.equal(address.country, "US");
   Assert.ok(address.timeLastModified > timeLastModified);
   do_check_record_matches(address, TEST_ADDRESS_3);
   Assert.equal(getSyncChangeCounter(profileStorage.addresses, guid), 1);
@@ -263,8 +265,7 @@ add_task(async function test_update() {
 
   address = await profileStorage.addresses.get(guid, { rawData: true });
 
-  Assert.equal(address["given-name"], "Tim");
-  Assert.equal(address["family-name"], "Berners");
+  Assert.equal(address.name, "Tim Berners");
   Assert.equal(address["street-address"], undefined);
   Assert.equal(address["postal-code"], "12345");
   Assert.notEqual(address.timeLastModified, timeLastModified);
@@ -317,13 +318,6 @@ add_task(async function test_update() {
   );
 
   profileStorage.addresses.update(guid, TEST_ADDRESS_2);
-  await Assert.rejects(
-    profileStorage.addresses.update(
-      guid,
-      TEST_ADDRESS_EMPTY_AFTER_UPDATE_ADDRESS_2
-    ),
-    /Record contains no valid field\./
-  );
 });
 
 add_task(async function test_notifyUsed() {

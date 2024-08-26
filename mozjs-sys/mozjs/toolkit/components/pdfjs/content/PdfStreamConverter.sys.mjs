@@ -19,6 +19,9 @@ const PDF_VIEWER_WEB_PAGE = "resource://pdf.js/web/viewer.html";
 const MAX_NUMBER_OF_PREFS = 50;
 const PDF_CONTENT_TYPE = "application/pdf";
 
+// Preferences
+const caretBrowsingModePref = "accessibility.browsewithcaret";
+
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
@@ -27,7 +30,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   NetworkManager: "resource://pdf.js/PdfJsNetwork.sys.mjs",
   PdfJs: "resource://pdf.js/PdfJs.sys.mjs",
-  PdfJsTelemetry: "resource://pdf.js/PdfJsTelemetry.sys.mjs",
+  PdfJsTelemetryContent: "resource://pdf.js/PdfJsTelemetry.sys.mjs",
   PdfSandbox: "resource://pdf.js/PdfSandbox.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
@@ -46,7 +49,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIHandlerService"
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "gOurBinary", () => {
+ChromeUtils.defineLazyGetter(lazy, "gOurBinary", () => {
   let file = Services.dirsvc.get("XREExeF", Ci.nsIFile);
   // Make sure to get the .app on macOS
   if (AppConstants.platform == "macosx") {
@@ -89,28 +92,6 @@ function getActor(window) {
   } catch (ex) {
     return null;
   }
-}
-
-function getLocalizedStrings(path) {
-  var stringBundle = Services.strings.createBundle(
-    "chrome://pdf.js/locale/" + path
-  );
-
-  var map = {};
-  for (let string of stringBundle.getSimpleEnumeration()) {
-    var key = string.key,
-      property = "textContent";
-    var i = key.lastIndexOf(".");
-    if (i >= 0) {
-      property = key.substring(i + 1);
-      key = key.substring(0, i);
-    }
-    if (!(key in map)) {
-      map[key] = {};
-    }
-    map[key][property] = string.value;
-  }
-  return map;
 }
 
 function isValidMatchesCount(data) {
@@ -200,6 +181,45 @@ PdfDataListener.prototype = {
   },
 };
 
+class PrefObserver {
+  #domWindow;
+
+  constructor(domWindow) {
+    this.#domWindow = domWindow;
+    this.#init();
+  }
+
+  #init() {
+    Services.prefs.addObserver(
+      caretBrowsingModePref,
+      this,
+      /* aHoldWeak = */ true
+    );
+  }
+
+  observe(_aSubject, aTopic, aPrefName) {
+    if (aTopic != "nsPref:changed") {
+      return;
+    }
+
+    const actor = getActor(this.#domWindow);
+    if (!actor) {
+      return;
+    }
+    const eventName = "updatedPreference";
+    switch (aPrefName) {
+      case caretBrowsingModePref:
+        actor.dispatchEvent(eventName, {
+          name: "supportsCaretBrowsingMode",
+          value: Services.prefs.getBoolPref(caretBrowsingModePref),
+        });
+        break;
+    }
+  }
+
+  QueryInterface = ChromeUtils.generateQI([Ci.nsISupportsWeakReference]);
+}
+
 /**
  * All the privileged actions.
  */
@@ -209,6 +229,7 @@ class ChromeActions {
     this.contentDispositionFilename = contentDispositionFilename;
     this.sandbox = null;
     this.unloadListener = null;
+    this.observer = new PrefObserver(domWindow);
   }
 
   createSandbox(data, sendResponse) {
@@ -275,7 +296,17 @@ class ChromeActions {
     }
   }
 
-  download(data, sendResponse) {
+  async mlGuess(data, sendResponse) {
+    const actor = getActor(this.domWindow);
+    if (!actor) {
+      sendResponse(null);
+      return;
+    }
+    const response = await actor.sendQuery("PDFJS:Parent:mlGuess", data);
+    sendResponse(response);
+  }
+
+  download(data) {
     const { originalUrl, options } = data;
     const blobUrl = data.blobUrl || originalUrl;
     let { filename } = data;
@@ -295,20 +326,12 @@ class ChromeActions {
     });
   }
 
-  getLocale() {
-    return Services.locale.requestedLocale || "en-US";
-  }
-
-  getStrings() {
-    try {
-      // Lazy initialization of localizedStrings
-      this.localizedStrings ||= getLocalizedStrings("viewer.properties");
-
-      return this.localizedStrings;
-    } catch (e) {
-      log("Unable to retrieve localized strings: " + e);
-      return null;
-    }
+  getLocaleProperties(_data, sendResponse) {
+    const { requestedLocale, defaultLocale, isAppLocaleRTL } = Services.locale;
+    sendResponse({
+      lang: requestedLocale || defaultLocale,
+      isRTL: isAppLocaleRTL,
+    });
   }
 
   supportsIntegratedFind() {
@@ -316,34 +339,23 @@ class ChromeActions {
     return this.domWindow.windowGlobalChild.browsingContext.parent === null;
   }
 
-  supportsDocumentFonts() {
-    const prefBrowser = Services.prefs.getIntPref(
-      "browser.display.use_document_fonts"
-    );
-    const prefGfx = Services.prefs.getBoolPref(
-      "gfx.downloadable_fonts.enabled"
-    );
-    return !!prefBrowser && prefGfx;
-  }
-
-  supportsPinchToZoom() {
-    return Services.prefs.getBoolPref("apz.allow_zooming");
-  }
-
-  supportedMouseWheelZoomModifierKeys() {
+  getBrowserPrefs() {
     return {
-      ctrlKey:
+      canvasMaxAreaInBytes: Services.prefs.getIntPref("gfx.max-alloc-size"),
+      isInAutomation: Cu.isInAutomation,
+      supportsDocumentFonts:
+        !!Services.prefs.getIntPref("browser.display.use_document_fonts") &&
+        Services.prefs.getBoolPref("gfx.downloadable_fonts.enabled"),
+      supportsIntegratedFind: this.supportsIntegratedFind(),
+      supportsMouseWheelZoomCtrlKey:
         Services.prefs.getIntPref("mousewheel.with_control.action") === 3,
-      metaKey: Services.prefs.getIntPref("mousewheel.with_meta.action") === 3,
+      supportsMouseWheelZoomMetaKey:
+        Services.prefs.getIntPref("mousewheel.with_meta.action") === 3,
+      supportsPinchToZoom: Services.prefs.getBoolPref("apz.allow_zooming"),
+      supportsCaretBrowsingMode: Services.prefs.getBoolPref(
+        caretBrowsingModePref
+      ),
     };
-  }
-
-  getCanvasMaxArea() {
-    return Services.prefs.getIntPref("gfx.max-alloc-size");
-  }
-
-  isInAutomation() {
-    return Cu.isInAutomation;
   }
 
   isMobile() {
@@ -359,7 +371,7 @@ class ChromeActions {
     actor.sendAsyncMessage("PDFJS:Parent:getNimbus");
     Services.obs.addObserver(
       {
-        observe(aSubject, aTopic, aData) {
+        observe(aSubject, aTopic) {
           if (aTopic === "pdfjs-getNimbus") {
             Services.obs.removeObserver(this, aTopic);
             sendResponse(aSubject && JSON.stringify(aSubject.wrappedJSObject));
@@ -371,36 +383,8 @@ class ChromeActions {
   }
 
   reportTelemetry(data) {
-    const probeInfo = JSON.parse(data);
-    const { type } = probeInfo;
-    switch (type) {
-      case "pageInfo":
-        lazy.PdfJsTelemetry.onTimeToView(probeInfo.timestamp);
-        break;
-      case "editing":
-        lazy.PdfJsTelemetry.onEditing(probeInfo.data.type);
-        break;
-      case "buttons":
-      case "gv-buttons":
-        const id = probeInfo.data.id.replace(
-          /([A-Z])/g,
-          c => `_${c.toLowerCase()}`
-        );
-        if (type === "buttons") {
-          lazy.PdfJsTelemetry.onButtons(id);
-        } else {
-          lazy.PdfJsTelemetry.onGeckoview(id);
-        }
-        break;
-    }
-  }
-
-  /**
-   * @param {Object} args - Object with `featureId` and `url` properties.
-   * @param {function} sendResponse - Callback function.
-   */
-  fallback(args, sendResponse) {
-    sendResponse(false);
+    const actor = getActor(this.domWindow);
+    actor?.sendAsyncMessage("PDFJS:Parent:reportTelemetry", data);
   }
 
   updateFindControlState(data) {
@@ -481,8 +465,11 @@ class ChromeActions {
           break;
       }
     }
-    sendResponse?.(currentPrefs);
-    return currentPrefs;
+
+    sendResponse({
+      browserPrefs: this.getBrowserPrefs(),
+      prefs: currentPrefs,
+    });
   }
 
   /**
@@ -499,6 +486,7 @@ class ChromeActions {
         hasSomethingToUndo: false,
         hasSomethingToRedo: false,
         hasSelectedEditor: false,
+        hasSelectedText: false,
       };
     }
     const { editorStates } = doc;
@@ -567,7 +555,7 @@ class RangedChromeActions extends ChromeActions {
       }
     };
     var getXhr = function getXhr() {
-      var xhr = new XMLHttpRequest();
+      var xhr = new XMLHttpRequest({ mozAnon: false });
       xhr.addEventListener("readystatechange", xhr_onreadystatechange);
       return xhr;
     };
@@ -754,42 +742,35 @@ class RequestListener {
     this.actions = actions;
   }
 
-  // Receive an event and synchronously or asynchronously responds.
-  receive(event) {
-    var message = event.target;
-    var doc = message.ownerDocument;
-    var action = event.detail.action;
-    var data = event.detail.data;
-    var sync = event.detail.sync;
-    var actions = this.actions;
-    if (!(action in actions)) {
+  // Receive an event and (optionally) asynchronously responds.
+  receive({ target, detail }) {
+    const doc = target.ownerDocument;
+    const { action, data, responseExpected } = detail;
+
+    const actionFn = this.actions[action];
+    if (!actionFn) {
       log("Unknown action: " + action);
       return;
     }
-    var response;
-    if (sync) {
-      response = actions[action].call(this.actions, data);
-      event.detail.response = Cu.cloneInto(response, doc.defaultView);
+    let response = null;
+
+    if (!responseExpected) {
+      doc.documentElement.removeChild(target);
     } else {
-      if (!event.detail.responseExpected) {
-        doc.documentElement.removeChild(message);
-        response = null;
-      } else {
-        response = function sendResponse(aResponse) {
-          try {
-            var listener = doc.createEvent("CustomEvent");
-            let detail = Cu.cloneInto({ response: aResponse }, doc.defaultView);
-            listener.initCustomEvent("pdf.js.response", true, false, detail);
-            return message.dispatchEvent(listener);
-          } catch (e) {
-            // doc is no longer accessible because the requestor is already
-            // gone. unloaded content cannot receive the response anyway.
-            return false;
-          }
-        };
-      }
-      actions[action].call(this.actions, data, response);
+      response = function (aResponse) {
+        try {
+          const listener = doc.createEvent("CustomEvent");
+          const detail = Cu.cloneInto({ response: aResponse }, doc.defaultView);
+          listener.initCustomEvent("pdf.js.response", true, false, detail);
+          return target.dispatchEvent(listener);
+        } catch (e) {
+          // doc is no longer accessible because the requestor is already
+          // gone. unloaded content cannot receive the response anyway.
+          return false;
+        }
+      };
     }
+    actionFn.call(this.actions, data, response);
   }
 }
 
@@ -819,7 +800,7 @@ PdfStreamConverter.prototype = {
    */
 
   // nsIStreamConverter::convert
-  convert(aFromStream, aFromType, aToType, aCtxt) {
+  convert() {
     throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
   },
 
@@ -1063,7 +1044,7 @@ PdfStreamConverter.prototype = {
       aRequest.setResponseHeader("Refresh", "", false);
     }
 
-    lazy.PdfJsTelemetry.onViewerIsUsed();
+    lazy.PdfJsTelemetryContent.onViewerIsUsed();
 
     // The document will be loaded via the stream converter as html,
     // but since we may have come here via a download or attachment
@@ -1092,7 +1073,7 @@ PdfStreamConverter.prototype = {
     // request(aRequest) below so we don't overwrite the original channel and
     // trigger an assertion.
     var proxy = {
-      onStartRequest(request) {
+      onStartRequest() {
         listener.onStartRequest(aRequest);
       },
       onDataAvailable(request, inputStream, offset, count) {
@@ -1136,7 +1117,7 @@ PdfStreamConverter.prototype = {
 
         let actor = getActor(domWindow);
         actor?.init(actions.supportsIntegratedFind());
-
+        actor?.sendAsyncMessage("PDFJS:Parent:recordExposure");
         listener.onStopRequest(aRequest, statusCode);
       },
     };

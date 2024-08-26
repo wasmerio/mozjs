@@ -49,15 +49,16 @@
 #include "nsContentList.h"
 #include "nsContentUtils.h"
 #include "nsFocusManager.h"
-#include "nsGlobalWindowOuter.h"
+#include "nsGlobalWindowInner.h"
 #include "nsIContentInlines.h"
 #include "nsIDocShell.h"
 #include "nsIFormControl.h"
-#include "nsIScrollableFrame.h"
 #include "nsISHistory.h"
 #include "nsIXULRuntime.h"
 #include "nsPresContext.h"
 #include "nsPrintfCString.h"
+#include "nsDocShell.h"
+#include "nsNetUtil.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -221,7 +222,6 @@ void SessionStoreUtils::CollectDocShellCapabilities(const GlobalObject& aGlobal,
   }                               \
   PR_END_MACRO
 
-  TRY_ALLOWPROP(Plugins);
   // Bug 1328013 : Don't collect "AllowJavascript" property
   // TRY_ALLOWPROP(Javascript);
   TRY_ALLOWPROP(MetaRedirects);
@@ -239,7 +239,6 @@ void SessionStoreUtils::CollectDocShellCapabilities(const GlobalObject& aGlobal,
 /* static */
 void SessionStoreUtils::RestoreDocShellCapabilities(
     nsIDocShell* aDocShell, const nsCString& aDisallowCapabilities) {
-  aDocShell->SetAllowPlugins(true);
   aDocShell->SetAllowMetaRedirects(true);
   aDocShell->SetAllowSubframes(true);
   aDocShell->SetAllowImages(true);
@@ -252,9 +251,7 @@ void SessionStoreUtils::RestoreDocShellCapabilities(
   bool allowJavascript = true;
   for (const nsACString& token :
        nsCCharSeparatedTokenizer(aDisallowCapabilities, ',').ToRange()) {
-    if (token.EqualsLiteral("Plugins")) {
-      aDocShell->SetAllowPlugins(false);
-    } else if (token.EqualsLiteral("Javascript")) {
+    if (token.EqualsLiteral("Javascript")) {
       allowJavascript = false;
     } else if (token.EqualsLiteral("MetaRedirects")) {
       aDocShell->SetAllowMetaRedirects(false);
@@ -1319,14 +1316,13 @@ class FormDataParseContext : public txIParseContext {
   explicit FormDataParseContext(bool aCaseInsensitive)
       : mIsCaseInsensitive(aCaseInsensitive) {}
 
-  nsresult resolveNamespacePrefix(nsAtom* aPrefix, int32_t& aID) override {
+  int32_t resolveNamespacePrefix(nsAtom* aPrefix) override {
     if (aPrefix == nsGkAtoms::xul) {
-      aID = kNameSpaceID_XUL;
-    } else {
-      MOZ_ASSERT(nsDependentAtomString(aPrefix).EqualsLiteral("xhtml"));
-      aID = kNameSpaceID_XHTML;
+      return kNameSpaceID_XUL;
     }
-    return NS_OK;
+
+    MOZ_ASSERT(nsDependentAtomString(aPrefix).EqualsLiteral("xhtml"));
+    return kNameSpaceID_XHTML;
   }
 
   nsresult resolveFunctionCall(nsAtom* aName, int32_t aID,
@@ -1666,8 +1662,9 @@ already_AddRefed<Promise> SessionStoreUtils::InitializeRestore(
     return nullptr;
   }
 
-  MOZ_DIAGNOSTIC_ASSERT(aContext.GetSessionHistory());
-  aContext.GetSessionHistory()->ReloadCurrentEntry();
+  nsCOMPtr<nsISHistory> shistory = aContext.GetSessionHistory();
+  MOZ_DIAGNOSTIC_ASSERT(shistory);
+  shistory->ReloadCurrentEntry();
 
   return aContext.GetRestorePromise();
 }
@@ -1676,7 +1673,10 @@ already_AddRefed<Promise> SessionStoreUtils::InitializeRestore(
 void SessionStoreUtils::RestoreDocShellState(
     nsIDocShell* aDocShell, const DocShellRestoreState& aState) {
   if (aDocShell) {
-    if (aState.URI()) {
+    nsCOMPtr<nsIURI> currentUri;
+    nsDocShell::Cast(aDocShell)->GetCurrentURI(getter_AddRefs(currentUri));
+    if (aState.URI() &&
+        (!currentUri || mozilla::net::SchemeIsAbout(currentUri))) {
       aDocShell->SetCurrentURIForSessionStore(aState.URI());
     }
     RestoreDocShellCapabilities(aDocShell, aState.docShellCaps());

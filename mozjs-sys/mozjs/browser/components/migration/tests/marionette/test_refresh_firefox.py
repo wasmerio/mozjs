@@ -224,8 +224,8 @@ class TestFirefoxRefresh(MarionetteTestCase):
         self.runAsyncCode(
             """
           let resolve = arguments[arguments.length - 1];
-          let { FxAccountsStorageManager } = ChromeUtils.import(
-            "resource://gre/modules/FxAccountsStorage.jsm"
+          let { FxAccountsStorageManager } = ChromeUtils.importESModule(
+            "resource://gre/modules/FxAccountsStorage.sys.mjs"
           );
           let storage = new FxAccountsStorageManager();
           let data = {email: "test@test.com", uid: "uid", keyFetchToken: "top-secret"};
@@ -244,22 +244,23 @@ class TestFirefoxRefresh(MarionetteTestCase):
         )
 
     def checkPassword(self):
-        loginInfo = self.marionette.execute_script(
+        loginInfo = self.runAsyncCode(
             """
-          let ary = Services.logins.findLogins(
-            "test.marionette.mozilla.com",
-            "http://test.marionette.mozilla.com/some/form/",
-            null, {});
-          return ary.length ? ary : {username: "null", password: "null"};
+          let [resolve] = arguments;
+          Services.logins.searchLoginsAsync({
+            origin: "test.marionette.mozilla.com",
+            formActionOrigin: "http://test.marionette.mozilla.com/some/form/",
+          }).then(ary => resolve(ary.length ? ary : {username: "null", password: "null"}));
         """
         )
         self.assertEqual(len(loginInfo), 1)
         self.assertEqual(loginInfo[0]["username"], self._username)
         self.assertEqual(loginInfo[0]["password"], self._password)
 
-        loginCount = self.marionette.execute_script(
+        loginCount = self.runAsyncCode(
             """
-          return Services.logins.getAllLogins().length;
+          let resolve = arguments[arguments.length - 1];
+          Services.logins.getAllLogins().then(logins => resolve(logins.length));
         """
         )
         # Note that we expect 2 logins - one from us, one from sync.
@@ -447,8 +448,8 @@ class TestFirefoxRefresh(MarionetteTestCase):
     def checkFxA(self):
         result = self.runAsyncCode(
             """
-          let { FxAccountsStorageManager } = ChromeUtils.import(
-            "resource://gre/modules/FxAccountsStorage.jsm"
+          let { FxAccountsStorageManager } = ChromeUtils.importESModule(
+            "resource://gre/modules/FxAccountsStorage.sys.mjs"
           );
           let resolve = arguments[arguments.length - 1];
           let storage = new FxAccountsStorageManager();
@@ -527,16 +528,16 @@ class TestFirefoxRefresh(MarionetteTestCase):
           global.Preferences = ChromeUtils.importESModule(
             "resource://gre/modules/Preferences.sys.mjs"
           ).Preferences;
-          global.FormHistory = ChromeUtils.import(
-            "resource://gre/modules/FormHistory.jsm"
+          global.FormHistory = ChromeUtils.importESModule(
+            "resource://gre/modules/FormHistory.sys.mjs"
           ).FormHistory;
         """  # NOQA: E501
         )
         self._formAutofillAvailable = self.runCode(
             """
           try {
-            global.formAutofillStorage = ChromeUtils.import(
-              "resource://formautofill/FormAutofillStorage.jsm"
+            global.formAutofillStorage = ChromeUtils.importESModule(
+              "resource://formautofill/FormAutofillStorage.sys.mjs"
             ).formAutofillStorage;
           } catch(e) {
             return false;

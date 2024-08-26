@@ -9,6 +9,7 @@
 
 #include "XMLHttpRequest.h"
 #include "XMLHttpRequestString.h"
+#include "mozilla/WeakPtr.h"
 #include "mozilla/dom/BodyExtractor.h"
 #include "mozilla/dom/TypedArray.h"
 
@@ -23,7 +24,8 @@ class SendRunnable;
 class StrongWorkerRef;
 class WorkerPrivate;
 
-class XMLHttpRequestWorker final : public XMLHttpRequest {
+class XMLHttpRequestWorker final : public SupportsWeakPtr,
+                                   public XMLHttpRequest {
  public:
   // This defines the xhr.response value.
   struct ResponseData {
@@ -46,20 +48,17 @@ class XMLHttpRequestWorker final : public XMLHttpRequest {
 
   struct StateData {
     nsString mResponseURL;
-    uint32_t mStatus;
+    uint32_t mStatus{0};
     nsCString mStatusText;
-    uint16_t mReadyState;
-    bool mFlagSend;
-    nsresult mStatusResult;
-
-    StateData()
-        : mStatus(0), mReadyState(0), mFlagSend(false), mStatusResult(NS_OK) {}
+    uint16_t mReadyState{0};
+    nsresult mStatusResult{NS_OK};
   };
 
  private:
   RefPtr<XMLHttpRequestUpload> mUpload;
   WorkerPrivate* mWorkerPrivate;
   RefPtr<StrongWorkerRef> mWorkerRef;
+  RefPtr<XMLHttpRequestWorker> mPinnedSelfRef;
   RefPtr<Proxy> mProxy;
 
   XMLHttpRequestResponseType mResponseType;
@@ -71,11 +70,13 @@ class XMLHttpRequestWorker final : public XMLHttpRequest {
   JS::Heap<JSObject*> mResponseArrayBufferValue;
   JS::Heap<JS::Value> mResponseJSONValue;
 
+  uint32_t mEventStreamId{0};
   uint32_t mTimeout;
 
   bool mBackgroundRequest;
   bool mWithCredentials;
   bool mCanceled;
+  bool mFlagSend{false};  // spec flag
   bool mFlagSendActive;
 
   bool mMozAnon;
@@ -94,15 +95,15 @@ class XMLHttpRequestWorker final : public XMLHttpRequest {
 
   void Unpin();
 
-  virtual uint16_t ReadyState() const override {
-    return mStateData->mReadyState;
-  }
+  virtual uint16_t ReadyState() const override;
 
   virtual void Open(const nsACString& aMethod, const nsAString& aUrl,
                     ErrorResult& aRv) override {
     Open(aMethod, aUrl, true, Optional<nsAString>(), Optional<nsAString>(),
          aRv);
   }
+
+  uint32_t EventStreamId() const { return mEventStreamId; }
 
   virtual void Open(const nsACString& aMethod, const nsAString& aUrl,
                     bool aAsync, const nsAString& aUsername,
@@ -236,11 +237,14 @@ class XMLHttpRequestWorker final : public XMLHttpRequest {
 
   void MaybePin(ErrorResult& aRv);
 
-  void MaybeDispatchPrematureAbortEvents(ErrorResult& aRv);
+  void SetResponseToNetworkError();
 
-  void DispatchPrematureAbortEvent(EventTarget* aTarget,
-                                   const nsAString& aEventType,
-                                   bool aUploadTarget, ErrorResult& aRv);
+  void RequestErrorSteps(ErrorResult& aRv,
+                         const ErrorProgressEventType& aEventType,
+                         nsresult aException = NS_ERROR_DOM_INVALID_STATE_ERR);
+
+  bool FireEvent(EventTarget* aTarget, const EventType& aEventType,
+                 bool aUploadTarget, ErrorResult& aRv);
 
   void Send(JSContext* aCx, JS::Handle<JSObject*> aBody, ErrorResult& aRv);
 

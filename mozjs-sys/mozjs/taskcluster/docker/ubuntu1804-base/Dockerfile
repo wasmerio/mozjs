@@ -2,7 +2,7 @@ FROM $DOCKER_IMAGE_PARENT
 MAINTAINER Mike Hommey <mhommey@mozilla.com>
 
 ### Add worker user and setup its workspace.
-RUN mkdir /builds && \
+RUN mkdir -p /builds && \
     groupadd -g 1000 worker && \
     useradd -u 1000 -g 1000 -d /builds/worker -s /bin/bash -m worker && \
     mkdir -p /builds/worker/workspace && \
@@ -37,19 +37,19 @@ RUN /usr/local/sbin/setup_packages.sh $TASKCLUSTER_ROOT_URL $DOCKER_IMAGE_PACKAG
       make \
       mercurial \
       patch \
-      python3.7 \
-      python3.7-dev \
-      python3.7-venv \
-      python3-distutils-extra \
+      python3.8 \
+      python3.8-dev \
+      python3.8-venv \
       python3-minimal \
       python3-zstandard \
       python3-psutil \
       python3-venv \
       vim-tiny \
       xz-utils \
-      zstd
+      zstd \
+    && /usr/local/sbin/clean_packages.sh $DOCKER_IMAGE_PACKAGES
 
-RUN test $(readlink /usr/bin/python3) = python3.6 && ln -sf python3.7 /usr/bin/python3
+RUN test $(readlink /usr/bin/python3) = python3.6 && ln -sf python3.8 /usr/bin/python3
 
 # %include testing/mozharness/external_tools/robustcheckout.py
 COPY topsrcdir/testing/mozharness/external_tools/robustcheckout.py /usr/local/mercurial/robustcheckout.py

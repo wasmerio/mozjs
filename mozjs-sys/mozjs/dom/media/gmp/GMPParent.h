@@ -21,6 +21,7 @@
 #include "nsString.h"
 #include "nsTArray.h"
 #include "nsIFile.h"
+#include "mozilla/Atomics.h"
 #include "mozilla/MozPromise.h"
 
 namespace mozilla::gmp {
@@ -44,11 +45,12 @@ class GMPCapability {
                        const nsACString& aAPI, const nsCString& aTag);
 };
 
-enum GMPState {
-  GMPStateNotLoaded,
-  GMPStateLoaded,
-  GMPStateUnloading,
-  GMPStateClosing
+enum class GMPState : uint32_t {
+  NotLoaded,
+  Loaded,
+  Unloading,
+  Closing,
+  Closed
 };
 
 class GMPContentParent;
@@ -90,6 +92,8 @@ class GMPParent final
 
   GMPState State() const;
   nsCOMPtr<nsISerialEventTarget> GMPEventTarget();
+
+  void OnPreferenceChange(const mozilla::dom::Pref& aPref);
 
   // A GMP can either be a single instance shared across all NodeIds (like
   // in the OpenH264 case), or we can require a new plugin instance for every
@@ -174,6 +178,12 @@ class GMPParent final
 
   mozilla::ipc::IPCResult RecvFOGData(ByteBuf&& aBuf);
 
+#if defined(XP_WIN)
+  mozilla::ipc::IPCResult RecvGetModulesTrust(
+      ModulePaths&& aModPaths, bool aRunAtNormalPriority,
+      GetModulesTrustResolver&& aResolver);
+#endif  // defined(XP_WIN)
+
   bool IsUsed() {
     return mGMPContentChildCount > 0 || !mGetContentParentPromises.IsEmpty();
   }
@@ -198,7 +208,7 @@ class GMPParent final
                              uint32_t& aArchSet);
 #endif
 
-  GMPState mState;
+  Atomic<GMPState> mState;
   nsCOMPtr<nsIFile> mDirectory;  // plugin directory on disk
   nsString mName;  // base name of plugin on disk, UTF-16 because used for paths
   nsCString mDisplayName;  // name of plugin displayed to users

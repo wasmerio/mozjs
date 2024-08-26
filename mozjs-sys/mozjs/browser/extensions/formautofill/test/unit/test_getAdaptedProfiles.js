@@ -1271,6 +1271,20 @@ const TESTCASES = [
       },
     ],
   },
+  {
+    description: "Test (special case) maxlength=4 on cc-exp field.",
+    document: `<form>
+                 <input autocomplete="cc-number">
+                 <input autocomplete="cc-exp" maxlength="4">
+               </form>`,
+    profileData: [{ ...DEFAULT_CREDITCARD_RECORD }],
+    expectedResult: [
+      {
+        ...DEFAULT_CREDITCARD_RECORD,
+        "cc-exp": "0125",
+      },
+    ],
+  },
 ];
 
 for (let testcase of TESTCASES) {
@@ -1303,7 +1317,7 @@ for (let testcase of TESTCASES) {
           let value = testcase.profileData[i][field];
           let cache =
             handler.activeSection._cacheValue.matchingSelectOption.get(select);
-          let targetOption = cache[value] && cache[value].get();
+          let targetOption = cache[value] && cache[value].deref();
           Assert.notEqual(targetOption, null);
 
           Assert.equal(targetOption, expectedOption);

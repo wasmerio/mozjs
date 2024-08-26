@@ -16,8 +16,8 @@
 
 #include "absl/memory/memory.h"
 #include "api/async_dns_resolver.h"
-#include "api/wrapping_async_dns_resolver.h"
 #include "p2p/base/async_stun_tcp_socket.h"
+#include "rtc_base/async_dns_resolver.h"
 #include "rtc_base/async_tcp_socket.h"
 #include "rtc_base/async_udp_socket.h"
 #include "rtc_base/checks.h"
@@ -119,16 +119,6 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
                       << socket->GetError();
   }
 
-  // If using a proxy, wrap the socket in a proxy socket.
-  if (proxy_info.type == PROXY_SOCKS5) {
-    socket = new AsyncSocksProxySocket(
-        socket, proxy_info.address, proxy_info.username, proxy_info.password);
-  } else if (proxy_info.type == PROXY_HTTPS) {
-    socket =
-        new AsyncHttpsProxySocket(socket, user_agent, proxy_info.address,
-                                  proxy_info.username, proxy_info.password);
-  }
-
   // Assert that at most one TLS option is used.
   int tlsOpts = tcp_options.opts & (PacketSocketFactory::OPT_TLS |
                                     PacketSocketFactory::OPT_TLS_FAKE |
@@ -180,14 +170,9 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
   return tcp_socket;
 }
 
-AsyncResolverInterface* BasicPacketSocketFactory::CreateAsyncResolver() {
-  return new AsyncResolver();
-}
-
 std::unique_ptr<webrtc::AsyncDnsResolverInterface>
 BasicPacketSocketFactory::CreateAsyncDnsResolver() {
-  return std::make_unique<webrtc::WrappingAsyncDnsResolver>(
-      new AsyncResolver());
+  return std::make_unique<webrtc::AsyncDnsResolver>();
 }
 
 int BasicPacketSocketFactory::BindSocket(Socket* socket,

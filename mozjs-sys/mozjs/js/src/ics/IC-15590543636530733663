@@ -1,0 +1,1 @@
+GetElem, 2, 2, 5, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(String) , LASTUSED(3) LASTUSED(2) , OP(GuardToString) ID(0) OP(GuardToString) ID(1) OP(GuardSpecificAtom) ID(1) OFFSET(0) OP(LoadStringLengthResult) ID(0) OP(ReturnFromIC)  

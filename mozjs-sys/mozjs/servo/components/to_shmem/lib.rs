@@ -20,7 +20,7 @@ extern crate smallvec;
 extern crate string_cache;
 extern crate thin_vec;
 
-use servo_arc::{Arc, ThinArc};
+use servo_arc::{Arc, ArcUnion, ArcUnionBorrow, HeaderSlice};
 use smallbitvec::{InternalStorage, SmallBitVec};
 use smallvec::{Array, SmallVec};
 use std::alloc::Layout;
@@ -214,11 +214,15 @@ impl_trivial_to_shmem!(
     u32,
     u64,
     isize,
-    usize
+    usize,
+    std::num::NonZeroUsize
 );
 
-impl_trivial_to_shmem!(cssparser::SourceLocation);
-impl_trivial_to_shmem!(cssparser::TokenSerializationType);
+impl_trivial_to_shmem!(
+    cssparser::SourceLocation,
+    cssparser::SourcePosition,
+    cssparser::TokenSerializationType
+);
 
 impl<T> ToShmem for PhantomData<T> {
     fn to_shmem(&self, _builder: &mut SharedMemoryBuilder) -> Result<Self> {
@@ -431,6 +435,23 @@ where
     }
 }
 
+impl<A: 'static, B: 'static> ToShmem for ArcUnion<A, B>
+where
+    Arc<A>: ToShmem,
+    Arc<B>: ToShmem,
+{
+    fn to_shmem(&self, builder: &mut SharedMemoryBuilder) -> Result<Self> {
+        Ok(ManuallyDrop::new(match self.borrow() {
+            ArcUnionBorrow::First(first) => Self::from_first(ManuallyDrop::into_inner(
+                first.with_arc(|a| a.to_shmem(builder))?,
+            )),
+            ArcUnionBorrow::Second(second) => Self::from_second(ManuallyDrop::into_inner(
+                second.with_arc(|a| a.to_shmem(builder))?,
+            )),
+        }))
+    }
+}
+
 impl<T: ToShmem> ToShmem for Arc<T> {
     fn to_shmem(&self, builder: &mut SharedMemoryBuilder) -> Result<Self> {
         // Assert that we don't encounter any shared references to values we
@@ -463,7 +484,7 @@ impl<T: ToShmem> ToShmem for Arc<T> {
     }
 }
 
-impl<H: ToShmem, T: ToShmem> ToShmem for ThinArc<H, T> {
+impl<H: ToShmem, T: ToShmem> ToShmem for Arc<HeaderSlice<H, T>> {
     fn to_shmem(&self, builder: &mut SharedMemoryBuilder) -> Result<Self> {
         // We don't currently have any shared ThinArc values in stylesheets,
         // so don't support them for now.
@@ -476,26 +497,27 @@ impl<H: ToShmem, T: ToShmem> ToShmem for ThinArc<H, T> {
 
         // Make a clone of the Arc-owned header and slice values with all of
         // their heap allocations placed in the shared memory buffer.
-        let header = self.header.header.to_shmem(builder)?;
-        let mut values = Vec::with_capacity(self.slice.len());
-        for v in self.slice.iter() {
+        let header = self.header.to_shmem(builder)?;
+        let mut values = Vec::with_capacity(self.len());
+        for v in self.slice().iter() {
             values.push(v.to_shmem(builder)?);
         }
 
         // Create a new ThinArc with the shared value and have it place
         // its ArcInner in the shared memory buffer.
-        unsafe {
-            let static_arc = ThinArc::static_from_header_and_iter(
-                |layout| builder.alloc(layout),
-                ManuallyDrop::into_inner(header),
-                values.into_iter().map(ManuallyDrop::into_inner),
-            );
+        let len = values.len();
+        let static_arc = Self::from_header_and_iter_alloc(
+            |layout| builder.alloc(layout),
+            ManuallyDrop::into_inner(header),
+            values.into_iter().map(ManuallyDrop::into_inner),
+            len,
+            /* is_static = */ true,
+        );
 
-            #[cfg(debug_assertions)]
-            builder.shared_values.insert(self.heap_ptr());
+        #[cfg(debug_assertions)]
+        builder.shared_values.insert(self.heap_ptr());
 
-            Ok(ManuallyDrop::new(static_arc))
-        }
+        Ok(ManuallyDrop::new(static_arc))
     }
 }
 

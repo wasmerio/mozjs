@@ -8,17 +8,15 @@
 
 // Holds inputs/outputs for decoding/encoding images.
 
-#include <stddef.h>
-#include <stdint.h>
+#include <jxl/memory_manager.h>
 
-#include <type_traits>
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
-#include "lib/jxl/base/data_parallel.h"
 #include "lib/jxl/base/status.h"
-#include "lib/jxl/common.h"
-#include "lib/jxl/frame_header.h"
+#include "lib/jxl/color_encoding_internal.h"
 #include "lib/jxl/headers.h"
 #include "lib/jxl/image.h"
 #include "lib/jxl/image_bundle.h"
@@ -30,6 +28,7 @@ namespace jxl {
 struct Blobs {
   std::vector<uint8_t> exif;
   std::vector<uint8_t> iptc;
+  std::vector<uint8_t> jhgm;
   std::vector<uint8_t> jumbf;
   std::vector<uint8_t> xmp;
 };
@@ -38,9 +37,11 @@ struct Blobs {
 // to/from decoding/encoding.
 class CodecInOut {
  public:
-  CodecInOut() : preview_frame(&metadata.m) {
+  explicit CodecInOut(JxlMemoryManager* memory_manager)
+      : memory_manager(memory_manager),
+        preview_frame(memory_manager, &metadata.m) {
     frames.reserve(1);
-    frames.emplace_back(&metadata.m);
+    frames.emplace_back(memory_manager, &metadata.m);
   }
 
   // Move-only.
@@ -71,17 +72,20 @@ class CodecInOut {
     JXL_CHECK(metadata.size.Set(xsize, ysize));
   }
 
-  void CheckMetadata() const {
+  Status CheckMetadata() const {
     JXL_CHECK(metadata.m.bit_depth.bits_per_sample != 0);
     JXL_CHECK(!metadata.m.color_encoding.ICC().empty());
 
-    if (preview_frame.xsize() != 0) preview_frame.VerifyMetadata();
+    if (preview_frame.xsize() != 0) {
+      JXL_RETURN_IF_ERROR(preview_frame.VerifyMetadata());
+    }
     JXL_CHECK(preview_frame.metadata() == &metadata.m);
 
     for (const ImageBundle& ib : frames) {
-      ib.VerifyMetadata();
+      JXL_RETURN_IF_ERROR(ib.VerifyMetadata());
       JXL_CHECK(ib.metadata() == &metadata.m);
     }
+    return true;
   }
 
   size_t xsize() const { return metadata.size.xsize(); }
@@ -97,6 +101,8 @@ class CodecInOut {
   // -- DECODER OUTPUT, ENCODER INPUT:
 
   // Metadata stored into / retrieved from bitstreams.
+
+  JxlMemoryManager* memory_manager;
 
   Blobs blobs;
 

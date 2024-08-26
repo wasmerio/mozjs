@@ -27,7 +27,7 @@ async function testWindowFocus(isPopup, iframeID) {
   await waitForFocus(tab.linkedBrowser);
 
   info("Entering full-screen");
-  await changeFullscreen(tab.linkedBrowser, true);
+  await DOMFullscreenTestUtils.changeFullscreen(tab.linkedBrowser, true);
 
   await testExpectFullScreenExit(
     tab.linkedBrowser,
@@ -67,14 +67,14 @@ async function testWindowElementFocus(isPopup) {
   await waitForFocus(tab.linkedBrowser);
 
   info("Entering full-screen");
-  await changeFullscreen(tab.linkedBrowser, true);
+  await DOMFullscreenTestUtils.changeFullscreen(tab.linkedBrowser, true);
 
   await testExpectFullScreenExit(
     tab.linkedBrowser,
     false,
     async () => {
       info("Calling element.focus() on popup");
-      await ContentTask.spawn(tab.linkedBrowser, {}, async args => {
+      await ContentTask.spawn(tab.linkedBrowser, {}, async () => {
         await content.wrappedJSObject.sendMessage(
           content.wrappedJSObject.openedWindow,
           "elementfocus"
@@ -93,7 +93,7 @@ async function testWindowElementFocus(isPopup) {
   );
 
   // Cleanup
-  await changeFullscreen(tab.linkedBrowser, false);
+  await DOMFullscreenTestUtils.changeFullscreen(tab.linkedBrowser, false);
   if (isPopup) {
     openedWindow.close();
   } else {

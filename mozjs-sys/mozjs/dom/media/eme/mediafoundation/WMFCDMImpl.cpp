@@ -8,133 +8,19 @@
 
 #include <unordered_map>
 
+#include "mozilla/AppShutdown.h"
+#include "mozilla/ClearOnShutdown.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/dom/MediaKeySession.h"
+#include "mozilla/dom/KeySystemNames.h"
 
 namespace mozilla {
 
-/* static */
-bool WMFCDMImpl::Supports(const nsAString& aKeySystem) {
-  static std::map<nsString, bool> supports;
-
-  nsString key(aKeySystem);
-  if (const auto& s = supports.find(key); s != supports.end()) {
-    return s->second;
-  }
-
-  RefPtr<WMFCDMImpl> cdm = MakeRefPtr<WMFCDMImpl>(aKeySystem);
-  nsTArray<KeySystemConfig> configs;
-  bool s = cdm->GetCapabilities(configs);
-  supports[key] = s;
-  return s;
-}
-
-static void MFCDMCapabilitiesIPDLToKeySystemConfig(
-    const MFCDMCapabilitiesIPDL& aCDMConfig,
-    KeySystemConfig& aKeySystemConfig) {
-  aKeySystemConfig.mKeySystem = aCDMConfig.keySystem();
-
-  for (const auto& type : aCDMConfig.initDataTypes()) {
-    aKeySystemConfig.mInitDataTypes.AppendElement(type);
-  }
-
-  for (const auto& type : aCDMConfig.sessionTypes()) {
-    aKeySystemConfig.mSessionTypes.AppendElement(type);
-  }
-
-  for (const auto& c : aCDMConfig.videoCapabilities()) {
-    if (!c.robustness().IsEmpty() &&
-        !aKeySystemConfig.mVideoRobustness.Contains(c.robustness())) {
-      aKeySystemConfig.mVideoRobustness.AppendElement(c.robustness());
-    }
-    aKeySystemConfig.mMP4.SetCanDecryptAndDecode(
-        NS_ConvertUTF16toUTF8(c.contentType()));
-  }
-  for (const auto& c : aCDMConfig.audioCapabilities()) {
-    if (!c.robustness().IsEmpty() &&
-        !aKeySystemConfig.mAudioRobustness.Contains(c.robustness())) {
-      aKeySystemConfig.mAudioRobustness.AppendElement(c.robustness());
-    }
-    aKeySystemConfig.mMP4.SetCanDecryptAndDecode(
-        NS_ConvertUTF16toUTF8(c.contentType()));
-  }
-  aKeySystemConfig.mPersistentState = aCDMConfig.persistentState();
-  aKeySystemConfig.mDistinctiveIdentifier = aCDMConfig.distinctiveID();
-#ifdef DEBUG
-  EME_LOG("New Capabilities=%s",
-          NS_ConvertUTF16toUTF8(aKeySystemConfig.GetDebugInfo()).get());
-#endif
-}
-
-static const char* EncryptionSchemeStr(const CryptoScheme aScheme) {
-  switch (aScheme) {
-    case CryptoScheme::None:
-      return "none";
-    case CryptoScheme::Cenc:
-      return "cenc";
-    case CryptoScheme::Cbcs:
-      return "cbcs";
-  }
-}
-
-bool WMFCDMImpl::GetCapabilities(nsTArray<KeySystemConfig>& aOutConfigs) {
-  nsCOMPtr<nsISerialEventTarget> backgroundTaskQueue;
-  NS_CreateBackgroundTaskQueue(__func__, getter_AddRefs(backgroundTaskQueue));
-
-  // Retrieve result from our cached key system
-  static std::unordered_map<std::string, nsTArray<KeySystemConfig>>
-      sKeySystemConfigs{};
-  auto keySystem = std::string{NS_ConvertUTF16toUTF8(mCDM->KeySystem()).get()};
-  if (auto rv = sKeySystemConfigs.find(keySystem);
-      rv != sKeySystemConfigs.end()) {
-    EME_LOG("Return cached capabilities for %s", keySystem.c_str());
-    for (const auto& config : rv->second) {
-      aOutConfigs.AppendElement(config);
-#ifdef DEBUG
-      EME_LOG("-- capabilities (%s)",
-              NS_ConvertUTF16toUTF8(config.GetDebugInfo()).get());
-#endif
-    }
-    return true;
-  }
-
-  // Not cached result, ask the remote process.
-  bool ok = false;
-  static const bool sIsHwSecure[2] = {false, true};
-  for (const auto& isHWSecure : sIsHwSecure) {
-    media::Await(
-        do_AddRef(backgroundTaskQueue), mCDM->GetCapabilities(isHWSecure),
-        [&ok, &aOutConfigs, keySystem,
-         isHWSecure](const MFCDMCapabilitiesIPDL& capabilities) {
-          EME_LOG("capabilities: keySystem=%s (hw-secure=%d)",
-                  keySystem.c_str(), isHWSecure);
-          for (const auto& v : capabilities.videoCapabilities()) {
-            EME_LOG("capabilities: video=%s",
-                    NS_ConvertUTF16toUTF8(v.contentType()).get());
-          }
-          for (const auto& a : capabilities.audioCapabilities()) {
-            EME_LOG("capabilities: audio=%s",
-                    NS_ConvertUTF16toUTF8(a.contentType()).get());
-          }
-          for (const auto& v : capabilities.encryptionSchemes()) {
-            EME_LOG("capabilities: encryptionScheme=%s",
-                    EncryptionSchemeStr(v));
-          }
-          KeySystemConfig* config = aOutConfigs.AppendElement();
-          MFCDMCapabilitiesIPDLToKeySystemConfig(capabilities, *config);
-          sKeySystemConfigs[keySystem].AppendElement(*config);
-          ok = true;
-        },
-        [](nsresult rv) {
-          EME_LOG("Fail to get key system capabilities. rv=%x", uint32_t(rv));
-        });
-  }
-  return ok;
-}
-
 RefPtr<WMFCDMImpl::InitPromise> WMFCDMImpl::Init(
     const WMFCDMImpl::InitParams& aParams) {
-  MOZ_ASSERT(mCDM);
-
+  if (!mCDM) {
+    mCDM = MakeRefPtr<MFCDMChild>(mKeySystem);
+  }
   RefPtr<WMFCDMImpl> self = this;
   mCDM->Init(aParams.mOrigin, aParams.mInitDataTypes,
              aParams.mPersistentStateRequired
@@ -154,6 +40,93 @@ RefPtr<WMFCDMImpl::InitPromise> WMFCDMImpl::Init(
             mInitPromiseHolder.RejectIfExists(rv, __func__);
           });
   return mInitPromiseHolder.Ensure(__func__);
+}
+
+RefPtr<KeySystemConfig::SupportedConfigsPromise>
+WMFCDMCapabilites::GetCapabilities(
+    const nsTArray<KeySystemConfigRequest>& aRequests) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownConfirmed)) {
+    return SupportedConfigsPromise::CreateAndReject(false, __func__);
+  }
+
+  if (!mCapabilitiesPromiseHolder.IsEmpty()) {
+    return mCapabilitiesPromiseHolder.Ensure(__func__);
+  }
+
+  using CapabilitiesPromise = MFCDMChild::CapabilitiesPromise;
+  nsTArray<RefPtr<CapabilitiesPromise>> promises;
+  for (const auto& request : aRequests) {
+    RefPtr<MFCDMChild> cdm = new MFCDMChild(request.mKeySystem);
+    promises.AppendElement(cdm->GetCapabilities(MFCDMCapabilitiesRequest{
+        nsString{request.mKeySystem},
+        request.mDecryption == KeySystemConfig::DecryptionInfo::Hardware,
+        request.mIsPrivateBrowsing}));
+    mCDMs.AppendElement(std::move(cdm));
+  }
+
+  CapabilitiesPromise::AllSettled(GetCurrentSerialEventTarget(), promises)
+      ->Then(
+          GetMainThreadSerialEventTarget(), __func__,
+          [self = RefPtr<WMFCDMCapabilites>(this), this](
+              CapabilitiesPromise::AllSettledPromiseType::ResolveOrRejectValue&&
+                  aResult) {
+            mCapabilitiesPromisesRequest.Complete();
+
+            // Reset cdm
+            auto exit = MakeScopeExit([&] {
+              for (auto& cdm : mCDMs) {
+                cdm->Shutdown();
+              }
+              mCDMs.Clear();
+            });
+
+            nsTArray<KeySystemConfig> outConfigs;
+            for (const auto& promiseRv : aResult.ResolveValue()) {
+              if (promiseRv.IsReject()) {
+                continue;
+              }
+              const MFCDMCapabilitiesIPDL& capabilities =
+                  promiseRv.ResolveValue();
+              EME_LOG("capabilities: keySystem=%s (hw-secure=%d)",
+                      NS_ConvertUTF16toUTF8(capabilities.keySystem()).get(),
+                      capabilities.isHardwareDecryption());
+              for (const auto& v : capabilities.videoCapabilities()) {
+                for (const auto& scheme : v.encryptionSchemes()) {
+                  EME_LOG("capabilities: video=%s, scheme=%s",
+                          NS_ConvertUTF16toUTF8(v.contentType()).get(),
+                          CryptoSchemeToString(scheme));
+                }
+              }
+              for (const auto& a : capabilities.audioCapabilities()) {
+                for (const auto& scheme : a.encryptionSchemes()) {
+                  EME_LOG("capabilities: audio=%s, scheme=%s",
+                          NS_ConvertUTF16toUTF8(a.contentType()).get(),
+                          CryptoSchemeToString(scheme));
+                }
+              }
+              KeySystemConfig* config = outConfigs.AppendElement();
+              MFCDMCapabilitiesIPDLToKeySystemConfig(capabilities, *config);
+            }
+            if (outConfigs.IsEmpty()) {
+              EME_LOG(
+                  "Failed on getting capabilities from all settled promise");
+              mCapabilitiesPromiseHolder.Reject(false, __func__);
+              return;
+            }
+            mCapabilitiesPromiseHolder.Resolve(std::move(outConfigs), __func__);
+          })
+      ->Track(mCapabilitiesPromisesRequest);
+
+  return mCapabilitiesPromiseHolder.Ensure(__func__);
+}
+
+WMFCDMCapabilites::~WMFCDMCapabilites() {
+  mCapabilitiesPromisesRequest.DisconnectIfExists();
+  mCapabilitiesPromiseHolder.RejectIfExists(false, __func__);
+  for (auto& cdm : mCDMs) {
+    cdm->Shutdown();
+  }
 }
 
 }  // namespace mozilla

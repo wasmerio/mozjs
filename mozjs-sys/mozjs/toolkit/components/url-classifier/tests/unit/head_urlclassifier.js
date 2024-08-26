@@ -32,7 +32,7 @@ var {
   HTTP_505,
   HttpError,
   HttpServer,
-} = ChromeUtils.import("resource://testing-common/httpd.js");
+} = ChromeUtils.importESModule("resource://testing-common/httpd.sys.mjs");
 
 do_get_profile();
 
@@ -186,8 +186,8 @@ function doSimpleUpdate(updateText, success, failure) {
   var listener = {
     QueryInterface: ChromeUtils.generateQI(["nsIUrlClassifierUpdateObserver"]),
 
-    updateUrlRequested(url) {},
-    streamFinished(status) {},
+    updateUrlRequested() {},
+    streamFinished() {},
     updateError(errorCode) {
       failure(errorCode);
     },
@@ -210,8 +210,8 @@ function doErrorUpdate(tables, success, failure) {
   var listener = {
     QueryInterface: ChromeUtils.generateQI(["nsIUrlClassifierUpdateObserver"]),
 
-    updateUrlRequested(url) {},
-    streamFinished(status) {},
+    updateUrlRequested() {},
+    streamFinished() {},
     updateError(errorCode) {
       success(errorCode);
     },
@@ -442,7 +442,7 @@ function Timer(delay, cb) {
 
 Timer.prototype = {
   QueryInterface: ChromeUtils.generateQI(["nsITimerCallback"]),
-  notify(timer) {
+  notify() {
     this.cb();
   },
 };

@@ -329,6 +329,8 @@ bool AudioSinkWrapper::NeedAudioSink() {
 
 void AudioSinkWrapper::StartAudioSink(UniquePtr<AudioSink> aAudioSink,
                                       const TimeUnit& aStartTime) {
+  AssertOwnerThread();
+  MOZ_ASSERT(!mAudioSink);
   mAudioSink = std::move(aAudioSink);
   mAudioSink->Start(aStartTime)
       ->Then(mOwnerThread.get(), __func__, this,
@@ -337,6 +339,7 @@ void AudioSinkWrapper::StartAudioSink(UniquePtr<AudioSink> aAudioSink,
 }
 
 void AudioSinkWrapper::ShutDownAudioSink() {
+  AssertOwnerThread();
   mAudioSinkEndedRequest.DisconnectIfExists();
   if (IsPlaying()) {
     mPositionAtClockStart = mAudioSink->GetPosition();
@@ -349,6 +352,7 @@ void AudioSinkWrapper::ShutDownAudioSink() {
 
 RefPtr<GenericPromise> AudioSinkWrapper::MaybeAsyncCreateAudioSink(
     RefPtr<AudioDeviceInfo> aDevice) {
+  AssertOwnerThread();
   UniquePtr<AudioSink> audioSink;
   if (NeedAudioSink() && (!mAudioSink || aDevice != mAudioDevice)) {
     LOG("%p: AudioSinkWrapper::MaybeAsyncCreateAudioSink: AudioSink needed",
@@ -401,30 +405,18 @@ RefPtr<GenericPromise> AudioSinkWrapper::MaybeAsyncCreateAudioSink(
           [self = RefPtr<AudioSinkWrapper>(this), audioDevice = mAudioDevice,
            this](Promise::ResolveOrRejectValue&& aValue) mutable {
             LOG("AudioSink async init done, back on MDSM thread");
-            ScopeExit decr([&] { --mAsyncCreateCount; });
-
-            if (aValue.IsReject()) {
-              if (audioDevice) {
-                // Device will be started when available again.
-                ScheduleRetrySink();
-                return GenericPromise::CreateAndResolve(true, __func__);
-              }
-              // Default device not available.  Report error.
-              mEndedPromiseHolder.RejectIfExists(aValue.RejectValue(),
-                                                 __func__);
-              return GenericPromise::CreateAndResolve(true, __func__);
+            --mAsyncCreateCount;
+            UniquePtr<AudioSink> audioSink;
+            if (aValue.IsResolve()) {
+              audioSink = std::move(aValue.ResolveValue());
             }
-
-            UniquePtr audioSink = std::move(aValue.ResolveValue());
-            if (!audioSink) {
-              return GenericPromise::CreateAndResolve(true, __func__);
-            }
-            // It's possible that the newly created isn't needed at this
-            // point, in some cases:
+            // It's possible that the newly created AudioSink isn't needed at
+            // this point, in some cases:
             // 1. An AudioSink was created synchronously while this
             // AudioSink was initialized asynchronously, bail out here. This
-            // happens when seeking (which does a synchronous
-            // initialization) right after unmuting.
+            // happens when seeking (which does a synchronous initialization)
+            // right after unmuting.  mEndedPromiseHolder is managed by the
+            // other AudioSink, so don't touch it here.
             // 2. The media element was muted while the async initialization
             // was happening.
             // 3. The AudioSinkWrapper was paused or stopped during
@@ -432,19 +424,44 @@ RefPtr<GenericPromise> AudioSinkWrapper::MaybeAsyncCreateAudioSink(
             // 4. The audio has ended during asynchronous initialization.
             // 5. A change to a potentially different sink device is pending.
             if (mAudioSink || !NeedAudioSink() || audioDevice != mAudioDevice) {
-              LOG("AudioSink initialized async isn't needed, shutting "
-                  "it down.");
-              audioSink->ShutDown();
+              LOG("AudioSink async initialization isn't needed.");
+              if (audioSink) {
+                LOG("Shutting down unneeded AudioSink.");
+                audioSink->ShutDown();
+              }
+              return GenericPromise::CreateAndResolve(true, __func__);
+            }
+
+            if (aValue.IsReject()) {
+              if (audioDevice) {
+                // Device will be started when available again.
+                ScheduleRetrySink();
+              } else {
+                // Default device not available.  Report error.
+                MOZ_ASSERT(!mAudioSink);
+                mEndedPromiseHolder.RejectIfExists(aValue.RejectValue(),
+                                                   __func__);
+              }
+              return GenericPromise::CreateAndResolve(true, __func__);
+            }
+
+            if (!audioSink) {
+              // No-op because either an existing AudioSink was suitable or no
+              // AudioSink was needed when MaybeAsyncCreateAudioSink() set up
+              // this task.  We now need a new AudioSink, but that will be
+              // handled by another task, either already pending or a delayed
+              // retry task yet to be created by GetPosition().
               return GenericPromise::CreateAndResolve(true, __func__);
             }
 
             MOZ_ASSERT(!mAudioSink);
-            TimeUnit switchTime = GetPosition();
+            // Avoiding the side effects of GetPosition() creating another
+            // sink another AudioSink and resolving mEndedPromiseHolder, which
+            // the new audioSink will now manage.
+            TimeUnit switchTime = GetSystemClockPosition(TimeStamp::Now());
             DropAudioPacketsIfNeeded(switchTime);
-            if (mTreatUnderrunAsSilence) {
-              audioSink->EnableTreatAudioUnderrunAsSilence(
-                  mTreatUnderrunAsSilence);
-            }
+            mLastClockSource = ClockSource::SystemClock;
+
             LOG("AudioSink async, start");
             StartAudioSink(std::move(audioSink), switchTime);
             return GenericPromise::CreateAndResolve(true, __func__);
@@ -452,6 +469,7 @@ RefPtr<GenericPromise> AudioSinkWrapper::MaybeAsyncCreateAudioSink(
 }
 
 nsresult AudioSinkWrapper::SyncCreateAudioSink(const TimeUnit& aStartTime) {
+  AssertOwnerThread();
   MOZ_ASSERT(!mAudioSink);
   MOZ_ASSERT(!mAudioSinkEndedRequest.Exists());
 
@@ -474,9 +492,6 @@ nsresult AudioSinkWrapper::SyncCreateAudioSink(const TimeUnit& aStartTime) {
     // is no video.
     mEndedPromiseHolder.RejectIfExists(rv, __func__);
     return rv;
-  }
-  if (mTreatUnderrunAsSilence) {
-    audioSink->EnableTreatAudioUnderrunAsSilence(mTreatUnderrunAsSilence);
   }
   StartAudioSink(std::move(audioSink), aStartTime);
 
@@ -528,6 +543,9 @@ bool AudioSinkWrapper::IsPlaying() const {
 void AudioSinkWrapper::OnAudioEnded(
     const EndedPromise::ResolveOrRejectValue& aValue) {
   AssertOwnerThread();
+  // This callback on mAudioSinkEndedRequest should have been disconnected if
+  // mEndedPromiseHolder has been settled.
+  MOZ_ASSERT(!mEndedPromiseHolder.IsEmpty());
   LOG("%p: AudioSinkWrapper::OnAudioEnded %i", this, aValue.IsResolve());
   mAudioSinkEndedRequest.Complete();
   ShutDownAudioSink();
@@ -552,13 +570,6 @@ void AudioSinkWrapper::GetDebugInfo(dom::MediaSinkDebugInfo& aInfo) {
   aInfo.mAudioSinkWrapper.mAudioEnded = mAudioEnded;
   if (mAudioSink) {
     mAudioSink->GetDebugInfo(aInfo);
-  }
-}
-
-void AudioSinkWrapper::EnableTreatAudioUnderrunAsSilence(bool aEnabled) {
-  mTreatUnderrunAsSilence = aEnabled;
-  if (mAudioSink) {
-    mAudioSink->EnableTreatAudioUnderrunAsSilence(aEnabled);
   }
 }
 

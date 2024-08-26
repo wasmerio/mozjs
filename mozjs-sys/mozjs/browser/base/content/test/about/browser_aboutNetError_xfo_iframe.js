@@ -8,6 +8,10 @@ const BLOCKED_PAGE =
   "http://example.org:8000/browser/browser/base/content/test/about/xfo_iframe.sjs";
 
 add_task(async function test_xfo_iframe() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["security.xfocsp.hideOpenInNewWindow", false]],
+  });
+
   let { iframePageTab, blockedPageTab } = await setupPage(
     "iframe_page_xfo.html",
     BLOCKED_PAGE
@@ -80,7 +84,7 @@ async function setupPage(htmlPageName, blockedPage) {
     true
   );
 
-  BrowserTestUtils.loadURIString(browser, iFramePage);
+  BrowserTestUtils.startLoadingURIString(browser, iFramePage);
   await browserLoaded;
   info("The error page has loaded!");
 

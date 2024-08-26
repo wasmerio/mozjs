@@ -5,7 +5,7 @@
 import { CustomizableUI } from "resource:///modules/CustomizableUI.sys.mjs";
 
 export var Buttons = {
-  init(libDir) {
+  init() {
     createWidget();
   },
 
@@ -59,8 +59,7 @@ export var Buttons = {
         let browserWindow =
           Services.wm.getMostRecentWindow("navigator:browser");
         if (
-          browserWindow.document.documentElement.getAttribute("customizing") !=
-          "true"
+          !browserWindow.document.documentElement.hasAttribute("customizing")
         ) {
           return "The button isn't shown when we're not in customize mode.";
         }

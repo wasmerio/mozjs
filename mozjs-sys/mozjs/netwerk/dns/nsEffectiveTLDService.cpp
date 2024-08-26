@@ -9,10 +9,12 @@
 // http://wiki.mozilla.org/Gecko:Effective_TLD_Service
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/Components.h"
 #include "mozilla/HashFunctions.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/TextUtils.h"
+#include "mozilla/Try.h"
 
 #include "MainThreadUtils.h"
 #include "nsContentUtils.h"
@@ -44,7 +46,7 @@ NS_IMPL_ISUPPORTS(nsEffectiveTLDService, nsIEffectiveTLDService,
 static nsEffectiveTLDService* gService = nullptr;
 
 nsEffectiveTLDService::nsEffectiveTLDService()
-    : mIDNService(), mGraphLock("nsEffectiveTLDService::mGraph") {
+    : mGraphLock("nsEffectiveTLDService::mGraph") {
   mGraph.emplace(etld_dafsa::kDafsa);
 }
 
@@ -58,7 +60,7 @@ nsresult nsEffectiveTLDService::Init() {
   }
 
   nsresult rv;
-  mIDNService = do_GetService(NS_IDNSERVICE_CONTRACTID, &rv);
+  mIDNService = mozilla::components::IDN::Service(&rv);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -73,7 +75,7 @@ NS_IMETHODIMP nsEffectiveTLDService::Observe(nsISupports* aSubject,
                                              const char* aTopic,
                                              const char16_t* aData) {
   /**
-   * Signal sent from netwerk/dns/PublicSuffixList.jsm
+   * Signal sent from netwerk/dns/PublicSuffixList.sys.mjs
    * aSubject is the nsIFile object for dafsa.bin
    * aData is the absolute path to the dafsa.bin file (not used)
    */
@@ -115,8 +117,8 @@ nsEffectiveTLDService* nsEffectiveTLDService::GetInstance() {
   if (gService) {
     return gService;
   }
-  nsCOMPtr<nsIEffectiveTLDService> tldService =
-      do_GetService(NS_EFFECTIVETLDSERVICE_CONTRACTID);
+  nsCOMPtr<nsIEffectiveTLDService> tldService;
+  tldService = mozilla::components::EffectiveTLD::Service();
   if (!tldService) {
     return nullptr;
   }
@@ -514,4 +516,66 @@ NS_IMETHODIMP
 nsEffectiveTLDService::HasRootDomain(const nsACString& aInput,
                                      const nsACString& aHost, bool* aResult) {
   return net::HasRootDomain(aInput, aHost, aResult);
+}
+
+NS_IMETHODIMP
+nsEffectiveTLDService::HasKnownPublicSuffix(nsIURI* aURI, bool* aResult) {
+  NS_ENSURE_ARG_POINTER(aURI);
+
+  nsAutoCString host;
+  nsresult rv = NS_GetInnermostURIHost(aURI, host);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  return HasKnownPublicSuffixFromHost(host, aResult);
+}
+
+NS_IMETHODIMP
+nsEffectiveTLDService::HasKnownPublicSuffixFromHost(const nsACString& aHostname,
+                                                    bool* aResult) {
+  // Create a mutable copy of the hostname and normalize it to ACE.
+  // This will fail if the hostname includes invalid characters.
+  nsCString hostname(aHostname);
+  nsresult rv = NormalizeHostname(hostname);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  if (hostname.IsEmpty() || hostname == ".") {
+    return NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS;
+  }
+
+  // Remove any trailing dot ("example.com." should have a valid suffix)
+  if (hostname.Last() == '.') {
+    hostname.Truncate(hostname.Length() - 1);
+  }
+
+  AutoReadLock lock(mGraphLock);
+
+  // Check if we can find a suffix on the PSL. Start with the top level domain
+  // (for example "com" in "example.com"). If that isn't on the PSL, continue to
+  // add domain segments from the end (for example for "example.co.za", "za" is
+  // not on the PSL, but "co.za" is).
+  int32_t dotBeforeSuffix = -1;
+  int8_t i = 0;
+  do {
+    dotBeforeSuffix = Substring(hostname, 0, dotBeforeSuffix).RFindChar('.');
+
+    const nsACString& suffix = Substring(
+        hostname, dotBeforeSuffix == kNotFound ? 0 : dotBeforeSuffix + 1);
+
+    if (mGraph->Lookup(suffix) != Dafsa::kKeyNotFound) {
+      *aResult = true;
+      return NS_OK;
+    }
+
+    // To save time, only check up to 9 segments. We can be certain at that
+    // point that the PSL doesn't contain a suffix with that many segments if we
+    // didn't find a suffix earlier.
+    i++;
+  } while (dotBeforeSuffix != kNotFound && i < 10);
+
+  *aResult = false;
+  return NS_OK;
 }

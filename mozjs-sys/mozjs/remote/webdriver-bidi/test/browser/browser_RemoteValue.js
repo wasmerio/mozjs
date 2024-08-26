@@ -273,6 +273,18 @@ const REMOTE_COMPLEX_VALUES = [
   },
   { value: new WeakMap([[{}, 1]]), serialized: { type: "weakmap" } },
   { value: new WeakSet([{}]), serialized: { type: "weakset" } },
+  {
+    value: (function* () {
+      yield "a";
+    })(),
+    serialized: { type: "generator" },
+  },
+  {
+    value: (async function* () {
+      yield await Promise.resolve(1);
+    })(),
+    serialized: { type: "generator" },
+  },
   { value: new Error("error message"), serialized: { type: "error" } },
   {
     value: new SyntaxError("syntax error message"),
@@ -282,6 +294,7 @@ const REMOTE_COMPLEX_VALUES = [
     value: new TypeError("type error message"),
     serialized: { type: "error" },
   },
+  { value: new Proxy({}, {}), serialized: { type: "proxy" } },
   { value: new Promise(() => true), serialized: { type: "promise" } },
   { value: new Int8Array(), serialized: { type: "typedarray" } },
   { value: new ArrayBuffer(), serialized: { type: "arraybuffer" } },
@@ -384,7 +397,7 @@ add_task(function test_deserializePrimitiveTypes() {
     const { value: expectedValue, serialized } = type;
 
     info(`Checking '${serialized.type}'`);
-    const value = deserialize(realm, serialized, {});
+    const value = deserialize(serialized, realm, {});
 
     if (serialized.value == "NaN") {
       ok(Number.isNaN(value), `Got expected value for ${serialized}`);
@@ -405,10 +418,13 @@ add_task(function test_deserializeDateLocalValue() {
     "2009",
     "2009-05",
     "2009-05-19",
+    "2022-02-29",
     "2009T15:00",
     "2009-05T15:00",
+    "2022-06-31T15:00",
     "2009-05-19T15:00",
     "2009-05-19T15:00:15",
+    "2009-05-19T15:00-00:00",
     "2009-05-19T15:00:15.452",
     "2009-05-19T15:00:15.452Z",
     "2009-05-19T15:00:15.452+02:00",
@@ -418,7 +434,7 @@ add_task(function test_deserializeDateLocalValue() {
   ];
   for (const dateString of validaDateStrings) {
     info(`Checking '${dateString}'`);
-    const value = deserialize(realm, { type: "date", value: dateString }, {});
+    const value = deserialize({ type: "date", value: dateString }, realm, {});
 
     Assert.equal(
       value.getTime(),
@@ -440,7 +456,7 @@ add_task(function test_deserializeLocalValues() {
     }
 
     info(`Checking '${serialized.type}'`);
-    const value = deserialize(realm, serialized, {});
+    const value = deserialize(serialized, realm, {});
     assertLocalValue(serialized.type, value, expectedValue);
   }
 });
@@ -470,7 +486,7 @@ add_task(async function test_deserializeChannel() {
   };
 
   info(`Checking 'channel'`);
-  const value = deserialize(realm, channel, deserializationOptions, {});
+  const value = deserialize(channel, realm, deserializationOptions, {});
   Assert.equal(
     Object.prototype.toString.call(value),
     "[object Function]",
@@ -506,18 +522,18 @@ add_task(function test_deserializeLocalValuesByHandle() {
     const remoteReference = { handle: serializedValue.handle };
 
     // Check that the remote reference can be deserialized in realm1.
-    const value = deserialize(realm1, remoteReference, {});
+    const value = deserialize(remoteReference, realm1, {});
     assertLocalValue(serialized.type, value, expectedValue);
 
     Assert.throws(
-      () => deserialize(realm2, remoteReference, {}),
+      () => deserialize(remoteReference, realm2, {}),
       /NoSuchHandleError:/,
       `Got expected error when using the wrong realm for deserialize`
     );
 
     realm1.removeObjectHandle(serializedValue.handle);
     Assert.throws(
-      () => deserialize(realm1, remoteReference, {}),
+      () => deserialize(remoteReference, realm1, {}),
       /NoSuchHandleError:/,
       `Got expected error when after deleting the object handle`
     );
@@ -531,7 +547,7 @@ add_task(function test_deserializeHandleInvalidTypes() {
     info(`Checking type: '${invalidType}'`);
 
     Assert.throws(
-      () => deserialize(realm, { type: "object", handle: invalidType }, {}),
+      () => deserialize({ type: "object", handle: invalidType }, realm, {}),
       /InvalidArgumentError:/,
       `Got expected error for type ${invalidType}`
     );
@@ -558,7 +574,7 @@ add_task(function test_deserializePrimitiveTypesInvalidValues() {
       info(`Checking '${type}' with value ${value}`);
 
       Assert.throws(
-        () => deserialize(realm, { type, value }, {}),
+        () => deserialize({ type, value }, realm, {}),
         /InvalidArgument/,
         `Got expected error for type ${type} and value ${value}`
       );
@@ -578,7 +594,6 @@ add_task(function test_deserializeDateLocalValueInvalidValues() {
     "2009-15",
     "2009-02-1",
     "2009-02-50",
-    "2022-02-29",
     "15:00",
     "T15:00",
     "9-05-19T15:00",
@@ -588,7 +603,6 @@ add_task(function test_deserializeDateLocalValueInvalidValues() {
     "2009-05-19T15:",
     "2009-05-19T1:00",
     "2009-05-19T10:1",
-    "2022-06-31T15:00",
     "2009-05-19T60:00",
     "2009-05-19T15:70",
     "2009-05-19T15:00.25",
@@ -602,14 +616,13 @@ add_task(function test_deserializeDateLocalValueInvalidValues() {
     "2009-05-19T10:10+01:1",
     "2009-05-19T15:00+75:00",
     "2009-05-19T15:00+02:80",
-    "2009-05-19T15:00-00:00",
     "02009-05-19T15:00",
   ];
   for (const dateString of invalidaDateStrings) {
     info(`Checking '${dateString}'`);
 
     Assert.throws(
-      () => deserialize(realm, { type: "date", value: dateString }, {}),
+      () => deserialize({ type: "date", value: dateString }, realm, {}),
       /InvalidArgumentError:/,
       `Got expected error for date string: ${dateString}`
     );
@@ -625,7 +638,7 @@ add_task(function test_deserializeLocalValuesInvalidType() {
     info(`Checking type: '${invalidType}'`);
 
     Assert.throws(
-      () => deserialize(realm, { type: invalidType }, {}),
+      () => deserialize({ type: invalidType }, realm, {}),
       /InvalidArgumentError:/,
       `Got expected error for type ${invalidType}`
     );
@@ -633,11 +646,11 @@ add_task(function test_deserializeLocalValuesInvalidType() {
     Assert.throws(
       () =>
         deserialize(
-          realm,
           {
             type: "array",
             value: [{ type: invalidType }],
           },
+          realm,
           {}
         ),
       /InvalidArgumentError:/,
@@ -750,7 +763,7 @@ add_task(function test_deserializeLocalValuesInvalidValues() {
       info(`Checking '${type}' with value ${value}`);
 
       Assert.throws(
-        () => deserialize(realm, { type, value }, {}),
+        () => deserialize({ type, value }, realm, {}),
         /InvalidArgumentError:/,
         `Got expected error for type ${type} and value ${value}`
       );
@@ -1098,7 +1111,7 @@ function deserializeInWindowRealm(serialized) {
       );
       const realm = new WindowRealm(content);
       info(`Checking '${_serialized.type}'`);
-      return deserialize(realm, _serialized, {});
+      return deserialize(_serialized, realm, {});
     }
   );
 }

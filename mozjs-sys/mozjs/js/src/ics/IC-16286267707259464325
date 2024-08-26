@@ -1,0 +1,1 @@
+GetProp, 1, 2, 7, JSVAL_TYPE_UNKNOWN, 24, STUBFIELD(WeakShape) STUBFIELD(JSObject) STUBFIELD(WeakShape) , LASTUSED(5) LASTUSED(3) , OP(GuardToObject) ID(0) OP(GuardShape) ID(0) OFFSET(0) OP(LoadObject) ID(1) OFFSET(1) OP(GuardShape) ID(1) OFFSET(2) OP(GuardHasAttachedArrayBuffer) ID(0) OP(ArrayBufferViewByteOffsetDoubleResult) ID(0) OP(ReturnFromIC)  

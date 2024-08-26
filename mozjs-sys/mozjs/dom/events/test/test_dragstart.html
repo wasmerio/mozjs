@@ -61,7 +61,7 @@ function afterDragTests()
   sendMouseEventsForDrag("link");
   sendMouseEventsForDrag("image");
 
-//  disable testing input dragging for now, as it doesn't seem to be testable 
+//  disable testing input dragging for now, as it doesn't seem to be testable
 //  draggable = $("input");
 //  draggable.setSelectionRange(0, 4);
 //  synthesizeMouse(draggable, 8, 8, { type: "mousedown" });
@@ -93,6 +93,26 @@ function afterDragTests()
   gDragInfo = { target: $("draggable_with_undraggable_descendant"), testid: "undraggable inside draggable" };
   sendMouseEventsForDrag("undraggable_inside_draggable");
   synthesizeMouse(draggable, 12, 12, { type: "mouseup" });
+
+  sendMouseEventsForDrag("link_to_file");
+  synthesizeMouse(draggable, 12, 12, { type: "mouseup" });
+
+  sendMouseEventsForDrag("broken_file_image");
+  synthesizeMouse(draggable, 12, 12, { type: "mouseup" });
+
+  if (navigator.platform.startsWith("Win")) {
+    sendMouseEventsForDrag("link_to_windows_file");
+    synthesizeMouse(draggable, 12, 12, { type: "mouseup" });
+
+    sendMouseEventsForDrag("broken_windows_file_image");
+    synthesizeMouse(draggable, 12, 12, { type: "mouseup" });
+
+    sendMouseEventsForDrag("link_to_backslash_windows_file");
+    synthesizeMouse(draggable, 12, 12, { type: "mouseup" });
+
+    sendMouseEventsForDrag("broken_backslash_windows_file_image");
+    synthesizeMouse(draggable, 12, 12, { type: "mouseup" });
+  }
 
   if (gExtraDragTests == 7)
     SimpleTest.finish();
@@ -168,7 +188,7 @@ function test_DataTransfer(dt)
   var types = dt.types;
   ok(Array.isArray(types), "empty types is an Array");
   // The above test fails if we have SpecialPowers.wrap(dt).types instead of dt.types
-  // because chrome consumers get the 'ReturnValueNeedsContainsHack'.
+  // because dt.types will be wrapped and become a proxy.
   // So wrap with special powers after the test
   dt = SpecialPowers.wrap(dt);
   checkTypes(dt, [], 0, "empty");
@@ -187,10 +207,10 @@ function test_DataTransfer(dt)
   // if the type is '', do nothing, or return ''
   dt.setData("", "Invalid Type");
   is(dt.types.length, 0, "invalid type setData");
-  is(dt.getData(""), "", "invalid type getData"),
+  is(dt.getData(""), "", "invalid type getData");
   dt.mozSetDataAt("", "Invalid Type", 0);
   is(dt.types.length, 0, "invalid type setDataAt");
-  is(dt.mozGetDataAt("", 0), null, "invalid type getDataAt"),
+  is(dt.mozGetDataAt("", 0), null, "invalid type getDataAt");
 
   // similar with clearDataAt and getDataAt
   expectError(() => dt.mozGetDataAt("text/plain", 1),
@@ -609,6 +629,10 @@ function onDragOverDraggableFalse(event) {
   ok(false, "Triggered dragstart on draggable=false node " + event.target.id);
 }
 
+function onDragStartUnlinkable(event) {
+  ok(false, "Triggered dragstart on undraggable node " + event.target.id);
+}
+
 function expectError(fn, eid, testid)
 {
   var error = "";
@@ -681,5 +705,12 @@ shadow_host_containing_image.attachShadow({ mode: 'open' }).innerHTML =
     This is an undraggable link inside a draggable ancestor.
   </a>
 </div>
+
+<a id="link_to_file" href="file:///" ondragstart="onDragStartUnlinkable(event)">This is an undraggable 'file' link</a>
+<a id="link_to_windows_file" href="c:/Users/" ondragstart="onDragStartUnlinkable(event)">This is an undraggable 'file' link</a>
+<a id="link_to_backslash_windows_file" href="c:\\Users\\" ondragstart="onDragStartUnlinkable(event)">This is an undraggable 'file' link</a>
+<img id="broken_file_image" src="file:///" ondragstart="onDragStartUnlinkable(event)">
+<img id="broken_windows_file_image" src="c:/Users/" ondragstart="onDragStartUnlinkable(event)">
+<img id="broken_backslash_windows_file_image" src="c:\\Users\\" ondragstart="onDragStartUnlinkable(event)">
 </body>
 </html>

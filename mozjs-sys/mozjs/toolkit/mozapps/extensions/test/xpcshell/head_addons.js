@@ -49,17 +49,13 @@ var { AddonTestUtils, MockAsyncShutdown } = ChromeUtils.importESModule(
   "resource://testing-common/AddonTestUtils.sys.mjs"
 );
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "HttpServer",
-  "resource://testing-common/httpd.js"
-);
 ChromeUtils.defineESModuleGetters(this, {
   Blocklist: "resource://gre/modules/Blocklist.sys.mjs",
   Extension: "resource://gre/modules/Extension.sys.mjs",
   ExtensionTestCommon: "resource://testing-common/ExtensionTestCommon.sys.mjs",
   ExtensionTestUtils:
     "resource://testing-common/ExtensionXPCShellUtils.sys.mjs",
+  HttpServer: "resource://testing-common/httpd.sys.mjs",
   MockRegistrar: "resource://testing-common/MockRegistrar.sys.mjs",
   MockRegistry: "resource://testing-common/MockRegistry.sys.mjs",
   PromiseTestUtils: "resource://testing-common/PromiseTestUtils.sys.mjs",
@@ -107,7 +103,7 @@ ExtensionTestUtils.init(this);
 AddonTestUtils.init(this);
 AddonTestUtils.overrideCertDB();
 
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   this,
   "BOOTSTRAP_REASONS",
   () => AddonManagerPrivate.BOOTSTRAP_REASONS
@@ -474,7 +470,7 @@ function do_check_not_in_crash_annotation(aId, aVersion) {
 
 function do_get_file_hash(aFile, aAlgorithm) {
   if (!aAlgorithm) {
-    aAlgorithm = "sha1";
+    aAlgorithm = "sha256";
   }
 
   let crypto = Cc["@mozilla.org/security/hash;1"].createInstance(
@@ -939,7 +935,7 @@ class EventChecker {
     return this.checkAddonEvent("onInstalled", addon);
   }
 
-  onUninstalling(addon, requiresRestart) {
+  onUninstalling(addon) {
     return this.checkAddonEvent("onUninstalling", addon);
   }
 
@@ -1037,7 +1033,7 @@ class EventChecker {
     });
   }
 
-  onInstallEnded(install, newAddon) {
+  onInstallEnded(install) {
     return this.checkInstall("onInstallEnded", install, {
       state: "STATE_INSTALLED",
       error: 0,
@@ -1151,7 +1147,6 @@ function copyBlocklistToProfile(blocklistFile) {
 }
 
 async function mockGfxBlocklistItemsFromDisk(path) {
-  Cu.importGlobalProperties(["fetch"]);
   let response = await fetch(Services.io.newFileURI(do_get_file(path)).spec);
   let json = await response.json();
   return mockGfxBlocklistItems(json);
@@ -1225,4 +1220,11 @@ async function installBuiltinExtension(extensionData, waitForStartup = true) {
     await wrapper.awaitStartup();
   }
   return wrapper;
+}
+
+function useAMOStageCert() {
+  // NOTE: add_task internally calls add_test which mutate the add_task properties object,
+  // and so we should not reuse the same object as add_task options passed to multiple
+  // add_task calls.
+  return { pref_set: [["xpinstall.signatures.dev-root", true]] };
 }

@@ -1,0 +1,1 @@
+HasOwn, 2, 3, 5, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(1) LASTUSED(3) LASTUSED(3) , OP(GuardToObject) ID(1) OP(GuardToInt32Index) ID(0) ID(2) OP(GuardIsNativeObject) ID(1) OP(LoadDenseElementExistsResult) ID(1) ID(2) OP(ReturnFromIC)  

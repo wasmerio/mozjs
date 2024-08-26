@@ -61,150 +61,11 @@ AccessibleWrap::~AccessibleWrap() {}
 nsresult AccessibleWrap::HandleAccEvent(AccEvent* aEvent) {
   auto accessible = static_cast<AccessibleWrap*>(aEvent->GetAccessible());
   NS_ENSURE_TRUE(accessible, NS_ERROR_FAILURE);
-  DocAccessibleWrap* doc =
-      static_cast<DocAccessibleWrap*>(accessible->Document());
-  if (doc) {
-    switch (aEvent->GetEventType()) {
-      case nsIAccessibleEvent::EVENT_TEXT_CARET_MOVED: {
-        if (accessible != aEvent->Document() && !aEvent->IsFromUserInput()) {
-          AccCaretMoveEvent* caretEvent = downcast_accEvent(aEvent);
-          HyperTextAccessible* ht = AsHyperText();
-          // Pivot to the caret's position if it has an expanded selection.
-          // This is used mostly for find in page.
-          if ((ht && ht->SelectionCount())) {
-            DOMPoint point =
-                AsHyperText()->OffsetToDOMPoint(caretEvent->GetCaretOffset());
-            if (LocalAccessible* newPos =
-                    doc->GetAccessibleOrContainer(point.node)) {
-              static_cast<AccessibleWrap*>(newPos)->PivotTo(
-                  java::SessionAccessibility::HTML_GRANULARITY_DEFAULT, true,
-                  true);
-            }
-          }
-        }
-        break;
-      }
-      case nsIAccessibleEvent::EVENT_SCROLLING_START: {
-        accessible->PivotTo(
-            java::SessionAccessibility::HTML_GRANULARITY_DEFAULT, true, true);
-        break;
-      }
-      default:
-        break;
-    }
-  }
 
   nsresult rv = LocalAccessible::HandleAccEvent(aEvent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   accessible->HandleLiveRegionEvent(aEvent);
-
-  if (IPCAccessibilityActive()) {
-    return NS_OK;
-  }
-
-  // The accessible can become defunct if we have an xpcom event listener
-  // which decides it would be fun to change the DOM and flush layout.
-  if (accessible->IsDefunct() || !accessible->IsBoundToParent()) {
-    return NS_OK;
-  }
-
-  if (doc) {
-    if (!doc->DocumentNode()->IsContentDocument()) {
-      return NS_OK;
-    }
-  }
-
-  RefPtr<SessionAccessibility> sessionAcc =
-      SessionAccessibility::GetInstanceFor(accessible);
-  if (!sessionAcc) {
-    return NS_OK;
-  }
-
-  switch (aEvent->GetEventType()) {
-    case nsIAccessibleEvent::EVENT_FOCUS:
-      sessionAcc->SendFocusEvent(accessible);
-      break;
-    case nsIAccessibleEvent::EVENT_VIRTUALCURSOR_CHANGED: {
-      AccVCChangeEvent* vcEvent = downcast_accEvent(aEvent);
-      if (!vcEvent->IsFromUserInput()) {
-        break;
-      }
-
-      RefPtr<AccessibleWrap> newPosition =
-          static_cast<AccessibleWrap*>(vcEvent->NewAccessible());
-      if (sessionAcc && newPosition) {
-        if (vcEvent->Reason() == nsIAccessiblePivot::REASON_POINT) {
-          sessionAcc->SendHoverEnterEvent(newPosition);
-        } else {
-          sessionAcc->SendAccessibilityFocusedEvent(newPosition);
-        }
-      }
-      break;
-    }
-    case nsIAccessibleEvent::EVENT_TEXT_CARET_MOVED: {
-      AccCaretMoveEvent* event = downcast_accEvent(aEvent);
-      sessionAcc->SendTextSelectionChangedEvent(accessible,
-                                                event->GetCaretOffset());
-      break;
-    }
-    case nsIAccessibleEvent::EVENT_TEXT_INSERTED:
-    case nsIAccessibleEvent::EVENT_TEXT_REMOVED: {
-      AccTextChangeEvent* event = downcast_accEvent(aEvent);
-      sessionAcc->SendTextChangedEvent(
-          accessible, event->ModifiedText(), event->GetStartOffset(),
-          event->GetLength(), event->IsTextInserted(),
-          event->IsFromUserInput());
-      break;
-    }
-    case nsIAccessibleEvent::EVENT_STATE_CHANGE: {
-      AccStateChangeEvent* event = downcast_accEvent(aEvent);
-      auto state = event->GetState();
-      if (state & states::CHECKED) {
-        sessionAcc->SendClickedEvent(
-            accessible, java::SessionAccessibility::FLAG_CHECKABLE |
-                            (event->IsStateEnabled()
-                                 ? java::SessionAccessibility::FLAG_CHECKED
-                                 : 0));
-      }
-
-      if (state & states::EXPANDED) {
-        sessionAcc->SendClickedEvent(
-            accessible, java::SessionAccessibility::FLAG_EXPANDABLE |
-                            (event->IsStateEnabled()
-                                 ? java::SessionAccessibility::FLAG_EXPANDED
-                                 : 0));
-      }
-
-      if (state & states::SELECTED) {
-        sessionAcc->SendSelectedEvent(accessible, event->IsStateEnabled());
-      }
-
-      if (state & states::BUSY) {
-        sessionAcc->SendWindowStateChangedEvent(accessible);
-      }
-      break;
-    }
-    case nsIAccessibleEvent::EVENT_SCROLLING: {
-      AccScrollingEvent* event = downcast_accEvent(aEvent);
-      sessionAcc->SendScrollingEvent(accessible, event->ScrollX(),
-                                     event->ScrollY(), event->MaxScrollX(),
-                                     event->MaxScrollY());
-      break;
-    }
-    case nsIAccessibleEvent::EVENT_ANNOUNCEMENT: {
-      AccAnnouncementEvent* event = downcast_accEvent(aEvent);
-      sessionAcc->SendAnnouncementEvent(accessible, event->Announcement(),
-                                        event->Priority());
-      break;
-    }
-    case nsIAccessibleEvent::EVENT_REORDER: {
-      sessionAcc->SendWindowContentChangedEvent();
-      break;
-    }
-    default:
-      break;
-  }
 
   return NS_OK;
 }
@@ -260,39 +121,29 @@ Accessible* AccessibleWrap::DoPivot(Accessible* aAccessible,
   return nullptr;
 }
 
-bool AccessibleWrap::PivotTo(int32_t aGranularity, bool aForward,
-                             bool aInclusive) {
-  Accessible* result = DoPivot(this, aGranularity, aForward, aInclusive);
-  if (result) {
-    MOZ_ASSERT(result->IsLocal());
-    // Dispatch a virtual cursor change event that will be turned into an
-    // android accessibility focused changed event in the parent.
-    PivotMoveReason reason = aForward ? nsIAccessiblePivot::REASON_NEXT
-                                      : nsIAccessiblePivot::REASON_PREV;
-    LocalAccessible* localResult = result->AsLocal();
-    RefPtr<AccEvent> event = new AccVCChangeEvent(
-        localResult->Document(), this, localResult, reason, eFromUserInput);
-    nsEventShell::FireEvent(event);
-
-    return true;
+Accessible* AccessibleWrap::ExploreByTouch(Accessible* aAccessible, float aX,
+                                           float aY) {
+  Accessible* root;
+  if (LocalAccessible* local = aAccessible->AsLocal()) {
+    root = local->RootAccessible();
+  } else {
+    // If this is a RemoteAccessible, provide the top level
+    // remote doc as the pivot root for thread safety reasons.
+    DocAccessibleParent* doc = aAccessible->AsRemote()->Document();
+    while (doc && !doc->IsTopLevel()) {
+      doc = doc->ParentDoc();
+    }
+    MOZ_ASSERT(doc, "Failed to get top level DocAccessibleParent");
+    root = doc;
   }
-
-  return false;
-}
-
-void AccessibleWrap::ExploreByTouch(float aX, float aY) {
-  a11y::Pivot pivot(RootAccessible());
-  TraversalRule rule;
-
-  Accessible* maybeResult = pivot.AtPoint(aX, aY, rule);
-  LocalAccessible* result = maybeResult ? maybeResult->AsLocal() : nullptr;
-
-  if (result && result != this) {
-    RefPtr<AccEvent> event =
-        new AccVCChangeEvent(result->Document(), this, result,
-                             nsIAccessiblePivot::REASON_POINT, eFromUserInput);
-    nsEventShell::FireEvent(event);
+  a11y::Pivot pivot(root);
+  TraversalRule rule(java::SessionAccessibility::HTML_GRANULARITY_DEFAULT,
+                     aAccessible->IsLocal());
+  Accessible* result = pivot.AtPoint(aX, aY, rule);
+  if (result == aAccessible) {
+    return nullptr;
   }
+  return result;
 }
 
 static TextLeafPoint ToTextLeafPoint(Accessible* aAccessible, int32_t aOffset) {
@@ -505,7 +356,8 @@ void AccessibleWrap::SetVirtualViewID(Accessible* aAccessible,
 
 int32_t AccessibleWrap::GetAndroidClass(role aRole) {
 #define ROLE(geckoRole, stringRole, ariaRole, atkRole, macRole, macSubrole, \
-             msaaRole, ia2Role, androidClass, nameRule)                     \
+             msaaRole, ia2Role, androidClass, iosIsElement, uiaControlType, \
+             nameRule)                                                      \
   case roles::geckoRole:                                                    \
     return androidClass;
 
@@ -551,12 +403,20 @@ int32_t AccessibleWrap::GetInputType(const nsString& aInputTypeAttr) {
 }
 
 void AccessibleWrap::GetTextEquiv(nsString& aText) {
-  if (nsTextEquivUtils::HasNameRule(this, eNameFromSubtreeIfReqRule)) {
-    // This is an accessible that normally doesn't get its name from its
-    // subtree, so we collect the text equivalent explicitly.
-    nsTextEquivUtils::GetTextEquivFromSubtree(this, aText);
-  } else {
-    Name(aText);
+  // 1. Start with the name, since it might have been explicitly specified.
+  if (Name(aText) != eNameFromSubtree) {
+    // 2. If the name didn't come from the subtree, add the text from the
+    // subtree.
+    if (aText.IsEmpty()) {
+      nsTextEquivUtils::GetTextEquivFromSubtree(this, aText);
+    } else {
+      nsAutoString subtree;
+      nsTextEquivUtils::GetTextEquivFromSubtree(this, subtree);
+      if (!subtree.IsEmpty()) {
+        aText.Append(' ');
+        aText.Append(subtree);
+      }
+    }
   }
 }
 

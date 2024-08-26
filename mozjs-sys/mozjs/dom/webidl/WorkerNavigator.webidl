@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 
-[Exposed=Worker]
+[Exposed=Worker,
+ InstrumentedProps=(permissions)]
 interface WorkerNavigator {
 };
 
@@ -24,12 +25,12 @@ partial interface WorkerNavigator {
 // https://wicg.github.io/media-capabilities/#idl-index
 [Exposed=Worker]
 partial interface WorkerNavigator {
-  [SameObject, Func="mozilla::dom::MediaCapabilities::Enabled"]
+  [SameObject]
   readonly attribute MediaCapabilities mediaCapabilities;
 };
 
-// https://wicg.github.io/web-locks/#navigator-mixins
+// https://w3c.github.io/web-locks/#navigator-mixins
 WorkerNavigator includes NavigatorLocks;
 
 // https://gpuweb.github.io/gpuweb/#navigator-gpu
-WorkerNavigator includes GPUProvider;
+WorkerNavigator includes NavigatorGPU;

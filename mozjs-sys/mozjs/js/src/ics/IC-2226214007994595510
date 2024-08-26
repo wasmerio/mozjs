@@ -1,0 +1,1 @@
+GetElem, 2, 2, 5, JSVAL_TYPE_UNKNOWN, 16, STUBFIELD(WeakShape) STUBFIELD(RawInt32) , LASTUSED(3) LASTUSED(1) , OP(GuardToObject) ID(0) OP(GuardIsNull) ID(1) OP(GuardShape) ID(0) OFFSET(0) OP(LoadDynamicSlotResult) ID(0) OFFSET(1) OP(ReturnFromIC)  

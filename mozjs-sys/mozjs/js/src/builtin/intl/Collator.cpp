@@ -27,7 +27,6 @@
 #include "vm/PlainObject.h"  // js::PlainObject
 #include "vm/Runtime.h"
 #include "vm/StringType.h"
-#include "vm/WellKnownAtom.h"  // js_*_str
 
 #include "vm/GeckoProfiler-inl.h"
 #include "vm/JSObject-inl.h"
@@ -38,34 +37,6 @@ using JS::AutoStableStringChars;
 
 using js::intl::ReportInternalError;
 using js::intl::SharedIntlData;
-
-#ifdef __wasi__
-namespace mozilla::intl {
-SpanResult<char> KeywordValueToBcp47Extension2(const char* aKeyword,
-                                               int32_t aLength) {
-  if (aKeyword == nullptr) {
-    return Err(InternalError{});
-  }
-  return MakeStringSpan(uloc_toUnicodeLocaleType("co", aKeyword));
-}
-using Bcp47ExtEnumeration2 =
-    Enumeration<char, SpanResult<char>, KeywordValueToBcp47Extension2>;
-
-static Result<Bcp47ExtEnumeration2, ICUError> GetBcp47KeywordValuesForLocale(
-    const char* aLocale,
-    Collator::CommonlyUsed aCommonlyUsed = Collator::CommonlyUsed::No) {
-  UErrorCode status = U_ZERO_ERROR;
-  UEnumeration* enumeration = ucol_getKeywordValuesForLocale(
-      "collation", aLocale, static_cast<bool>(aCommonlyUsed), &status);
-
-  if (U_SUCCESS(status)) {
-    return Bcp47ExtEnumeration2(enumeration);
-  }
-
-  return Err(ToICUError(status));
-}
-}  // namespace mozilla::intl
-#endif
 
 const JSClassOps CollatorObject::classOps_ = {
     nullptr,                   // addProperty
@@ -102,7 +73,7 @@ static const JSFunctionSpec collator_static_methods[] = {
 
 static const JSFunctionSpec collator_methods[] = {
     JS_SELF_HOSTED_FN("resolvedOptions", "Intl_Collator_resolvedOptions", 0, 0),
-    JS_FN(js_toSource_str, collator_toSource, 0, 0), JS_FS_END};
+    JS_FN("toSource", collator_toSource, 0, 0), JS_FS_END};
 
 static const JSPropertySpec collator_properties[] = {
     JS_SELF_HOSTED_GET("compare", "$Intl_Collator_compare_get", 0),
@@ -187,11 +158,7 @@ bool js::intl_availableCollations(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
   auto keywords =
-#ifdef __wasi__
-      mozilla::intl::GetBcp47KeywordValuesForLocale(locale.get());
-#else
       mozilla::intl::Collator::GetBcp47KeywordValuesForLocale(locale.get());
-#endif
   if (keywords.isErr()) {
     ReportInternalError(cx, keywords.unwrapErr());
     return false;
@@ -500,5 +467,22 @@ bool js::intl_isUpperCaseFirst(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   args.rval().setBoolean(isUpperFirst);
+  return true;
+}
+
+bool js::intl_isIgnorePunctuation(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  MOZ_ASSERT(args.length() == 1);
+  MOZ_ASSERT(args[0].isString());
+
+  SharedIntlData& sharedIntlData = cx->runtime()->sharedIntlData.ref();
+
+  RootedString locale(cx, args[0].toString());
+  bool isIgnorePunctuation;
+  if (!sharedIntlData.isIgnorePunctuation(cx, locale, &isIgnorePunctuation)) {
+    return false;
+  }
+
+  args.rval().setBoolean(isIgnorePunctuation);
   return true;
 }

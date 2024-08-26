@@ -64,8 +64,12 @@ var PointerlockFsWarning = {
       this._element.addEventListener("transitionend", this);
       this._element.addEventListener("transitioncancel", this);
       window.addEventListener("mousemove", this, true);
-      window.addEventListener("activate", this);
-      window.addEventListener("deactivate", this);
+      // If the user explicitly disables the prompt, there's no need to detect
+      // activation.
+      if (timeout > 0) {
+        window.addEventListener("activate", this);
+        window.addEventListener("deactivate", this);
+      }
       // The timeout to hide the warning box after a while.
       this._timeoutHide = new this.Timeout(() => {
         window.removeEventListener("activate", this);
@@ -251,6 +255,9 @@ var PointerlockFsWarning = {
         if (this._state == "hiding") {
           this._element.hidden = true;
         }
+        if (this._state == "onscreen") {
+          window.dispatchEvent(new CustomEvent("FullscreenWarningOnScreen"));
+        }
         break;
       }
       case "activate": {
@@ -268,11 +275,24 @@ var PointerlockFsWarning = {
 };
 
 var PointerLock = {
+  _isActive: false,
+
+  /**
+   * @returns {boolean} - true if pointer lock is currently active for the
+   * associated window.
+   */
+  get isActive() {
+    return this._isActive;
+  },
+
   entered(originNoSuffix) {
+    this._isActive = true;
+    Services.obs.notifyObservers(null, "pointer-lock-entered");
     PointerlockFsWarning.showPointerLock(originNoSuffix);
   },
 
   exited() {
+    this._isActive = false;
     PointerlockFsWarning.close("pointerlock-warning");
   },
 };
@@ -345,26 +365,19 @@ var FullScreen = {
       passive: true,
     });
 
-    if (enterFS) {
-      gNavToolbox.setAttribute("inFullscreen", true);
-      document.documentElement.setAttribute("inFullscreen", true);
-      let alwaysUsesNativeFullscreen =
+    document.documentElement.toggleAttribute("inFullscreen", enterFS);
+    document.documentElement.toggleAttribute(
+      "macOSNativeFullscreen",
+      enterFS &&
         AppConstants.platform == "macosx" &&
-        Services.prefs.getBoolPref("full-screen-api.macos-native-full-screen");
-      if (
-        (alwaysUsesNativeFullscreen || !document.fullscreenElement) &&
-        AppConstants.platform == "macosx"
-      ) {
-        document.documentElement.setAttribute("macOSNativeFullscreen", true);
-      }
-    } else {
-      gNavToolbox.removeAttribute("inFullscreen");
-      document.documentElement.removeAttribute("inFullscreen");
-      document.documentElement.removeAttribute("macOSNativeFullscreen");
-    }
+        (Services.prefs.getBoolPref(
+          "full-screen-api.macos-native-full-screen"
+        ) ||
+          !document.fullscreenElement)
+    );
 
     if (!document.fullscreenElement) {
-      this._updateToolbars(enterFS);
+      ToolbarIconColor.inferFromText("fullscreen", enterFS);
     }
 
     if (enterFS) {
@@ -407,10 +420,17 @@ var FullScreen = {
     // shiftSize is sent from Cocoa widget code as a very precise double. We
     // don't need that kind of precision in our CSS.
     shiftSize = shiftSize.toFixed(2);
-    let toolbox = document.getElementById("navigator-toolbox");
+    let toolbox = gNavToolbox;
     if (shiftSize > 0) {
       toolbox.style.setProperty("transform", `translateY(${shiftSize}px)`);
       toolbox.style.setProperty("z-index", "2");
+
+      // If the mouse tracking missed our fullScreenToggler, then the toolbox
+      // might not have been shown before the menubar is animated down. Make
+      // sure it is shown now.
+      if (!this.fullScreenToggler.hidden) {
+        this.showNavToolbox();
+      }
     } else {
       toolbox.style.removeProperty("transform");
       toolbox.style.removeProperty("z-index");
@@ -542,6 +562,8 @@ var FullScreen = {
       }
     }
     document.documentElement.setAttribute("inDOMFullscreen", true);
+
+    XULBrowserWindow.onEnterDOMFullscreen();
 
     if (gFindBarInitialized) {
       gFindBar.close(true);
@@ -919,25 +941,9 @@ var FullScreen = {
 
     MousePosTracker.removeListener(this);
   },
-
-  _updateToolbars(aEnterFS) {
-    for (let el of document.querySelectorAll(
-      "toolbar[fullscreentoolbar=true]"
-    )) {
-      // Set the inFullscreen attribute to allow specific styling
-      // in fullscreen mode
-      if (aEnterFS) {
-        el.setAttribute("inFullscreen", true);
-      } else {
-        el.removeAttribute("inFullscreen");
-      }
-    }
-
-    ToolbarIconColor.inferFromText("fullscreen", aEnterFS);
-  },
 };
 
-XPCOMUtils.defineLazyGetter(FullScreen, "_permissionNotificationIDs", () => {
+ChromeUtils.defineLazyGetter(FullScreen, "_permissionNotificationIDs", () => {
   let { PermissionUI } = ChromeUtils.importESModule(
     "resource:///modules/PermissionUI.sys.mjs"
   );

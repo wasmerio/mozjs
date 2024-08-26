@@ -1,0 +1,1 @@
+SetProp, 2, 2, 5, JSVAL_TYPE_UNKNOWN, 32, STUBFIELD(WeakShape) STUBFIELD(RawInt32) STUBFIELD(Value) STUBFIELD(RawPointer) , LASTUSED(3) LASTUSED(3) , OP(GuardToObject) ID(0) OP(GuardShape) ID(0) OFFSET(0) OP(GuardDynamicSlotValue) ID(0) OFFSET(1) OFFSET(2) OP(CallDOMSetter) ID(0) OFFSET(3) ID(1) OP(ReturnFromIC)  

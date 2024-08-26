@@ -50,11 +50,11 @@ class CharMapHashKey : public PLDHashEntryHdr {
   }
   MOZ_COUNTED_DTOR(CharMapHashKey)
 
-  gfxCharacterMap* GetKey() const { return mCharMap; }
+  gfxCharacterMap* GetKey() const { return mCharMap.get(); }
 
   bool KeyEquals(const gfxCharacterMap* aCharMap) const {
-    NS_ASSERTION(!aCharMap->mBuildOnTheFly && !mCharMap->mBuildOnTheFly,
-                 "custom cmap used in shared cmap hashtable");
+    MOZ_ASSERT(!aCharMap->mBuildOnTheFly && !mCharMap->mBuildOnTheFly,
+               "custom cmap used in shared cmap hashtable");
     // cmaps built on the fly never match
     if (aCharMap->mHash != mCharMap->mHash) {
       return false;
@@ -72,9 +72,13 @@ class CharMapHashKey : public PLDHashEntryHdr {
   enum { ALLOW_MEMMOVE = true };
 
  protected:
-  // charMaps are not owned by the shared cmap cache, but it will be notified
-  // by gfxCharacterMap::Release() when an entry is about to be deleted
-  gfxCharacterMap* MOZ_NON_OWNING_REF mCharMap;
+  friend class gfxPlatformFontList;
+
+  // gfxCharacterMap::Release() will notify us when the refcount of a
+  // charmap drops to 1; at that point, we'll lock the cache, check if
+  // the charmap is owned by the cache and this is still the only ref,
+  // and if so, delete it.
+  RefPtr<gfxCharacterMap> mCharMap;
 };
 
 /**
@@ -112,8 +116,7 @@ class ShmemCharMapHashEntry final : public PLDHashEntryHdr {
       return false;
     }
 
-    return static_cast<const SharedBitSet*>(mCharMap.ToPtr(mList))
-        ->Equals(aCharMap);
+    return mCharMap.ToPtr<const SharedBitSet>(mList)->Equals(aCharMap);
   }
 
   static KeyTypePointer KeyToPointer(KeyType aCharMap) { return aCharMap; }
@@ -121,7 +124,7 @@ class ShmemCharMapHashEntry final : public PLDHashEntryHdr {
     return aCharMap->GetChecksum();
   }
 
-  enum { ALLOW_MEMMOVE = true };
+  enum { ALLOW_MEMMOVE = false };  // because of the Pointer member
 
  private:
   // charMaps are stored in the shared memory that FontList objects point to,
@@ -210,7 +213,13 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   // platform-specific font families.
   typedef nsTArray<FontFamily> PrefFontList;
 
-  static gfxPlatformFontList* PlatformFontList() {
+  // Return the global font-list singleton, or NULL if aMustInitialize is false
+  // and it has not yet been fully initialized.
+  static gfxPlatformFontList* PlatformFontList(bool aMustInitialize = true) {
+    if (!aMustInitialize &&
+        !(sPlatformFontList && sPlatformFontList->IsInitialized())) {
+      return nullptr;
+    }
     // If there is a font-list initialization thread, we need to let it run
     // to completion before the font list can be used for anything else.
     if (sInitFontListThread) {
@@ -236,9 +245,17 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
     return sPlatformFontList;
   }
 
+  void GetMissingFonts(nsCString& aMissingFonts);
+
   static bool Initialize(gfxPlatformFontList* aList);
 
   static void Shutdown() {
+    // Ensure any font-list initialization thread is finished before we delete
+    // the platform fontlist singleton, which that thread may try to use.
+    if (sInitFontListThread && !IsInitFontListThread()) {
+      PR_JoinThread(sInitFontListThread);
+      sInitFontListThread = nullptr;
+    }
     delete sPlatformFontList;
     sPlatformFontList = nullptr;
   }
@@ -317,11 +334,8 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
       nsPresContext* aPresContext, mozilla::StyleGenericFontFamily aGeneric,
       const nsACString& aFamily, nsTArray<FamilyAndGeneric>* aOutput,
       FindFamiliesFlags aFlags, gfxFontStyle* aStyle = nullptr,
-      nsAtom* aLanguage = nullptr, gfxFloat aDevToCssSize = 1.0) {
-    AutoLock lock(mLock);
-    return FindAndAddFamiliesLocked(aPresContext, aGeneric, aFamily, aOutput,
-                                    aFlags, aStyle, aLanguage, aDevToCssSize);
-  }
+      nsAtom* aLanguage = nullptr, gfxFloat aDevToCssSize = 1.0);
+
   virtual bool FindAndAddFamiliesLocked(
       nsPresContext* aPresContext, mozilla::StyleGenericFontFamily aGeneric,
       const nsACString& aFamily, nsTArray<FamilyAndGeneric>* aOutput,
@@ -354,12 +368,10 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   base::SharedMemoryHandle ShareShmBlockToProcess(uint32_t aIndex,
                                                   base::ProcessId aPid);
 
-  void SetCharacterMap(uint32_t aGeneration,
-                       const mozilla::fontlist::Pointer& aFacePtr,
-                       const gfxSparseBitSet& aMap);
+  void SetCharacterMap(uint32_t aGeneration, uint32_t aFamilyIndex, bool aAlias,
+                       uint32_t aFaceIndex, const gfxSparseBitSet& aMap);
 
-  void SetupFamilyCharMap(uint32_t aGeneration,
-                          const mozilla::fontlist::Pointer& aFamilyPtr);
+  void SetupFamilyCharMap(uint32_t aGeneration, uint32_t aIndex, bool aAlias);
 
   // Start the async cmap loading process, if not already under way, from the
   // given family index. (For use in any process that needs font lookups.)
@@ -412,9 +424,9 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
    * Read PSName and FullName of the given face, for src:local lookup,
    * returning true if actually implemented and succeeded.
    */
-  virtual bool ReadFaceNames(mozilla::fontlist::Family* aFamily,
-                             mozilla::fontlist::Face* aFace, nsCString& aPSName,
-                             nsCString& aFullName) {
+  virtual bool ReadFaceNames(const mozilla::fontlist::Family* aFamily,
+                             const mozilla::fontlist::Face* aFace,
+                             nsCString& aPSName, nsCString& aFullName) {
     return false;
   }
 
@@ -500,8 +512,9 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   // match is found.
   already_AddRefed<gfxCharacterMap> FindCharMap(gfxCharacterMap* aCmap);
 
-  // Remove the cmap from the shared cmap set.
-  void RemoveCmap(const gfxCharacterMap* aCharMap);
+  // Remove the cmap from the shared cmap set if it holds the only remaining
+  // reference to the object.
+  void MaybeRemoveCmap(gfxCharacterMap* aCharMap);
 
   // Keep track of userfont sets to notify when global fontlist changes occur.
   void AddUserFontSet(gfxUserFontSet* aUserFontSet) {
@@ -647,6 +660,9 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   mutable mozilla::RecursiveMutex mLock;
 
  protected:
+  virtual nsTArray<std::pair<const char**, uint32_t>>
+  GetFilteredPlatformFontLists() = 0;
+
   friend class mozilla::fontlist::FontList;
   friend class InitOtherFamilyNamesForStylo;
 
@@ -856,7 +872,10 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   // load the bad underline blocklist from pref.
   void LoadBadUnderlineList();
 
+  // This version of the function will not modify aKeyName
   void GenerateFontListKey(const nsACString& aKeyName, nsACString& aResult);
+  // This version of the function WILL modify aKeyName
+  void GenerateFontListKey(nsACString& aKeyName);
 
   virtual void GetFontFamilyNames(nsTArray<nsCString>& aFontFamilyNames)
       MOZ_REQUIRES(mLock);
@@ -999,13 +1018,14 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
 
   // When system-wide font lookup fails for a character, cache it to skip future
   // searches. This is an array of bitsets, one for each FontVisibility level.
-  mozilla::EnumeratedArray<FontVisibility, FontVisibility::Count,
-                           gfxSparseBitSet>
+  mozilla::EnumeratedArray<FontVisibility, gfxSparseBitSet,
+                           size_t(FontVisibility::Count)>
       mCodepointsWithNoFonts MOZ_GUARDED_BY(mLock);
 
   // the family to use for U+FFFD fallback, to avoid expensive search every time
   // on pages with lots of problems
-  mozilla::EnumeratedArray<FontVisibility, FontVisibility::Count, FontFamily>
+  mozilla::EnumeratedArray<FontVisibility, FontFamily,
+                           size_t(FontVisibility::Count)>
       mReplacementCharFallbackFamily MOZ_GUARDED_BY(mLock);
 
   // Sorted array of lowercased family names; use ContainsSorted to test
@@ -1018,9 +1038,9 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   nsTHashtable<ShmemCharMapHashEntry> mShmemCharMaps MOZ_GUARDED_BY(mLock);
 
   // data used as part of the font cmap loading process
-  nsTArray<RefPtr<gfxFontFamily>> mFontFamiliesToLoad;
-  uint32_t mStartIndex = 0;
-  uint32_t mNumFamilies = 0;
+  nsTArray<RefPtr<gfxFontFamily>> mFontFamiliesToLoad MOZ_GUARDED_BY(mLock);
+  uint32_t mStartIndex MOZ_GUARDED_BY(mLock) = 0;
+  uint32_t mNumFamilies MOZ_GUARDED_BY(mLock) = 0;
 
   // xxx - info for diagnosing no default font aborts
   // see bugs 636957, 1070983, 1189129
@@ -1043,7 +1063,7 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   nsTHashMap<nsCStringHashKey, mozilla::fontlist::LocalFaceRec::InitData>
       mLocalNameTable;
 
-  nsRefPtrHashtable<nsPtrHashKey<mozilla::fontlist::Face>, gfxFontEntry>
+  nsRefPtrHashtable<nsPtrHashKey<const mozilla::fontlist::Face>, gfxFontEntry>
       mFontEntries MOZ_GUARDED_BY(mLock);
 
   mozilla::UniquePtr<FontPrefs> mFontPrefs;
@@ -1051,7 +1071,7 @@ class gfxPlatformFontList : public gfxFontInfoLoader {
   RefPtr<gfxFontEntry> mDefaultFontEntry MOZ_GUARDED_BY(mLock);
 
   RefPtr<mozilla::CancelableRunnable> mLoadCmapsRunnable;
-  uint32_t mStartedLoadingCmapsFrom = 0xffffffffu;
+  uint32_t mStartedLoadingCmapsFrom MOZ_GUARDED_BY(mLock) = 0xffffffffu;
 
   bool mFontFamilyWhitelistActive = false;
 

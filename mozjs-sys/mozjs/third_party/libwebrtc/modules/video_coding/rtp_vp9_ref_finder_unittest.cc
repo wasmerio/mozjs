@@ -157,8 +157,7 @@ class HasFrameMatcher : public MatcherInterface<const FrameVector&> {
  public:
   explicit HasFrameMatcher(int64_t frame_id,
                            const std::vector<int64_t>& expected_refs)
-      : frame_id_(frame_id),
-        expected_refs_(expected_refs) {}
+      : frame_id_(frame_id), expected_refs_(expected_refs) {}
 
   bool MatchAndExplain(const FrameVector& frames,
                        MatchResultListener* result_listener) const override {
@@ -359,6 +358,18 @@ TEST_F(RtpVp9RefFinderTest, GofSkipFramesTemporalLayers_0212) {
   EXPECT_THAT(frames_, HasFrameWithIdAndRefs(25, {20}));
   EXPECT_THAT(frames_, HasFrameWithIdAndRefs(30, {20}));
   EXPECT_THAT(frames_, HasFrameWithIdAndRefs(35, {30}));
+}
+
+TEST_F(RtpVp9RefFinderTest, GofInterLayerPredS0KeyS1Delta) {
+  GofInfoVP9 ss;
+  ss.SetGofInfoVP9(kTemporalStructureMode1);
+
+  Insert(Frame().Pid(1).SidAndTid(0, 0).Tl0(0).AsKeyFrame().Gof(&ss));
+  Insert(Frame().Pid(1).SidAndTid(1, 0).Tl0(0).AsInterLayer().NotAsInterPic());
+
+  ASSERT_EQ(2UL, frames_.size());
+  EXPECT_THAT(frames_, HasFrameWithIdAndRefs(5, {}));
+  EXPECT_THAT(frames_, HasFrameWithIdAndRefs(6, {5}));
 }
 
 TEST_F(RtpVp9RefFinderTest, GofTemporalLayers_01) {

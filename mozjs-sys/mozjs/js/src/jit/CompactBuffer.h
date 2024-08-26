@@ -66,10 +66,9 @@ class CompactBufferReader {
  public:
   CompactBufferReader(const uint8_t* start, const uint8_t* end)
       : buffer_(start), end_(end) {}
-  CompactBufferReader(const uint8_t* start) : buffer_(start), end_(nullptr) {}
   inline explicit CompactBufferReader(const CompactBufferWriter& writer);
   uint8_t readByte() {
-    MOZ_ASSERT_IF(!!end_, buffer_ < end_);
+    MOZ_ASSERT_IF(end_, buffer_ < end_);
     return *buffer_++;
   }
   uint32_t readFixedUint32_t() {
@@ -109,15 +108,6 @@ class CompactBufferReader {
     }
     return result;
   }
-  // Reads a value written by writeUnsigned15Bit.
-  uint32_t readUnsigned15Bit() {
-    uint8_t byte = readByte();
-    uint32_t val = byte >> 1;
-    if (byte & 1) {
-      val |= uint32_t(readByte()) << 7;
-    }
-    return val;
-  }
   void* readRawPointer() {
     uintptr_t ptrWord = 0;
     for (unsigned i = 0; i < sizeof(uintptr_t); i++) {
@@ -127,17 +117,14 @@ class CompactBufferReader {
   }
 
   bool more() const {
-    if (!end_) {
-      return false;
-    }
-    MOZ_ASSERT(buffer_ <= end_);
+    MOZ_ASSERT_IF(end_, buffer_ <= end_);
     return buffer_ < end_;
   }
 
   void seek(const uint8_t* start, uint32_t offset) {
     buffer_ = start + offset;
-    MOZ_ASSERT_IF(!!end_, start < end_);
-    MOZ_ASSERT_IF(!!end_, buffer_ <= end_);
+    MOZ_ASSERT_IF(end_, start < end_);
+    MOZ_ASSERT_IF(end_, buffer_ <= end_);
   }
 
   const uint8_t* currentPosition() const { return buffer_; }
@@ -164,18 +151,6 @@ class CompactBufferWriter {
     MOZ_ASSERT(byte <= 0xFF);
     if (!oom()) {
       buffer_[pos] = byte;
-    }
-  }
-  // Writes a variable-length value similar to writeUnsigned, but optimized for
-  // small 15-bit values that fit in one or two variable-length-encoded bytes.
-  // Must be read using readUnsigned15Bit.
-  void writeUnsigned15Bit(uint32_t value) {
-    uint8_t byte1 = ((value & 0x7F) << 1) | (value > 0x7F);
-    writeByte(byte1);
-    value >>= 7;
-    if (value) {
-      MOZ_ASSERT(value <= 0xFF);
-      writeByte(value);
     }
   }
   void writeUnsigned(uint32_t value) {
@@ -239,6 +214,11 @@ class CompactBufferWriter {
     uintptr_t ptrWord = reinterpret_cast<uintptr_t>(ptr);
     for (unsigned i = 0; i < sizeof(uintptr_t); i++) {
       writeByte((ptrWord >> (i * 8)) & 0xFF);
+    }
+  }
+  void writeBytes(const uint8_t* data, size_t len) {
+    if (!buffer_.append(data, len)) {
+      enoughMemory_ = false;
     }
   }
   size_t length() const { return buffer_.length(); }

@@ -1,0 +1,1 @@
+Call, 1, 3, 7, JSVAL_TYPE_UNKNOWN, 16, STUBFIELD(WeakObject) STUBFIELD(RawInt32) , LASTUSED(0) LASTUSED(2) LASTUSED(5) , OP(LoadArgumentFixedSlot) ID(1) BYTE(2) OP(GuardToObject) ID(1) OP(GuardSpecificFunction) ID(1) OFFSET(0) OFFSET(1) OP(LoadArgumentFixedSlot) ID(2) BYTE(0) OP(GuardIsNumber) ID(2) OP(MathFunctionNumberResult) ID(2) UNARYMATHFUNC(Log1P) OP(ReturnFromIC)  

@@ -12,7 +12,7 @@ from mach.util import get_state_dir
 
 from ..cli import BaseTryParser
 from ..push import check_working_directory, generate_try_task_config, push_to_try
-from ..tasks import filter_tasks_by_paths, generate_tasks
+from ..tasks import filter_tasks_by_paths, filter_tasks_by_worker_type, generate_tasks
 from ..util.fzf import (
     FZF_NOT_FOUND,
     PREVIEW_SCRIPT,
@@ -97,6 +97,15 @@ class FuzzyParser(BaseTryParser):
                 "disables this filtering.",
             },
         ],
+        [
+            ["--show-chunk-numbers"],
+            {
+                "action": "store_true",
+                "default": False,
+                "help": "Chunk numbers are hidden to simplify the selection. This flag "
+                "makes them appear again.",
+            },
+        ],
     ]
     common_groups = ["push", "task", "preset"]
     task_configs = [
@@ -105,8 +114,11 @@ class FuzzyParser(BaseTryParser):
         "chemspill-prio",
         "disable-pgo",
         "env",
+        "existing-tasks",
         "gecko-profile",
+        "new-test-config",
         "path",
+        "test-tag",
         "pernosco",
         "rebuild",
         "routes",
@@ -118,18 +130,22 @@ def run(
     update=False,
     query=None,
     intersect_query=None,
-    try_config=None,
     full=False,
     parameters=None,
+    try_config_params=None,
     save_query=False,
     stage_changes=False,
     dry_run=False,
     message="{msg}",
     test_paths=None,
+    test_tag=None,
     exact=False,
     closed_tree=False,
     show_estimates=False,
     disable_target_task_filter=False,
+    push_to_lando=False,
+    show_chunk_numbers=False,
+    new_test_config=False,
 ):
     fzf = fzf_bootstrap(update)
 
@@ -142,7 +158,7 @@ def run(
     tg = generate_tasks(
         parameters, full=full, disable_target_task_filter=disable_target_task_filter
     )
-    all_tasks = sorted(tg.tasks.keys())
+    all_tasks = tg.tasks
 
     # graph_Cache created by generate_tasks, recreate the path to that file.
     cache_dir = os.path.join(
@@ -162,12 +178,19 @@ def run(
         make_trimmed_taskgraph_cache(graph_cache, dep_cache, target_file=target_set)
 
     if not full and not disable_target_task_filter:
-        # Put all_tasks into a list because it's used multiple times, and "filter()"
-        # returns a consumable iterator.
-        all_tasks = list(filter(filter_by_uncommon_try_tasks, all_tasks))
+        all_tasks = {
+            task_name: task
+            for task_name, task in all_tasks.items()
+            if filter_by_uncommon_try_tasks(task_name)
+        }
 
-    if test_paths:
-        all_tasks = filter_tasks_by_paths(all_tasks, test_paths)
+    if try_config_params.get("try_task_config", {}).get("worker-types", []):
+        all_tasks = filter_tasks_by_worker_type(all_tasks, try_config_params)
+        if not all_tasks:
+            return 1
+
+    if test_paths or test_tag:
+        all_tasks = filter_tasks_by_paths(all_tasks, test_paths, tag=test_tag)
         if not all_tasks:
             return 1
 
@@ -213,7 +236,12 @@ def run(
         if query_arg and query_arg != "INTERACTIVE":
             cmd.extend(["-f", query_arg])
 
-        query_str, tasks = run_fzf(cmd, sorted(candidate_tasks))
+        if not show_chunk_numbers:
+            fzf_tasks = set(task.chunk_pattern for task in candidate_tasks.values())
+        else:
+            fzf_tasks = set(candidate_tasks.keys())
+
+        query_str, tasks = run_fzf(cmd, sorted(fzf_tasks))
         queries.append(query_str)
         return set(tasks)
 
@@ -222,11 +250,16 @@ def run(
 
     for q in intersect_query or []:
         if not selected:
-            tasks = get_tasks(q)
-            selected |= tasks
+            selected |= get_tasks(q)
         else:
-            tasks = get_tasks(q, selected)
-            selected &= tasks
+            selected &= get_tasks(
+                q,
+                {
+                    task_name: task
+                    for task_name, task in all_tasks.items()
+                    if task_name in selected or task.chunk_pattern in selected
+                },
+            )
 
     if not queries:
         selected = get_tasks()
@@ -248,8 +281,11 @@ def run(
     return push_to_try(
         "fuzzy",
         message.format(msg=msg),
-        try_task_config=generate_try_task_config("fuzzy", selected, try_config),
+        try_task_config=generate_try_task_config(
+            "fuzzy", selected, params=try_config_params
+        ),
         stage_changes=stage_changes,
         dry_run=dry_run,
         closed_tree=closed_tree,
+        push_to_lando=push_to_lando,
     )

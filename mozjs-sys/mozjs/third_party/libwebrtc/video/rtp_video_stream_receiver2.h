@@ -39,6 +39,7 @@
 #include "modules/rtp_rtcp/source/rtp_video_stream_receiver_frame_transformer_delegate.h"
 #include "modules/rtp_rtcp/source/video_rtp_depacketizer.h"
 #include "modules/video_coding/h264_sps_pps_tracker.h"
+#include "modules/video_coding/h26x_packet_buffer.h"
 #include "modules/video_coding/loss_notification_controller.h"
 #include "modules/video_coding/nack_requester.h"
 #include "modules/video_coding/packet_buffer.h"
@@ -49,6 +50,7 @@
 #include "rtc_base/thread_annotations.h"
 #include "video/buffered_frame_decryptor.h"
 #include "video/unique_timestamp_counter.h"
+#include "video/video_stream_buffer_controller.h"
 
 namespace webrtc {
 
@@ -91,7 +93,7 @@ class RtpVideoStreamReceiver2 : public LossNotificationSender,
       RtcpPacketTypeCounterObserver* rtcp_packet_type_counter_observer,
       RtcpCnameCallback* rtcp_cname_callback,
       NackPeriodicProcessor* nack_periodic_processor,
-      VCMReceiveStatisticsCallback* vcm_receive_statistics,
+      VideoStreamBufferControllerStatsObserver* vcm_receive_statistics,
       // The KeyFrameRequestSender is optional; if not provided, key frame
       // requests are sent via the internal RtpRtcp module.
       OnCompleteFrameCallback* complete_frame_callback,
@@ -103,9 +105,8 @@ class RtpVideoStreamReceiver2 : public LossNotificationSender,
 
   void AddReceiveCodec(uint8_t payload_type,
                        VideoCodecType video_codec,
-                       const std::map<std::string, std::string>& codec_params,
+                       const webrtc::CodecParameterMap& codec_params,
                        bool raw_payload);
-  void RemoveReceiveCodec(uint8_t payload_type);
 
   // Clears state for all receive codecs added via `AddReceiveCodec`.
   void RemoveReceiveCodecs();
@@ -134,9 +135,11 @@ class RtpVideoStreamReceiver2 : public LossNotificationSender,
   void OnRtpPacket(const RtpPacketReceived& packet) override;
 
   // Public only for tests.
-  void OnReceivedPayloadData(rtc::CopyOnWriteBuffer codec_payload,
+  // Returns true if the packet should be stashed and retried at a later stage.
+  bool OnReceivedPayloadData(rtc::CopyOnWriteBuffer codec_payload,
                              const RtpPacketReceived& rtp_packet,
-                             const RTPVideoHeader& video);
+                             const RTPVideoHeader& video,
+                             int times_nacked);
 
   // Implements RecoveredPacketReceiver.
   void OnRecoveredPacket(const RtpPacketReceived& packet) override;
@@ -205,7 +208,11 @@ class RtpVideoStreamReceiver2 : public LossNotificationSender,
   void SetProtectionPayloadTypes(int red_payload_type, int ulpfec_payload_type);
 
   absl::optional<int64_t> LastReceivedPacketMs() const;
+  absl::optional<uint32_t> LastReceivedFrameRtpTimestamp() const;
   absl::optional<int64_t> LastReceivedKeyframePacketMs() const;
+
+  absl::optional<RtpRtcpInterface::SenderReportStats> GetSenderReportStats()
+      const;
 
   // Mozilla modification: VideoReceiveStream2 and friends do not surface RTCP
   // stats at all, and even on the most recent libwebrtc code there does not
@@ -286,6 +293,7 @@ class RtpVideoStreamReceiver2 : public LossNotificationSender,
         RTC_GUARDED_BY(packet_sequence_checker_);
   };
   enum ParseGenericDependenciesResult {
+    kStashPacket,
     kDropPacket,
     kHasGenericDescriptor,
     kNoGenericDescriptor
@@ -362,8 +370,12 @@ class RtpVideoStreamReceiver2 : public LossNotificationSender,
   std::unique_ptr<LossNotificationController> loss_notification_controller_
       RTC_GUARDED_BY(packet_sequence_checker_);
 
-  VCMReceiveStatisticsCallback* const vcm_receive_statistics_;
+  VideoStreamBufferControllerStatsObserver* const vcm_receive_statistics_;
   video_coding::PacketBuffer packet_buffer_
+      RTC_GUARDED_BY(packet_sequence_checker_);
+  // h26x_packet_buffer_ is nullptr if codec list doens't contain H.264 or
+  // H.265, or field trial WebRTC-Video-H26xPacketBuffer is not enabled.
+  std::unique_ptr<H26xPacketBuffer> h26x_packet_buffer_
       RTC_GUARDED_BY(packet_sequence_checker_);
   UniqueTimestampCounter frame_counter_
       RTC_GUARDED_BY(packet_sequence_checker_);
@@ -401,7 +413,7 @@ class RtpVideoStreamReceiver2 : public LossNotificationSender,
   // TODO(johan): Remove pt_codec_params_ once
   // https://bugs.chromium.org/p/webrtc/issues/detail?id=6883 is resolved.
   // Maps a payload type to a map of out-of-band supplied codec parameters.
-  std::map<uint8_t, std::map<std::string, std::string>> pt_codec_params_
+  std::map<uint8_t, webrtc::CodecParameterMap> pt_codec_params_
       RTC_GUARDED_BY(packet_sequence_checker_);
   int16_t last_payload_type_ RTC_GUARDED_BY(packet_sequence_checker_) = -1;
 
@@ -438,9 +450,12 @@ class RtpVideoStreamReceiver2 : public LossNotificationSender,
       RTC_GUARDED_BY(packet_sequence_checker_);
   std::map<int64_t, RtpPacketInfo> packet_infos_
       RTC_GUARDED_BY(packet_sequence_checker_);
+  std::vector<RtpPacketReceived> stashed_packets_
+      RTC_GUARDED_BY(packet_sequence_checker_);
 
   Timestamp next_keyframe_request_for_missing_video_structure_ =
       Timestamp::MinusInfinity();
+  bool sps_pps_idr_is_h264_keyframe_ = false;
 };
 
 }  // namespace webrtc

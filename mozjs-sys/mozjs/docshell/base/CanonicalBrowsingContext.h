@@ -10,6 +10,7 @@
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/MediaControlKeySource.h"
 #include "mozilla/dom/BrowsingContextWebProgress.h"
+#include "mozilla/dom/FeaturePolicy.h"
 #include "mozilla/dom/ProcessIsolation.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/SessionHistoryEntry.h"
@@ -37,6 +38,7 @@ class nsITimer;
 
 namespace mozilla {
 enum class CallState;
+class BounceTrackingState;
 
 namespace embedding {
 class PrintData;
@@ -93,8 +95,9 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   // Only set for toplevel content BrowsingContexts, and may be from a different
   // BrowsingContextGroup.
   uint64_t GetCrossGroupOpenerId() const { return mCrossGroupOpenerId; }
+  already_AddRefed<CanonicalBrowsingContext> GetCrossGroupOpener() const;
   void SetCrossGroupOpenerId(uint64_t aOpenerId);
-  void SetCrossGroupOpener(CanonicalBrowsingContext& aCrossGroupOpener,
+  void SetCrossGroupOpener(CanonicalBrowsingContext* aCrossGroupOpener,
                            ErrorResult& aRv);
 
   void GetWindowGlobals(nsTArray<RefPtr<WindowGlobalParent>>& aWindows);
@@ -118,14 +121,15 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   // content/chrome boundaries.
   already_AddRefed<WindowGlobalParent> GetEmbedderWindowGlobal() const;
 
-  already_AddRefed<CanonicalBrowsingContext> GetParentCrossChromeBoundary();
-
-  already_AddRefed<CanonicalBrowsingContext> TopCrossChromeBoundary();
+  CanonicalBrowsingContext* GetParentCrossChromeBoundary();
+  CanonicalBrowsingContext* TopCrossChromeBoundary();
   Nullable<WindowProxyHolder> GetTopChromeWindow();
 
   nsISHistory* GetSessionHistory();
   SessionHistoryEntry* GetActiveSessionHistoryEntry();
   void SetActiveSessionHistoryEntry(SessionHistoryEntry* aEntry);
+
+  bool ManuallyManagesActiveness() const;
 
   UniquePtr<LoadingSessionHistoryInfo> CreateLoadingSessionHistoryEntryForLoad(
       nsDocShellLoadState* aLoadState, SessionHistoryEntry* aExistingEntry,
@@ -134,17 +138,24 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   UniquePtr<LoadingSessionHistoryInfo> ReplaceLoadingSessionHistoryEntryForLoad(
       LoadingSessionHistoryInfo* aInfo, nsIChannel* aNewChannel);
 
-  using PrintPromise = MozPromise</* unused */ bool, nsresult, false>;
+  using PrintPromise =
+      MozPromise<MaybeDiscardedBrowsingContext, nsresult, false>;
   MOZ_CAN_RUN_SCRIPT RefPtr<PrintPromise> Print(nsIPrintSettings*);
   MOZ_CAN_RUN_SCRIPT already_AddRefed<Promise> PrintJS(nsIPrintSettings*,
                                                        ErrorResult&);
-
+  MOZ_CAN_RUN_SCRIPT RefPtr<PrintPromise> PrintWithNoContentAnalysis(
+      nsIPrintSettings* aPrintSettings, bool aForceStaticDocument,
+      const MaybeDiscardedBrowsingContext& aClonedStaticBrowsingContext);
+  MOZ_CAN_RUN_SCRIPT void ReleaseClonedPrint(
+      const MaybeDiscardedBrowsingContext& aClonedStaticBrowsingContext);
   // Call the given callback on all top-level descendant BrowsingContexts.
-  // Return Callstate::Stop from the callback to stop calling
-  // further children.
+  // Return Callstate::Stop from the callback to stop calling further children.
+  //
+  // If aIncludeNestedBrowsers is true, then all top descendants are included,
+  // even those inside a nested top browser.
   void CallOnAllTopDescendants(
-      const std::function<mozilla::CallState(CanonicalBrowsingContext*)>&
-          aCallback);
+      const FunctionRef<CallState(CanonicalBrowsingContext*)>& aCallback,
+      bool aIncludeNestedBrowsers);
 
   void SessionHistoryCommit(uint64_t aLoadId, const nsID& aChangeID,
                             uint32_t aLoadType, bool aPersist,
@@ -201,6 +212,9 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   static uint32_t CountSiteOrigins(
       GlobalObject& aGlobal,
       const Sequence<mozilla::OwningNonNull<BrowsingContext>>& aRoots);
+
+  // Return true if a private browsing session is active.
+  static bool IsPrivateBrowsingActive();
 
   // This function would propogate the action to its all child browsing contexts
   // in content processes.
@@ -302,9 +316,10 @@ class CanonicalBrowsingContext final : public BrowsingContext {
 
   void ResetScalingZoom();
 
-  void SetContainerFeaturePolicy(FeaturePolicy* aContainerFeaturePolicy);
-  FeaturePolicy* GetContainerFeaturePolicy() const {
-    return mContainerFeaturePolicy;
+  void SetContainerFeaturePolicy(
+      Maybe<FeaturePolicyInfo>&& aContainerFeaturePolicyInfo);
+  const Maybe<FeaturePolicyInfo>& GetContainerFeaturePolicy() const {
+    return mContainerFeaturePolicyInfo;
   }
 
   void SetRestoreData(SessionStoreRestoreData* aData, ErrorResult& aError);
@@ -339,6 +354,19 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   void SetPriorityActive(bool aIsActive) {
     MOZ_RELEASE_ASSERT(IsTop());
     mPriorityActive = aIsActive;
+  }
+
+  void SetIsActive(bool aIsActive, ErrorResult& aRv) {
+    MOZ_ASSERT(ManuallyManagesActiveness(),
+               "Shouldn't be setting active status of this browsing context if "
+               "not manually managed");
+    SetIsActiveInternal(aIsActive, aRv);
+  }
+
+  void SetIsActiveInternal(bool aIsActive, ErrorResult& aRv) {
+    SetExplicitActive(aIsActive ? ExplicitActiveStatus::Active
+                                : ExplicitActiveStatus::Inactive,
+                      aRv);
   }
 
   void SetTouchEventsOverride(dom::TouchEventsOverride, ErrorResult& aRv);
@@ -380,6 +408,8 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   void RecomputeAppWindowVisibility();
 
   already_AddRefed<nsISHEntry> GetMostRecentLoadingSessionHistoryEntry();
+
+  already_AddRefed<BounceTrackingState> GetBounceTrackingState();
 
  protected:
   // Called when the browsing context is being discarded.
@@ -554,7 +584,7 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   nsCOMPtr<nsIWebProgressListener> mDocShellProgressBridge;
   RefPtr<nsBrowserStatusFilter> mStatusFilter;
 
-  RefPtr<FeaturePolicy> mContainerFeaturePolicy;
+  Maybe<FeaturePolicyInfo> mContainerFeaturePolicyInfo;
 
   friend class BrowserSessionStore;
   WeakPtr<SessionStoreFormData>& GetSessionStoreFormDataRef() {

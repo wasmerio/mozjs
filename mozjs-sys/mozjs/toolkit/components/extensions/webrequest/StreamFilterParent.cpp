@@ -12,6 +12,7 @@
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/net/ChannelEventQueue.h"
 #include "mozilla/StaticPrefs_extensions.h"
+#include "mozilla/Try.h"
 #include "nsHttpChannel.h"
 #include "nsIChannel.h"
 #include "nsIInputStream.h"
@@ -229,7 +230,30 @@ StreamFilterParent::CheckListenerChain() {
   if (trsl) {
     return trsl->CheckListenerChain();
   }
-  return NS_ERROR_FAILURE;
+  return NS_ERROR_NO_INTERFACE;
+}
+
+NS_IMETHODIMP
+StreamFilterParent::OnDataFinished(nsresult aStatus) {
+  AssertIsIOThread();
+
+  // Forwarding onDataFinished to the mOriginListener when:
+  // - the StreamFilter is already disconnected
+  // - it does not have any buffered data which would still need
+  //   to be sent to the mOrigListener and we have
+  // - we have not yet called mOrigListener OnStopRequest method.
+  if (!mDisconnected || !mBufferedData.isEmpty() || mSentStop) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIThreadRetargetableStreamListener> listener =
+      do_QueryInterface(mOrigListener);
+
+  if (listener) {
+    return listener->OnDataFinished(aStatus);
+  }
+
+  return NS_OK;
 }
 
 /*****************************************************************************

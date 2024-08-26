@@ -14,7 +14,6 @@
 #include "frontend/ParserAtom.h"  // frontend::ParserAtomsTable, frontend::ParserAtom
 #include "frontend/ScriptIndex.h"  // ScriptIndex
 #include "frontend/Stencil.h"
-#include "gc/Allocator.h"
 #include "util/StringBuffer.h"
 #include "vm/EnvironmentObject.h"
 #include "vm/ErrorReporting.h"  // MaybePrintAndClearPendingException
@@ -25,6 +24,7 @@
 #include "gc/GCContext-inl.h"
 #include "gc/ObjectKind-inl.h"
 #include "gc/TraceMethods-inl.h"
+#include "vm/JSContext-inl.h"
 #include "wasm/WasmInstance-inl.h"
 
 using namespace js;
@@ -50,6 +50,10 @@ const char* js::BindingKindString(BindingKind kind) {
       return "synthetic";
     case BindingKind::PrivateMethod:
       return "private method";
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+    case BindingKind::Using:
+      return "using";
+#endif
   }
   MOZ_CRASH("Bad BindingKind");
 }
@@ -140,6 +144,33 @@ SharedShape* js::CreateEnvironmentShape(JSContext* cx, BindingIter& bi,
         return nullptr;
       }
     }
+  }
+
+  uint32_t numFixed = gc::GetGCKindSlots(gc::GetGCObjectKind(numSlots));
+  return SharedShape::getInitialOrPropMapShape(cx, cls, cx->realm(),
+                                               TaggedProto(nullptr), numFixed,
+                                               map, mapLength, objectFlags);
+}
+
+SharedShape* js::CreateEnvironmentShapeForSyntheticModule(
+    JSContext* cx, const JSClass* cls, uint32_t numSlots,
+    Handle<ModuleObject*> module) {
+  Rooted<SharedPropMap*> map(cx);
+  uint32_t mapLength = 0;
+
+  PropertyFlags propFlags = {PropertyFlag::Enumerable};
+  ObjectFlags objectFlags = ModuleEnvironmentObject::OBJECT_FLAGS;
+
+  RootedId id(cx);
+  uint32_t slotIndex = numSlots;
+  for (JSAtom* exportName : module->syntheticExportNames()) {
+    id = NameToId(exportName->asPropertyName());
+    if (!SharedPropMap::addPropertyWithKnownSlot(cx, cls, &map, &mapLength, id,
+                                                 propFlags, slotIndex,
+                                                 &objectFlags)) {
+      return nullptr;
+    }
+    slotIndex++;
   }
 
   uint32_t numFixed = gc::GetGCKindSlots(gc::GetGCObjectKind(numSlots));
@@ -392,88 +423,55 @@ void Scope::dump() {
 /* static */
 bool Scope::dumpForDisassemble(JSContext* cx, JS::Handle<Scope*> scope,
                                GenericPrinter& out, const char* indent) {
-  if (!out.put(ScopeKindString(scope->kind()))) {
-    return false;
-  }
-  if (!out.put(" {")) {
-    return false;
-  }
+  out.put(ScopeKindString(scope->kind()));
+  out.put(" {");
 
   size_t i = 0;
   for (Rooted<BindingIter> bi(cx, BindingIter(scope)); bi; bi++, i++) {
     if (i == 0) {
-      if (!out.put("\n")) {
-        return false;
-      }
+      out.put("\n");
     }
     UniqueChars bytes = AtomToPrintableString(cx, bi.name());
     if (!bytes) {
       return false;
     }
-    if (!out.put(indent)) {
-      return false;
-    }
-    if (!out.printf("  %2zu: %s %s ", i, BindingKindString(bi.kind()),
-                    bytes.get())) {
-      return false;
-    }
+    out.put(indent);
+    out.printf("  %2zu: %s %s ", i, BindingKindString(bi.kind()), bytes.get());
     switch (bi.location().kind()) {
       case BindingLocation::Kind::Global:
         if (bi.isTopLevelFunction()) {
-          if (!out.put("(global function)\n")) {
-            return false;
-          }
+          out.put("(global function)\n");
         } else {
-          if (!out.put("(global)\n")) {
-            return false;
-          }
+          out.put("(global)\n");
         }
         break;
       case BindingLocation::Kind::Argument:
-        if (!out.printf("(arg slot %u)\n", bi.location().argumentSlot())) {
-          return false;
-        }
+        out.printf("(arg slot %u)\n", bi.location().argumentSlot());
         break;
       case BindingLocation::Kind::Frame:
-        if (!out.printf("(frame slot %u)\n", bi.location().slot())) {
-          return false;
-        }
+        out.printf("(frame slot %u)\n", bi.location().slot());
         break;
       case BindingLocation::Kind::Environment:
-        if (!out.printf("(env slot %u)\n", bi.location().slot())) {
-          return false;
-        }
+        out.printf("(env slot %u)\n", bi.location().slot());
         break;
       case BindingLocation::Kind::NamedLambdaCallee:
-        if (!out.put("(named lambda callee)\n")) {
-          return false;
-        }
+        out.put("(named lambda callee)\n");
         break;
       case BindingLocation::Kind::Import:
-        if (!out.put("(import)\n")) {
-          return false;
-        }
+        out.put("(import)\n");
         break;
     }
   }
   if (i > 0) {
-    if (!out.put(indent)) {
-      return false;
-    }
+    out.put(indent);
   }
-  if (!out.put("}")) {
-    return false;
-  }
+  out.put("}");
 
   ScopeIter si(scope);
   si++;
   for (; si; si++) {
-    if (!out.put(" -> ")) {
-      return false;
-    }
-    if (!out.put(ScopeKindString(si.kind()))) {
-      return false;
-    }
+    out.put(" -> ");
+    out.put(ScopeKindString(si.kind()));
   }
   return true;
 }
@@ -598,9 +596,9 @@ JSScript* FunctionScope::script() const {
 /* static */
 bool FunctionScope::isSpecialName(frontend::TaggedParserAtomIndex name) {
   return name == frontend::TaggedParserAtomIndex::WellKnown::arguments() ||
-         name == frontend::TaggedParserAtomIndex::WellKnown::dotThis() ||
-         name == frontend::TaggedParserAtomIndex::WellKnown::dotNewTarget() ||
-         name == frontend::TaggedParserAtomIndex::WellKnown::dotGenerator();
+         name == frontend::TaggedParserAtomIndex::WellKnown::dot_this_() ||
+         name == frontend::TaggedParserAtomIndex::WellKnown::dot_newTarget_() ||
+         name == frontend::TaggedParserAtomIndex::WellKnown::dot_generator_();
 }
 
 /* static */
@@ -730,11 +728,13 @@ WasmInstanceScope::RuntimeData::RuntimeData(size_t length) {
 WasmInstanceScope* WasmInstanceScope::create(JSContext* cx,
                                              WasmInstanceObject* instance) {
   size_t namesCount = 0;
-  if (instance->instance().memory()) {
-    namesCount++;
-  }
+
+  size_t memoriesStart = namesCount;
+  size_t memoriesCount = instance->instance().codeMeta().memories.length();
+  namesCount += memoriesCount;
+
   size_t globalsStart = namesCount;
-  size_t globalsCount = instance->instance().metadata().globals.length();
+  size_t globalsCount = instance->instance().codeMeta().globals.length();
   namesCount += globalsCount;
 
   Rooted<UniquePtr<RuntimeData>> data(
@@ -744,8 +744,8 @@ WasmInstanceScope* WasmInstanceScope::create(JSContext* cx,
   }
 
   Rooted<WasmInstanceObject*> rootedInstance(cx, instance);
-  if (instance->instance().memory()) {
-    JSAtom* wasmName = GenerateWasmName(cx, "memory", /* index = */ 0);
+  for (size_t i = 0; i < memoriesCount; i++) {
+    JSAtom* wasmName = GenerateWasmName(cx, "memory", i);
     if (!wasmName) {
       return nullptr;
     }
@@ -765,6 +765,7 @@ WasmInstanceScope* WasmInstanceScope::create(JSContext* cx,
   MOZ_ASSERT(data->length == namesCount);
 
   data->instance.init(rootedInstance);
+  data->slotInfo.memoriesStart = memoriesStart;
   data->slotInfo.globalsStart = globalsStart;
 
   Rooted<Scope*> enclosing(cx, &cx->global()->emptyGlobalScope());
@@ -962,6 +963,9 @@ void BaseAbstractBindingIter<NameT>::init(
          /* varStart= */ 0,
          /* letStart= */ 0,
          /* constStart= */ 0,
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+         /* usingStart= */ data.length,
+#endif
          /* syntheticStart= */ data.length,
          /* privageMethodStart= */ data.length,
          /* flags= */ CanHaveEnvironmentSlots | flags,
@@ -978,11 +982,19 @@ void BaseAbstractBindingIter<NameT>::init(
     //             consts - [slotInfo.constStart, data.length)
     //          synthetic - [data.length, data.length)
     //    private methods - [data.length, data.length)
+    //
+    // If ENABLE_EXPLICIT_RESOURCE_MANAGEMENT is set, the consts range is split
+    // into the following:
+    //             consts - [slotInfo.constStart, slotInfo.usingStart)
+    //             usings - [slotInfo.usingStart, data.length)
     init(/* positionalFormalStart= */ 0,
          /* nonPositionalFormalStart= */ 0,
          /* varStart= */ 0,
          /* letStart= */ 0,
          /* constStart= */ slotInfo.constStart,
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+         /* usingStart= */ slotInfo.usingStart,
+#endif
          /* syntheticStart= */ data.length,
          /* privateMethodStart= */ data.length,
          /* flags= */ CanHaveFrameSlots | CanHaveEnvironmentSlots | flags,
@@ -1017,6 +1029,9 @@ void BaseAbstractBindingIter<NameT>::init(
        /* varStart= */ 0,
        /* letStart= */ 0,
        /* constStart= */ 0,
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+       /* usingStart= */ 0,
+#endif
        /* syntheticStart= */ 0,
        /* privateMethodStart= */ slotInfo.privateMethodStart,
        /* flags= */ CanHaveFrameSlots | CanHaveEnvironmentSlots,
@@ -1055,6 +1070,9 @@ void BaseAbstractBindingIter<NameT>::init(
        /* varStart= */ slotInfo.varStart,
        /* letStart= */ length,
        /* constStart= */ length,
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+       /* usingStart= */ length,
+#endif
        /* syntheticStart= */ length,
        /* privateMethodStart= */ length,
        /* flags= */ flags,
@@ -1085,6 +1103,9 @@ void BaseAbstractBindingIter<NameT>::init(VarScope::AbstractData<NameT>& data,
        /* varStart= */ 0,
        /* letStart= */ length,
        /* constStart= */ length,
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+       /* usingStart= */ length,
+#endif
        /* syntheticStart= */ length,
        /* privateMethodStart= */ length,
        /* flags= */ CanHaveFrameSlots | CanHaveEnvironmentSlots,
@@ -1115,6 +1136,9 @@ void BaseAbstractBindingIter<NameT>::init(
        /* varStart= */ 0,
        /* letStart= */ slotInfo.letStart,
        /* constStart= */ slotInfo.constStart,
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+       /* usingStart= */ data.length,
+#endif
        /* syntheticStart= */ data.length,
        /* privateMethoodStart= */ data.length,
        /* flags= */ CannotHaveSlots,
@@ -1158,6 +1182,9 @@ void BaseAbstractBindingIter<NameT>::init(EvalScope::AbstractData<NameT>& data,
        /* varStart= */ 0,
        /* letStart= */ length,
        /* constStart= */ length,
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+       /* usingStart= */ length,
+#endif
        /* syntheticStart= */ length,
        /* privateMethodStart= */ length,
        /* flags= */ flags,
@@ -1183,12 +1210,20 @@ void BaseAbstractBindingIter<NameT>::init(
   //             consts - [slotInfo.constStart, data.length)
   //          synthetic - [data.length, data.length)
   //    private methods - [data.length, data.length)
+  //
+  // If ENABLE_EXPLICIT_RESOURCE_MANAGEMENT is set, the consts range is split
+  // into the following:
+  //             consts - [slotInfo.constStart, slotInfo.usingStart)
+  //             usings - [slotInfo.usingStart, data.length)
   init(
       /* positionalFormalStart= */ slotInfo.varStart,
       /* nonPositionalFormalStart= */ slotInfo.varStart,
       /* varStart= */ slotInfo.varStart,
       /* letStart= */ slotInfo.letStart,
       /* constStart= */ slotInfo.constStart,
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+      /* usingStart= */ slotInfo.usingStart,
+#endif
       /* syntheticStart= */ data.length,
       /* privateMethodStart= */ data.length,
       /* flags= */ CanHaveFrameSlots | CanHaveEnvironmentSlots,
@@ -1219,6 +1254,9 @@ void BaseAbstractBindingIter<NameT>::init(
        /* varStart= */ 0,
        /* letStart= */ length,
        /* constStart= */ length,
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+       /* usingStart= */ length,
+#endif
        /* syntheticStart= */ length,
        /* privateMethodStart= */ length,
        /* flags= */ CanHaveFrameSlots | CanHaveEnvironmentSlots,
@@ -1249,6 +1287,9 @@ void BaseAbstractBindingIter<NameT>::init(
        /* varStart= */ 0,
        /* letStart= */ length,
        /* constStart= */ length,
+#ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
+       /* usingStart= */ length,
+#endif
        /* syntheticStart= */ length,
        /* privateMethodStart= */ length,
        /* flags= */ CanHaveFrameSlots | CanHaveEnvironmentSlots,

@@ -37,9 +37,7 @@ import {
 
 import { Svc, Utils } from "resource://services-sync/util.sys.mjs";
 
-const { logManager } = ChromeUtils.import(
-  "resource://gre/modules/FxAccountsCommon.js"
-);
+import { logManager } from "resource://gre/modules/FxAccountsCommon.sys.mjs";
 import { Async } from "resource://services-common/async.sys.mjs";
 import { CommonUtils } from "resource://services-common/utils.sys.mjs";
 
@@ -49,7 +47,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   Status: "resource://services-sync/status.sys.mjs",
 });
-XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () => {
+ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
   return ChromeUtils.importESModule(
     "resource://gre/modules/FxAccounts.sys.mjs"
   ).getFxAccountsSingleton();

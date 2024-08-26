@@ -18,6 +18,7 @@
 #include "vm/ArgumentsObject.h"
 #include "vm/BigIntType.h"
 #include "vm/BytecodeUtil.h"  // JSDVG_SEARCH_STACK
+#include "vm/JSAtomUtils.h"   // AtomizeString
 #include "vm/Realm.h"
 #include "vm/SharedStencil.h"  // GCThingIndex
 #include "vm/StaticStrings.h"
@@ -27,7 +28,7 @@
 #endif
 
 #include "vm/GlobalObject-inl.h"
-#include "vm/JSAtom-inl.h"
+#include "vm/JSAtomUtils-inl.h"  // PrimitiveValueToId, TypeName
 #include "vm/JSContext-inl.h"
 #include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
@@ -147,7 +148,7 @@ inline bool FetchName(JSContext* cx, HandleObject receiver, HandleObject holder,
   }
 
   // We do our own explicit checking for |this|
-  if (name == cx->names().dotThis) {
+  if (name == cx->names().dot_this_) {
     return true;
   }
 
@@ -983,7 +984,7 @@ class ReservedRooted : public RootedOperations<T, ReservedRooted<T>> {
 
   void set(const T& p) const { *savedRoot = p; }
   operator Handle<T>() { return *savedRoot; }
-  operator Rooted<T> &() { return *savedRoot; }
+  operator Rooted<T>&() { return *savedRoot; }
   MutableHandle<T> operator&() { return &*savedRoot; }
 
   DECLARE_NONPOINTER_ACCESSOR_METHODS(savedRoot->get())

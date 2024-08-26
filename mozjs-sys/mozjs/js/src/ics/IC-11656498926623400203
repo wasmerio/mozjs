@@ -1,0 +1,1 @@
+GetElem, 2, 3, 7, JSVAL_TYPE_UNKNOWN, 32, STUBFIELD(String) STUBFIELD(WeakObject) STUBFIELD(JSObject) STUBFIELD(RawInt32) , LASTUSED(3) LASTUSED(2) LASTUSED(5) , OP(GuardToObject) ID(0) OP(GuardToString) ID(1) OP(GuardSpecificAtom) ID(1) OFFSET(0) OP(GuardSpecificObject) ID(0) OFFSET(1) OP(LoadObject) ID(2) OFFSET(2) OP(LoadFixedSlotResult) ID(2) OFFSET(3) OP(ReturnFromIC)  

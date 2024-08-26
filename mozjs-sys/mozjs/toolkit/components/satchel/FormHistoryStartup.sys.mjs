@@ -67,11 +67,11 @@ export class FormHistoryStartup {
     target,
   }) {
     // This case is only used for the search field. There is a
-    // similar algorithm in FormHistoryParent.jsm that uses
+    // similar algorithm in FormHistoryParent.sys.mjs that uses
     // sendQuery for other form fields.
 
     const instance = (this._queryInstance = {});
-    const results = await lazy.FormHistory.getAutoCompleteResults(
+    const formHistoryEntries = await lazy.FormHistory.getAutoCompleteResults(
       searchString,
       params,
       () => this._queryInstance != instance
@@ -80,7 +80,10 @@ export class FormHistoryStartup {
     if (this._queryInstance == instance) {
       target.sendAsyncMessage("FormHistory:AutoCompleteSearchResults", {
         id,
-        results,
+        results: {
+          formHistoryEntries,
+          externalEntries: [],
+        },
       });
     }
   }

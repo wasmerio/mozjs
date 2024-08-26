@@ -10,6 +10,17 @@ features: [Temporal]
 ---*/
 
 const expected = [
+  // CopyDataProperties
+  "ownKeys options",
+  "getOwnPropertyDescriptor options.overflow",
+  "get options.overflow",
+  "getOwnPropertyDescriptor options.disambiguation",
+  "get options.disambiguation",
+  "getOwnPropertyDescriptor options.offset",
+  "get options.offset",
+  "getOwnPropertyDescriptor options.extra",
+  "get options.extra",
+  // ToTemporalCalendar
   "get item.calendar",
   "has item.calendar.dateAdd",
   "has item.calendar.dateFromFields",
@@ -32,6 +43,7 @@ const expected = [
   "has item.calendar.year",
   "has item.calendar.yearMonthFromFields",
   "has item.calendar.yearOfWeek",
+  "get item.calendar.dateFromFields",
   "get item.calendar.fields",
   "call item.calendar.fields",
   // PrepareTemporalFields
@@ -73,25 +85,18 @@ const expected = [
   "has item.timeZone.getPossibleInstantsFor",
   "has item.timeZone.id",
   // InterpretTemporalDateTimeFields
-  "get options.disambiguation",
   "get options.disambiguation.toString",
   "call options.disambiguation.toString",
-  "get options.offset",
   "get options.offset.toString",
   "call options.offset.toString",
-  "get options.overflow",
   "get options.overflow.toString",
   "call options.overflow.toString",
-  "get item.calendar.dateFromFields",
   "call item.calendar.dateFromFields",
-  // inside calendar.dateFromFields
-  "get options.overflow",
-  "get options.overflow.toString",
-  "call options.overflow.toString",
-  // InterpretISODateTimeOffset
-  "get item.timeZone.getPossibleInstantsFor",
-  "call item.timeZone.getPossibleInstantsFor",
+  // lookup in ToTemporalZonedDateTime
   "get item.timeZone.getOffsetNanosecondsFor",
+  "get item.timeZone.getPossibleInstantsFor",
+  // InterpretISODateTimeOffset
+  "call item.timeZone.getPossibleInstantsFor",
   "call item.timeZone.getOffsetNanosecondsFor",
 ];
 const actual = [];
@@ -117,6 +122,7 @@ function createOptionsObserver({ overflow = "constrain", disambiguation = "compa
     overflow,
     disambiguation,
     offset,
+    extra: "property",
   }, "options");
 }
 

@@ -23,10 +23,6 @@
 #  include "nsThreadUtils.h"
 #  include "WavDumper.h"
 
-namespace soundtouch {
-class MOZ_EXPORT SoundTouch;
-}
-
 namespace mozilla {
 
 struct CubebDestroyPolicy {
@@ -38,6 +34,7 @@ struct CubebDestroyPolicy {
 class AudioStream;
 class FrameHistory;
 class AudioConfig;
+class RLBoxSoundTouch;
 
 // A struct that contains the number of frames serviced or underrun by a
 // callback, alongside the sample-rate for this callback (in case of playback
@@ -328,8 +325,7 @@ class AudioStream final {
   bool CheckThreadIdChanged();
   void AssertIsOnAudioThread() const;
 
-  soundtouch::SoundTouch* mTimeStretcher;
-
+  RLBoxSoundTouch* mTimeStretcher;
   AudioClock mAudioClock;
 
   WavDumper mDumpFile;
@@ -337,10 +333,12 @@ class AudioStream final {
   const AudioConfig::ChannelLayout::ChannelMap mChannelMap;
 
   // The monitor is held to protect all access to member variables below.
-  Monitor mMonitor MOZ_UNANNOTATED;
+  Monitor mMonitor;
 
   const uint32_t mOutChannels;
 
+  // mCubebStream holds a bare pointer to cubeb, so we hold a ref on its behalf
+  RefPtr<CubebUtils::CubebHandle> mCubeb;
   // Owning reference to a cubeb_stream.  Set in Init(), cleared in ShutDown, so
   // no lock is needed to access.
   UniquePtr<cubeb_stream, CubebDestroyPolicy> mCubebStream;

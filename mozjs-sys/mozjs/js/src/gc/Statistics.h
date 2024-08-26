@@ -136,19 +136,19 @@ struct Statistics {
   template <typename T, size_t Length>
   using Array = mozilla::Array<T, Length>;
 
-  template <typename IndexType, IndexType SizeAsEnumValue, typename ValueType>
+  template <typename IndexType, typename ValueType, IndexType SizeAsEnumValue>
   using EnumeratedArray =
-      mozilla::EnumeratedArray<IndexType, SizeAsEnumValue, ValueType>;
+      mozilla::EnumeratedArray<IndexType, ValueType, size_t(SizeAsEnumValue)>;
 
   using TimeDuration = mozilla::TimeDuration;
   using TimeStamp = mozilla::TimeStamp;
 
   // Create types for tables of times, by phase and phase kind.
-  using PhaseTimes = EnumeratedArray<Phase, Phase::LIMIT, TimeDuration>;
+  using PhaseTimes = EnumeratedArray<Phase, TimeDuration, Phase::LIMIT>;
   using PhaseKindTimes =
-      EnumeratedArray<PhaseKind, PhaseKind::LIMIT, TimeDuration>;
+      EnumeratedArray<PhaseKind, TimeDuration, PhaseKind::LIMIT>;
 
-  using PhaseTimeStamps = EnumeratedArray<Phase, Phase::LIMIT, TimeStamp>;
+  using PhaseTimeStamps = EnumeratedArray<Phase, TimeStamp, Phase::LIMIT>;
 
   [[nodiscard]] static bool initialize();
 
@@ -178,7 +178,7 @@ struct Statistics {
   void resumePhases();
 
   void beginSlice(const ZoneGCStats& zoneStats, JS::GCOptions options,
-                  const SliceBudget& budget, JS::GCReason reason,
+                  const JS::SliceBudget& budget, JS::GCReason reason,
                   bool budgetWasIncreased);
   void endSlice();
 
@@ -233,8 +233,8 @@ struct Statistics {
 
   uint32_t allocsSinceMinorGCTenured() { return tenuredAllocsSinceMinorGC; }
 
-  void beginNurseryCollection(JS::GCReason reason);
-  void endNurseryCollection(JS::GCReason reason);
+  void beginNurseryCollection();
+  void endNurseryCollection();
 
   TimeStamp beginSCC();
   void endSCC(unsigned scc, TimeStamp start);
@@ -244,8 +244,6 @@ struct Statistics {
   UniqueChars formatDetailedMessage() const;
 
   JS::GCSliceCallback setSliceCallback(JS::GCSliceCallback callback);
-  JS::GCNurseryCollectionCallback setNurseryCollectionCallback(
-      JS::GCNurseryCollectionCallback callback);
 
   TimeDuration clearMaxGCPauseAccumulator();
   TimeDuration getMaxGCPauseSinceClear();
@@ -255,11 +253,11 @@ struct Statistics {
   static const size_t MAX_SUSPENDED_PHASES = MAX_PHASE_NESTING * 3;
 
   struct SliceData {
-    SliceData(const SliceBudget& budget, mozilla::Maybe<Trigger> trigger,
+    SliceData(const JS::SliceBudget& budget, mozilla::Maybe<Trigger> trigger,
               JS::GCReason reason, TimeStamp start, size_t startFaults,
               gc::State initialState);
 
-    SliceBudget budget;
+    JS::SliceBudget budget;
     JS::GCReason reason = JS::GCReason::NO_REASON;
     mozilla::Maybe<Trigger> trigger;
     gc::State initialState = gc::State::NotActive;
@@ -273,13 +271,14 @@ struct Statistics {
     PhaseKindTimes totalParallelTimes;
     PhaseKindTimes maxParallelTimes;
 
-    TimeDuration duration() const { return end - start; }
+    TimeDuration duration() const;
     bool wasReset() const { return resetReason != GCAbortReason::None; }
   };
 
   using SliceDataVector = Vector<SliceData, 8, SystemAllocPolicy>;
 
   const SliceDataVector& slices() const { return slices_; }
+  const SliceData& sliceAt(size_t index) const { return slices_[index]; }
 
   const SliceData* lastSlice() const {
     if (slices_.length() == 0) {
@@ -327,7 +326,7 @@ struct Statistics {
   // Print a logging message.
   void log(const char* fmt, ...);
 #else
-  void log(const char* fmt, ...){};
+  void log(const char* fmt, ...) {};
 #endif
 
  private:
@@ -371,12 +370,12 @@ struct Statistics {
   TimeDuration totalGCTime_;
 
   /* Number of events of this type for this GC. */
-  EnumeratedArray<Count, COUNT_LIMIT,
-                  mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire>>
+  EnumeratedArray<Count, mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire>,
+                  COUNT_LIMIT>
       counts;
 
   /* Other GC statistics. */
-  EnumeratedArray<Stat, STAT_LIMIT, uint32_t> stats;
+  EnumeratedArray<Stat, uint32_t, STAT_LIMIT> stats;
 
   /*
    * These events cannot be kept in the above array, we need to take their
@@ -424,7 +423,6 @@ struct Statistics {
   TimeDuration timeSinceLastGC;
 
   JS::GCSliceCallback sliceCallback;
-  JS::GCNurseryCollectionCallback nurseryCollectionCallback;
 
   /*
    * True if we saw an OOM while allocating slices or we saw an impossible
@@ -442,7 +440,7 @@ struct Statistics {
   };
 
   using ProfileDurations =
-      EnumeratedArray<ProfileKey, ProfileKey::KeyCount, TimeDuration>;
+      EnumeratedArray<ProfileKey, TimeDuration, ProfileKey::KeyCount>;
 
   bool enableProfiling_ = false;
   bool profileWorkers_ = false;
@@ -499,13 +497,13 @@ struct Statistics {
   const char* formatGCFlags(const SliceData& slice);
   const char* formatBudget(const SliceData& slice);
   const char* formatTotalSlices();
-  static bool printProfileTimes(const ProfileDurations& times,
+  static void printProfileTimes(const ProfileDurations& times,
                                 Sprinter& sprinter);
 };
 
 struct MOZ_RAII AutoGCSlice {
   AutoGCSlice(Statistics& stats, const ZoneGCStats& zoneStats,
-              JS::GCOptions options, const SliceBudget& budget,
+              JS::GCOptions options, const JS::SliceBudget& budget,
               JS::GCReason reason, bool budgetWasIncreased)
       : stats(stats) {
     stats.beginSlice(zoneStats, options, budget, reason, budgetWasIncreased);
@@ -562,16 +560,6 @@ struct StringStats {
   uint64_t deduplicatedChars = 0;
   uint64_t deduplicatedBytes = 0;
 
-  // number of live nursery strings at the start of a nursery collection
-  uint64_t liveNurseryStrings = 0;
-
-  // number of new strings added to the tenured heap
-  uint64_t tenuredStrings = 0;
-
-  // Currently, liveNurseryStrings = tenuredStrings + deduplicatedStrings (but
-  // in the future we may do more transformation during tenuring, eg
-  // atomizing.)
-
   // number of malloced bytes associated with tenured strings (the actual
   // malloc will have happened when the strings were allocated in the nursery;
   // the ownership of the bytes will be transferred to the tenured strings)
@@ -581,20 +569,13 @@ struct StringStats {
     deduplicatedStrings += other.deduplicatedStrings;
     deduplicatedChars += other.deduplicatedChars;
     deduplicatedBytes += other.deduplicatedBytes;
-    liveNurseryStrings += other.liveNurseryStrings;
-    tenuredStrings += other.tenuredStrings;
     tenuredBytes += other.tenuredBytes;
     return *this;
   }
 
-  void noteTenured(size_t mallocBytes) {
-    liveNurseryStrings++;
-    tenuredStrings++;
-    tenuredBytes += mallocBytes;
-  }
+  void noteTenured(size_t mallocBytes) { tenuredBytes += mallocBytes; }
 
   void noteDeduplicated(size_t numChars, size_t mallocBytes) {
-    liveNurseryStrings++;
     deduplicatedStrings++;
     deduplicatedChars += numChars;
     deduplicatedBytes += mallocBytes;

@@ -396,7 +396,8 @@ function initPage() {
       });
       longDesc = null;
 
-      document.getElementById("openInNewWindowContainer").hidden = false;
+      document.getElementById("openInNewWindowContainer").hidden =
+        RPMGetBoolPref("security.xfocsp.hideOpenInNewWindow");
 
       const openInNewWindowButton = document.getElementById(
         "openInNewWindowButton"
@@ -430,11 +431,19 @@ function initPage() {
       tryAgain.hidden = true;
       break;
 
-    // Pinning errors are of type nssFailure2
+    // TLS errors and non-overridable certificate errors (e.g. pinning
+    // failures) are of type nssFailure2.
     case "nssFailure2": {
       learnMore.hidden = false;
 
-      const errorCode = document.getNetErrorInfo().errorCodeString;
+      const netErrorInfo = document.getNetErrorInfo();
+      recordSecurityUITelemetry(
+        "security.ui.tlserror",
+        "load",
+        "abouttlserror",
+        netErrorInfo
+      );
+      const errorCode = netErrorInfo.errorCodeString;
       switch (errorCode) {
         case "SSL_ERROR_UNSUPPORTED_VERSION":
         case "SSL_ERROR_PROTOCOL_VERSION_ALERT": {
@@ -488,7 +497,7 @@ function initPage() {
       trrExceptionButton.addEventListener("click", () => {
         RPMSendQuery("Browser:AddTRRExcludedDomain", {
           hostname: HOST_NAME,
-        }).then(msg => {
+        }).then(() => {
           retryThis(trrExceptionButton);
         });
       });
@@ -509,7 +518,7 @@ function initPage() {
       let message = document.getElementById("trrOnlyMessage");
       document.l10n.setAttributes(
         message,
-        "neterror-dns-not-found-trr-only-reason",
+        "neterror-dns-not-found-trr-only-reason2",
         {
           hostname: HOST_NAME,
         }
@@ -529,7 +538,7 @@ function initPage() {
       } else if (skipReason == "TRR_TIMEOUT") {
         descriptionTag = "neterror-dns-not-found-trr-only-timeout";
       } else if (
-        skipReason == "TRR_IS_OFFLINE" ||
+        skipReason == "TRR_BROWSER_IS_OFFLINE" ||
         skipReason == "TRR_NO_CONNECTIVITY"
       ) {
         descriptionTag = "neterror-dns-not-found-trr-offline";
@@ -544,6 +553,8 @@ function initPage() {
         skipReason == "TRR_SERVER_RESPONSE_ERR"
       ) {
         descriptionTag = "neterror-dns-not-found-trr-server-problem";
+      } else if (skipReason == "TRR_BAD_URL") {
+        descriptionTag = "neterror-dns-not-found-bad-trr-url";
       }
 
       let trrMode = RPMGetIntPref("network.trr.mode").toString();
@@ -634,7 +645,7 @@ function showNativeFallbackWarning() {
     "nativeFallbackIgnoreButton"
   );
   nativeFallbackIgnoreButton.addEventListener("click", () => {
-    RPMSetBoolPref("network.trr.display_fallback_warning", false);
+    RPMSetPref("network.trr.display_fallback_warning", false);
     retryThis(nativeFallbackIgnoreButton);
   });
 
@@ -651,7 +662,7 @@ function showNativeFallbackWarning() {
   let message = document.getElementById("nativeFallbackMessage");
   document.l10n.setAttributes(
     message,
-    "neterror-dns-not-found-native-fallback-reason",
+    "neterror-dns-not-found-native-fallback-reason2",
     {
       hostname: HOST_NAME,
     }
@@ -876,7 +887,7 @@ function setupBlockingReportingUI() {
   checkbox.checked = !!reportingAutomatic;
 
   checkbox.addEventListener("change", function ({ target: { checked } }) {
-    RPMSetBoolPref("security.xfocsp.errorReporting.automatic", checked);
+    RPMSetPref("security.xfocsp.errorReporting.automatic", checked);
 
     // If we're enabling reports, send a report for this failure.
     if (checked) {
@@ -984,39 +995,41 @@ function initPageCertError() {
   }
 
   const failedCertInfo = document.getFailedCertSecurityInfo();
-  // Truncate the error code to avoid going over the allowed
-  // string size limit for telemetry events.
-  const errorCode = failedCertInfo.errorCodeString.substring(0, 40);
-  RPMRecordTelemetryEvent(
+  recordSecurityUITelemetry(
     "security.ui.certerror",
     "load",
     "aboutcerterror",
-    errorCode,
-    {
-      has_sts: gHasSts.toString(),
-      is_frame: (window.parent != window).toString(),
-    }
+    failedCertInfo
   );
 
   setCertErrorDetails();
+}
+
+function recordSecurityUITelemetry(category, evt, objectName, errorInfo) {
+  // Truncate the error code to avoid going over the allowed
+  // string size limit for telemetry events.
+  let errorCode = errorInfo.errorCodeString.substring(0, 40);
+  let extraKeys = {
+    is_frame: (window.parent != window).toString(),
+  };
+  if (category == "security.ui.certerror") {
+    extraKeys.has_sts = gHasSts.toString();
+  }
+  if (evt == "load") {
+    extraKeys.channel_status = errorInfo.channelStatus.toString();
+  }
+  RPMRecordTelemetryEvent(category, evt, objectName, errorCode, extraKeys);
 }
 
 function recordClickTelemetry(e) {
   let target = e.originalTarget;
   let telemetryId = target.dataset.telemetryId;
   let failedCertInfo = document.getFailedCertSecurityInfo();
-  // Truncate the error code to avoid going over the allowed
-  // string size limit for telemetry events.
-  let errorCode = failedCertInfo.errorCodeString.substring(0, 40);
-  RPMRecordTelemetryEvent(
+  recordSecurityUITelemetry(
     "security.ui.certerror",
     "click",
     telemetryId,
-    errorCode,
-    {
-      has_sts: gHasSts.toString(),
-      is_frame: (window.parent != window).toString(),
-    }
+    failedCertInfo
   );
 }
 
@@ -1049,15 +1062,15 @@ function addCertException() {
     () => {
       location.reload();
     },
-    err => {}
+    () => {}
   );
 }
 
-function onReturnButtonClick(e) {
+function onReturnButtonClick() {
   RPMSendAsyncMessage("Browser:SSLErrorGoBack");
 }
 
-function copyPEMToClipboard(e) {
+function copyPEMToClipboard() {
   const errorText = document.getElementById("certificateErrorText");
   navigator.clipboard.writeText(errorText.textContent);
 }

@@ -51,7 +51,12 @@ nsPoint ShapeUtils::ComputeCircleOrEllipseCenter(
   const auto& position = aBasicShape.IsCircle()
                              ? aBasicShape.AsCircle().position
                              : aBasicShape.AsEllipse().position;
-  MOZ_ASSERT(position.IsPosition(), "A default position should be given");
+  // If position is not specified, we use 50% 50%.
+  if (position.IsAuto()) {
+    return ComputePosition(StylePosition::FromPercentage(0.5), aRefBox);
+  }
+
+  MOZ_ASSERT(position.IsPosition());
   return ComputePosition(position.AsPosition(), aRefBox);
 }
 
@@ -102,13 +107,6 @@ nsSize ShapeUtils::ComputeEllipseRadii(const StyleBasicShape& aBasicShape,
 }
 
 /* static */
-nsRect ShapeUtils::ComputeInsetRect(const StyleBasicShape& aBasicShape,
-                                    const nsRect& aRefBox) {
-  MOZ_ASSERT(aBasicShape.IsInset(), "The basic shape must be inset()!");
-  return ComputeInsetRect(aBasicShape.AsInset().rect, aRefBox);
-}
-
-/* static */
 nsRect ShapeUtils::ComputeInsetRect(
     const StyleRect<LengthPercentage>& aStyleRect, const nsRect& aRefBox) {
   nsMargin inset(aStyleRect._0.Resolve(aRefBox.Height()),
@@ -137,13 +135,11 @@ nsRect ShapeUtils::ComputeInsetRect(
 }
 
 /* static */
-bool ShapeUtils::ComputeInsetRadii(const StyleBasicShape& aBasicShape,
-                                   const nsRect& aRefBox,
-                                   const nsRect& aInsetRect,
-                                   nscoord aRadii[8]) {
-  const auto& radius = aBasicShape.AsInset().round;
-  return nsIFrame::ComputeBorderRadii(radius, aRefBox.Size(), aInsetRect.Size(),
-                                      Sides(), aRadii);
+bool ShapeUtils::ComputeRectRadii(const StyleBorderRadius& aBorderRadius,
+                                  const nsRect& aRefBox, const nsRect& aRect,
+                                  nscoord aRadii[8]) {
+  return nsIFrame::ComputeBorderRadii(aBorderRadius, aRefBox.Size(),
+                                      aRect.Size(), Sides(), aRadii);
 }
 
 /* static */
@@ -226,19 +222,19 @@ already_AddRefed<gfx::Path> ShapeUtils::BuildPolygonPath(
 already_AddRefed<gfx::Path> ShapeUtils::BuildInsetPath(
     const StyleBasicShape& aShape, const nsRect& aRefBox,
     nscoord aAppUnitsPerPixel, gfx::PathBuilder* aPathBuilder) {
-  const nsRect insetRect = ComputeInsetRect(aShape, aRefBox);
+  const nsRect insetRect = ComputeInsetRect(aShape.AsRect().rect, aRefBox);
   nscoord appUnitsRadii[8];
-  const bool hasRadii =
-      ComputeInsetRadii(aShape, aRefBox, insetRect, appUnitsRadii);
-  return BuildInsetPath(insetRect, hasRadii ? appUnitsRadii : nullptr, aRefBox,
-                        aAppUnitsPerPixel, aPathBuilder);
+  const bool hasRadii = ComputeRectRadii(aShape.AsRect().round, aRefBox,
+                                         insetRect, appUnitsRadii);
+  return BuildRectPath(insetRect, hasRadii ? appUnitsRadii : nullptr, aRefBox,
+                       aAppUnitsPerPixel, aPathBuilder);
 }
 
 /* static */
-already_AddRefed<gfx::Path> ShapeUtils::BuildInsetPath(
-    const nsRect& aInsetRect, const nscoord aRadii[8], const nsRect& aRefBox,
+already_AddRefed<gfx::Path> ShapeUtils::BuildRectPath(
+    const nsRect& aRect, const nscoord aRadii[8], const nsRect& aRefBox,
     nscoord aAppUnitsPerPixel, gfx::PathBuilder* aPathBuilder) {
-  const gfx::Rect insetRectPixels = NSRectToRect(aInsetRect, aAppUnitsPerPixel);
+  const gfx::Rect insetRectPixels = NSRectToRect(aRect, aAppUnitsPerPixel);
   if (aRadii) {
     gfx::RectCornerRadii corners;
     nsCSSRendering::ComputePixelRadii(aRadii, aAppUnitsPerPixel, &corners);

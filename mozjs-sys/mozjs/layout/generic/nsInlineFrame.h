@@ -44,16 +44,6 @@ class nsInlineFrame : public nsContainerFrame {
   virtual nsresult GetFrameName(nsAString& aResult) const override;
 #endif
 
-  virtual bool IsFrameOfType(uint32_t aFlags) const override {
-    if (aFlags & (eSupportsCSSTransforms | eSupportsContainLayoutAndPaint |
-                  eSupportsAspectRatio)) {
-      return false;
-    }
-    return nsContainerFrame::IsFrameOfType(
-        aFlags &
-        ~(nsIFrame::eBidiInlineContainer | nsIFrame::eLineParticipant));
-  }
-
   virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0,
                                bool aRebuildDisplayItems = true) override;
   virtual void InvalidateFrameWithRect(
@@ -68,8 +58,8 @@ class nsInlineFrame : public nsContainerFrame {
       PeekOffsetCharacterOptions aOptions =
           PeekOffsetCharacterOptions()) override;
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot,
-                           PostDestroyData& aPostDestroyData) override;
+  void Destroy(DestroyContext&) override;
+
   void StealFrame(nsIFrame* aChild) override;
 
   // nsIHTMLReflow overrides

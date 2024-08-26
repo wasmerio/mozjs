@@ -272,7 +272,7 @@ class CycleCollectedJSRuntime {
 
   // Trace gray JS roots until budget is exceeded and return whether we
   // finished.
-  static bool TraceGrayJS(JSTracer* aTracer, js::SliceBudget& budget,
+  static bool TraceGrayJS(JSTracer* aTracer, JS::SliceBudget& budget,
                           void* aData);
 
   static void GCCallback(JSContext* aContext, JSGCStatus aStatus,
@@ -281,7 +281,7 @@ class CycleCollectedJSRuntime {
                               const JS::GCDescription& aDesc);
   static void GCNurseryCollectionCallback(JSContext* aContext,
                                           JS::GCNurseryProgress aProgress,
-                                          JS::GCReason aReason);
+                                          JS::GCReason aReason, void* data);
   static void OutOfMemoryCallback(JSContext* aContext, void* aData);
 
   static bool ContextCallback(JSContext* aCx, unsigned aOperation, void* aData);
@@ -289,20 +289,28 @@ class CycleCollectedJSRuntime {
   static void* BeforeWaitCallback(uint8_t* aMemory);
   static void AfterWaitCallback(void* aCookie);
 
-  virtual void TraceNativeBlackRoots(JSTracer* aTracer){};
+  virtual void TraceNativeBlackRoots(JSTracer* aTracer) {};
 
 #ifdef NS_BUILD_REFCNT_LOGGING
   void TraceAllNativeGrayRoots(JSTracer* aTracer);
 #endif
 
   bool TraceNativeGrayRoots(JSTracer* aTracer, JSHolderMap::WhichHolders aWhich,
-                            js::SliceBudget& aBudget);
+                            JS::SliceBudget& aBudget);
   bool TraceJSHolders(JSTracer* aTracer, JSHolderMap::Iter& aIter,
-                      js::SliceBudget& aBudget);
+                      JS::SliceBudget& aBudget);
 
  public:
-  void FinalizeDeferredThings(
-      CycleCollectedJSContext::DeferredFinalizeType aType);
+  enum DeferredFinalizeType {
+    // Never finalize immediately, because it would be unsafe.
+    FinalizeLater,
+    // Finalize later if we can, but it is okay to do it immediately.
+    FinalizeIncrementally,
+    // Finalize immediately, for shutdown or testing purposes.
+    FinalizeNow,
+  };
+
+  void FinalizeDeferredThings(DeferredFinalizeType aType);
 
   virtual void PrepareForForgetSkippable() = 0;
   virtual void BeginCycleCollectionCallback(mozilla::CCReason aReason) = 0;
@@ -406,7 +414,7 @@ class CycleCollectedJSRuntime {
   // storage), because we do not want to keep it alive.  nsWrapperCache handles
   // this for us via its "object moved" handling.
   void NurseryWrapperAdded(nsWrapperCache* aCache);
-  void JSObjectsTenured();
+  void JSObjectsTenured(JS::GCContext* aGCContext);
 
   void DeferredFinalize(DeferredFinalizeAppendFunction aAppendFunc,
                         DeferredFinalizeFunction aFunc, void* aThing);
@@ -450,15 +458,13 @@ class CycleCollectedJSRuntime {
   bool mHasPendingIdleGCTask;
 
   JS::GCSliceCallback mPrevGCSliceCallback;
-  JS::GCNurseryCollectionCallback mPrevGCNurseryCollectionCallback;
 
   mozilla::TimeStamp mLatestNurseryCollectionStart;
 
   JSHolderMap mJSHolders;
   Maybe<JSHolderMap::Iter> mHolderIter;
 
-  typedef nsTHashMap<nsFuncPtrHashKey<DeferredFinalizeFunction>, void*>
-      DeferredFinalizerTable;
+  using DeferredFinalizerTable = nsTHashMap<DeferredFinalizeFunction, void*>;
   DeferredFinalizerTable mDeferredFinalizerTable;
 
   RefPtr<IncrementalFinalizeRunnable> mFinalizeRunnable;
@@ -467,8 +473,9 @@ class CycleCollectedJSRuntime {
   OOMState mLargeAllocationFailureState;
 
   static const size_t kSegmentSize = 512;
-  SegmentedVector<nsWrapperCache*, kSegmentSize, InfallibleAllocPolicy>
-      mNurseryObjects;
+  using NurseryObjectsVector =
+      SegmentedVector<nsWrapperCache*, kSegmentSize, InfallibleAllocPolicy>;
+  NurseryObjectsVector mNurseryObjects;
 
   nsTHashSet<JS::Zone*> mZonesWaitingForGC;
 

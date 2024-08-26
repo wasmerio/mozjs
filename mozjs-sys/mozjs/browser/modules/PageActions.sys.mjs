@@ -6,8 +6,10 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
+  ASRouter: "resource:///modules/asrouter/ASRouter.sys.mjs",
   BinarySearch: "resource://gre/modules/BinarySearch.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
 const ACTION_ID_BOOKMARK = "bookmark";
@@ -427,6 +429,27 @@ export var PageActions = {
     return actions;
   },
 
+  /**
+   * Send an ASRouter trigger to possibly show messaging related to the page
+   * action that was placed in the urlbar.
+   *
+   * @param {Element} buttonNode The page action button node.
+   */
+  sendPlacedInUrlbarTrigger(buttonNode) {
+    lazy.setTimeout(async () => {
+      await lazy.ASRouter.initialized;
+      let win = buttonNode?.ownerGlobal;
+      if (!win || buttonNode.hidden) {
+        return;
+      }
+      await lazy.ASRouter.sendTriggerMessage({
+        browser: win.gBrowser.selectedBrowser,
+        id: "pageActionInUrlbar",
+        context: { pageAction: buttonNode.id },
+      });
+    }, 500);
+  },
+
   // This keeps track of all actions, even those that are not currently
   // registered because they have been removed, so long as
   // _purgeUnregisteredPersistedActions has not been called.
@@ -721,12 +744,10 @@ Action.prototype = {
       let props = this._iconProperties.get(urls);
       if (!props) {
         props = Object.freeze({
-          "--pageAction-image-16px": escapeCSSURL(
-            this._iconURLForSize(urls, 16)
-          ),
-          "--pageAction-image-32px": escapeCSSURL(
-            this._iconURLForSize(urls, 32)
-          ),
+          "--pageAction-image": `image-set(
+            ${escapeCSSURL(this._iconURLForSize(urls, 16))},
+            ${escapeCSSURL(this._iconURLForSize(urls, 32))} 2x
+          )`,
         });
         this._iconProperties.set(urls, props);
       }
@@ -735,8 +756,7 @@ Action.prototype = {
 
     let cssURL = urls ? escapeCSSURL(urls) : null;
     return Object.freeze({
-      "--pageAction-image-16px": cssURL,
-      "--pageAction-image-32px": cssURL,
+      "--pageAction-image": cssURL,
     });
   },
 
@@ -876,7 +896,7 @@ Action.prototype = {
    *        The chosen icon URL.
    */
   _iconURLForSize(urls, preferredSize) {
-    // This case is copied from ExtensionParent.jsm so that our image logic is
+    // This case is copied from ExtensionParent.sys.mjs so that our image logic is
     // the same, so that WebExtensions page action tests that deal with icons
     // pass.
     let bestSize = null;
@@ -1164,7 +1184,7 @@ PageActions._initBuiltInActions = function () {
         browserPageActions(buttonNode).bookmark.onShowingInPanel(buttonNode);
       },
       onCommand(event, buttonNode) {
-        browserPageActions(buttonNode).bookmark.onCommand(event, buttonNode);
+        browserPageActions(buttonNode).bookmark.onCommand(event);
       },
     },
   ];

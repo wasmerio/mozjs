@@ -44,7 +44,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIExternalProtocolService"
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "gParentalControlsService", function () {
+ChromeUtils.defineLazyGetter(lazy, "gParentalControlsService", function () {
   if ("@mozilla.org/parental-controls-service;1" in Cc) {
     return Cc["@mozilla.org/parental-controls-service;1"].createInstance(
       Ci.nsIParentalControlsService
@@ -65,11 +65,11 @@ Integration.downloads.defineESModuleGetter(
   "DownloadIntegration",
   "resource://gre/modules/DownloadIntegration.sys.mjs"
 );
-XPCOMUtils.defineLazyGetter(lazy, "gCombinedDownloadIntegration", () => {
+ChromeUtils.defineLazyGetter(lazy, "gCombinedDownloadIntegration", () => {
   return lazy.DownloadIntegration;
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "stringBundle", () =>
+ChromeUtils.defineLazyGetter(lazy, "stringBundle", () =>
   Services.strings.createBundle(
     "chrome://mozapps/locale/downloads/downloads.properties"
   )
@@ -599,7 +599,7 @@ export var DownloadIntegration = {
    * @param [optional] aExtension
    *        The file extension, which can match instead of the MIME type.
    */
-  shouldViewDownloadInternally(aMimeType, aExtension) {
+  shouldViewDownloadInternally() {
     // Refuse all files by default, this is meant to be replaced with a check
     // for specific types via Integration.downloads.register().
     return false;

@@ -168,17 +168,13 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   nsIWidgetListener* GetWidgetListener() const override;
   void SetWidgetListener(nsIWidgetListener* alistener) override;
   void Destroy() override;
-  void SetParent(nsIWidget* aNewParent) override{};
+  void SetParent(nsIWidget* aNewParent) override {};
   nsIWidget* GetParent() override;
   nsIWidget* GetTopLevelWidget() override;
   nsIWidget* GetSheetWindowParent(void) override;
   float GetDPI() override;
   void AddChild(nsIWidget* aChild) override;
   void RemoveChild(nsIWidget* aChild) override;
-
-  void SetZIndex(int32_t aZIndex) override;
-  void PlaceBehind(nsTopLevelWidgetZPlacement aPlacement, nsIWidget* aWidget,
-                   bool aActivate) override {}
 
   void GetWorkspaceID(nsAString& workspaceID) override;
   void MoveToWorkspace(const nsAString& workspaceID) override;
@@ -187,13 +183,14 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   bool IsFullyOccluded() const override { return mIsFullyOccluded; }
 
   void SetCursor(const Cursor&) override;
+  void SetCustomCursorAllowed(bool) override;
   void ClearCachedCursor() final {
     mCursor = {};
     mUpdateCursor = true;
   }
   void SetTransparencyMode(TransparencyMode aMode) override;
   TransparencyMode GetTransparencyMode() override;
-  void SetWindowShadowStyle(mozilla::StyleWindowShadow aStyle) override {}
+  void SetWindowShadowStyle(mozilla::WindowShadow) override {}
   void SetShowsToolbarButton(bool aShow) override {}
   void SetSupportsNativeFullscreen(bool aSupportsNativeFullscreen) override {}
   void SetWindowAnimationType(WindowAnimationType aType) override {}
@@ -217,7 +214,8 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   // resources and possibly schedule another paint.
   //
   // A reference to the session object is held until this function has
-  // returned.
+  // returned. Callers should hold a reference to the widget, since this
+  // function could deallocate the widget if it is unparented.
   virtual void NotifyCompositorSessionLost(
       mozilla::layers::CompositorSession* aSession);
 
@@ -262,7 +260,7 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   [[nodiscard]] nsresult GetRestoredBounds(LayoutDeviceIntRect& aRect) override;
   nsresult SetNonClientMargins(const LayoutDeviceIntMargin&) override;
   LayoutDeviceIntPoint GetClientOffset() override;
-  void EnableDragDrop(bool aEnable) override{};
+  void EnableDragDrop(bool aEnable) override {};
   nsresult AsyncEnableDragDrop(bool aEnable) override;
   void SetResizeMargin(mozilla::LayoutDeviceIntCoord aResizeMargin) override;
   [[nodiscard]] nsresult GetAttention(int32_t aCycleCount) override {
@@ -270,7 +268,6 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   }
   bool HasPendingInputEvent() override;
   void SetIcon(const nsAString& aIconSpec) override {}
-  void SetDrawsInTitlebar(bool aState) override {}
   bool ShowsResizeIndicator(LayoutDeviceIntRect* aResizerRect) override;
   void FreeNativeData(void* data, uint32_t aDataType) override {}
   nsresult ActivateNativeMenuItemAt(const nsAString& indexString) override {
@@ -353,6 +350,8 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   // theme changes.
   void NotifyThemeChanged(mozilla::widget::ThemeChangeKind);
 
+  void NotifyAPZOfDPIChange();
+
 #ifdef ACCESSIBILITY
   // Get the accessible for the window.
   mozilla::a11y::LocalAccessible* GetRootAccessible();
@@ -363,13 +362,6 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   bool IsSmallPopup() const;
 
   PopupLevel GetPopupLevel() { return mPopupLevel; }
-
-  // return true if this is a popup widget with a native titlebar
-  bool IsPopupWithTitleBar() const {
-    return (mWindowType == WindowType::Popup &&
-            mBorderStyle != BorderStyle::Default &&
-            mBorderStyle & BorderStyle::Title);
-  }
 
   void ReparentNativeWidget(nsIWidget* aNewParent) override {}
 
@@ -425,9 +417,9 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
 #if defined(MOZ_WIDGET_ANDROID)
   void RecvToolbarAnimatorMessageFromCompositor(int32_t) override{};
   void UpdateRootFrameMetrics(const ScreenPoint& aScrollOffset,
-                              const CSSToScreenScale& aZoom) override{};
+                              const CSSToScreenScale& aZoom) override {};
   void RecvScreenPixels(mozilla::ipc::Shmem&& aMem, const ScreenIntSize& aSize,
-                        bool aNeedsYFlip) override{};
+                        bool aNeedsYFlip) override {};
 #endif
 
   virtual void LocalesChanged() {}
@@ -695,6 +687,7 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   RefPtr<mozilla::SwipeTracker> mSwipeTracker;
   mozilla::UniquePtr<mozilla::SwipeEventQueue> mSwipeEventQueue;
   Cursor mCursor;
+  bool mCustomCursorAllowed = true;
   BorderStyle mBorderStyle;
   LayoutDeviceIntRect mBounds;
   bool mIsTiled;

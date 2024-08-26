@@ -90,7 +90,11 @@ bool RenderCompositorEGL::BeginFrame() {
   }
 #ifdef MOZ_WIDGET_GTK
   if (mWidget->AsGTK()) {
-    mWidget->AsGTK()->SetEGLNativeWindowSize(GetBufferSize());
+    if (!mWidget->AsGTK()->SetEGLNativeWindowSize(GetBufferSize())) {
+      // It's possible that GtkWidget is hidden on Wayland; e.g. maybe it's
+      // just been closed. So, we can't draw into it right now.
+      return false;
+    }
   }
 #endif
   if (!MakeCurrent()) {
@@ -240,14 +244,7 @@ void RenderCompositorEGL::DestroyEGLSurface() {
   // Release EGLSurface of back buffer before calling ResizeBuffers().
   if (mEGLSurface) {
     gle->SetEGLSurfaceOverride(EGL_NO_SURFACE);
-    if (!egl->fMakeCurrent(EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
-      const EGLint err = egl->mLib->fGetError();
-      gfxCriticalNote << "Error in eglMakeCurrent: " << gfx::hexa(err);
-    }
-    if (!egl->fDestroySurface(mEGLSurface)) {
-      const EGLint err = egl->mLib->fGetError();
-      gfxCriticalNote << "Error in eglDestroySurface: " << gfx::hexa(err);
-    }
+    gl::GLContextEGL::DestroySurface(*egl, mEGLSurface);
     mEGLSurface = nullptr;
   }
 }

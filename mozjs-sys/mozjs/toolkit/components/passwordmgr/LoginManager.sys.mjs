@@ -5,7 +5,6 @@
 const PERMISSION_SAVE_LOGINS = "login-saving";
 const MAX_DATE_MS = 8640000000000000;
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { LoginManagerStorage } from "resource://passwordmgr/passwordstorage.sys.mjs";
 
 const lazy = {};
@@ -14,7 +13,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let logger = lazy.LoginHelper.createLogger("LoginManager");
   return logger;
 });
@@ -22,7 +21,7 @@ XPCOMUtils.defineLazyGetter(lazy, "log", () => {
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 if (Services.appinfo.processType !== Services.appinfo.PROCESS_TYPE_DEFAULT) {
-  throw new Error("LoginManager.jsm should only run in the parent process");
+  throw new Error("LoginManager.sys.mjs should only run in the parent process");
 }
 
 export function LoginManager() {
@@ -186,7 +185,7 @@ LoginManager.prototype = {
       return;
     }
 
-    let logins = await this.getAllLoginsAsync();
+    let logins = await this.getAllLogins();
 
     let usernamePresentHistogram = clearAndGetHistogram(
       "PWMGR_USERNAME_PRESENT"
@@ -252,7 +251,7 @@ LoginManager.prototype = {
       throw new Error("Can't add a login with a null or empty password.");
     }
 
-    // Duplicated from toolkit/components/passwordmgr/LoginHelper.jsm
+    // Duplicated from toolkit/components/passwordmgr/LoginHelper.sys.jms
     // TODO: move all validations into this function.
     //
     // In theory these nulls should just be rolled up into the encrypted
@@ -270,7 +269,7 @@ LoginManager.prototype = {
           "Can't add a login with both a httpRealm and formActionOrigin."
         );
       }
-    } else if (login.httpRealm) {
+    } else if (login.httpRealm || login.httpRealm == "") {
       // We have a HTTP realm. Can't have a form submit URL.
       if (login.formActionOrigin != null) {
         throw new Error(
@@ -388,31 +387,21 @@ LoginManager.prototype = {
   },
 
   /**
-   * Get a dump of all stored logins. Used by the login manager UI.
-   *
-   * @return {nsILoginInfo[]} - If there are no logins, the array is empty.
-   */
-  getAllLogins() {
-    lazy.log.debug("Getting a list of all logins.");
-    return this._storage.getAllLogins();
-  },
-
-  /**
    * Get a dump of all stored logins asynchronously. Used by the login manager UI.
    *
    * @return {nsILoginInfo[]} - If there are no logins, the array is empty.
    */
-  async getAllLoginsAsync() {
+  async getAllLogins() {
     lazy.log.debug("Getting a list of all logins asynchronously.");
-    return this._storage.getAllLoginsAsync();
+    return this._storage.getAllLogins();
   },
 
   /**
    * Get a dump of all stored logins asynchronously. Used by the login detection service.
    */
-  getAllLoginsWithCallbackAsync(aCallback) {
+  getAllLoginsWithCallback(aCallback) {
     lazy.log.debug("Searching a list of all logins asynchronously.");
-    this._storage.getAllLoginsAsync().then(logins => {
+    this._storage.getAllLogins().then(logins => {
       aCallback.onSearchComplete(logins);
     });
   },

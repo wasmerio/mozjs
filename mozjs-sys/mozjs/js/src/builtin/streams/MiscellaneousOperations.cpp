@@ -9,7 +9,6 @@
 #include "builtin/streams/MiscellaneousOperations.h"
 
 #include "mozilla/Assertions.h"     // MOZ_ASSERT
-#include "mozilla/FloatingPoint.h"  // mozilla::IsNaN
 
 #include "js/CallAndConstruct.h"      // JS::IsCallable
 #include "js/Conversions.h"           // JS::ToNumber
@@ -43,7 +42,8 @@ using JS::Value;
   size_t bufferLength = JS::GetArrayBufferByteLength(buffer);
 
   // Let arrayBufferData be O.[[ArrayBufferData]].
-  void* bufferData = JS::StealArrayBufferContents(cx, buffer);
+  UniquePtr<void, JS::FreePolicy> bufferData{
+      JS::StealArrayBufferContents(cx, buffer)};
 
   // Perform ? DetachArrayBuffer(O).
   if (!JS::DetachArrayBuffer(cx, buffer)) {
@@ -53,7 +53,7 @@ using JS::Value;
   // Return a new ArrayBuffer object, created in the current Realm, whose
   // [[ArrayBufferData]] internal slot value is arrayBufferData and whose
   // [[ArrayBufferByteLength]] internal slot value is arrayBufferByteLength.
-  return JS::NewArrayBufferWithContents(cx, bufferLength, bufferData);
+  return JS::NewArrayBufferWithContents(cx, bufferLength, std::move(bufferData));
 }
 
 // https://streams.spec.whatwg.org/#can-transfer-array-buffer

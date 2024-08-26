@@ -58,10 +58,15 @@ class WidgetGUIEvent;
 class WidgetInputEvent;
 class WidgetKeyboardEvent;
 struct FontRange;
-
-enum class StyleWindowShadow : uint8_t;
 enum class ColorScheme : uint8_t;
 enum class WindowButtonType : uint8_t;
+
+enum class WindowShadow : uint8_t {
+  None,
+  Menu,
+  Panel,
+  Tooltip,
+};
 
 #if defined(MOZ_WIDGET_ANDROID)
 namespace ipc {
@@ -208,12 +213,6 @@ enum nsCursor {  ///(normal cursor,       usually rendered as an arrow)
 
   // ...except for this one.
   eCursorInvalid = eCursorCount + 1
-};
-
-enum nsTopLevelWidgetZPlacement {  // for PlaceBehind()
-  eZPlacementBottom = 0,           // bottom of the window stack
-  eZPlacementBelow,                // just below another widget
-  eZPlacementTop                   // top of the window stack
 };
 
 /**
@@ -403,10 +402,7 @@ class nsIWidget : public nsISupports {
       : mLastChild(nullptr),
         mPrevSibling(nullptr),
         mOnDestroyCalled(false),
-        mWindowType(WindowType::Child),
-        mZIndex(0)
-
-  {
+        mWindowType(WindowType::Child) {
     ClearNativeTouchSequence(nullptr);
   }
 
@@ -663,12 +659,6 @@ class nsIWidget : public nsISupports {
   virtual void SetModal(bool aModal) = 0;
 
   /**
-   * Make the non-modal window opened by modal window fake-modal, that will
-   * call SetFakeModal(false) on destroy on Cocoa.
-   */
-  virtual void SetFakeModal(bool aModal) { SetModal(aModal); }
-
-  /**
    * Are we app modal. Currently only implemented on Cocoa.
    */
   virtual bool IsRunningAppModal() { return false; }
@@ -759,7 +749,7 @@ class nsIWidget : public nsISupports {
    * @param aShouldLock bool
    *
    */
-  virtual void LockAspectRatio(bool aShouldLock){};
+  virtual void LockAspectRatio(bool aShouldLock) {};
 
   /**
    * Move or resize this widget. Any size constraints set for the window by
@@ -778,10 +768,6 @@ class nsIWidget : public nsISupports {
    */
   virtual void Resize(double aX, double aY, double aWidth, double aHeight,
                       bool aRepaint) = 0;
-
-  virtual mozilla::Maybe<bool> IsResizingNativeWidget() {
-    return mozilla::Nothing();
-  }
 
   /**
    * Resize the widget so that the inner client area has the given size.
@@ -802,30 +788,6 @@ class nsIWidget : public nsISupports {
    * @param aRepaint whether the widget should be repainted
    */
   virtual void ResizeClient(const DesktopRect& aRect, bool aRepaint) = 0;
-
-  /**
-   * Sets the widget's z-index.
-   */
-  virtual void SetZIndex(int32_t aZIndex) = 0;
-
-  /**
-   * Gets the widget's z-index.
-   */
-  int32_t GetZIndex() { return mZIndex; }
-
-  /**
-   * Position this widget just behind the given widget. (Used to
-   * control z-order for top-level widgets. Get/SetZIndex by contrast
-   * control z-order for child widgets of other widgets.)
-   * @param aPlacement top, bottom, or below a widget
-   *                   (if top or bottom, param aWidget is ignored)
-   * @param aWidget    widget to place this widget behind
-   *                   (only if aPlacement is eZPlacementBelow).
-   *                   null is equivalent to aPlacement of eZPlacementTop
-   * @param aActivate  true to activate the widget after placing it
-   */
-  virtual void PlaceBehind(nsTopLevelWidgetZPlacement aPlacement,
-                           nsIWidget* aWidget, bool aActivate) = 0;
 
   /**
    * Minimize, maximize or normalize the window size.
@@ -966,10 +928,11 @@ class nsIWidget : public nsISupports {
   }
 
   /**
-   * Set the background color for this widget
+   * Set the native background color for this widget.
+   *
+   * Deprecated. Currently only implemented for iOS. (See bug 1901896.)
    *
    * @param aColor the new background color
-   *
    */
 
   virtual void SetBackgroundColor(const nscolor& aColor) {}
@@ -1009,6 +972,8 @@ class nsIWidget : public nsISupports {
    */
   virtual void SetCursor(const Cursor&) = 0;
 
+  virtual void SetCustomCursorAllowed(bool) = 0;
+
   static nsIntSize CustomCursorSize(const Cursor&);
 
   /**
@@ -1046,7 +1011,7 @@ class nsIWidget : public nsISupports {
    *
    * Ignored on child widgets and on non-Mac platforms.
    */
-  virtual void SetWindowShadowStyle(mozilla::StyleWindowShadow aStyle) = 0;
+  virtual void SetWindowShadowStyle(mozilla::WindowShadow aStyle) = 0;
 
   /**
    * Set the opacity of the window.
@@ -1216,14 +1181,6 @@ class nsIWidget : public nsISupports {
    * Always called on the main thread.
    */
   virtual void PrepareWindowEffects() = 0;
-
-  /**
-   * Called on the main thread at the end of WebRender display list building.
-   */
-  virtual void AddWindowOverlayWebRenderCommands(
-      mozilla::layers::WebRenderBridgeChild* aWrBridge,
-      mozilla::wr::DisplayListBuilder& aBuilder,
-      mozilla::wr::IpcResourceUpdateQueue& aResources) {}
 
   /**
    * Called when Gecko knows which themed widgets exist in this window.
@@ -1408,6 +1365,8 @@ class nsIWidget : public nsISupports {
                               const nsAString& xulWinClass,
                               const nsAString& xulWinName) = 0;
 
+  virtual void SetIsEarlyBlankWindow(bool) {}
+
   /**
    * Enables/Disables system capture of any and all events that would cause a
    * popup to be rolled up. aListener should be set to a non-null value for
@@ -1435,19 +1394,6 @@ class nsIWidget : public nsISupports {
    * included, including those not targeted at this nsIwidget instance.
    */
   virtual bool HasPendingInputEvent() = 0;
-
-  /**
-   * If set to true, the window will draw its contents into the titlebar
-   * instead of below it.
-   *
-   * Ignored on any platform that does not support it. Ignored by widgets that
-   * do not represent windows.
-   * May result in a resize event, so should only be called from places where
-   * reflow and painting is allowed.
-   *
-   * @param aState Whether drawing into the titlebar should be activated.
-   */
-  virtual void SetDrawsInTitlebar(bool aState) = 0;
 
   /*
    * Determine whether the widget shows a resize widget. If it does,
@@ -2032,7 +1978,7 @@ class nsIWidget : public nsISupports {
 
   virtual void UpdateZoomConstraints(
       const uint32_t& aPresShellId, const ScrollableLayerGuid::ViewID& aViewId,
-      const mozilla::Maybe<ZoomConstraints>& aConstraints){};
+      const mozilla::Maybe<ZoomConstraints>& aConstraints) {};
 
   /**
    * GetTextEventDispatcher() returns TextEventDispatcher belonging to the
@@ -2048,6 +1994,11 @@ class nsIWidget : public nsISupports {
   virtual TextEventDispatcherListener*
   GetNativeTextEventDispatcherListener() = 0;
 
+  /**
+   * Trigger an animation to zoom to the given |aRect|.
+   * |aRect| should be relative to the layout viewport of the widget's root
+   * document
+   */
   virtual void ZoomToRect(const uint32_t& aPresShellId,
                           const ScrollableLayerGuid::ViewID& aViewId,
                           const CSSRect& aRect, const uint32_t& aFlags) = 0;
@@ -2145,7 +2096,6 @@ class nsIWidget : public nsISupports {
   // When Destroy() is called, the sub class should set this true.
   bool mOnDestroyCalled;
   WindowType mWindowType;
-  int32_t mZIndex;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsIWidget, NS_IWIDGET_IID)

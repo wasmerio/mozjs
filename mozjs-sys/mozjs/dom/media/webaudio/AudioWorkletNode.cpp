@@ -48,7 +48,9 @@ struct NamedAudioParamTimeline {
 
 struct ProcessorErrorDetails {
   ProcessorErrorDetails() : mLineno(0), mColno(0) {}
+  // Line number (1-origin).
   unsigned mLineno;
+  // Column number in UTF-16 code units (1-origin).
   unsigned mColno;
   nsString mFilename;
   nsString mMessage;
@@ -75,9 +77,9 @@ class WorkletNodeEngine final : public AudioNodeEngine {
                           UniqueMessagePortId& aPortIdentifier,
                           AudioNodeTrack* aTrack);
 
-  void RecvTimelineEvent(uint32_t aIndex, AudioTimelineEvent& aEvent) override {
+  void RecvTimelineEvent(uint32_t aIndex, AudioParamEvent& aEvent) override {
     MOZ_ASSERT(mDestination);
-    WebAudioUtils::ConvertAudioTimelineEventToTicks(aEvent, mDestination);
+    aEvent.ConvertToTicks(mDestination);
 
     if (aIndex < mParamTimelines.Length()) {
       mParamTimelines[aIndex].mTimeline.InsertEvent<int64_t>(aEvent);
@@ -237,7 +239,7 @@ void WorkletNodeEngine::SendProcessorError(AudioNodeTrack* aTrack,
     xpc::ErrorReport::ErrorReportToMessageString(jsReport.report(),
                                                  details.mMessage);
     details.mLineno = jsReport.report()->lineno;
-    details.mColno = jsReport.report()->column;
+    details.mColno = jsReport.report()->column.oneOriginValue();
     MOZ_ASSERT(!jsReport.report()->isMuted);
 
     SendErrorToMainThread(aTrack, details);

@@ -27,7 +27,7 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "api/transport/field_trial_based_config.h"
+#include "api/environment/environment.h"
 #include "api/video/video_frame.h"
 #include "call/audio_receive_stream.h"
 #include "call/audio_send_stream.h"
@@ -38,7 +38,6 @@
 #include "call/video_send_stream.h"
 #include "modules/rtp_rtcp/source/rtp_packet_received.h"
 #include "rtc_base/buffer.h"
-#include "test/scoped_key_value_config.h"
 
 namespace cricket {
 class FakeAudioSendStream final : public webrtc::AudioSendStream {
@@ -158,7 +157,8 @@ class FakeVideoSendStream final
     : public webrtc::VideoSendStream,
       public rtc::VideoSinkInterface<webrtc::VideoFrame> {
  public:
-  FakeVideoSendStream(webrtc::VideoSendStream::Config config,
+  FakeVideoSendStream(const webrtc::Environment& env,
+                      webrtc::VideoSendStream::Config config,
                       webrtc::VideoEncoderConfig encoder_config);
   ~FakeVideoSendStream() override;
   const webrtc::VideoSendStream::Config& GetConfig() const;
@@ -169,6 +169,7 @@ class FakeVideoSendStream final
   bool GetVp8Settings(webrtc::VideoCodecVP8* settings) const;
   bool GetVp9Settings(webrtc::VideoCodecVP9* settings) const;
   bool GetH264Settings(webrtc::VideoCodecH264* settings) const;
+  bool GetAv1Settings(webrtc::VideoCodecAV1* settings) const;
 
   int GetNumberOfSwappedFrames() const;
   int GetLastWidth() const;
@@ -188,14 +189,16 @@ class FakeVideoSendStream final
   rtc::VideoSourceInterface<webrtc::VideoFrame>* source() const {
     return source_;
   }
-  void GenerateKeyFrame(const std::vector<std::string>& rids) override {}
+  void GenerateKeyFrame(const std::vector<std::string>& rids);
+  const std::vector<std::string>& GetKeyFramesRequested() const {
+    return keyframes_requested_by_rid_;
+  }
 
  private:
   // rtc::VideoSinkInterface<VideoFrame> implementation.
   void OnFrame(const webrtc::VideoFrame& frame) override;
 
   // webrtc::VideoSendStream implementation.
-  void StartPerRtpStream(std::vector<bool> active_layers) override;
   void Start() override;
   void Stop() override;
   bool started() override { return IsSending(); }
@@ -212,6 +215,7 @@ class FakeVideoSendStream final
   void ReconfigureVideoEncoder(webrtc::VideoEncoderConfig config,
                                webrtc::SetParametersCallback callback) override;
 
+  const webrtc::Environment env_;
   bool sending_;
   webrtc::VideoSendStream::Config config_;
   webrtc::VideoEncoderConfig encoder_config_;
@@ -223,6 +227,7 @@ class FakeVideoSendStream final
     webrtc::VideoCodecVP8 vp8;
     webrtc::VideoCodecVP9 vp9;
     webrtc::VideoCodecH264 h264;
+    webrtc::VideoCodecAV1 av1;
   } codec_specific_settings_;
   bool resolution_scaling_enabled_;
   bool framerate_scaling_enabled_;
@@ -231,6 +236,7 @@ class FakeVideoSendStream final
   absl::optional<webrtc::VideoFrame> last_frame_;
   webrtc::VideoSendStream::Stats stats_;
   int num_encoder_reconfigurations_ = 0;
+  std::vector<std::string> keyframes_requested_by_rid_;
 };
 
 class FakeVideoReceiveStream final
@@ -348,6 +354,8 @@ class FakeFlexfecReceiveStream final : public webrtc::FlexfecReceiveStream {
 
   uint32_t remote_ssrc() const { return config_.rtp.remote_ssrc; }
 
+  const webrtc::ReceiveStatistics* GetStats() const override { return nullptr; }
+
  private:
   void OnRtpPacket(const webrtc::RtpPacketReceived& packet) override;
 
@@ -356,10 +364,10 @@ class FakeFlexfecReceiveStream final : public webrtc::FlexfecReceiveStream {
 
 class FakeCall final : public webrtc::Call, public webrtc::PacketReceiver {
  public:
-  explicit FakeCall(webrtc::test::ScopedKeyValueConfig* field_trials = nullptr);
-  FakeCall(webrtc::TaskQueueBase* worker_thread,
-           webrtc::TaskQueueBase* network_thread,
-           webrtc::test::ScopedKeyValueConfig* field_trials = nullptr);
+  explicit FakeCall(const webrtc::Environment& env);
+  FakeCall(const webrtc::Environment& env,
+           webrtc::TaskQueueBase* worker_thread,
+           webrtc::TaskQueueBase* network_thread);
   ~FakeCall() override;
 
   webrtc::MockRtpTransportControllerSend* GetMockTransportControllerSend() {
@@ -399,13 +407,9 @@ class FakeCall final : public webrtc::Call, public webrtc::PacketReceiver {
 
   void SetClientBitratePreferences(
       const webrtc::BitrateSettings& preferences) override {}
-
-  void SetFieldTrial(const std::string& field_trial_string) {
-    trials_overrides_ = std::make_unique<webrtc::test::ScopedKeyValueConfig>(
-        *trials_, field_trial_string);
+  const webrtc::FieldTrialsView& trials() const override {
+    return env_.field_trials();
   }
-
-  const webrtc::FieldTrialsView& trials() const override { return *trials_; }
 
  private:
   webrtc::AudioSendStream* CreateAudioSendStream(
@@ -473,6 +477,7 @@ class FakeCall final : public webrtc::Call, public webrtc::PacketReceiver {
                          absl::string_view sync_group) override;
   void OnSentPacket(const rtc::SentPacket& sent_packet) override;
 
+  const webrtc::Environment env_;
   webrtc::TaskQueueBase* const network_thread_;
   webrtc::TaskQueueBase* const worker_thread_;
 
@@ -495,16 +500,6 @@ class FakeCall final : public webrtc::Call, public webrtc::PacketReceiver {
 
   int num_created_send_streams_;
   int num_created_receive_streams_;
-
-  // The field trials that are in use, either supplied by caller
-  // or pointer to &fallback_trials_.
-  webrtc::test::ScopedKeyValueConfig* trials_;
-
-  // fallback_trials_ is used if caller does not provide any field trials.
-  webrtc::test::ScopedKeyValueConfig fallback_trials_;
-
-  // An extra field trial that can be set using SetFieldTrial.
-  std::unique_ptr<webrtc::test::ScopedKeyValueConfig> trials_overrides_;
 };
 
 }  // namespace cricket

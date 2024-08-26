@@ -22,6 +22,7 @@ XPIDL_SOURCES += [
     "nsIHttpHeaderVisitor.idl",
     "nsIHttpProtocolHandler.idl",
     "nsIObliviousHttp.idl",
+    "nsIObliviousHttpChannel.idl",
     "nsIRaceCacheWithNetwork.idl",
     "nsITlsHandshakeListener.idl",
     "nsIWellKnownOpportunisticUtils.idl",
@@ -163,6 +164,7 @@ UNIFIED_SOURCES += [
     "TlsHandshaker.cpp",
     "TLSTransportLayer.cpp",
     "TRRServiceChannel.cpp",
+    "WebTransportCertificateVerifier.cpp",
 ]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
@@ -201,12 +203,15 @@ LOCAL_INCLUDES += [
     "/netwerk/url-classifier",
 ]
 
+DEFINES["MOZ_APP_UA_NAME"] = f'"{CONFIG["MOZ_APP_UA_NAME"]}"'
+
 if CONFIG["MOZ_AUTH_EXTENSION"]:
     LOCAL_INCLUDES += [
         "/extensions/auth",
     ]
 
 EXTRA_JS_MODULES += [
+    "HPKEConfigManager.sys.mjs",
     "WellKnownOpportunisticUtils.sys.mjs",
 ]
 

@@ -14,10 +14,12 @@
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "api/array_view.h"
+#include "api/environment/environment_factory.h"
 #include "api/field_trials_view.h"
 #include "api/video/video_frame.h"
 #include "api/video_codecs/video_codec.h"
 #include "api/video_codecs/video_encoder.h"
+#include "media/base/media_constants.h"
 #include "modules/video_coding/codecs/interface/libvpx_interface.h"
 #include "modules/video_coding/codecs/vp9/libvpx_vp9_encoder.h"
 #include "modules/video_coding/frame_dependencies_calculator.h"
@@ -192,6 +194,12 @@ class FieldTrials : public FieldTrialsView {
         key == "WebRTC-VP9QualityScaler") {
       return "";
     }
+
+    // TODO: bugs.webrtc.org/15827 - Fuzz frame drop config.
+    if (key == "WebRTC-LibvpxVp9Encoder-SvcFrameDropConfig") {
+      return "";
+    }
+
     // Crash when using unexpected field trial to decide if it should be fuzzed
     // or have a constant value.
     RTC_CHECK(false) << "Unfuzzed field trial " << key << "\n";
@@ -529,8 +537,8 @@ void FuzzOneInput(const uint8_t* data, size_t size) {
   LibvpxState state;
 
   // Initialize encoder
-  LibvpxVp9Encoder encoder(cricket::VideoCodec(),
-                           std::make_unique<StubLibvpx>(&state), field_trials);
+  LibvpxVp9Encoder encoder(CreateEnvironment(&field_trials), {},
+                           std::make_unique<StubLibvpx>(&state));
   VideoCodec codec = CodecSettings(helper);
   if (encoder.InitEncode(&codec, EncoderSettings()) != WEBRTC_VIDEO_CODEC_OK) {
     return;

@@ -37,8 +37,7 @@ class PlainTimeObject : public NativeObject {
   static constexpr uint32_t ISO_MILLISECOND_SLOT = 3;
   static constexpr uint32_t ISO_MICROSECOND_SLOT = 4;
   static constexpr uint32_t ISO_NANOSECOND_SLOT = 5;
-  static constexpr uint32_t CALENDAR_SLOT = 6;
-  static constexpr uint32_t SLOT_COUNT = 7;
+  static constexpr uint32_t SLOT_COUNT = 6;
 
   int32_t isoHour() const { return getFixedSlot(ISO_HOUR_SLOT).toInt32(); }
 
@@ -58,26 +57,7 @@ class PlainTimeObject : public NativeObject {
     return getFixedSlot(ISO_NANOSECOND_SLOT).toInt32();
   }
 
-  JSObject* getCalendar() const {
-    return getFixedSlot(CALENDAR_SLOT).toObjectOrNull();
-  }
-
-  void setCalendar(JSObject* calendar) {
-    setFixedSlot(CALENDAR_SLOT, JS::ObjectValue(*calendar));
-  }
-
-  static JSObject* getOrCreateCalendar(JSContext* cx,
-                                       JS::Handle<PlainTimeObject*> obj) {
-    if (auto* calendar = obj->getCalendar()) {
-      return calendar;
-    }
-    return createCalendar(cx, obj);
-  }
-
  private:
-  static JSObject* createCalendar(JSContext* cx,
-                                  JS::Handle<PlainTimeObject*> obj);
-
   static const ClassSpec classSpec_;
 };
 
@@ -132,19 +112,24 @@ PlainTimeObject* CreateTemporalTime(JSContext* cx, const PlainTime& time);
 bool ToTemporalTime(JSContext* cx, JS::Handle<JS::Value> item,
                     PlainTime* result);
 
+struct AddedTime {
+  int32_t days = 0;
+  PlainTime time;
+};
+
 /**
- * AddTime ( hour, minute, second, millisecond, microsecond, nanosecond, hours,
- * minutes, seconds, milliseconds, microseconds, nanoseconds )
+ * AddTime ( hour, minute, second, millisecond, microsecond, nanosecond, norm )
  */
-bool AddTime(JSContext* cx, const PlainTime& time, const Duration& duration,
-             PlainTime* result, double* daysResult);
+AddedTime AddTime(const PlainTime& time,
+                  const NormalizedTimeDuration& duration);
 
 /**
  * DifferenceTime ( h1, min1, s1, ms1, mus1, ns1, h2, min2, s2, ms2, mus2, ns2 )
  */
-TimeDuration DifferenceTime(const PlainTime& time1, const PlainTime& time2);
+NormalizedTimeDuration DifferenceTime(const PlainTime& time1,
+                                      const PlainTime& time2);
 
-struct TimeRecord final {
+struct TemporalTimeLike final {
   double hour = 0;
   double minute = 0;
   double second = 0;
@@ -154,16 +139,16 @@ struct TimeRecord final {
 };
 
 /**
- * ToTemporalTimeRecord ( temporalTimeLike )
+ * ToTemporalTimeRecord ( temporalTimeLike [ , completeness ] )
  */
 bool ToTemporalTimeRecord(JSContext* cx, JS::Handle<JSObject*> temporalTimeLike,
-                          TimeRecord* result);
+                          TemporalTimeLike* result);
 
 /**
  * RegulateTime ( hour, minute, second, millisecond, microsecond, nanosecond,
  * overflow )
  */
-bool RegulateTime(JSContext* cx, const TimeRecord& time,
+bool RegulateTime(JSContext* cx, const TemporalTimeLike& time,
                   TemporalOverflow overflow, PlainTime* result);
 
 /**
@@ -189,18 +174,10 @@ struct RoundedTime final {
 
 /**
  * RoundTime ( hour, minute, second, millisecond, microsecond, nanosecond,
- * increment, unit, roundingMode [ , dayLengthNs ] )
+ * increment, unit, roundingMode )
  */
 RoundedTime RoundTime(const PlainTime& time, Increment increment,
                       TemporalUnit unit, TemporalRoundingMode roundingMode);
-
-/**
- * RoundTime ( hour, minute, second, millisecond, microsecond, nanosecond,
- * increment, unit, roundingMode [ , dayLengthNs ] )
- */
-RoundedTime RoundTime(const PlainTime& time, Increment increment,
-                      TemporalUnit unit, TemporalRoundingMode roundingMode,
-                      const InstantSpan& dayLengthNs);
 
 } /* namespace js::temporal */
 

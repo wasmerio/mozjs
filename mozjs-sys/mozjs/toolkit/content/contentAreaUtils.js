@@ -11,7 +11,6 @@ var { XPCOMUtils } = ChromeUtils.importESModule(
 
 ChromeUtils.defineESModuleGetters(this, {
   BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
-  Deprecated: "resource://gre/modules/Deprecated.sys.mjs",
   DownloadLastDir: "resource://gre/modules/DownloadLastDir.sys.mjs",
   DownloadPaths: "resource://gre/modules/DownloadPaths.sys.mjs",
   Downloads: "resource://gre/modules/Downloads.sys.mjs",
@@ -326,7 +325,8 @@ function internalSave(
     };
 
     // Find a URI to use for determining last-downloaded-to directory
-    let relatedURI = aReferrerInfo?.originalReferrer || sourceURI;
+    let relatedURI =
+      aOriginalURL || aReferrerInfo?.originalReferrer || sourceURI;
 
     promiseTargetFile(fpParams, aSkipPrompt, relatedURI)
       .then(aDialogAccepted => {
@@ -688,7 +688,7 @@ function promiseTargetFile(
     let fp = makeFilePicker();
     let titleKey = aFpP.fpTitleKey || "SaveLinkTitle";
     fp.init(
-      window,
+      window.browsingContext,
       ContentAreaUtils.stringBundle.GetStringFromName(titleKey),
       Ci.nsIFilePicker.modeSave
     );
@@ -728,11 +728,9 @@ function promiseTargetFile(
     // Do not store the last save directory as a pref inside the private browsing mode
     downloadLastDir.setFile(aRelatedURI, fp.file.parent);
 
-    fp.file.leafName = validateFileName(fp.file.leafName);
-
     aFpP.saveAsType = fp.filterIndex;
     aFpP.file = fp.file;
-    aFpP.fileURL = fp.fileURL;
+    aFpP.file.leafName = validateFileName(aFpP.file.leafName);
 
     return true;
   })();
@@ -1182,10 +1180,10 @@ function openURL(aURL) {
     var appstartup = Services.startup;
 
     var loadListener = {
-      onStartRequest: function ll_start(aRequest) {
+      onStartRequest: function ll_start() {
         appstartup.enterLastWindowClosingSurvivalArea();
       },
-      onStopRequest: function ll_stop(aRequest, aStatusCode) {
+      onStopRequest: function ll_stop() {
         appstartup.exitLastWindowClosingSurvivalArea();
       },
       QueryInterface: ChromeUtils.generateQI([
@@ -1196,13 +1194,13 @@ function openURL(aURL) {
     loadgroup.groupObserver = loadListener;
 
     var uriListener = {
-      doContent(ctype, preferred, request, handler) {
+      doContent() {
         return false;
       },
-      isPreferred(ctype, desired) {
+      isPreferred() {
         return false;
       },
-      canHandleContent(ctype, preferred, desired) {
+      canHandleContent() {
         return false;
       },
       loadCookie: null,

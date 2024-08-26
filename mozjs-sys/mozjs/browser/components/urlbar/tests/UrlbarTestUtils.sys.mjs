@@ -101,6 +101,17 @@ export var UrlbarTestUtils = {
       // Search mode may start a second query.
       context = await waitForQuery();
     }
+    if (win.gURLBar.view.oneOffSearchButtons._rebuilding) {
+      await new Promise(resolve =>
+        win.gURLBar.view.oneOffSearchButtons.addEventListener(
+          "rebuild",
+          resolve,
+          {
+            once: true,
+          }
+        )
+      );
+    }
     return context;
   },
 
@@ -116,6 +127,13 @@ export var UrlbarTestUtils = {
    *        userTypedValued, triggers engagement event telemetry, etc.)
    * @param {number} [options.selectionStart] The input's selectionStart
    * @param {number} [options.selectionEnd] The input's selectionEnd
+   * @param {boolean} [options.reopenOnBlur] Whether this method should repoen
+   *        the view if the input is blurred before the query finishes. This is
+   *        necessary to work around spurious blurs in CI, which close the view
+   *        and cancel the query, defeating the typical use of this method where
+   *        your test waits for the query to finish. However, this behavior
+   *        isn't always desired, for example if your test intentionally blurs
+   *        the input before the query finishes. In that case, pass false.
    */
   async promiseAutocompleteResultPopup({
     window,
@@ -124,6 +142,7 @@ export var UrlbarTestUtils = {
     fireInputEvent = true,
     selectionStart = -1,
     selectionEnd = -1,
+    reopenOnBlur = true,
   } = {}) {
     if (this.SimpleTest) {
       await this.SimpleTest.promiseFocus(window);
@@ -139,7 +158,7 @@ export var UrlbarTestUtils = {
         lazy.UrlbarPrefs.get("trimURLs") &&
         value != lazy.BrowserUIUtils.trimURL(value)
       ) {
-        window.gURLBar._setValue(value, false);
+        window.gURLBar._setValue(value);
         fireInputEvent = true;
       } else {
         window.gURLBar.value = value;
@@ -165,14 +184,13 @@ export var UrlbarTestUtils = {
     // until showing popup, timeout failure happens since the expected poup
     // never be shown. To avoid this, if losing the focus, retry setup to open
     // popup.
-    const blurListener = () => {
-      setup();
-    };
-    window.gURLBar.inputField.addEventListener("blur", blurListener, {
-      once: true,
-    });
+    if (reopenOnBlur) {
+      window.gURLBar.inputField.addEventListener("blur", setup, { once: true });
+    }
     const result = await this.promiseSearchComplete(window);
-    window.gURLBar.inputField.removeEventListener("blur", blurListener);
+    if (reopenOnBlur) {
+      window.gURLBar.inputField.removeEventListener("blur", setup);
+    }
     return result;
   },
 
@@ -527,6 +545,7 @@ export var UrlbarTestUtils = {
     details.title = result.title;
     details.tags = "tags" in result.payload ? result.payload.tags : [];
     details.isSponsored = result.payload.isSponsored;
+    details.userContextId = result.payload.userContextId;
     let actions = element.getElementsByClassName("urlbarView-action");
     let urls = element.getElementsByClassName("urlbarView-url");
     let typeIcon = element.querySelector(".urlbarView-type-icon");
@@ -697,7 +716,7 @@ export var UrlbarTestUtils = {
     if (win.gURLBar.view.isOpen) {
       return;
     }
-    this.info("Awaiting for the urlbar panel to open");
+    this.info("Waiting for the urlbar view to open");
     await new Promise(resolve => {
       win.gURLBar.controller.addQueryListener({
         onViewOpen() {
@@ -706,7 +725,7 @@ export var UrlbarTestUtils = {
         },
       });
     });
-    this.info("Urlbar panel opened");
+    this.info("Urlbar view opened");
   },
 
   /**
@@ -718,16 +737,11 @@ export var UrlbarTestUtils = {
    * @returns {Promise} resolved once the popup is closed
    */
   async promisePopupClose(win, closeFn = null) {
-    if (closeFn) {
-      await closeFn();
-    } else {
-      win.gURLBar.view.close();
-    }
-    if (!win.gURLBar.view.isOpen) {
-      return;
-    }
-    this.info("Awaiting for the urlbar panel to close");
-    await new Promise(resolve => {
+    let closePromise = new Promise(resolve => {
+      if (!win.gURLBar.view.isOpen) {
+        resolve();
+        return;
+      }
       win.gURLBar.controller.addQueryListener({
         onViewClose() {
           win.gURLBar.controller.removeQueryListener(this);
@@ -735,7 +749,17 @@ export var UrlbarTestUtils = {
         },
       });
     });
-    this.info("Urlbar panel closed");
+    if (closeFn) {
+      this.info("Awaiting custom close function");
+      await closeFn();
+      this.info("Done awaiting custom close function");
+    } else {
+      this.info("Closing the view directly");
+      win.gURLBar.view.close();
+    }
+    this.info("Waiting for the view to close");
+    await closePromise;
+    this.info("Urlbar view closed");
   },
 
   /**
@@ -857,7 +881,13 @@ export var UrlbarTestUtils = {
     // names that are not usually included in actual search mode objects.  For
     // convenience, ignore those properties if they aren't also present in the
     // urlbar's actual search mode object.
-    let ignoreProperties = ["icon", "pref", "restrict", "telemetryLabel"];
+    let ignoreProperties = [
+      "icon",
+      "pref",
+      "restrict",
+      "telemetryLabel",
+      "uiLabel",
+    ];
     for (let prop of ignoreProperties) {
       if (prop in expectedSearchMode && !(prop in window.gURLBar.searchMode)) {
         this.info(
@@ -1013,6 +1043,54 @@ export var UrlbarTestUtils = {
     await this.promiseSearchComplete(window);
     this.Assert.ok(this.isPopupOpen(window), "Urlbar view is still open.");
     await this.assertSearchMode(window, searchMode);
+  },
+
+  /**
+   * Removes the scheme from an url according to user prefs.
+   *
+   * @param {string} url
+   *  The url that is supposed to be trimmed.
+   * @param {object} [options]
+   *  Options for the trimming.
+   * @param {boolean} [options.removeSingleTrailingSlash]
+   *    Remove trailing slash, when trimming enabled.
+   * @returns {string}
+   *  The sanitized URL.
+   */
+  trimURL(url, { removeSingleTrailingSlash = true } = {}) {
+    if (!lazy.UrlbarPrefs.get("trimURLs")) {
+      return url;
+    }
+
+    let sanitizedURL = url;
+    if (removeSingleTrailingSlash) {
+      sanitizedURL =
+        lazy.BrowserUIUtils.removeSingleTrailingSlashFromURL(sanitizedURL);
+    }
+
+    // Also remove emphasis markers if present.
+    if (lazy.UrlbarPrefs.get("trimHttps")) {
+      sanitizedURL = sanitizedURL.replace(/^<?https:\/\/>?/, "");
+    } else {
+      sanitizedURL = sanitizedURL.replace(/^<?http:\/\/>?/, "");
+    }
+
+    return sanitizedURL;
+  },
+
+  /**
+   * Returns the trimmed protocol with slashes.
+   *
+   * @returns {string} The trimmed protocol including slashes. Returns an empty
+   *                   string, when the protocol trimming is disabled.
+   */
+  getTrimmedProtocolWithSlashes() {
+    if (Services.prefs.getBoolPref("browser.urlbar.trimURLs")) {
+      return Services.prefs.getBoolPref("browser.urlbar.trimHttps")
+        ? "https://"
+        : "http://"; // eslint-disable-this-line @microsoft/sdl/no-insecure-url
+    }
+    return "";
   },
 
   /**
@@ -1201,15 +1279,18 @@ export var UrlbarTestUtils = {
     this.info("initNimbusFeature awaiting ExperimentAPI.ready");
     await lazy.ExperimentAPI.ready();
 
-    let method =
-      enrollmentType == "rollout"
-        ? "enrollWithRollout"
-        : "enrollWithFeatureConfig";
-    this.info(`initNimbusFeature awaiting ExperimentFakes.${method}`);
-    let doCleanup = await lazy.ExperimentFakes[method]({
-      featureId: lazy.NimbusFeatures[feature].featureId,
-      value: { enabled: true, ...value },
-    });
+    this.info(
+      `initNimbusFeature awaiting ExperimentFakes.enrollWithFeatureConfig`
+    );
+    const doCleanup = await lazy.ExperimentFakes.enrollWithFeatureConfig(
+      {
+        featureId: lazy.NimbusFeatures[feature].featureId,
+        value: { enabled: true, ...value },
+      },
+      {
+        isRollout: enrollmentType === "rollout",
+      }
+    );
 
     this.info("initNimbusFeature done");
 
@@ -1217,7 +1298,7 @@ export var UrlbarTestUtils = {
       // If `doCleanup()` has already been called (i.e., by the caller), it will
       // throw an error here.
       try {
-        await doCleanup();
+        doCleanup();
       } catch (error) {}
     });
 
@@ -1243,10 +1324,7 @@ export var UrlbarTestUtils = {
       // Set most of the string directly instead of going through sendString,
       // so that we don't make life unnecessarily hard for consumers by
       // possibly starting multiple searches.
-      win.gURLBar._setValue(
-        text.substr(0, text.length - 1),
-        false /* allowTrim = */
-      );
+      win.gURLBar._setValue(text.substr(0, text.length - 1));
     }
     this.EventUtils.sendString(text.substr(-1, 1), win);
   },
@@ -1270,16 +1348,21 @@ export var UrlbarTestUtils = {
    *      and ">" chars.
    * @param {string} [options.additionalMsg]
    *   Additional message to use for Assert.equal.
+   * @param {int} [options.selectionType]
+   *   The selectionType for which the input should be checked.
    */
-  checkFormatting(
+  async checkFormatting(
     win,
     urlFormatString,
-    { clobberedURLString = null, additionalMsg = null } = {}
+    {
+      clobberedURLString = null,
+      additionalMsg = null,
+      selectionType = Ci.nsISelectionController.SELECTION_URLSECONDARY,
+    } = {}
   ) {
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
     let selectionController = win.gURLBar.editor.selectionController;
-    let selection = selectionController.getSelection(
-      selectionController.SELECTION_URLSECONDARY
-    );
+    let selection = selectionController.getSelection(selectionType);
     let value = win.gURLBar.editor.rootElement.textContent;
     let result = "";
     for (let i = 0; i < selection.rangeCount; i++) {
@@ -1294,6 +1377,30 @@ export var UrlbarTestUtils = {
       clobberedURLString || urlFormatString,
       "Correct part of the URL is de-emphasized" +
         (additionalMsg ? ` (${additionalMsg})` : "")
+    );
+  },
+
+  searchModeSwitcherPopup(win) {
+    return win.document.getElementById("searchmode-switcher-popup");
+  },
+
+  async openSearchModeSwitcher(win) {
+    let popup = this.searchModeSwitcherPopup(win);
+    let promiseMenuOpen = lazy.BrowserTestUtils.waitForEvent(
+      popup,
+      "popupshown"
+    );
+    let button = win.document.getElementById("urlbar-searchmode-switcher");
+    this.Assert.ok(lazy.BrowserTestUtils.isVisible(button));
+    await this.EventUtils.promiseElementReadyForUserInput(button, win);
+    this.EventUtils.synthesizeMouseAtCenter(button, {}, win);
+    return promiseMenuOpen;
+  },
+
+  searchModeSwitcherPopupClosed(win) {
+    return lazy.BrowserTestUtils.waitForEvent(
+      this.searchModeSwitcherPopup(win),
+      "popuphidden"
     );
   },
 };
@@ -1407,6 +1514,7 @@ class TestProvider extends UrlbarProvider {
    * @param {number} [options.addTimeout]
    *   If non-zero, each result will be added on this timeout.  If zero, all
    *   results will be added immediately and synchronously.
+   *   If there's no results, the query will be completed after this timeout.
    * @param {Function} [options.onCancel]
    *   If given, a function that will be called when the provider's cancelQuery
    *   method is called.
@@ -1415,6 +1523,20 @@ class TestProvider extends UrlbarProvider {
    *   {@link UrlbarView.#selectElement} method is called.
    * @param {Function} [options.onEngagement]
    *   If given, a function that will be called when engagement.
+   * @param {Function} [options.onLegacyEngagement]
+   *   If given, a function that will be called when engagement.
+   *   onLegacyEngagement() is implemented for those who rely on the
+   *   older implementation of onEngagement()
+   * @param {Function} [options.onAbandonment]
+   *   If given, a function that will be called when abandonment.
+   * @param {Function} [options.onImpression]
+   *   If given, a function that will be called when an engagement or
+   *   abandonment has occured.
+   * @param {Function} [options.onSearchSessionEnd]
+   *   If given, a function that will be called when a search session
+   *   concludes.
+   * @param {Function} [options.delayResultsPromise]
+   *   If given, we'll await on this before returning results.
    */
   constructor({
     results,
@@ -1425,59 +1547,97 @@ class TestProvider extends UrlbarProvider {
     onCancel = null,
     onSelection = null,
     onEngagement = null,
+    onAbandonment = null,
+    onImpression = null,
+    onSearchSessionEnd = null,
+    onLegacyEngagement = null,
+    delayResultsPromise = null,
   } = {}) {
+    if (delayResultsPromise && addTimeout) {
+      throw new Error(
+        "Can't provide both `addTimeout` and `delayResultsPromise`"
+      );
+    }
     super();
-    this._results = results;
+    this.results = results;
+    this.priority = priority;
+    this.addTimeout = addTimeout;
+    this.delayResultsPromise = delayResultsPromise;
     this._name = name;
     this._type = type;
-    this._priority = priority;
-    this._addTimeout = addTimeout;
     this._onCancel = onCancel;
     this._onSelection = onSelection;
-    this._onEngagement = onEngagement;
+
+    // As this has been a common source of mistakes, auto-upgrade the provider
+    // type to heuristic if any result is heuristic.
+    if (!type && this.results?.some(r => r.heuristic)) {
+      this.type = UrlbarUtils.PROVIDER_TYPE.HEURISTIC;
+    }
+
+    if (onEngagement) {
+      this.onEngagement = onEngagement.bind(this);
+    }
+
+    if (onAbandonment) {
+      this.onAbandonment = onAbandonment.bind(this);
+    }
+
+    if (onImpression) {
+      this.onImpression = onAbandonment.bind(this);
+    }
+
+    if (onSearchSessionEnd) {
+      this.onSearchSessionEnd = onSearchSessionEnd.bind(this);
+    }
+
+    if (onLegacyEngagement) {
+      this.onLegacyEngagement = onLegacyEngagement.bind(this);
+    }
   }
+
   get name() {
     return this._name;
   }
+
   get type() {
     return this._type;
   }
-  getPriority(context) {
-    return this._priority;
+
+  getPriority(_context) {
+    return this.priority;
   }
-  isActive(context) {
+
+  isActive(_context) {
     return true;
   }
+
   async startQuery(context, addCallback) {
-    for (let result of this._results) {
-      if (!this._addTimeout) {
+    if (!this.results.length && this.addTimeout) {
+      await new Promise(resolve => lazy.setTimeout(resolve, this.addTimeout));
+    }
+    if (this.delayResultsPromise) {
+      await this.delayResultsPromise;
+    }
+    for (let result of this.results) {
+      if (!this.addTimeout) {
         addCallback(this, result);
       } else {
         await new Promise(resolve => {
           lazy.setTimeout(() => {
             addCallback(this, result);
             resolve();
-          }, this._addTimeout);
+          }, this.addTimeout);
         });
       }
     }
   }
-  cancelQuery(context) {
-    if (this._onCancel) {
-      this._onCancel();
-    }
+
+  cancelQuery(_context) {
+    this._onCancel?.();
   }
 
   onSelection(result, element) {
-    if (this._onSelection) {
-      this._onSelection(result, element);
-    }
-  }
-
-  onEngagement(isPrivate, state, queryContext, details) {
-    if (this._onEngagement) {
-      this._onEngagement(isPrivate, state, queryContext, details);
-    }
+    this._onSelection?.(result, element);
   }
 }
 

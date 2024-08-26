@@ -78,7 +78,7 @@ add_task(async function () {
   );
   const index = 4;
   is(
-    getScopeLabel(dbg, index),
+    getScopeNodeLabel(dbg, index),
     VARIABLE_NAME,
     `Got '${VARIABLE_NAME}' at the expected position`
   );
@@ -121,7 +121,7 @@ add_task(async function () {
 
   await assertPreviewTextValue(dbg, 26, 16, {
     expression: VARIABLE_NAME,
-    text: "CUSTOM",
+    result: "CUSTOM",
     doNotClose: true,
   });
 

@@ -66,7 +66,7 @@ bool CSSClipPathInstance::HitTestBasicShapeOrPathClip(nsIFrame* aFrame,
   RefPtr<Path> path = instance.CreateClipPath(
       drawTarget, SVGUtils::GetCSSPxToDevPxMatrix(aFrame));
   float pixelRatio = float(AppUnitsPerCSSPixel()) /
-                     aFrame->PresContext()->AppUnitsPerDevPixel();
+                     float(aFrame->PresContext()->AppUnitsPerDevPixel());
   return path && path->ContainsPoint(ToPoint(aPoint) * pixelRatio, Matrix());
 }
 
@@ -86,20 +86,12 @@ Maybe<Rect> CSSClipPathInstance::GetBoundingRectForBasicShapeOrPathClip(
 
 already_AddRefed<Path> CSSClipPathInstance::CreateClipPath(
     DrawTarget* aDrawTarget, const gfxMatrix& aTransform) {
-  if (mClipPathStyle.IsShape() && mClipPathStyle.AsShape()._0->IsPath()) {
-    return CreateClipPathPath(aDrawTarget);
-  }
-
   nscoord appUnitsPerDevPixel =
       mTargetFrame->PresContext()->AppUnitsPerDevPixel();
 
-  nsRect r;
-  if (mClipPathStyle.IsBox()) {
-    r = nsLayoutUtils::ComputeGeometryBox(mTargetFrame, mClipPathStyle.AsBox());
-  } else {
-    r = nsLayoutUtils::ComputeGeometryBox(mTargetFrame,
-                                          mClipPathStyle.AsShape()._1);
-  }
+  nsRect r = nsLayoutUtils::ComputeClipPathGeometryBox(
+      mTargetFrame, mClipPathStyle.IsBox() ? mClipPathStyle.AsBox()
+                                           : mClipPathStyle.AsShape()._1);
 
   gfxRect rr(r.x, r.y, r.width, r.height);
   rr.Scale(1.0 / AppUnitsPerCSSPixel());
@@ -127,8 +119,12 @@ already_AddRefed<Path> CSSClipPathInstance::CreateClipPath(
       return CreateClipPathEllipse(aDrawTarget, r);
     case StyleBasicShape::Tag::Polygon:
       return CreateClipPathPolygon(aDrawTarget, r);
-    case StyleBasicShape::Tag::Inset:
+    case StyleBasicShape::Tag::Rect:
       return CreateClipPathInset(aDrawTarget, r);
+    case StyleBasicShape::Tag::PathOrShape:
+      return basicShape.AsPathOrShape().IsPath()
+                 ? CreateClipPathPath(aDrawTarget, r)
+                 : CreateClipPathShape(aDrawTarget, r);
     default:
       MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("Unexpected shape type");
   }
@@ -180,16 +176,42 @@ already_AddRefed<Path> CSSClipPathInstance::CreateClipPathInset(
 }
 
 already_AddRefed<Path> CSSClipPathInstance::CreateClipPathPath(
-    DrawTarget* aDrawTarget) {
-  const auto& path = mClipPathStyle.AsShape()._0->AsPath();
+    DrawTarget* aDrawTarget, const nsRect& aRefBox) {
+  const auto& path = mClipPathStyle.AsShape()._0->AsPathOrShape().AsPath();
 
   RefPtr<PathBuilder> builder = aDrawTarget->CreatePathBuilder(
       path.fill == StyleFillRule::Nonzero ? FillRule::FILL_WINDING
                                           : FillRule::FILL_EVEN_ODD);
-  float scale = float(AppUnitsPerCSSPixel()) /
-                mTargetFrame->PresContext()->AppUnitsPerDevPixel();
+  const nscoord appUnitsPerDevPixel =
+      mTargetFrame->PresContext()->AppUnitsPerDevPixel();
+  const Point offset =
+      LayoutDevicePoint::FromAppUnits(aRefBox.TopLeft(), appUnitsPerDevPixel)
+          .ToUnknownPoint();
+  const float scale = mTargetFrame->Style()->EffectiveZoom().Zoom(
+      float(AppUnitsPerCSSPixel()) / float(appUnitsPerDevPixel));
   return SVGPathData::BuildPath(path.path._0.AsSpan(), builder,
-                                StyleStrokeLinecap::Butt, 0.0, scale);
+                                StyleStrokeLinecap::Butt, 0.0, {}, offset,
+                                scale);
+}
+
+already_AddRefed<Path> CSSClipPathInstance::CreateClipPathShape(
+    DrawTarget* aDrawTarget, const nsRect& aRefBox) {
+  const auto& shape = mClipPathStyle.AsShape()._0->AsPathOrShape().AsShape();
+
+  RefPtr<PathBuilder> builder = aDrawTarget->CreatePathBuilder(
+      shape.fill == StyleFillRule::Nonzero ? FillRule::FILL_WINDING
+                                           : FillRule::FILL_EVEN_ODD);
+  const nscoord appUnitsPerDevPixel =
+      mTargetFrame->PresContext()->AppUnitsPerDevPixel();
+  const CSSSize basis = CSSSize::FromAppUnits(aRefBox.Size());
+  const Point offset =
+      LayoutDevicePoint::FromAppUnits(aRefBox.TopLeft(), appUnitsPerDevPixel)
+          .ToUnknownPoint();
+  const float scale = mTargetFrame->Style()->EffectiveZoom().Zoom(
+      float(AppUnitsPerCSSPixel()) / float(appUnitsPerDevPixel));
+  return SVGPathData::BuildPath(shape.commands.AsSpan(), builder,
+                                StyleStrokeLinecap::Butt, 0.0, basis, offset,
+                                scale);
 }
 
 }  // namespace mozilla

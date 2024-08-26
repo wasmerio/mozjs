@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/MouseEvent.h"
 #include "mozilla/MouseEvents.h"
+#include "mozilla/BasePrincipal.h"
 #include "nsContentUtils.h"
 #include "nsIContent.h"
 #include "nsIScreenManager.h"
@@ -131,6 +132,8 @@ already_AddRefed<MouseEvent> MouseEvent::Constructor(
   e->InitializeExtraMouseEventDictionaryMembers(aParam);
   e->SetTrusted(trusted);
   e->SetComposed(aParam.mComposed);
+  MOZ_ASSERT(!trusted || !IsPointerEventMessage(e->mEvent->mMessage),
+             "Please use PointerEvent constructor!");
   return e.forget();
 }
 
@@ -213,8 +216,6 @@ already_AddRefed<EventTarget> MouseEvent::GetRelatedTarget() {
 
   return EnsureWebAccessibleRelatedTarget(relatedTarget);
 }
-
-void MouseEvent::GetRegion(nsAString& aRegion) { SetDOMStringToNull(aRegion); }
 
 CSSIntPoint MouseEvent::ScreenPoint(CallerType aCallerType) const {
   if (mEvent->mFlags.mIsPositionless) {
@@ -299,11 +300,22 @@ bool MouseEvent::ShiftKey() { return mEvent->AsInputEvent()->IsShift(); }
 
 bool MouseEvent::MetaKey() { return mEvent->AsInputEvent()->IsMeta(); }
 
-float MouseEvent::MozPressure() const {
+float MouseEvent::MozPressure(CallerType aCallerType) const {
+  if (nsContentUtils::ShouldResistFingerprinting(aCallerType, GetParentObject(),
+                                                 RFPTarget::PointerEvents)) {
+    // Use the spoofed value from PointerEvent::Pressure
+    return 0.5;
+  }
+
   return mEvent->AsMouseEventBase()->mPressure;
 }
 
-uint16_t MouseEvent::MozInputSource() const {
+uint16_t MouseEvent::InputSource(CallerType aCallerType) const {
+  if (nsContentUtils::ShouldResistFingerprinting(aCallerType, GetParentObject(),
+                                                 RFPTarget::PointerEvents)) {
+    return MouseEvent_Binding::MOZ_SOURCE_MOUSE;
+  }
+
   return mEvent->AsMouseEventBase()->mInputSource;
 }
 

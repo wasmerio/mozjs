@@ -17,6 +17,7 @@
 #include "mozilla/CycleCollectedJSRuntime.h"
 #include "mozilla/EventQueue.h"
 #include "mozilla/ThreadEventQueue.h"
+#include "js/ContextOptions.h"
 #include "js/Exception.h"
 #include "js/Initialization.h"
 #include "XPCSelfHostedShmem.h"
@@ -337,6 +338,8 @@ static bool DispatchToEventLoop(void* aClosure,
               return;
             }
 
+            AutoJSAPI jsapi;
+            jsapi.Init();
             aDispatchable->run(wjc->Context(),
                                JS::Dispatchable::NotShuttingDown);
           }),
@@ -346,7 +349,8 @@ static bool DispatchToEventLoop(void* aClosure,
 }
 
 // static
-void WorkletThread::EnsureCycleCollectedJSContext(JSRuntime* aParentRuntime) {
+void WorkletThread::EnsureCycleCollectedJSContext(
+    JSRuntime* aParentRuntime, const JS::ContextOptions& aOptions) {
   CycleCollectedJSContext* ccjscx = CycleCollectedJSContext::Get();
   if (ccjscx) {
     MOZ_ASSERT(ccjscx->GetAsWorkletJSContext());
@@ -360,6 +364,8 @@ void WorkletThread::EnsureCycleCollectedJSContext(JSRuntime* aParentRuntime) {
     return;
   }
 
+  JS::ContextOptionsRef(context->Context()) = aOptions;
+
   JS_SetGCParameter(context->Context(), JSGC_MAX_BYTES, uint32_t(-1));
 
   // FIXME: JS_SetDefaultLocale
@@ -367,7 +373,7 @@ void WorkletThread::EnsureCycleCollectedJSContext(JSRuntime* aParentRuntime) {
   // FIXME: JS_SetSecurityCallbacks
   // FIXME: JS::SetAsyncTaskCallbacks
   // FIXME: JS::SetCTypesActivityCallback
-  // FIXME: JS_SetGCZeal
+  // FIXME: JS::SetGCZeal
 
   // A thread lives strictly longer than its JSRuntime so we can safely
   // store a raw pointer as the callback's closure argument on the JSRuntime.

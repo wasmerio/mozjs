@@ -5,19 +5,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "UtilityProcessChild.h"
 
-#include "mozilla/ipc/UtilityProcessManager.h"
-#include "mozilla/ipc/UtilityProcessSandboxing.h"
+#include "mozilla/AppShutdown.h"
+#include "mozilla/Logging.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/JSOracleChild.h"
 #include "mozilla/dom/MemoryReportRequest.h"
 #include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/ipc/Endpoint.h"
-#include "mozilla/AppShutdown.h"
+#include "mozilla/ipc/UtilityProcessManager.h"
+#include "mozilla/ipc/UtilityProcessSandboxing.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/RemoteDecoderManagerParent.h"
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
 #  include "mozilla/Sandbox.h"
+#  include "mozilla/SandboxProfilerObserver.h"
 #endif
 
 #if defined(XP_OPENBSD) && defined(MOZ_SANDBOX)
@@ -33,6 +35,7 @@
 #if defined(XP_WIN)
 #  include "mozilla/WinDllServices.h"
 #  include "mozilla/dom/WindowsUtilsChild.h"
+#  include "mozilla/widget/filedialog/WinFileDialogChild.h"
 #endif
 
 #include "nsDebugImpl.h"
@@ -178,6 +181,7 @@ mozilla::ipc::IPCResult UtilityProcessChild::RecvInit(
     fd = aBrokerFd.value().ClonePlatformHandle().release();
   }
 
+  RegisterProfilerObserversForSandboxProfiler();
   SetUtilitySandbox(fd, mSandbox);
 
 #  endif  // XP_MACOSX/XP_LINUX
@@ -259,13 +263,15 @@ mozilla::ipc::IPCResult UtilityProcessChild::RecvTestTelemetryProbes() {
 
 mozilla::ipc::IPCResult
 UtilityProcessChild::RecvStartUtilityAudioDecoderService(
-    Endpoint<PUtilityAudioDecoderParent>&& aEndpoint) {
+    Endpoint<PUtilityAudioDecoderParent>&& aEndpoint,
+    nsTArray<gfx::GfxVarUpdate>&& aUpdates) {
   PROFILER_MARKER_UNTYPED(
       "UtilityProcessChild::RecvStartUtilityAudioDecoderService", MEDIA,
       MarkerOptions(MarkerTiming::IntervalUntilNowFrom(mChildStartTime)));
-  mUtilityAudioDecoderInstance = new UtilityAudioDecoderParent();
+  mUtilityAudioDecoderInstance =
+      new UtilityAudioDecoderParent(std::move(aUpdates));
   if (!mUtilityAudioDecoderInstance) {
-    return IPC_FAIL(this, "Failing to create UtilityAudioDecoderParent");
+    return IPC_FAIL(this, "Failed to create UtilityAudioDecoderParent");
   }
 
   mUtilityAudioDecoderInstance->Start(std::move(aEndpoint));
@@ -279,7 +285,7 @@ mozilla::ipc::IPCResult UtilityProcessChild::RecvStartJSOracleService(
       MarkerOptions(MarkerTiming::IntervalUntilNowFrom(mChildStartTime)));
   mJSOracleInstance = new mozilla::dom::JSOracleChild();
   if (!mJSOracleInstance) {
-    return IPC_FAIL(this, "Failing to create JSOracleParent");
+    return IPC_FAIL(this, "Failed to create JSOracleParent");
   }
 
   mJSOracleInstance->Start(std::move(aEndpoint));
@@ -299,6 +305,25 @@ mozilla::ipc::IPCResult UtilityProcessChild::RecvStartWindowsUtilsService(
 
   [[maybe_unused]] bool ok = std::move(aEndpoint).Bind(mWindowsUtilsInstance);
   MOZ_ASSERT(ok);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult UtilityProcessChild::RecvStartWinFileDialogService(
+    Endpoint<widget::filedialog::PWinFileDialogChild>&& aEndpoint) {
+  PROFILER_MARKER_UNTYPED(
+      "UtilityProcessChild::RecvStartWinFileDialogService", OTHER,
+      MarkerOptions(MarkerTiming::IntervalUntilNowFrom(mChildStartTime)));
+
+  auto instance = MakeRefPtr<widget::filedialog::WinFileDialogChild>();
+  if (!instance) {
+    return IPC_FAIL(this, "Failed to create WinFileDialogChild");
+  }
+
+  bool const ok = std::move(aEndpoint).Bind(instance.get());
+  if (!ok) {
+    return IPC_FAIL(this, "Failed to bind created WinFileDialogChild");
+  }
+
   return IPC_OK();
 }
 
@@ -325,6 +350,10 @@ UtilityProcessChild::RecvUnblockUntrustedModulesThread() {
 #endif  // defined(XP_WIN)
 
 void UtilityProcessChild::ActorDestroy(ActorDestroyReason aWhy) {
+#if defined(XP_LINUX) && defined(MOZ_SANDBOX)
+  DestroySandboxProfiler();
+#endif
+
   if (AbnormalShutdown == aWhy) {
     NS_WARNING("Shutting down Utility process early due to a crash!");
     ipc::ProcessChild::QuickExit();

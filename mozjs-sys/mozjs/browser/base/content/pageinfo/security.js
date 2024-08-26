@@ -14,7 +14,6 @@ const { DownloadUtils } = ChromeUtils.importESModule(
 
 ChromeUtils.defineESModuleGetters(this, {
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
-  PluralForm: "resource://gre/modules/PluralForm.sys.mjs",
 });
 
 var security = {
@@ -400,7 +399,7 @@ function realmHasPasswords(uri) {
  *
  * @param host - the domain name to look for in history
  */
-function previousVisitCount(host, endTimeReference) {
+function previousVisitCount(host) {
   if (!host) {
     return 0;
   }

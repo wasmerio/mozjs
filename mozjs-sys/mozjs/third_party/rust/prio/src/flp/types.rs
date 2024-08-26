@@ -1,17 +1,25 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! A collection of [`Type`](crate::flp::Type) implementations.
+//! A collection of [`Type`] implementations.
 
-use crate::field::{FftFriendlyFieldElement, FieldElementExt};
-use crate::flp::gadgets::{BlindPolyEval, Mul, ParallelSumGadget, PolyEval};
+use crate::field::{FftFriendlyFieldElement, FieldElementWithIntegerExt};
+use crate::flp::gadgets::{Mul, ParallelSumGadget, PolyEval};
 use crate::flp::{FlpError, Gadget, Type};
 use crate::polynomial::poly_range_check;
 use std::convert::TryInto;
+use std::fmt::{self, Debug};
 use std::marker::PhantomData;
+use subtle::Choice;
 /// The counter data type. Each measurement is `0` or `1` and the aggregate result is the sum of the measurements (i.e., the total number of `1s`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Count<F> {
     range_checker: Vec<F>,
+}
+
+impl<F> Debug for Count<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Count").finish()
+    }
 }
 
 impl<F: FftFriendlyFieldElement> Count<F> {
@@ -30,18 +38,16 @@ impl<F: FftFriendlyFieldElement> Default for Count<F> {
 }
 
 impl<F: FftFriendlyFieldElement> Type for Count<F> {
-    const ID: u32 = 0x00000000;
-    type Measurement = F::Integer;
+    type Measurement = bool;
     type AggregateResult = F::Integer;
     type Field = F;
 
-    fn encode_measurement(&self, value: &F::Integer) -> Result<Vec<F>, FlpError> {
-        let max = F::valid_integer_try_from(1)?;
-        if *value > max {
-            return Err(FlpError::Encode("Count value must be 0 or 1".to_string()));
-        }
-
-        Ok(vec![F::from(*value)])
+    fn encode_measurement(&self, value: &bool) -> Result<Vec<F>, FlpError> {
+        Ok(vec![F::conditional_select(
+            &F::zero(),
+            &F::one(),
+            Choice::from(u8::from(*value)),
+        )])
     }
 
     fn decode_result(&self, data: &[F], _num_measurements: usize) -> Result<F::Integer, FlpError> {
@@ -103,10 +109,16 @@ impl<F: FftFriendlyFieldElement> Type for Count<F> {
 /// The validity circuit is based on the SIMD circuit construction of [[BBCG+19], Theorem 5.3].
 ///
 /// [BBCG+19]: https://ia.cr/2019/188
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Sum<F: FftFriendlyFieldElement> {
     bits: usize,
     range_checker: Vec<F>,
+}
+
+impl<F: FftFriendlyFieldElement> Debug for Sum<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Sum").field("bits", &self.bits).finish()
+    }
 }
 
 impl<F: FftFriendlyFieldElement> Sum<F> {
@@ -127,13 +139,12 @@ impl<F: FftFriendlyFieldElement> Sum<F> {
 }
 
 impl<F: FftFriendlyFieldElement> Type for Sum<F> {
-    const ID: u32 = 0x00000001;
     type Measurement = F::Integer;
     type AggregateResult = F::Integer;
     type Field = F;
 
     fn encode_measurement(&self, summand: &F::Integer) -> Result<Vec<F>, FlpError> {
-        let v = F::encode_into_bitvector_representation(summand, self.bits)?;
+        let v = F::encode_as_bitvector(*summand, self.bits)?.collect();
         Ok(v)
     }
 
@@ -161,7 +172,7 @@ impl<F: FftFriendlyFieldElement> Type for Sum<F> {
 
     fn truncate(&self, input: Vec<F>) -> Result<Vec<F>, FlpError> {
         self.truncate_call_check(&input)?;
-        let res = F::decode_from_bitvector_representation(&input)?;
+        let res = F::decode_bitvector(&input)?;
         Ok(vec![res])
     }
 
@@ -196,10 +207,16 @@ impl<F: FftFriendlyFieldElement> Type for Sum<F> {
 
 /// The average type. Each measurement is an integer in `[0,2^bits)` for some `0 < bits < 64` and the
 /// aggregate is the arithmetic average.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Average<F: FftFriendlyFieldElement> {
     bits: usize,
     range_checker: Vec<F>,
+}
+
+impl<F: FftFriendlyFieldElement> Debug for Average<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Average").field("bits", &self.bits).finish()
+    }
 }
 
 impl<F: FftFriendlyFieldElement> Average<F> {
@@ -220,13 +237,12 @@ impl<F: FftFriendlyFieldElement> Average<F> {
 }
 
 impl<F: FftFriendlyFieldElement> Type for Average<F> {
-    const ID: u32 = 0xFFFF0000;
     type Measurement = F::Integer;
     type AggregateResult = f64;
     type Field = F;
 
     fn encode_measurement(&self, summand: &F::Integer) -> Result<Vec<F>, FlpError> {
-        let v = F::encode_into_bitvector_representation(summand, self.bits)?;
+        let v = F::encode_as_bitvector(*summand, self.bits)?.collect();
         Ok(v)
     }
 
@@ -260,7 +276,7 @@ impl<F: FftFriendlyFieldElement> Type for Average<F> {
 
     fn truncate(&self, input: Vec<F>) -> Result<Vec<F>, FlpError> {
         self.truncate_call_check(&input)?;
-        let res = F::decode_from_bitvector_representation(&input)?;
+        let res = F::decode_bitvector(&input)?;
         Ok(vec![res])
     }
 
@@ -293,55 +309,82 @@ impl<F: FftFriendlyFieldElement> Type for Average<F> {
     }
 }
 
-/// The histogram type. Each measurement is a non-negative integer and the aggregate is a histogram
-/// approximating the distribution of the measurements.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Histogram<F: FftFriendlyFieldElement> {
-    buckets: Vec<F::Integer>,
-    range_checker: Vec<F>,
+/// The histogram type. Each measurement is an integer in `[0, length)` and the aggregate is a
+/// histogram counting the number of occurrences of each measurement.
+#[derive(PartialEq, Eq)]
+pub struct Histogram<F, S> {
+    length: usize,
+    chunk_length: usize,
+    gadget_calls: usize,
+    phantom: PhantomData<(F, S)>,
 }
 
-impl<F: FftFriendlyFieldElement> Histogram<F> {
-    /// Return a new [`Histogram`] type with the given buckets.
-    pub fn new(buckets: Vec<F::Integer>) -> Result<Self, FlpError> {
-        if buckets.len() >= u32::MAX as usize {
+impl<F: FftFriendlyFieldElement, S> Debug for Histogram<F, S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Histogram")
+            .field("length", &self.length)
+            .field("chunk_length", &self.chunk_length)
+            .finish()
+    }
+}
+
+impl<F: FftFriendlyFieldElement, S: ParallelSumGadget<F, Mul<F>>> Histogram<F, S> {
+    /// Return a new [`Histogram`] type with the given number of buckets.
+    pub fn new(length: usize, chunk_length: usize) -> Result<Self, FlpError> {
+        if length >= u32::MAX as usize {
             return Err(FlpError::Encode(
-                "invalid buckets: number of buckets exceeds maximum permitted".to_string(),
+                "invalid length: number of buckets exceeds maximum permitted".to_string(),
+            ));
+        }
+        if length == 0 {
+            return Err(FlpError::InvalidParameter(
+                "length cannot be zero".to_string(),
+            ));
+        }
+        if chunk_length == 0 {
+            return Err(FlpError::InvalidParameter(
+                "chunk_length cannot be zero".to_string(),
             ));
         }
 
-        if !buckets.is_empty() {
-            for i in 0..buckets.len() - 1 {
-                if buckets[i + 1] <= buckets[i] {
-                    return Err(FlpError::Encode(
-                        "invalid buckets: out-of-order boundary".to_string(),
-                    ));
-                }
-            }
+        let mut gadget_calls = length / chunk_length;
+        if length % chunk_length != 0 {
+            gadget_calls += 1;
         }
 
         Ok(Self {
-            buckets,
-            range_checker: poly_range_check(0, 2),
+            length,
+            chunk_length,
+            gadget_calls,
+            phantom: PhantomData,
         })
     }
 }
 
-impl<F: FftFriendlyFieldElement> Type for Histogram<F> {
-    const ID: u32 = 0x00000002;
-    type Measurement = F::Integer;
+impl<F, S> Clone for Histogram<F, S> {
+    fn clone(&self) -> Self {
+        Self {
+            length: self.length,
+            chunk_length: self.chunk_length,
+            gadget_calls: self.gadget_calls,
+            phantom: self.phantom,
+        }
+    }
+}
+
+impl<F, S> Type for Histogram<F, S>
+where
+    F: FftFriendlyFieldElement,
+    S: ParallelSumGadget<F, Mul<F>> + Eq + 'static,
+{
+    type Measurement = usize;
     type AggregateResult = Vec<F::Integer>;
     type Field = F;
 
-    fn encode_measurement(&self, measurement: &F::Integer) -> Result<Vec<F>, FlpError> {
-        let mut data = vec![F::zero(); self.buckets.len() + 1];
+    fn encode_measurement(&self, measurement: &usize) -> Result<Vec<F>, FlpError> {
+        let mut data = vec![F::zero(); self.length];
 
-        let bucket = match self.buckets.binary_search(measurement) {
-            Ok(i) => i,  // on a bucket boundary
-            Err(i) => i, // smaller than the i-th bucket boundary
-        };
-
-        data[bucket] = F::one();
+        data[*measurement] = F::one();
         Ok(data)
     }
 
@@ -350,13 +393,13 @@ impl<F: FftFriendlyFieldElement> Type for Histogram<F> {
         data: &[F],
         _num_measurements: usize,
     ) -> Result<Vec<F::Integer>, FlpError> {
-        decode_result_vec(data, self.buckets.len() + 1)
+        decode_result_vec(data, self.length)
     }
 
     fn gadget(&self) -> Vec<Box<dyn Gadget<F>>> {
-        vec![Box::new(PolyEval::new(
-            self.range_checker.to_vec(),
-            self.input_len(),
+        vec![Box::new(S::new(
+            Mul::new(self.gadget_calls),
+            self.chunk_length,
         ))]
     }
 
@@ -370,7 +413,13 @@ impl<F: FftFriendlyFieldElement> Type for Histogram<F> {
         self.valid_call_check(input, joint_rand)?;
 
         // Check that each element of `input` is a 0 or 1.
-        let range_check = call_gadget_on_vec_entries(&mut g[0], input, joint_rand[0])?;
+        let range_check = parallel_sum_range_checks(
+            &mut g[0],
+            input,
+            joint_rand[0],
+            self.chunk_length,
+            num_shares,
+        )?;
 
         // Check that the elements of `input` sum to 1.
         let mut sum_check = -(F::one() / F::from(F::valid_integer_try_from(num_shares)?));
@@ -389,15 +438,15 @@ impl<F: FftFriendlyFieldElement> Type for Histogram<F> {
     }
 
     fn input_len(&self) -> usize {
-        self.buckets.len() + 1
+        self.length
     }
 
     fn proof_len(&self) -> usize {
-        2 * ((1 + self.input_len()).next_power_of_two() - 1) + 2
+        (self.chunk_length * 2) + 2 * ((1 + self.gadget_calls).next_power_of_two() - 1) + 1
     }
 
     fn verifier_len(&self) -> usize {
-        3
+        2 + self.chunk_length * 2
     }
 
     fn output_len(&self) -> usize {
@@ -409,7 +458,7 @@ impl<F: FftFriendlyFieldElement> Type for Histogram<F> {
     }
 
     fn prove_rand_len(&self) -> usize {
-        1
+        self.chunk_length * 2
     }
 
     fn query_rand_len(&self) -> usize {
@@ -421,19 +470,28 @@ impl<F: FftFriendlyFieldElement> Type for Histogram<F> {
 /// Corollary 4.9] to reduce the proof size to roughly the square root of the input size.
 ///
 /// [BBCG+19]: https://eprint.iacr.org/2019/188
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub struct SumVec<F: FftFriendlyFieldElement, S> {
-    range_checker: Vec<F>,
     len: usize,
     bits: usize,
     flattened_len: usize,
     max: F::Integer,
-    chunk_len: usize,
+    chunk_length: usize,
     gadget_calls: usize,
     phantom: PhantomData<S>,
 }
 
-impl<F: FftFriendlyFieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>>> SumVec<F, S> {
+impl<F: FftFriendlyFieldElement, S> Debug for SumVec<F, S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SumVec")
+            .field("len", &self.len)
+            .field("bits", &self.bits)
+            .field("chunk_length", &self.chunk_length)
+            .finish()
+    }
+}
+
+impl<F: FftFriendlyFieldElement, S: ParallelSumGadget<F, Mul<F>>> SumVec<F, S> {
     /// Returns a new [`SumVec`] with the desired bit width and vector length.
     ///
     /// # Errors
@@ -441,7 +499,8 @@ impl<F: FftFriendlyFieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>>> SumV
     /// * The length of the encoded measurement, i.e., `bits * len`, overflows addressable memory.
     /// * The bit width cannot be encoded, i.e., `bits` is larger than or equal to the number of
     ///   bits required to encode field elements.
-    pub fn new(bits: usize, len: usize) -> Result<Self, FlpError> {
+    /// * Any of `bits`, `len`, or `chunk_length` are zero.
+    pub fn new(bits: usize, len: usize, chunk_length: usize) -> Result<Self, FlpError> {
         let flattened_len = bits.checked_mul(len).ok_or_else(|| {
             FlpError::InvalidParameter("`bits*len` overflows addressable memory".into())
         })?;
@@ -456,27 +515,36 @@ impl<F: FftFriendlyFieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>>> SumV
             )));
         }
 
+        // Check for degenerate parameters.
+        if bits == 0 {
+            return Err(FlpError::InvalidParameter(
+                "bits cannot be zero".to_string(),
+            ));
+        }
+        if len == 0 {
+            return Err(FlpError::InvalidParameter("len cannot be zero".to_string()));
+        }
+        if chunk_length == 0 {
+            return Err(FlpError::InvalidParameter(
+                "chunk_length cannot be zero".to_string(),
+            ));
+        }
+
         // Compute the largest encodable measurement.
         let one = F::Integer::from(F::one());
         let max = (one << bits) - one;
 
-        // The optimal chunk length is the square root of the input length. If the input length is
-        // not a perfect square, then round down. If the result is 0, then let the chunk length be
-        // 1 so that the underlying gadget can still be called.
-        let chunk_len = std::cmp::max(1, (flattened_len as f64).sqrt() as usize);
-
-        let mut gadget_calls = flattened_len / chunk_len;
-        if flattened_len % chunk_len != 0 {
+        let mut gadget_calls = flattened_len / chunk_length;
+        if flattened_len % chunk_length != 0 {
             gadget_calls += 1;
         }
 
         Ok(Self {
-            range_checker: poly_range_check(0, 2),
             len,
             bits,
             flattened_len,
             max,
-            chunk_len,
+            chunk_length,
             gadget_calls,
             phantom: PhantomData,
         })
@@ -486,12 +554,11 @@ impl<F: FftFriendlyFieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>>> SumV
 impl<F: FftFriendlyFieldElement, S> Clone for SumVec<F, S> {
     fn clone(&self) -> Self {
         Self {
-            range_checker: self.range_checker.clone(),
             len: self.len,
             bits: self.bits,
             flattened_len: self.flattened_len,
             max: self.max,
-            chunk_len: self.chunk_len,
+            chunk_length: self.chunk_length,
             gadget_calls: self.gadget_calls,
             phantom: PhantomData,
         }
@@ -501,9 +568,8 @@ impl<F: FftFriendlyFieldElement, S> Clone for SumVec<F, S> {
 impl<F, S> Type for SumVec<F, S>
 where
     F: FftFriendlyFieldElement,
-    S: ParallelSumGadget<F, BlindPolyEval<F>> + Eq + 'static,
+    S: ParallelSumGadget<F, Mul<F>> + Eq + 'static,
 {
-    const ID: u32 = 0xFFFF0000;
     type Measurement = Vec<F::Integer>;
     type AggregateResult = Vec<F::Integer>;
     type Field = F;
@@ -518,16 +584,14 @@ where
         }
 
         let mut flattened = Vec::with_capacity(self.flattened_len);
-        for summand in measurement {
+        for summand in measurement.iter() {
             if summand > &self.max {
                 return Err(FlpError::Encode(format!(
                     "summand exceeds maximum of 2^{}-1",
                     self.bits
                 )));
             }
-            flattened.append(&mut F::encode_into_bitvector_representation(
-                summand, self.bits,
-            )?);
+            flattened.extend(F::encode_as_bitvector(*summand, self.bits)?);
         }
 
         Ok(flattened)
@@ -543,8 +607,8 @@ where
 
     fn gadget(&self) -> Vec<Box<dyn Gadget<F>>> {
         vec![Box::new(S::new(
-            BlindPolyEval::new(self.range_checker.clone(), self.gadget_calls),
-            self.chunk_len,
+            Mul::new(self.gadget_calls),
+            self.chunk_length,
         ))]
     }
 
@@ -557,35 +621,20 @@ where
     ) -> Result<F, FlpError> {
         self.valid_call_check(input, joint_rand)?;
 
-        let s = F::from(F::valid_integer_try_from(num_shares)?).inv();
-        let mut r = joint_rand[0];
-        let mut outp = F::zero();
-        let mut padded_chunk = vec![F::zero(); 2 * self.chunk_len];
-        for chunk in input.chunks(self.chunk_len) {
-            let d = chunk.len();
-            for i in 0..self.chunk_len {
-                if i < d {
-                    padded_chunk[2 * i] = chunk[i];
-                } else {
-                    // If the chunk is smaller than the chunk length, then copy the last element of
-                    // the chunk into the remaining slots.
-                    padded_chunk[2 * i] = chunk[d - 1];
-                }
-                padded_chunk[2 * i + 1] = r * s;
-                r *= joint_rand[0];
-            }
-
-            outp += g[0].call(&padded_chunk)?;
-        }
-
-        Ok(outp)
+        parallel_sum_range_checks(
+            &mut g[0],
+            input,
+            joint_rand[0],
+            self.chunk_length,
+            num_shares,
+        )
     }
 
     fn truncate(&self, input: Vec<F>) -> Result<Vec<F>, FlpError> {
         self.truncate_call_check(&input)?;
         let mut unflattened = Vec::with_capacity(self.len);
         for chunk in input.chunks(self.bits) {
-            unflattened.push(F::decode_from_bitvector_representation(chunk)?);
+            unflattened.push(F::decode_bitvector(chunk)?);
         }
         Ok(unflattened)
     }
@@ -595,11 +644,11 @@ where
     }
 
     fn proof_len(&self) -> usize {
-        (self.chunk_len * 2) + 3 * ((1 + self.gadget_calls).next_power_of_two() - 1) + 1
+        (self.chunk_length * 2) + 2 * ((1 + self.gadget_calls).next_power_of_two() - 1) + 1
     }
 
     fn verifier_len(&self) -> usize {
-        2 + self.chunk_len * 2
+        2 + self.chunk_length * 2
     }
 
     fn output_len(&self) -> usize {
@@ -611,7 +660,7 @@ where
     }
 
     fn prove_rand_len(&self) -> usize {
-        self.chunk_len * 2
+        self.chunk_length * 2
     }
 
     fn query_rand_len(&self) -> usize {
@@ -663,6 +712,62 @@ pub(crate) fn decode_result_vec<F: FftFriendlyFieldElement>(
     Ok(data.iter().map(|elem| F::Integer::from(*elem)).collect())
 }
 
+/// This evaluates range checks on a slice of field elements, using a ParallelSum gadget evaluating
+/// many multiplication gates.
+///
+/// # Arguments
+///
+/// * `gadget`: A `ParallelSumGadget<F, Mul<F>>` gadget, or a shim wrapping the same.
+/// * `input`: A slice of inputs. This calculation will check that all inputs were zero or one
+///   before secret sharing.
+/// * `joint_randomness`: A joint randomness value, used to compute a random linear combination of
+///   individual range checks.
+/// * `chunk_length`: How many multiplication gates per ParallelSum gadget. This must match what the
+///   gadget was constructed with.
+/// * `num_shares`: The number of shares that the inputs were secret shared into. This is needed to
+///   correct constant terms in the circuit.
+///
+/// # Returns
+///
+/// This returns (additive shares of) zero if all inputs were zero or one, and otherwise returns a
+/// non-zero value with high probability.
+pub(crate) fn parallel_sum_range_checks<F: FftFriendlyFieldElement>(
+    gadget: &mut Box<dyn Gadget<F>>,
+    input: &[F],
+    joint_randomness: F,
+    chunk_length: usize,
+    num_shares: usize,
+) -> Result<F, FlpError> {
+    let f_num_shares = F::from(F::valid_integer_try_from::<usize>(num_shares)?);
+    let num_shares_inverse = f_num_shares.inv();
+
+    let mut output = F::zero();
+    let mut r_power = joint_randomness;
+    let mut padded_chunk = vec![F::zero(); 2 * chunk_length];
+
+    for chunk in input.chunks(chunk_length) {
+        // Construct arguments for the Mul subcircuits.
+        for (input, args) in chunk.iter().zip(padded_chunk.chunks_exact_mut(2)) {
+            args[0] = r_power * *input;
+            args[1] = *input - num_shares_inverse;
+            r_power *= joint_randomness;
+        }
+        // If the chunk of the input is smaller than chunk_length, use zeros instead of measurement
+        // inputs for the remaining calls.
+        for args in padded_chunk[chunk.len() * 2..].chunks_exact_mut(2) {
+            args[0] = F::zero();
+            args[1] = -num_shares_inverse;
+            // Skip updating r_power. This inner loop is only used during the last iteration of the
+            // outer loop, if the last input chunk is a partial chunk. Thus, r_power won't be
+            // accessed again before returning.
+        }
+
+        output += gadget.call(&padded_chunk)?;
+    }
+
+    Ok(output)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -670,7 +775,8 @@ mod tests {
     use crate::flp::gadgets::ParallelSum;
     #[cfg(feature = "multithreaded")]
     use crate::flp::gadgets::ParallelSumMultithreaded;
-    use crate::flp::types::test_utils::{flp_validity_test, ValidityTestCase};
+    use crate::flp::test_utils::FlpTest;
+    use std::cmp;
 
     #[test]
     fn test_count() {
@@ -683,7 +789,7 @@ mod tests {
             count
                 .decode_result(
                     &count
-                        .truncate(count.encode_measurement(&1).unwrap())
+                        .truncate(count.encode_measurement(&true).unwrap())
                         .unwrap(),
                     1
                 )
@@ -692,39 +798,11 @@ mod tests {
         );
 
         // Test FLP on valid input.
-        flp_validity_test(
-            &count,
-            &count.encode_measurement(&1).unwrap(),
-            &ValidityTestCase::<TestField> {
-                expect_valid: true,
-                expected_output: Some(vec![one]),
-                num_shares: 3,
-            },
-        )
-        .unwrap();
-
-        flp_validity_test(
-            &count,
-            &count.encode_measurement(&0).unwrap(),
-            &ValidityTestCase::<TestField> {
-                expect_valid: true,
-                expected_output: Some(vec![zero]),
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+        FlpTest::expect_valid::<3>(&count, &count.encode_measurement(&true).unwrap(), &[one]);
+        FlpTest::expect_valid::<3>(&count, &count.encode_measurement(&false).unwrap(), &[zero]);
 
         // Test FLP on invalid input.
-        flp_validity_test(
-            &count,
-            &[TestField::from(1337)],
-            &ValidityTestCase::<TestField> {
-                expect_valid: false,
-                expected_output: None,
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+        FlpTest::expect_invalid::<3>(&count, &[TestField::from(1337)]);
 
         // Try running the validity circuit on an input that's too short.
         count.valid(&mut count.gadget(), &[], &[], 1).unwrap_err();
@@ -751,72 +829,22 @@ mod tests {
         );
 
         // Test FLP on valid input.
-        flp_validity_test(
+        FlpTest::expect_valid::<3>(
             &sum,
             &sum.encode_measurement(&1337).unwrap(),
-            &ValidityTestCase {
-                expect_valid: true,
-                expected_output: Some(vec![TestField::from(1337)]),
-                num_shares: 3,
-            },
-        )
-        .unwrap();
-
-        flp_validity_test(
-            &Sum::new(0).unwrap(),
-            &[],
-            &ValidityTestCase::<TestField> {
-                expect_valid: true,
-                expected_output: Some(vec![zero]),
-                num_shares: 3,
-            },
-        )
-        .unwrap();
-
-        flp_validity_test(
-            &Sum::new(2).unwrap(),
-            &[one, zero],
-            &ValidityTestCase {
-                expect_valid: true,
-                expected_output: Some(vec![one]),
-                num_shares: 3,
-            },
-        )
-        .unwrap();
-
-        flp_validity_test(
+            &[TestField::from(1337)],
+        );
+        FlpTest::expect_valid::<3>(&Sum::new(0).unwrap(), &[], &[zero]);
+        FlpTest::expect_valid::<3>(&Sum::new(2).unwrap(), &[one, zero], &[one]);
+        FlpTest::expect_valid::<3>(
             &Sum::new(9).unwrap(),
             &[one, zero, one, one, zero, one, one, one, zero],
-            &ValidityTestCase::<TestField> {
-                expect_valid: true,
-                expected_output: Some(vec![TestField::from(237)]),
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+            &[TestField::from(237)],
+        );
 
         // Test FLP on invalid input.
-        flp_validity_test(
-            &Sum::new(3).unwrap(),
-            &[one, nine, zero],
-            &ValidityTestCase::<TestField> {
-                expect_valid: false,
-                expected_output: None,
-                num_shares: 3,
-            },
-        )
-        .unwrap();
-
-        flp_validity_test(
-            &Sum::new(5).unwrap(),
-            &[zero, zero, zero, zero, nine],
-            &ValidityTestCase::<TestField> {
-                expect_valid: false,
-                expected_output: None,
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+        FlpTest::expect_invalid::<3>(&Sum::new(3).unwrap(), &[one, nine, zero]);
+        FlpTest::expect_invalid::<3>(&Sum::new(5).unwrap(), &[zero, zero, zero, zero, nine]);
     }
 
     #[test]
@@ -861,191 +889,113 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_histogram() {
-        let hist = Histogram::new(vec![10, 20]).unwrap();
+    fn test_histogram<F, S>(f: F)
+    where
+        F: Fn(usize, usize) -> Result<Histogram<TestField, S>, FlpError>,
+        S: ParallelSumGadget<TestField, Mul<TestField>> + Eq + 'static,
+    {
+        let hist = f(3, 2).unwrap();
         let zero = TestField::zero();
         let one = TestField::one();
         let nine = TestField::from(9);
 
-        assert_eq!(&hist.encode_measurement(&7).unwrap(), &[one, zero, zero]);
-        assert_eq!(&hist.encode_measurement(&10).unwrap(), &[one, zero, zero]);
-        assert_eq!(&hist.encode_measurement(&17).unwrap(), &[zero, one, zero]);
-        assert_eq!(&hist.encode_measurement(&20).unwrap(), &[zero, one, zero]);
-        assert_eq!(&hist.encode_measurement(&27).unwrap(), &[zero, zero, one]);
+        assert_eq!(&hist.encode_measurement(&0).unwrap(), &[one, zero, zero]);
+        assert_eq!(&hist.encode_measurement(&1).unwrap(), &[zero, one, zero]);
+        assert_eq!(&hist.encode_measurement(&2).unwrap(), &[zero, zero, one]);
 
         // Round trip
         assert_eq!(
             hist.decode_result(
-                &hist
-                    .truncate(hist.encode_measurement(&27).unwrap())
-                    .unwrap(),
+                &hist.truncate(hist.encode_measurement(&2).unwrap()).unwrap(),
                 1
             )
             .unwrap(),
             [0, 0, 1]
         );
 
-        // Invalid bucket boundaries.
-        Histogram::<TestField>::new(vec![10, 0]).unwrap_err();
-        Histogram::<TestField>::new(vec![10, 10]).unwrap_err();
-
         // Test valid inputs.
-        flp_validity_test(
+        FlpTest::expect_valid::<3>(
             &hist,
             &hist.encode_measurement(&0).unwrap(),
-            &ValidityTestCase::<TestField> {
-                expect_valid: true,
-                expected_output: Some(vec![one, zero, zero]),
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+            &[one, zero, zero],
+        );
 
-        flp_validity_test(
+        FlpTest::expect_valid::<3>(
             &hist,
-            &hist.encode_measurement(&17).unwrap(),
-            &ValidityTestCase::<TestField> {
-                expect_valid: true,
-                expected_output: Some(vec![zero, one, zero]),
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+            &hist.encode_measurement(&1).unwrap(),
+            &[zero, one, zero],
+        );
 
-        flp_validity_test(
+        FlpTest::expect_valid::<3>(
             &hist,
-            &hist.encode_measurement(&1337).unwrap(),
-            &ValidityTestCase::<TestField> {
-                expect_valid: true,
-                expected_output: Some(vec![zero, zero, one]),
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+            &hist.encode_measurement(&2).unwrap(),
+            &[zero, zero, one],
+        );
 
         // Test invalid inputs.
-        flp_validity_test(
-            &hist,
-            &[zero, zero, nine],
-            &ValidityTestCase::<TestField> {
-                expect_valid: false,
-                expected_output: None,
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+        FlpTest::expect_invalid::<3>(&hist, &[zero, zero, nine]);
+        FlpTest::expect_invalid::<3>(&hist, &[zero, one, one]);
+        FlpTest::expect_invalid::<3>(&hist, &[one, one, one]);
+        FlpTest::expect_invalid::<3>(&hist, &[zero, zero, zero]);
+    }
 
-        flp_validity_test(
-            &hist,
-            &[zero, one, one],
-            &ValidityTestCase::<TestField> {
-                expect_valid: false,
-                expected_output: None,
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+    #[test]
+    fn test_histogram_serial() {
+        test_histogram(Histogram::<TestField, ParallelSum<TestField, Mul<TestField>>>::new);
+    }
 
-        flp_validity_test(
-            &hist,
-            &[one, one, one],
-            &ValidityTestCase::<TestField> {
-                expect_valid: false,
-                expected_output: None,
-                num_shares: 3,
-            },
-        )
-        .unwrap();
-
-        flp_validity_test(
-            &hist,
-            &[zero, zero, zero],
-            &ValidityTestCase::<TestField> {
-                expect_valid: false,
-                expected_output: None,
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+    #[test]
+    #[cfg(feature = "multithreaded")]
+    fn test_histogram_parallel() {
+        test_histogram(
+            Histogram::<TestField, ParallelSumMultithreaded<TestField, Mul<TestField>>>::new,
+        );
     }
 
     fn test_sum_vec<F, S>(f: F)
     where
-        F: Fn(usize, usize) -> Result<SumVec<TestField, S>, FlpError>,
-        S: 'static + ParallelSumGadget<TestField, BlindPolyEval<TestField>> + Eq,
+        F: Fn(usize, usize, usize) -> Result<SumVec<TestField, S>, FlpError>,
+        S: 'static + ParallelSumGadget<TestField, Mul<TestField>> + Eq,
     {
         let one = TestField::one();
         let nine = TestField::from(9);
 
         // Test on valid inputs.
-        for len in 0..10 {
-            let sum_vec = f(1, len).unwrap();
-            flp_validity_test(
+        for len in 1..10 {
+            let chunk_length = cmp::max((len as f64).sqrt() as usize, 1);
+            let sum_vec = f(1, len, chunk_length).unwrap();
+            FlpTest::expect_valid_no_output::<3>(
                 &sum_vec,
                 &sum_vec.encode_measurement(&vec![1; len]).unwrap(),
-                &ValidityTestCase::<TestField> {
-                    expect_valid: true,
-                    expected_output: Some(vec![one; len]),
-                    num_shares: 3,
-                },
-            )
-            .unwrap();
+            );
         }
 
         let len = 100;
-        let sum_vec = f(1, len).unwrap();
-        flp_validity_test(
+        let sum_vec = f(1, len, 10).unwrap();
+        FlpTest::expect_valid::<3>(
             &sum_vec,
             &sum_vec.encode_measurement(&vec![1; len]).unwrap(),
-            &ValidityTestCase::<TestField> {
-                expect_valid: true,
-                expected_output: Some(vec![one; len]),
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+            &vec![one; len],
+        );
 
         let len = 23;
-        let sum_vec = f(4, len).unwrap();
-        flp_validity_test(
+        let sum_vec = f(4, len, 4).unwrap();
+        FlpTest::expect_valid::<3>(
             &sum_vec,
             &sum_vec.encode_measurement(&vec![9; len]).unwrap(),
-            &ValidityTestCase::<TestField> {
-                expect_valid: true,
-                expected_output: Some(vec![nine; len]),
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+            &vec![nine; len],
+        );
 
         // Test on invalid inputs.
         for len in 1..10 {
-            let sum_vec = f(1, len).unwrap();
-            flp_validity_test(
-                &sum_vec,
-                &vec![nine; len],
-                &ValidityTestCase::<TestField> {
-                    expect_valid: false,
-                    expected_output: None,
-                    num_shares: 3,
-                },
-            )
-            .unwrap();
+            let chunk_length = cmp::max((len as f64).sqrt() as usize, 1);
+            let sum_vec = f(1, len, chunk_length).unwrap();
+            FlpTest::expect_invalid::<3>(&sum_vec, &vec![nine; len]);
         }
 
         let len = 23;
-        let sum_vec = f(2, len).unwrap();
-        flp_validity_test(
-            &sum_vec,
-            &vec![nine; 2 * len],
-            &ValidityTestCase::<TestField> {
-                expect_valid: false,
-                expected_output: None,
-                num_shares: 3,
-            },
-        )
-        .unwrap();
+        let sum_vec = f(2, len, 4).unwrap();
+        FlpTest::expect_invalid::<3>(&sum_vec, &vec![nine; 2 * len]);
 
         // Round trip
         let want = vec![1; len];
@@ -1064,21 +1014,18 @@ mod tests {
 
     #[test]
     fn test_sum_vec_serial() {
-        test_sum_vec(SumVec::<TestField, ParallelSum<TestField, BlindPolyEval<TestField>>>::new)
+        test_sum_vec(SumVec::<TestField, ParallelSum<TestField, Mul<TestField>>>::new)
     }
 
     #[test]
     #[cfg(feature = "multithreaded")]
     fn test_sum_vec_parallel() {
-        test_sum_vec(
-            SumVec::<TestField, ParallelSumMultithreaded<TestField, BlindPolyEval<TestField>>>::new,
-        )
+        test_sum_vec(SumVec::<TestField, ParallelSumMultithreaded<TestField, Mul<TestField>>>::new)
     }
 
     #[test]
     fn sum_vec_serial_long() {
-        let typ: SumVec<TestField, ParallelSum<TestField, BlindPolyEval<TestField>>> =
-            SumVec::new(1, 1000).unwrap();
+        let typ: SumVec<TestField, ParallelSum<TestField, _>> = SumVec::new(1, 1000, 31).unwrap();
         let input = typ.encode_measurement(&vec![0; 1000]).unwrap();
         assert_eq!(input.len(), typ.input_len());
         let joint_rand = random_vector(typ.joint_rand_len()).unwrap();
@@ -1095,8 +1042,8 @@ mod tests {
     #[test]
     #[cfg(feature = "multithreaded")]
     fn sum_vec_parallel_long() {
-        let typ: SumVec<TestField, ParallelSumMultithreaded<TestField, BlindPolyEval<TestField>>> =
-            SumVec::new(1, 1000).unwrap();
+        let typ: SumVec<TestField, ParallelSumMultithreaded<TestField, _>> =
+            SumVec::new(1, 1000, 31).unwrap();
         let input = typ.encode_measurement(&vec![0; 1000]).unwrap();
         assert_eq!(input.len(), typ.input_len());
         let joint_rand = random_vector(typ.joint_rand_len()).unwrap();
@@ -1108,184 +1055,6 @@ mod tests {
             .unwrap();
         assert_eq!(verifier.len(), typ.verifier_len());
         assert!(typ.decide(&verifier).unwrap());
-    }
-}
-
-#[cfg(test)]
-mod test_utils {
-    use super::*;
-    use crate::field::{random_vector, split_vector, FieldElement};
-
-    pub(crate) struct ValidityTestCase<F> {
-        pub(crate) expect_valid: bool,
-        pub(crate) expected_output: Option<Vec<F>>,
-        // Number of shares to split input and proofs into in `flp_test`.
-        pub(crate) num_shares: usize,
-    }
-
-    pub(crate) fn flp_validity_test<T: Type>(
-        typ: &T,
-        input: &[T::Field],
-        t: &ValidityTestCase<T::Field>,
-    ) -> Result<(), FlpError> {
-        let mut gadgets = typ.gadget();
-
-        if input.len() != typ.input_len() {
-            return Err(FlpError::Test(format!(
-                "unexpected input length: got {}; want {}",
-                input.len(),
-                typ.input_len()
-            )));
-        }
-
-        if typ.query_rand_len() != gadgets.len() {
-            return Err(FlpError::Test(format!(
-                "query rand length: got {}; want {}",
-                typ.query_rand_len(),
-                gadgets.len()
-            )));
-        }
-
-        let joint_rand = random_vector(typ.joint_rand_len()).unwrap();
-        let prove_rand = random_vector(typ.prove_rand_len()).unwrap();
-        let query_rand = random_vector(typ.query_rand_len()).unwrap();
-
-        // Run the validity circuit.
-        let v = typ.valid(&mut gadgets, input, &joint_rand, 1)?;
-        if v != T::Field::zero() && t.expect_valid {
-            return Err(FlpError::Test(format!(
-                "expected valid input: valid() returned {v}"
-            )));
-        }
-        if v == T::Field::zero() && !t.expect_valid {
-            return Err(FlpError::Test(format!(
-                "expected invalid input: valid() returned {v}"
-            )));
-        }
-
-        // Generate the proof.
-        let proof = typ.prove(input, &prove_rand, &joint_rand)?;
-        if proof.len() != typ.proof_len() {
-            return Err(FlpError::Test(format!(
-                "unexpected proof length: got {}; want {}",
-                proof.len(),
-                typ.proof_len()
-            )));
-        }
-
-        // Query the proof.
-        let verifier = typ.query(input, &proof, &query_rand, &joint_rand, 1)?;
-        if verifier.len() != typ.verifier_len() {
-            return Err(FlpError::Test(format!(
-                "unexpected verifier length: got {}; want {}",
-                verifier.len(),
-                typ.verifier_len()
-            )));
-        }
-
-        // Decide if the input is valid.
-        let res = typ.decide(&verifier)?;
-        if res != t.expect_valid {
-            return Err(FlpError::Test(format!(
-                "decision is {}; want {}",
-                res, t.expect_valid,
-            )));
-        }
-
-        // Run distributed FLP.
-        let input_shares: Vec<Vec<T::Field>> = split_vector(input, t.num_shares)
-            .unwrap()
-            .into_iter()
-            .collect();
-
-        let proof_shares: Vec<Vec<T::Field>> = split_vector(&proof, t.num_shares)
-            .unwrap()
-            .into_iter()
-            .collect();
-
-        let verifier: Vec<T::Field> = (0..t.num_shares)
-            .map(|i| {
-                typ.query(
-                    &input_shares[i],
-                    &proof_shares[i],
-                    &query_rand,
-                    &joint_rand,
-                    t.num_shares,
-                )
-                .unwrap()
-            })
-            .reduce(|mut left, right| {
-                for (x, y) in left.iter_mut().zip(right.iter()) {
-                    *x += *y;
-                }
-                left
-            })
-            .unwrap();
-
-        let res = typ.decide(&verifier)?;
-        if res != t.expect_valid {
-            return Err(FlpError::Test(format!(
-                "distributed decision is {}; want {}",
-                res, t.expect_valid,
-            )));
-        }
-
-        // Try verifying various proof mutants.
-        for i in 0..proof.len() {
-            let mut mutated_proof = proof.clone();
-            mutated_proof[i] += T::Field::one();
-            let verifier = typ.query(input, &mutated_proof, &query_rand, &joint_rand, 1)?;
-            if typ.decide(&verifier)? {
-                return Err(FlpError::Test(format!(
-                    "decision for proof mutant {} is {}; want {}",
-                    i, true, false,
-                )));
-            }
-        }
-
-        // Try verifying a proof that is too short.
-        let mut mutated_proof = proof.clone();
-        mutated_proof.truncate(gadgets[0].arity() - 1);
-        if typ
-            .query(input, &mutated_proof, &query_rand, &joint_rand, 1)
-            .is_ok()
-        {
-            return Err(FlpError::Test(
-                "query on short proof succeeded; want failure".to_string(),
-            ));
-        }
-
-        // Try verifying a proof that is too long.
-        let mut mutated_proof = proof;
-        mutated_proof.extend_from_slice(&[T::Field::one(); 17]);
-        if typ
-            .query(input, &mutated_proof, &query_rand, &joint_rand, 1)
-            .is_ok()
-        {
-            return Err(FlpError::Test(
-                "query on long proof succeeded; want failure".to_string(),
-            ));
-        }
-
-        if let Some(ref want) = t.expected_output {
-            let got = typ.truncate(input.to_vec())?;
-
-            if got.len() != typ.output_len() {
-                return Err(FlpError::Test(format!(
-                    "unexpected output length: got {}; want {}",
-                    got.len(),
-                    typ.output_len()
-                )));
-            }
-
-            if &got != want {
-                return Err(FlpError::Test(format!(
-                    "unexpected output: got {got:?}; want {want:?}"
-                )));
-            }
-        }
-
-        Ok(())
     }
 }
 

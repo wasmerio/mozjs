@@ -1,18 +1,14 @@
 const { sinon } = ChromeUtils.importESModule(
   "resource://testing-common/Sinon.sys.mjs"
 );
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 const { getFxAccountsSingleton } = ChromeUtils.importESModule(
   "resource://gre/modules/FxAccounts.sys.mjs"
 );
 const { FirefoxRelayTelemetry } = ChromeUtils.importESModule(
   "resource://gre/modules/FirefoxRelayTelemetry.mjs"
-);
-const { ExperimentAPI } = ChromeUtils.importESModule(
-  "resource://nimbus/ExperimentAPI.sys.mjs"
-);
-const { ExperimentFakes } = ChromeUtils.importESModule(
-  "resource://testing-common/NimbusTestUtils.sys.mjs"
 );
 
 const gFxAccounts = getFxAccountsSingleton();
@@ -136,11 +132,10 @@ async function openRelayAC(browser) {
   await openACPopup(popup, browser, "#form-basic-username");
   const popupItem = document
     .querySelector("richlistitem")
-    .getAttribute("ac-label");
-  const popupItemTitle = JSON.parse(popupItem).title;
+    .getAttribute("ac-value");
 
   Assert.ok(
-    gRelayACOptionsTitles.some(title => title.value === popupItemTitle),
+    gRelayACOptionsTitles.some(title => title.value === popupItem),
     "AC Popup has an item Relay option shown in popup"
   );
 
@@ -153,15 +148,6 @@ async function openRelayAC(browser) {
 requestLongerTimeout(2);
 
 add_setup(async function () {
-  await ExperimentAPI.ready();
-  const cleanupExperiment = await ExperimentFakes.enrollWithFeatureConfig(
-    {
-      featureId: "password-autocomplete",
-      value: { firefoxRelayIntegration: true },
-    },
-    { isRollout: true }
-  );
-
   gHttpServer = new HttpServer();
   setupServerScenario();
 
@@ -198,7 +184,6 @@ add_setup(async function () {
   ]);
 
   registerCleanupFunction(async () => {
-    await cleanupExperiment();
     await new Promise(resolve => {
       gHttpServer.stop(function () {
         resolve();
@@ -218,7 +203,7 @@ add_task(async function test_pref_toggle() {
       gBrowser,
       url: "about:preferences#privacy",
     },
-    async function (browser) {
+    async _browser => {
       const relayIntegrationCheckbox = content.document.querySelector(
         "checkbox#relayIntegration"
       );

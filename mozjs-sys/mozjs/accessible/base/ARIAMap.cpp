@@ -10,11 +10,10 @@
 #include "AccAttributes.h"
 #include "nsAccUtils.h"
 #include "nsCoreUtils.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "States.h"
 
 #include "nsAttrName.h"
-#include "nsGenericHTMLElement.h"
 #include "nsWhitespaceTokenizer.h"
 
 #include "mozilla/BinarySearch.h"
@@ -212,6 +211,15 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eLandmark,
     kNoReqStates
   },
+  { // definition
+    nsGkAtoms::definition,
+    roles::DEFINITION,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
+    kGenericAccType,
+  },
   { // deletion
     nsGkAtoms::deletion,
     roles::CONTENT_DELETION,
@@ -248,7 +256,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-acknowledgments
@@ -278,7 +286,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-backlink
@@ -288,7 +296,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eJumpAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     states::LINKED
   },
   { // doc-biblioentry
@@ -298,7 +306,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     states::READONLY
   },
   { // doc-bibliography
@@ -308,7 +316,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-biblioref
@@ -318,7 +326,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eJumpAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     states::LINKED
   },
   { // doc-chapter
@@ -328,7 +336,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-colophon
@@ -338,7 +346,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-conclusion
@@ -348,7 +356,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-cover
@@ -358,7 +366,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-credit
@@ -368,7 +376,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-credits
@@ -378,7 +386,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-dedication
@@ -388,7 +396,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-endnote
@@ -398,7 +406,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     states::READONLY
   },
   { // doc-endnotes
@@ -408,7 +416,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-epigraph
@@ -418,7 +426,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-epilogue
@@ -428,7 +436,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-errata
@@ -438,17 +446,17 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-example
     nsGkAtoms::docExample,
-    roles::SECTION,
+    roles::FIGURE,
     kUseMapRole,
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-footnote
@@ -458,7 +466,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-foreword
@@ -468,7 +476,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-glossary
@@ -478,7 +486,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-glossref
@@ -488,7 +496,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eJumpAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     states::LINKED
   },
   { // doc-index
@@ -498,7 +506,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-introduction
@@ -508,7 +516,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-noteref
@@ -518,7 +526,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eJumpAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     states::LINKED
   },
   { // doc-notice
@@ -528,7 +536,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-pagebreak
@@ -538,7 +546,27 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
+    kNoReqStates
+  },
+  { // doc-pagefooter
+    nsGkAtoms::docPagefooter,
+    roles::SECTION,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
+    eDPub,
+    kNoReqStates
+  },
+  { // doc-pageheader
+    nsGkAtoms::docPageheader,
+    roles::SECTION,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
+    eDPub,
     kNoReqStates
   },
   { // doc-pagelist
@@ -548,7 +576,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-part
@@ -558,7 +586,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-preface
@@ -568,7 +596,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-prologue
@@ -578,7 +606,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // doc-pullquote
@@ -588,7 +616,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-qna
@@ -598,7 +626,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-subtitle
@@ -608,7 +636,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-tip
@@ -618,7 +646,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    kGenericAccType,
+    eDPub,
     kNoReqStates
   },
   { // doc-toc
@@ -628,7 +656,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     eNoLiveAttr,
-    eLandmark,
+    eDPub | eLandmark,
     kNoReqStates
   },
   { // document
@@ -641,6 +669,16 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     kGenericAccType,
     kNoReqStates,
     eReadonlyUntilEditable
+  },
+  { // emphasis
+    nsGkAtoms::emphasis,
+    roles::EMPHASIS,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
+    kGenericAccType,
+    kNoReqStates
   },
   { // feed
     nsGkAtoms::feed,
@@ -670,6 +708,16 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoAction,
     eNoLiveAttr,
     eLandmark,
+    kNoReqStates
+  },
+  { // generic
+    nsGkAtoms::generic,
+    roles::SECTION,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
+    kGenericAccType,
     kNoReqStates
   },
   { // graphics-document
@@ -705,7 +753,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
   },
   { // grid
     nsGkAtoms::grid,
-    roles::TABLE,
+    roles::GRID,
     kUseMapRole,
     eNoValue,
     eNoAction,
@@ -1066,7 +1114,7 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
   },
   { // rowgroup
     nsGkAtoms::rowgroup,
-    roles::GROUPING,
+    roles::ROWGROUP,
     kUseMapRole,
     eNoValue,
     eNoAction,
@@ -1162,6 +1210,16 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eNoValue,
     eNoAction,
     ePoliteLiveAttr,
+    kGenericAccType,
+    kNoReqStates
+  },
+  { // strong
+    nsGkAtoms::strong,
+    roles::STRONG,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
     kGenericAccType,
     kNoReqStates
   },
@@ -1270,6 +1328,15 @@ static const nsRoleMapEntry sWAIRoleMaps[] = {
     eARIAAutoComplete,
     eARIAMultiline,
     eARIAReadonlyOrEditable
+  },
+  { // time
+    nsGkAtoms::time,
+    roles::TIME,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
+    kNoReqStates
   },
   { // timer
     nsGkAtoms::timer,
@@ -1433,7 +1500,8 @@ const nsRoleMapEntry* aria::GetRoleMap(dom::Element* aEl) {
   return GetRoleMapFromIndex(GetRoleMapIndex(aEl));
 }
 
-uint8_t aria::GetRoleMapIndex(dom::Element* aEl) {
+uint8_t aria::GetFirstValidRoleMapIndexExcluding(
+    dom::Element* aEl, std::initializer_list<nsStaticAtom*> aRolesToSkip) {
   nsAutoString roles;
   if (!aEl || !nsAccUtils::GetARIAAttr(aEl, nsGkAtoms::role, roles) ||
       roles.IsEmpty()) {
@@ -1445,6 +1513,19 @@ uint8_t aria::GetRoleMapIndex(dom::Element* aEl) {
   while (tokenizer.hasMoreTokens()) {
     // Do a binary search through table for the next role in role list
     const nsDependentSubstring role = tokenizer.nextToken();
+
+    // Skip any roles that we aren't interested in.
+    bool shouldSkip = false;
+    for (nsStaticAtom* atomRole : aRolesToSkip) {
+      if (role.Equals(atomRole->GetUTF16String())) {
+        shouldSkip = true;
+        break;
+      }
+    }
+    if (shouldSkip) {
+      continue;
+    }
+
     size_t idx;
     auto comparator = [&role](const nsRoleMapEntry& aEntry) {
       return Compare(role, aEntry.ARIARoleString(),
@@ -1459,6 +1540,11 @@ uint8_t aria::GetRoleMapIndex(dom::Element* aEl) {
   // Always use some entry index if there is a non-empty role string
   // To ensure an accessible object is created
   return LANDMARK_ROLE_MAP_ENTRY_INDEX;
+}
+
+uint8_t aria::GetRoleMapIndex(dom::Element* aEl) {
+  // Get the rolemap index of the first valid role, excluding nothing.
+  return GetFirstValidRoleMapIndexExcluding(aEl, {});
 }
 
 const nsRoleMapEntry* aria::GetRoleMapFromIndex(uint8_t aRoleMapIndex) {
@@ -1521,6 +1607,19 @@ bool aria::HasDefinedARIAHidden(nsIContent* aContent) {
          nsAccUtils::ARIAAttrValueIs(aContent->AsElement(),
                                      nsGkAtoms::aria_hidden, nsGkAtoms::_true,
                                      eCaseMatters);
+}
+
+const nsRoleMapEntry* aria::GetRoleMap(const nsStaticAtom* aAriaRole) {
+  const nsDependentAtomString role(aAriaRole);
+  auto comparator = [&role](const nsRoleMapEntry& aEntry) {
+    return Compare(role, aEntry.ARIARoleString());
+  };
+  size_t idx;
+  if (BinarySearchIf(sWAIRoleMaps, 0, ArrayLength(sWAIRoleMaps), comparator,
+                     &idx)) {
+    return GetRoleMapFromIndex(idx);
+  }
+  return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

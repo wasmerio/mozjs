@@ -7,30 +7,62 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  Preferences: "resource://gre/modules/Preferences.sys.mjs",
-
   AppInfo: "chrome://remote/content/shared/AppInfo.sys.mjs",
   assert: "chrome://remote/content/shared/webdriver/Assert.sys.mjs",
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
   pprint: "chrome://remote/content/shared/Format.sys.mjs",
   RemoteAgent: "chrome://remote/content/components/RemoteAgent.sys.mjs",
+  UserPromptHandler:
+    "chrome://remote/content/shared/webdriver/UserPromptHandler.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "remoteAgent", () => {
+ChromeUtils.defineLazyGetter(lazy, "debuggerAddress", () => {
+  return lazy.RemoteAgent.running && lazy.RemoteAgent.cdp
+    ? lazy.remoteAgent.debuggerAddress
+    : null;
+});
+
+ChromeUtils.defineLazyGetter(lazy, "isHeadless", () => {
+  return Cc["@mozilla.org/gfx/info;1"].getService(Ci.nsIGfxInfo).isHeadless;
+});
+
+ChromeUtils.defineLazyGetter(lazy, "remoteAgent", () => {
   return Cc["@mozilla.org/remote/agent;1"].createInstance(Ci.nsIRemoteAgent);
 });
+
+ChromeUtils.defineLazyGetter(lazy, "userAgent", () => {
+  return Cc["@mozilla.org/network/protocol;1?name=http"].getService(
+    Ci.nsIHttpProtocolHandler
+  ).userAgent;
+});
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "shutdownTimeout",
+  "toolkit.asyncshutdown.crash_timeout"
+);
 
 // List of capabilities which are only relevant for Webdriver Classic.
 export const WEBDRIVER_CLASSIC_CAPABILITIES = [
   "pageLoadStrategy",
-  "timeouts",
   "strictFileInteractability",
+  "timeouts",
   "unhandledPromptBehavior",
   "webSocketUrl",
-  "moz:useNonSpecCompliantPointerOrigin",
-  "moz:webdriverClick",
+
+  // Gecko specific capabilities
+  "moz:accessibilityChecks",
   "moz:debuggerAddress",
   "moz:firefoxOptions",
+  "moz:useNonSpecCompliantPointerOrigin",
+  "moz:webdriverClick",
+
+  // Extension capabilities
+  "webauthn:extension:credBlob",
+  "webauthn:extension:largeBlob",
+  "webauthn:extension:prf",
+  "webauthn:extension:uvm",
+  "webauthn:virtualAuthenticators",
 ];
 
 /** Representation of WebDriver session timeouts. */
@@ -92,7 +124,7 @@ export class Timeouts {
 
         default:
           throw new lazy.error.InvalidArgumentError(
-            "Unrecognised timeout: " + type
+            `Unrecognized timeout: ${type}`
           );
       }
     }
@@ -148,40 +180,46 @@ export class Proxy {
   init() {
     switch (this.proxyType) {
       case "autodetect":
-        lazy.Preferences.set("network.proxy.type", 4);
+        Services.prefs.setIntPref("network.proxy.type", 4);
         return true;
 
       case "direct":
-        lazy.Preferences.set("network.proxy.type", 0);
+        Services.prefs.setIntPref("network.proxy.type", 0);
         return true;
 
       case "manual":
-        lazy.Preferences.set("network.proxy.type", 1);
+        Services.prefs.setIntPref("network.proxy.type", 1);
 
         if (this.httpProxy) {
-          lazy.Preferences.set("network.proxy.http", this.httpProxy);
+          Services.prefs.setStringPref("network.proxy.http", this.httpProxy);
           if (Number.isInteger(this.httpProxyPort)) {
-            lazy.Preferences.set("network.proxy.http_port", this.httpProxyPort);
+            Services.prefs.setIntPref(
+              "network.proxy.http_port",
+              this.httpProxyPort
+            );
           }
         }
 
         if (this.sslProxy) {
-          lazy.Preferences.set("network.proxy.ssl", this.sslProxy);
+          Services.prefs.setStringPref("network.proxy.ssl", this.sslProxy);
           if (Number.isInteger(this.sslProxyPort)) {
-            lazy.Preferences.set("network.proxy.ssl_port", this.sslProxyPort);
+            Services.prefs.setIntPref(
+              "network.proxy.ssl_port",
+              this.sslProxyPort
+            );
           }
         }
 
         if (this.socksProxy) {
-          lazy.Preferences.set("network.proxy.socks", this.socksProxy);
+          Services.prefs.setStringPref("network.proxy.socks", this.socksProxy);
           if (Number.isInteger(this.socksProxyPort)) {
-            lazy.Preferences.set(
+            Services.prefs.setIntPref(
               "network.proxy.socks_port",
               this.socksProxyPort
             );
           }
           if (this.socksVersion) {
-            lazy.Preferences.set(
+            Services.prefs.setIntPref(
               "network.proxy.socks_version",
               this.socksVersion
             );
@@ -189,7 +227,7 @@ export class Proxy {
         }
 
         if (this.noProxy) {
-          lazy.Preferences.set(
+          Services.prefs.setStringPref(
             "network.proxy.no_proxies_on",
             this.noProxy.join(", ")
           );
@@ -197,15 +235,15 @@ export class Proxy {
         return true;
 
       case "pac":
-        lazy.Preferences.set("network.proxy.type", 2);
-        lazy.Preferences.set(
+        Services.prefs.setIntPref("network.proxy.type", 2);
+        Services.prefs.setStringPref(
           "network.proxy.autoconfig_url",
           this.proxyAutoconfigUrl
         );
         return true;
 
       case "system":
-        lazy.Preferences.set("network.proxy.type", 5);
+        Services.prefs.setIntPref("network.proxy.type", 5);
         return true;
 
       default:
@@ -403,72 +441,49 @@ export class Proxy {
   }
 }
 
-/**
- * Enum of unhandled prompt behavior.
- *
- * @enum
- */
-export const UnhandledPromptBehavior = {
-  /** All simple dialogs encountered should be accepted. */
-  Accept: "accept",
-  /**
-   * All simple dialogs encountered should be accepted, and an error
-   * returned that the dialog was handled.
-   */
-  AcceptAndNotify: "accept and notify",
-  /** All simple dialogs encountered should be dismissed. */
-  Dismiss: "dismiss",
-  /**
-   * All simple dialogs encountered should be dismissed, and an error
-   * returned that the dialog was handled.
-   */
-  DismissAndNotify: "dismiss and notify",
-  /** All simple dialogs encountered should be left to the user to handle. */
-  Ignore: "ignore",
-};
-
-/** WebDriver session capabilities representation. */
 export class Capabilities extends Map {
-  /** @class */
-  constructor() {
-    super([
-      // webdriver
+  /**
+   * WebDriver session capabilities representation.
+   *
+   * @param {boolean} isBidi
+   *     Flag indicating that it is a WebDriver BiDi session. Defaults to false.
+   */
+  constructor(isBidi = false) {
+    // Default values for capabilities supported by both WebDriver protocols
+    const defaults = [
+      ["acceptInsecureCerts", false],
       ["browserName", getWebDriverBrowserName()],
       ["browserVersion", lazy.AppInfo.version],
       ["platformName", getWebDriverPlatformName()],
-      ["acceptInsecureCerts", false],
-      ["pageLoadStrategy", PageLoadStrategy.Normal],
       ["proxy", new Proxy()],
-      ["setWindowRect", !lazy.AppInfo.isAndroid],
-      ["timeouts", new Timeouts()],
-      ["strictFileInteractability", false],
-      ["unhandledPromptBehavior", UnhandledPromptBehavior.DismissAndNotify],
-      ["webSocketUrl", null],
+      ["unhandledPromptBehavior", new lazy.UserPromptHandler()],
+      ["userAgent", lazy.userAgent],
 
-      // proprietary
-      ["moz:accessibilityChecks", false],
+      // Gecko specific capabilities
       ["moz:buildID", lazy.AppInfo.appBuildID],
-      [
-        "moz:debuggerAddress",
-        // With bug 1715481 fixed always use the Remote Agent instance
-        lazy.RemoteAgent.running && lazy.RemoteAgent.cdp
-          ? lazy.remoteAgent.debuggerAddress
-          : null,
-      ],
-      [
-        "moz:headless",
-        Cc["@mozilla.org/gfx/info;1"].getService(Ci.nsIGfxInfo).isHeadless,
-      ],
+      ["moz:headless", lazy.isHeadless],
       ["moz:platformVersion", Services.sysinfo.getProperty("version")],
       ["moz:processID", lazy.AppInfo.processID],
       ["moz:profile", maybeProfile()],
-      [
-        "moz:shutdownTimeout",
-        Services.prefs.getIntPref("toolkit.asyncshutdown.crash_timeout"),
-      ],
-      ["moz:webdriverClick", true],
-      ["moz:windowless", false],
-    ]);
+      ["moz:shutdownTimeout", lazy.shutdownTimeout],
+    ];
+
+    if (!isBidi) {
+      // HTTP-only capabilities
+      defaults.push(
+        ["pageLoadStrategy", PageLoadStrategy.Normal],
+        ["timeouts", new Timeouts()],
+        ["setWindowRect", !lazy.AppInfo.isAndroid],
+        ["strictFileInteractability", false],
+
+        ["moz:accessibilityChecks", false],
+        ["moz:debuggerAddress", lazy.debuggerAddress],
+        ["moz:webdriverClick", true],
+        ["moz:windowless", false]
+      );
+    }
+
+    super(defaults);
   }
 
   /**
@@ -492,7 +507,7 @@ export class Capabilities extends Map {
   }
 
   /**
-   * JSON serialisation of capabilities object.
+   * JSON serialization of capabilities object.
    *
    * @returns {Object<string, ?>}
    */
@@ -505,6 +520,7 @@ export class Capabilities extends Map {
     }
 
     marshalled.timeouts = super.get("timeouts");
+    marshalled.unhandledPromptBehavior = super.get("unhandledPromptBehavior");
 
     return marshalled;
   }
@@ -514,11 +530,13 @@ export class Capabilities extends Map {
    *
    * @param {Object<string, *>=} json
    *     WebDriver capabilities.
+   * @param {boolean=} isBidi
+   *     Flag indicating that it is a WebDriver BiDi session. Defaults to false.
    *
    * @returns {Capabilities}
    *     Internal representation of WebDriver capabilities.
    */
-  static fromJSON(json) {
+  static fromJSON(json, isBidi = false) {
     if (typeof json == "undefined" || json === null) {
       json = {};
     }
@@ -527,10 +545,16 @@ export class Capabilities extends Map {
       lazy.pprint`Expected "capabilities" to be an object, got ${json}"`
     );
 
-    const capabilities = new Capabilities();
+    const capabilities = new Capabilities(isBidi);
+
     // TODO: Bug 1823907. We can start using here spec compliant method `validate`,
     // as soon as `desiredCapabilities` and `requiredCapabilities` are not supported.
     for (let [k, v] of Object.entries(json)) {
+      if (isBidi && WEBDRIVER_CLASSIC_CAPABILITIES.includes(k)) {
+        // Ignore any WebDriver classic capability for a WebDriver BiDi session.
+        continue;
+      }
+
       switch (k) {
         case "acceptInsecureCerts":
           lazy.assert.boolean(
@@ -580,15 +604,7 @@ export class Capabilities extends Map {
           break;
 
         case "unhandledPromptBehavior":
-          lazy.assert.string(
-            v,
-            lazy.pprint`Expected ${k} to be a string, got ${v}`
-          );
-          if (!Object.values(UnhandledPromptBehavior).includes(v)) {
-            throw new lazy.error.InvalidArgumentError(
-              `Unknown unhandled prompt behavior: ${v}`
-            );
-          }
+          v = lazy.UserPromptHandler.fromJSON(v);
           break;
 
         case "webSocketUrl":
@@ -602,6 +618,41 @@ export class Capabilities extends Map {
               lazy.pprint`Expected ${k} to be true, got ${v}`
             );
           }
+          break;
+
+        case "webauthn:virtualAuthenticators":
+          lazy.assert.boolean(
+            v,
+            lazy.pprint`Expected ${k} to be a boolean, got ${v}`
+          );
+          break;
+
+        case "webauthn:extension:uvm":
+          lazy.assert.boolean(
+            v,
+            lazy.pprint`Expected ${k} to be a boolean, got ${v}`
+          );
+          break;
+
+        case "webauthn:extension:prf":
+          lazy.assert.boolean(
+            v,
+            lazy.pprint`Expected ${k} to be a boolean, got ${v}`
+          );
+          break;
+
+        case "webauthn:extension:largeBlob":
+          lazy.assert.boolean(
+            v,
+            lazy.pprint`Expected ${k} to be a boolean, got ${v}`
+          );
+          break;
+
+        case "webauthn:extension:credBlob":
+          lazy.assert.boolean(
+            v,
+            lazy.pprint`Expected ${k} to be a boolean, got ${v}`
+          );
           break;
 
         case "moz:accessibilityChecks":
@@ -708,16 +759,7 @@ export class Capabilities extends Map {
         return Timeouts.fromJSON(value);
 
       case "unhandledPromptBehavior":
-        lazy.assert.string(
-          value,
-          lazy.pprint`Expected ${name} to be a string, got ${value}`
-        );
-        if (!Object.values(UnhandledPromptBehavior).includes(value)) {
-          throw new lazy.error.InvalidArgumentError(
-            `Unknown unhandled prompt behavior: ${value}`
-          );
-        }
-        return value;
+        return lazy.UserPromptHandler.fromJSON(value);
 
       case "webSocketUrl":
         lazy.assert.boolean(
@@ -730,6 +772,27 @@ export class Capabilities extends Map {
             lazy.pprint`Expected ${name} to be true, got ${value}`
           );
         }
+        return value;
+
+      case "webauthn:virtualAuthenticators":
+        lazy.assert.boolean(
+          value,
+          lazy.pprint`Expected ${name} to be a boolean, got ${value}`
+        );
+        return value;
+
+      case "webauthn:extension:uvm":
+        lazy.assert.boolean(
+          value,
+          lazy.pprint`Expected ${name} to be a boolean, got ${value}`
+        );
+        return value;
+
+      case "webauthn:extension:largeBlob":
+        lazy.assert.boolean(
+          value,
+          lazy.pprint`Expected ${name} to be a boolean, got ${value}`
+        );
         return value;
 
       case "moz:firefoxOptions":
@@ -938,9 +1001,8 @@ export function validateCapabilities(capabilities) {
   Object.entries(capabilities).forEach(([name, value]) => {
     const deserialized = Capabilities.validate(name, value);
     if (deserialized !== null) {
-      if (name === "proxy" || name === "timeouts") {
-        // Return pure value, the Proxy and Timeouts objects will be setup
-        // during session creation.
+      if (["proxy", "timeouts", "unhandledPromptBehavior"].includes(name)) {
+        // Return pure values for objects that will be setup during session creation.
         result[name] = value;
       } else {
         result[name] = deserialized;
@@ -967,7 +1029,10 @@ export function validateCapabilities(capabilities) {
  */
 export function processCapabilities(params) {
   const { capabilities } = params;
-  lazy.assert.object(capabilities);
+  lazy.assert.object(
+    capabilities,
+    lazy.pprint`Expected "capabilities" to be an object, got ${capabilities}`
+  );
 
   let {
     alwaysMatch: requiredCapabilities = {},
@@ -995,7 +1060,8 @@ export function processCapabilities(params) {
   });
 
   // TODO: Bug 1836288. Implement the capability matching logic
-  // for "browserName", "browserVersion" and "platformName" features,
+  // for "browserName", "browserVersion", "platformName", and
+  // "unhandledPromptBehavior" features,
   // for now we can just pick the first merged capability.
   const matchedCapabilities = mergedCapabilities[0];
 

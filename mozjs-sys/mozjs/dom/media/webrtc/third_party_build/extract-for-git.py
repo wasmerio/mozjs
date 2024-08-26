@@ -5,6 +5,7 @@ import argparse
 import os
 import re
 import subprocess
+import sys
 
 # This script extracts commits that touch third party webrtc code so they can
 # be imported into Git. It filters out commits that are not part of upstream
@@ -26,6 +27,10 @@ def build_commit_list(revset, env):
         text=True,
         env=env,
     )
+    # return empty list instead of a list with one empty element if no
+    # libwebrtc changing commits are found in the given range
+    if len(res.stdout) == 0:
+        return []
     return [line.strip() for line in res.stdout.strip().split("\n")]
 
 
@@ -68,10 +73,11 @@ def filter_nonwebrtc(commit):
         # moz.build files which are code generated.
         if (
             line.startswith("diff --git a/" + LIBWEBRTC_DIR)
-            and not line.startswith("diff --git a/" + LIBWEBRTC_DIR + "/build")
-            and not line.startswith("diff --git a/" + LIBWEBRTC_DIR + "/third_party")
+            and not line.startswith("diff --git a/" + LIBWEBRTC_DIR + "/build/")
+            and not line.startswith("diff --git a/" + LIBWEBRTC_DIR + "/third_party/")
+            and not line.startswith("diff --git a/" + LIBWEBRTC_DIR + "/README.moz")
             and not line.startswith(
-                "diff --git a/" + LIBWEBRTC_DIR + "/moz-patch-stack"
+                "diff --git a/" + LIBWEBRTC_DIR + "/moz-patch-stack/"
             )
             and not line.endswith("moz.build")
         ):
@@ -133,6 +139,10 @@ if __name__ == "__main__":
 
     for revset in args.revsets:
         commits.extend(build_commit_list(revset, env))
+
+    if len(commits) == 0:
+        print(f"No commits modifying {LIBWEBRTC_DIR} found in provided revsets")
+        sys.exit(1)
 
     with open("mailbox.patch", "w") as ofile:
         for sha1 in commits:

@@ -9,15 +9,12 @@
 #include "nsAccessibilityService.h"
 #include "nsIAccessibleTypes.h"
 #include "AccAttributes.h"
-#include "DocAccessible.h"
 #include "HTMLListAccessible.h"
 #include "LocalAccessible-inl.h"
-#include "Pivot.h"
 #include "Relation.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "States.h"
 #include "TextAttrs.h"
-#include "TextLeafRange.h"
 #include "TextRange.h"
 #include "TreeWalker.h"
 
@@ -29,26 +26,20 @@
 #include "nsContainerFrame.h"
 #include "nsFrameSelection.h"
 #include "nsILineIterator.h"
-#include "nsIInterfaceRequestorUtils.h"
-#include "nsIScrollableFrame.h"
 #include "nsIMathMLFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsRange.h"
-#include "nsTextFragment.h"
 #include "mozilla/Assertions.h"
-#include "mozilla/BinarySearch.h"
 #include "mozilla/EditorBase.h"
 #include "mozilla/HTMLEditor.h"
 #include "mozilla/IntegerRange.h"
-#include "mozilla/MathAlgorithms.h"
 #include "mozilla/PresShell.h"
-#include "mozilla/StaticPrefs_layout.h"
+#include "mozilla/ScrollContainerFrame.h"
+#include "mozilla/SelectionMovementUtils.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLBRElement.h"
-#include "mozilla/dom/HTMLHeadingElement.h"
 #include "mozilla/dom/Selection.h"
 #include "gfxSkipChars.h"
-#include <algorithm>
 
 using namespace mozilla;
 using namespace mozilla::a11y;
@@ -563,15 +554,7 @@ nsresult HyperTextAccessible::SetSelectionRange(int32_t aStartPos,
   NS_ENSURE_STATE(domSel);
 
   // Set up the selection.
-  for (const uint32_t idx : Reversed(IntegerRange(1u, domSel->RangeCount()))) {
-    MOZ_ASSERT(domSel->RangeCount() == idx + 1);
-    RefPtr<nsRange> range{domSel->GetRangeAt(idx)};
-    if (!range) {
-      break;  // The range count has been changed by somebody else.
-    }
-    domSel->RemoveRangeAndUnselectFramesAndNotifyListeners(*range,
-                                                           IgnoreErrors());
-  }
+  domSel->RemoveAllRanges(IgnoreErrors());
   SetSelectionBoundsAt(0, aStartPos, aEndPos);
 
   // Make sure it is visible
@@ -668,11 +651,10 @@ int32_t HyperTextAccessible::CaretLineNumber() {
   nsIContent* caretContent = caretNode->AsContent();
   if (!nsCoreUtils::IsAncestorOf(GetNode(), caretContent)) return -1;
 
-  int32_t returnOffsetUnused;
   uint32_t caretOffset = domSel->FocusOffset();
   CaretAssociationHint hint = frameSelection->GetHint();
-  nsIFrame* caretFrame = frameSelection->GetFrameForNodeOffset(
-      caretContent, caretOffset, hint, &returnOffsetUnused);
+  nsIFrame* caretFrame = SelectionMovementUtils::GetFrameForNodeOffset(
+      caretContent, caretOffset, hint);
   NS_ENSURE_TRUE(caretFrame, -1);
 
   AutoAssertNoDomMutations guard;  // The nsILineIterators below will break if
@@ -775,6 +757,17 @@ LayoutDeviceIntRect HyperTextAccessible::GetCaretRect(nsIWidget** aWidget) {
 
 void HyperTextAccessible::GetSelectionDOMRanges(SelectionType aSelectionType,
                                                 nsTArray<nsRange*>* aRanges) {
+  if (IsDoc() && !AsDoc()->HasLoadState(DocAccessible::eTreeConstructed)) {
+    // Rarely, a client query can be handled after a DocAccessible is created
+    // but before the initial tree is constructed, since DoInitialUpdate happens
+    // during a refresh tick. In that case, there might be a DOM selection, but
+    // we can't use it. We will crash if we try due to mContent being null, etc.
+    // This should only happen in the parent process because we should never
+    // try to push the cache in a content process before the initial tree is
+    // constructed.
+    MOZ_ASSERT(XRE_IsParentProcess(), "Query before DoInitialUpdate");
+    return;
+  }
   // Ignore selection if it is not visible.
   RefPtr<nsFrameSelection> frameSelection = FrameSelection();
   if (!frameSelection || frameSelection->GetDisplaySelection() <=
@@ -901,8 +894,7 @@ void HyperTextAccessible::ScrollSubstringToPoint(int32_t aStartOffset,
   bool initialScrolled = false;
   nsIFrame* parentFrame = frame;
   while ((parentFrame = parentFrame->GetParent())) {
-    nsIScrollableFrame* scrollableFrame = do_QueryFrame(parentFrame);
-    if (scrollableFrame) {
+    if (parentFrame->IsScrollContainerOrSubclass()) {
       if (!initialScrolled) {
         // Scroll substring to the given point. Turn the point into percents
         // relative scrollable area to use nsCoreUtils::ScrollSubstringTo.

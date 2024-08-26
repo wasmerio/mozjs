@@ -241,7 +241,7 @@ async function testDoorHanger(
   );
   ok(permissionItem, "Permission item exists");
   ok(
-    BrowserTestUtils.is_visible(permissionItem),
+    BrowserTestUtils.isVisible(permissionItem),
     "Permission item visible in the identity panel"
   );
   let permissionLearnMoreLink = document.getElementById(
@@ -249,7 +249,7 @@ async function testDoorHanger(
   );
   ok(permissionLearnMoreLink, "Permission learn more link exists");
   ok(
-    BrowserTestUtils.is_visible(permissionLearnMoreLink),
+    BrowserTestUtils.isVisible(permissionLearnMoreLink),
     "Permission learn more link is visible in the identity panel"
   );
   permissionPopupPromise = BrowserTestUtils.waitForEvent(
@@ -305,7 +305,7 @@ async function cleanUp() {
   info("Cleaning up.");
   SpecialPowers.clearUserPref("network.cookie.sameSite.laxByDefault");
   await new Promise(resolve => {
-    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, value =>
+    Services.clearData.deleteData(Ci.nsIClearDataService.CLEAR_ALL, () =>
       resolve()
     );
   });

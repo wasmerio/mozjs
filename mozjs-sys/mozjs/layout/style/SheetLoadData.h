@@ -13,12 +13,13 @@
 #include "mozilla/PreloaderBase.h"
 #include "mozilla/SharedSubResourceCache.h"
 #include "mozilla/NotNull.h"
-#include "mozilla/UniquePtr.h"
-#include "nsIThreadInternal.h"
 #include "nsProxyRelease.h"
 
 namespace mozilla {
-class LoadBlockingAsyncEventDispatcher;
+namespace dom {
+enum class FetchPriority : uint8_t;
+}  // namespace dom
+class AsyncEventDispatcher;
 class StyleSheet;
 }  // namespace mozilla
 class nsICSSLoaderObserver;
@@ -38,6 +39,8 @@ static_assert(eAuthorSheetFeatures == 0 && eUserSheetFeatures == 1 &&
               "sheet parsing mode constants won't fit "
               "in SheetLoadData::mParsingMode");
 
+enum class SyncLoad : bool { No, Yes };
+
 class SheetLoadData final
     : public PreloaderBase,
       public SharedSubResourceCacheLoadingValueBase<SheetLoadData> {
@@ -49,38 +52,36 @@ class SheetLoadData final
   virtual ~SheetLoadData();
 
  public:
-  // PreloaderBase
   static void PrioritizeAsPreload(nsIChannel* aChannel);
-  void PrioritizeAsPreload() final;
 
   // If this is a deferred load, start it now.
   void StartPendingLoad();
 
   // Data for loading a sheet linked from a document
-  SheetLoadData(css::Loader* aLoader, const nsAString& aTitle, nsIURI* aURI,
-                StyleSheet* aSheet, bool aSyncLoad, nsINode* aOwningNode,
-                IsAlternate aIsAlternate, MediaMatched aMediaMatched,
-                StylePreloadKind aPreloadKind, nsICSSLoaderObserver* aObserver,
-                nsIPrincipal* aTriggeringPrincipal,
-                nsIReferrerInfo* aReferrerInfo);
+  SheetLoadData(css::Loader*, const nsAString& aTitle, nsIURI*, StyleSheet*,
+                SyncLoad, nsINode* aOwningNode, IsAlternate, MediaMatched,
+                StylePreloadKind, nsICSSLoaderObserver* aObserver,
+                nsIPrincipal* aTriggeringPrincipal, nsIReferrerInfo*,
+                const nsAString& aNonce, dom::FetchPriority aFetchPriority);
 
   // Data for loading a sheet linked from an @import rule
-  SheetLoadData(css::Loader* aLoader, nsIURI* aURI, StyleSheet* aSheet,
-                SheetLoadData* aParentData, nsICSSLoaderObserver* aObserver,
-                nsIPrincipal* aTriggeringPrincipal,
-                nsIReferrerInfo* aReferrerInfo);
+  SheetLoadData(css::Loader*, nsIURI*, StyleSheet*, SheetLoadData* aParentData,
+                nsICSSLoaderObserver* aObserver,
+                nsIPrincipal* aTriggeringPrincipal, nsIReferrerInfo*);
 
   // Data for loading a non-document sheet
-  SheetLoadData(css::Loader* aLoader, nsIURI* aURI, StyleSheet* aSheet,
-                bool aSyncLoad, UseSystemPrincipal, StylePreloadKind,
+  SheetLoadData(css::Loader*, nsIURI*, StyleSheet*, SyncLoad,
+                UseSystemPrincipal, StylePreloadKind,
                 const Encoding* aPreloadEncoding,
                 nsICSSLoaderObserver* aObserver,
-                nsIPrincipal* aTriggeringPrincipal,
-                nsIReferrerInfo* aReferrerInfo);
+                nsIPrincipal* aTriggeringPrincipal, nsIReferrerInfo*,
+                const nsAString& aNonce, dom::FetchPriority aFetchPriority);
 
   nsIReferrerInfo* ReferrerInfo() const { return mReferrerInfo; }
 
-  already_AddRefed<LoadBlockingAsyncEventDispatcher> PrepareLoadEventIfNeeded();
+  const nsString& Nonce() const { return mNonce; }
+
+  already_AddRefed<AsyncEventDispatcher> PrepareLoadEventIfNeeded();
 
   NotNull<const Encoding*> DetermineNonBOMEncoding(const nsACString& aSegment,
                                                    nsIChannel*) const;
@@ -89,7 +90,9 @@ class SheetLoadData final
   // so aBytes1 and aBytes2 refer to those pieces.
   nsresult VerifySheetReadyToParse(nsresult aStatus, const nsACString& aBytes1,
                                    const nsACString& aBytes2,
-                                   nsIChannel* aChannel);
+                                   nsIChannel* aChannel,
+                                   nsIURI* aFinalChannelURI,
+                                   nsIPrincipal* aPrincipal);
 
   NS_DECL_ISUPPORTS
 
@@ -110,9 +113,6 @@ class SheetLoadData final
 
   // URI we're loading.  Null for inline or constructable sheets.
   nsCOMPtr<nsIURI> mURI;
-
-  // Should be 1 for non-inline sheets.
-  uint32_t mLineNumber;
 
   // The sheet we're loading data for
   const RefPtr<StyleSheet> mSheet;
@@ -156,15 +156,21 @@ class SheetLoadData final
   // sheets that have been cancelled and such.
   bool mIsCancelled : 1;
 
-  // mMustNotify is true if the load data is being loaded async and
-  // the original function call that started the load has returned.
-  // This applies only to observer notifications; load/error events
-  // are fired for any SheetLoadData that has a non-null
-  // mOwningNodeBeforeLoadEvent (though mMustNotify is used to avoid an event
-  // loop round-trip in that case).
+  // mMustNotify is true if the load data is being loaded async and the original
+  // function call that started the load has returned.
+  //
+  // This applies only to observer notifications; load/error events are fired
+  // for any SheetLoadData that has a non-null owner node (though mMustNotify is
+  // used to avoid an event loop round-trip in that case).
   bool mMustNotify : 1;
 
-  // mWasAlternate is true if the sheet was an alternate when the load data was
+  // Whether we had an owner node at the point of creation. This allows
+  // differentiating between "Link" header stylesheets and LinkStyle-owned
+  // stylesheets.
+  const bool mHadOwnerNode : 1;
+
+  // mWasAlternate is true if the sheet was an alternate
+  // (https://html.spec.whatwg.org/#rel-alternate) when the load data was
   // created.
   const bool mWasAlternate : 1;
 
@@ -204,14 +210,6 @@ class SheetLoadData final
   // which causes a false positive warning here.
   const StylePreloadKind mPreloadKind;
 
-  // This is the node that imported the sheet. Cleared after the load/error
-  // event fires, as we don't need it anymore. Needed to get the charset on it,
-  // and to fire load/error events. Must implement LinkStyle.
-  //
-  // This is only set for top-level sheets (e.g., for an @import-ed sheet it'll
-  // be null).
-  nsCOMPtr<nsINode> mOwningNodeBeforeLoadEvent;
-
   nsINode* GetRequestingNode() const;
 
   // The observer that wishes to be notified of load completion
@@ -223,6 +221,11 @@ class SheetLoadData final
   // Referrer info of the load.
   const nsCOMPtr<nsIReferrerInfo> mReferrerInfo;
 
+  // The cryptographic nonce of the load used for CSP checks.
+  const nsString mNonce;
+
+  const dom::FetchPriority mFetchPriority;
+
   // The encoding guessed from attributes and the document character set.
   const NotNull<const Encoding*> mGuessedEncoding;
 
@@ -231,9 +234,15 @@ class SheetLoadData final
 
   // Whether SheetComplete was called.
   bool mSheetCompleteCalled = false;
+
   // Whether we intentionally are not calling SheetComplete because nobody is
   // listening for the load.
   bool mIntentionallyDropped = false;
+
+  // The start timestamp for the load.
+  TimeStamp mLoadStart;
+
+  const bool mRecordErrors;
 
   bool ShouldDefer() const { return mWasAlternate || !mMediaMatched; }
 
@@ -254,15 +263,30 @@ class SheetLoadData final
   bool IsPreload() const { return mPreloadKind != StylePreloadKind::None; }
   bool IsLinkRelPreload() const { return css::IsLinkRelPreload(mPreloadKind); }
 
-  bool BlocksLoadEvent() const { return !RootLoadData().IsLinkRelPreload(); }
+  bool BlocksLoadEvent() const {
+    const auto& root = RootLoadData();
+    return !root.IsLinkRelPreload() && !root.IsSyncLoad();
+  }
 
   bool IsSyncLoad() const override { return mSyncLoad; }
   bool IsLoading() const override { return mIsLoading; }
   bool IsCancelled() const override { return mIsCancelled; }
 
-  void StartLoading() override { mIsLoading = true; }
-  void SetLoadCompleted() override { mIsLoading = false; }
+  void StartLoading() override;
+  void SetLoadCompleted() override;
+
   void Cancel() override { mIsCancelled = true; }
+
+  void AccumulateExpirationTime(uint32_t aExpirationTime) {
+    // 0 means "doesn't expire".
+    // Otherwise, calculate the minimum value.
+    if (aExpirationTime == 0) {
+      return;
+    }
+    if (mExpirationTime == 0 || aExpirationTime < mExpirationTime) {
+      mExpirationTime = aExpirationTime;
+    }
+  }
 
  private:
   const SheetLoadData& RootLoadData() const {

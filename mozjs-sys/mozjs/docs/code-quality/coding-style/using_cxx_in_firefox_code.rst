@@ -44,7 +44,7 @@ list of acceptable features is given below:
      -
    * - Current minimal requirement
      - 8.1
-     - 7.0
+     - 8.0
      -
    * - Feature
      - GCC
@@ -381,7 +381,7 @@ Data structures
      - Header
      - STL equivalent
      - Notes
-   * - ``nsAutoTArray``
+   * - ``AutoTArray``
      - ``nsTArray.h``
      -
      - Like ``nsTArray``, but will store a small amount as stack storage
@@ -401,13 +401,17 @@ Data structures
      - ``nsCOMArray.h``
      -
      - Like ``nsTArray<nsCOMPtr<T>>``
-   * - ``nsDataHashtable``
-     - ``nsClassHashtable.h``
+   * - ``nsTHashMap``
+     - ``nsTHashMap.h``
      - ``std::unordered_map``
+     - Adaptation of ``nsTHashtable``, see :ref:`XPCOM Hashtable Guide`
+   * - ``nsTHashSet``
+     - ``nsTHashSet.h``
+     - ``std::unordered_set``
      - Adaptation of ``nsTHashtable``, see :ref:`XPCOM Hashtable Guide`
    * - ``nsDeque``
      - ``nsDeque.h``
-     - ``std::deque<void *>``
+     - ``std::deque<T>``
      -
    * - ``mozilla::EnumSet``
      - ``mozilla/EnumSet.h``
@@ -425,7 +429,7 @@ Data structures
      - ``mozilla/LinkedList.h``
      - ``std::list``
      - Doubly-linked list
-   * - ``nsRef PtrHashtable``
+   * - ``nsRefPtrHashtable``
      - ``nsRefPtrHashtable.h``
      - ``std::unordered_map``
      - Adaptation of ``nsTHashtable``, see :ref:`XPCOM Hashtable Guide`
@@ -616,8 +620,8 @@ Miscellaneous
      - mfbt/MaybeOneOf.h
      - ``std::optional<std::variant<T1, T2>>``
      - ~ ``mozilla::Maybe<union {T1, T2}>``
-   * - ``mozilla::Pair``
-     - mfbt/Pair.h
+   * - ``mozilla::CompactPair``
+     - mfbt/CompactPair.h
      - ``std::tuple<T1, T2>``
      - minimal space!
    * - ``mozilla::TimeStamp``
@@ -679,8 +683,8 @@ Currently, these include:
      - `1126552 <https://bugzilla.mozilla.org/show_bug.cgi?id=1126552>`__
      - Random-access
      - Also reverse-iterable. Also supports remove-erase pattern via RemoveElementsAt method. Also supports back-inserting output iterators via ``MakeBackInserter`` function.
-   * - ``nsBaseHashtable`` and subclasses: ``nsClassHashtable`` ``nsDataHashtable`` ``nsInterfaceHashtable`` ``nsJSThingHashtable`` ``nsRefPtrHashtable``
-     - ``xpcom/ds/nsBaseHashtable.h`` ``xpcom/ds/nsClassHashtable.h`` ``xpcom/ds/nsDataHashtable.h`` ``xpcom/ds/nsInterfaceHashtable.h`` ``xpcom/ds/nsJSThingHashtable.h`` ``xpcom/ds/nsRefPtrHashtable.h``
+   * - ``nsBaseHashtable`` and subclasses: ``nsTHashMap`` ``nsTHashSet`` ``nsClassHashtable`` ``nsInterfaceHashtable`` ``nsRefPtrHashtable``
+     - ``xpcom/ds/nsBaseHashtable.h`` ``xpcom/ds/nsTHashMap.h`` ``xpcom/ds/nsTHashSet.h`` ``xpcom/ds/nsClassHashtable.h`` ``xpcom/ds/nsInterfaceHashtable.h`` ``xpcom/ds/nsRefPtrHashtable.h``
      - `1575479 <https://bugzilla.mozilla.org/show_bug.cgi?id=1575479>`__
      - Forward
      -
@@ -748,7 +752,7 @@ globals affect startup time! But sometimes we have to do ugly things.)
 
 Non-portable example:
 
-.. code-block:: c++
+.. code-block:: cpp
 
    FooBarClass static_object(87, 92);
 
@@ -766,7 +770,7 @@ probably long gone by now, but even with the feature working correctly,
 there are so many problems with correctly ordering C++ constructors that
 it's easier to just have an init function:
 
-.. code-block:: c++
+.. code-block:: cpp
 
    static FooBarClass* static_object;
 
@@ -840,7 +844,7 @@ Make header files compatible with C and C++
 
 Non-portable example:
 
-.. code-block:: c++
+.. code-block:: cpp
 
    /*oldCheader.h*/
    int existingCfunction(char*);
@@ -866,7 +870,7 @@ fine.)
 
 Portable example:
 
-.. code-block:: c++
+.. code-block:: cpp
 
    /* oldCheader.h*/
    PR_BEGIN_EXTERN_C
@@ -906,7 +910,7 @@ constructor as private and not supply a definition. While you're at it,
 do the same for the assignment operator used for assignment of objects
 of the same class. Example:
 
-.. code-block:: c++
+.. code-block:: cpp
 
    class Foo {
      ...
@@ -936,7 +940,7 @@ Type scalar constants to avoid unexpected ambiguities
 
 Non-portable code:
 
-.. code-block:: c++
+.. code-block:: cpp
 
    class FooClass {
      // having such similar signatures
@@ -959,7 +963,7 @@ method calls.
 
 Portable code:
 
-.. code-block:: c++
+.. code-block:: cpp
 
    class FooClass {
      // having such similar signatures
@@ -1017,7 +1021,7 @@ favorite platform that you never use.
 
 Bad code example:
 
-.. code-block:: c++
+.. code-block:: cpp
 
    #ifdef MOZ_ENABLE_JPEG_FOUR_BILLION
    #include <stdlib.h>   // <--- don't do this
@@ -1051,7 +1055,7 @@ Some compilers do not pack the bits when different bitfields are given
 different types. For example, the following struct might have a size of
 8 bytes, even though it would fit in 1:
 
-.. code-block:: c++
+.. code-block:: cpp
 
    struct {
      char ch: 1;

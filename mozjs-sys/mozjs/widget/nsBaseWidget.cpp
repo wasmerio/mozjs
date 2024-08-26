@@ -101,10 +101,6 @@ static void debug_RegisterPrefCallbacks();
 static int32_t gNumWidgets;
 #endif
 
-#ifdef XP_MACOSX
-#  include "nsCocoaFeatures.h"
-#endif
-
 using namespace mozilla::dom;
 using namespace mozilla::layers;
 using namespace mozilla::ipc;
@@ -551,6 +547,12 @@ nsIWidget* nsBaseWidget::GetSheetWindowParent(void) { return nullptr; }
 
 float nsBaseWidget::GetDPI() { return 96.0f; }
 
+void nsBaseWidget::NotifyAPZOfDPIChange() {
+  if (mAPZC) {
+    mAPZC->SetDPI(GetDPI());
+  }
+}
+
 CSSToLayoutDeviceScale nsIWidget::GetDefaultScale() {
   double devPixelsPerCSSPixel = StaticPrefs::layout_css_devPixelsPerPx();
 
@@ -644,51 +646,6 @@ void nsBaseWidget::RemoveChild(nsIWidget* aChild) {
   aChild->SetPrevSibling(nullptr);
 }
 
-//-------------------------------------------------------------------------
-//
-// Sets widget's position within its parent's child list.
-//
-//-------------------------------------------------------------------------
-void nsBaseWidget::SetZIndex(int32_t aZIndex) {
-  // Hold a ref to ourselves just in case, since we're going to remove
-  // from our parent.
-  nsCOMPtr<nsIWidget> kungFuDeathGrip(this);
-
-  mZIndex = aZIndex;
-
-  // reorder this child in its parent's list.
-  auto* parent = static_cast<nsBaseWidget*>(GetParent());
-  if (parent) {
-    parent->RemoveChild(this);
-    // Scope sib outside the for loop so we can check it afterward
-    nsIWidget* sib = parent->GetFirstChild();
-    for (; sib; sib = sib->GetNextSibling()) {
-      int32_t childZIndex = GetZIndex();
-      if (aZIndex < childZIndex) {
-        // Insert ourselves before sib
-        nsIWidget* prev = sib->GetPrevSibling();
-        mNextSibling = sib;
-        mPrevSibling = prev;
-        sib->SetPrevSibling(this);
-        if (prev) {
-          prev->SetNextSibling(this);
-        } else {
-          NS_ASSERTION(sib == parent->mFirstChild, "Broken child list");
-          // We've taken ownership of sib, so it's safe to have parent let
-          // go of it
-          parent->mFirstChild = this;
-        }
-        PlaceBehind(eZPlacementBelow, sib, false);
-        break;
-      }
-    }
-    // were we added to the list?
-    if (!sib) {
-      parent->AddChild(this);
-    }
-  }
-}
-
 void nsBaseWidget::GetWorkspaceID(nsAString& workspaceID) {
   workspaceID.Truncate();
 }
@@ -704,6 +661,14 @@ void nsBaseWidget::MoveToWorkspace(const nsAString& workspaceID) {
 //-------------------------------------------------------------------------
 
 void nsBaseWidget::SetCursor(const Cursor& aCursor) { mCursor = aCursor; }
+
+void nsBaseWidget::SetCustomCursorAllowed(bool aIsAllowed) {
+  if (aIsAllowed != mCustomCursorAllowed) {
+    mCustomCursorAllowed = aIsAllowed;
+    mUpdateCursor = true;
+    SetCursor(mCursor);
+  }
+}
 
 //-------------------------------------------------------------------------
 //
@@ -1056,19 +1021,15 @@ void nsBaseWidget::UpdateZoomConstraints(
     const uint32_t& aPresShellId, const ScrollableLayerGuid::ViewID& aViewId,
     const Maybe<ZoomConstraints>& aConstraints) {
   if (!mCompositorSession || !mAPZC) {
-    if (mInitialZoomConstraints) {
-      MOZ_ASSERT(mInitialZoomConstraints->mPresShellID == aPresShellId);
-      MOZ_ASSERT(mInitialZoomConstraints->mViewID == aViewId);
-      if (!aConstraints) {
-        mInitialZoomConstraints.reset();
-      }
-    }
-
+    MOZ_ASSERT_IF(mInitialZoomConstraints,
+                  mInitialZoomConstraints->mViewID == aViewId);
     if (aConstraints) {
-      // We have some constraints, but the compositor and APZC aren't created
-      // yet. Save these so we can use them later.
+      // We have some constraints, but the compositor and APZC aren't
+      // created yet. Save these so we can use them later.
       mInitialZoomConstraints = Some(
           InitialZoomConstraints(aPresShellId, aViewId, aConstraints.ref()));
+    } else {
+      mInitialZoomConstraints.reset();
     }
     return;
   }
@@ -1171,21 +1132,45 @@ class DispatchEventOnMainThread : public Runnable {
   APZEventResult mAPZResult;
 };
 
+template <>
+NS_IMETHODIMP DispatchEventOnMainThread<MouseInput, WidgetMouseEvent>::Run() {
+  MOZ_ASSERT(
+      !mInput.IsPointerEventType(),
+      "Please use DispatchEventOnMainThread<MouseInput, WidgetPointerEvent>");
+  WidgetMouseEvent event = mInput.ToWidgetEvent<WidgetMouseEvent>(mWidget);
+  mWidget->ProcessUntransformedAPZEvent(&event, mAPZResult);
+  return NS_OK;
+}
+
+template <>
+NS_IMETHODIMP DispatchEventOnMainThread<MouseInput, WidgetPointerEvent>::Run() {
+  MOZ_ASSERT(
+      mInput.IsPointerEventType(),
+      "Please use DispatchEventOnMainThread<MouseInput, WidgetMouseEvent>");
+  WidgetPointerEvent event = mInput.ToWidgetEvent<WidgetPointerEvent>(mWidget);
+  mWidget->ProcessUntransformedAPZEvent(&event, mAPZResult);
+  return NS_OK;
+}
+
 template <class InputType, class EventType>
 class DispatchInputOnControllerThread : public Runnable {
  public:
+  enum class APZOnly { Yes, No };
   DispatchInputOnControllerThread(const EventType& aEvent,
                                   IAPZCTreeManager* aAPZC,
-                                  nsBaseWidget* aWidget)
+                                  nsBaseWidget* aWidget,
+                                  APZOnly aAPZOnly = APZOnly::No)
       : mozilla::Runnable("DispatchInputOnControllerThread"),
         mMainMessageLoop(MessageLoop::current()),
         mInput(aEvent),
         mAPZC(aAPZC),
-        mWidget(aWidget) {}
+        mWidget(aWidget),
+        mAPZOnly(aAPZOnly) {}
 
   NS_IMETHOD Run() override {
     APZEventResult result = mAPZC->InputBridge()->ReceiveInputEvent(mInput);
-    if (result.GetStatus() == nsEventStatus_eConsumeNoDefault) {
+    if (mAPZOnly == APZOnly::Yes ||
+        result.GetStatus() == nsEventStatus_eConsumeNoDefault) {
       return NS_OK;
     }
     RefPtr<Runnable> r = new DispatchEventOnMainThread<InputType, EventType>(
@@ -1199,6 +1184,7 @@ class DispatchInputOnControllerThread : public Runnable {
   InputType mInput;
   RefPtr<IAPZCTreeManager> mAPZC;
   nsBaseWidget* mWidget;
+  const APZOnly mAPZOnly;
 };
 
 void nsBaseWidget::DispatchTouchInput(MultiTouchInput& aInput,
@@ -1266,6 +1252,7 @@ nsIWidget::ContentAndAPZEventStatus nsBaseWidget::DispatchInputEvent(
     WidgetInputEvent* aEvent) {
   nsIWidget::ContentAndAPZEventStatus status;
   MOZ_ASSERT(NS_IsMainThread());
+
   if (mAPZC) {
     if (APZThreadUtils::IsControllerThread()) {
       APZEventResult result = mAPZC->InputBridge()->ReceiveInputEvent(*aEvent);
@@ -1276,34 +1263,54 @@ nsIWidget::ContentAndAPZEventStatus nsBaseWidget::DispatchInputEvent(
       status.mContentStatus = ProcessUntransformedAPZEvent(aEvent, result);
       return status;
     }
-    if (WidgetWheelEvent* wheelEvent = aEvent->AsWheelEvent()) {
-      RefPtr<Runnable> r =
-          new DispatchInputOnControllerThread<ScrollWheelInput,
-                                              WidgetWheelEvent>(*wheelEvent,
-                                                                mAPZC, this);
-      APZThreadUtils::RunOnControllerThread(std::move(r));
-      status.mContentStatus = nsEventStatus_eConsumeDoDefault;
-      return status;
+    // Most drag events aren't able to converted to MouseEvent except to
+    // eDragStart and eDragEnd.
+    const bool canDispatchToApzc =
+        !aEvent->AsDragEvent() ||
+        aEvent->AsDragEvent()->CanConvertToInputData();
+    if (canDispatchToApzc) {
+      if (WidgetWheelEvent* wheelEvent = aEvent->AsWheelEvent()) {
+        RefPtr<Runnable> r =
+            new DispatchInputOnControllerThread<ScrollWheelInput,
+                                                WidgetWheelEvent>(*wheelEvent,
+                                                                  mAPZC, this);
+        APZThreadUtils::RunOnControllerThread(std::move(r));
+        status.mContentStatus = nsEventStatus_eConsumeDoDefault;
+        return status;
+      }
+      if (WidgetPointerEvent* pointerEvent = aEvent->AsPointerEvent()) {
+        MOZ_ASSERT(aEvent->mMessage == eContextMenu);
+        RefPtr<Runnable> r =
+            new DispatchInputOnControllerThread<MouseInput, WidgetPointerEvent>(
+                *pointerEvent, mAPZC, this);
+        APZThreadUtils::RunOnControllerThread(std::move(r));
+        status.mContentStatus = nsEventStatus_eConsumeDoDefault;
+        return status;
+      }
+      if (WidgetMouseEvent* mouseEvent = aEvent->AsMouseEvent()) {
+        RefPtr<Runnable> r =
+            new DispatchInputOnControllerThread<MouseInput, WidgetMouseEvent>(
+                *mouseEvent, mAPZC, this);
+        APZThreadUtils::RunOnControllerThread(std::move(r));
+        status.mContentStatus = nsEventStatus_eConsumeDoDefault;
+        return status;
+      }
+      if (WidgetTouchEvent* touchEvent = aEvent->AsTouchEvent()) {
+        RefPtr<Runnable> r =
+            new DispatchInputOnControllerThread<MultiTouchInput,
+                                                WidgetTouchEvent>(*touchEvent,
+                                                                  mAPZC, this);
+        APZThreadUtils::RunOnControllerThread(std::move(r));
+        status.mContentStatus = nsEventStatus_eConsumeDoDefault;
+        return status;
+      }
+      // Allow dispatching keyboard/drag events on Gecko thread
+      // without sending them to APZ
+
+      // FIXME: APZ can handle keyboard events now, we should
+      // be sending them to APZ here
+      MOZ_ASSERT(aEvent->AsKeyboardEvent() || aEvent->AsDragEvent());
     }
-    if (WidgetMouseEvent* mouseEvent = aEvent->AsMouseEvent()) {
-      RefPtr<Runnable> r =
-          new DispatchInputOnControllerThread<MouseInput, WidgetMouseEvent>(
-              *mouseEvent, mAPZC, this);
-      APZThreadUtils::RunOnControllerThread(std::move(r));
-      status.mContentStatus = nsEventStatus_eConsumeDoDefault;
-      return status;
-    }
-    if (WidgetTouchEvent* touchEvent = aEvent->AsTouchEvent()) {
-      RefPtr<Runnable> r =
-          new DispatchInputOnControllerThread<MultiTouchInput,
-                                              WidgetTouchEvent>(*touchEvent,
-                                                                mAPZC, this);
-      APZThreadUtils::RunOnControllerThread(std::move(r));
-      status.mContentStatus = nsEventStatus_eConsumeDoDefault;
-      return status;
-    }
-    // Allow dispatching keyboard events on Gecko thread.
-    MOZ_ASSERT(aEvent->AsKeyboardEvent());
   }
 
   DispatchEvent(aEvent, status.mContentStatus);
@@ -1313,8 +1320,22 @@ nsIWidget::ContentAndAPZEventStatus nsBaseWidget::DispatchInputEvent(
 void nsBaseWidget::DispatchEventToAPZOnly(mozilla::WidgetInputEvent* aEvent) {
   MOZ_ASSERT(NS_IsMainThread());
   if (mAPZC) {
-    MOZ_ASSERT(APZThreadUtils::IsControllerThread());
-    mAPZC->InputBridge()->ReceiveInputEvent(*aEvent);
+    if (APZThreadUtils::IsControllerThread()) {
+      mAPZC->InputBridge()->ReceiveInputEvent(*aEvent);
+      return;
+    }
+
+    if (WidgetMouseEvent* mouseEvent = aEvent->AsMouseEvent()) {
+      RefPtr<Runnable> r =
+          new DispatchInputOnControllerThread<MouseInput, WidgetMouseEvent>(
+              *mouseEvent, mAPZC, this,
+              DispatchInputOnControllerThread<MouseInput,
+                                              WidgetMouseEvent>::APZOnly::Yes);
+      APZThreadUtils::RunOnControllerThread(std::move(r));
+      return;
+    }
+
+    MOZ_ASSERT_UNREACHABLE("Not implemented yet");
   }
 }
 
@@ -2234,8 +2255,10 @@ nsresult nsBaseWidget::AsyncEnableDragDrop(bool aEnable) {
 }
 
 void nsBaseWidget::SwipeFinished() {
-  mSwipeTracker->Destroy();
-  mSwipeTracker = nullptr;
+  if (mSwipeTracker) {
+    mSwipeTracker->Destroy();
+    mSwipeTracker = nullptr;
+  }
 }
 
 void nsBaseWidget::ReportSwipeStarted(uint64_t aInputBlockId,
@@ -3287,10 +3310,10 @@ nsAutoString nsBaseWidget::debug_GuiEventToString(WidgetGUIEvent* aGuiEvent) {
     _ASSIGN_eventName(eMouseExitFromWidget, "eMouseExitFromWidget");
     _ASSIGN_eventName(eMouseDown, "eMouseDown");
     _ASSIGN_eventName(eMouseUp, "eMouseUp");
-    _ASSIGN_eventName(eMouseClick, "eMouseClick");
-    _ASSIGN_eventName(eMouseAuxClick, "eMouseAuxClick");
     _ASSIGN_eventName(eMouseDoubleClick, "eMouseDoubleClick");
     _ASSIGN_eventName(eMouseMove, "eMouseMove");
+    _ASSIGN_eventName(ePointerClick, "ePointerClick");
+    _ASSIGN_eventName(ePointerAuxClick, "ePointerAuxClick");
     _ASSIGN_eventName(eLoad, "eLoad");
     _ASSIGN_eventName(ePopState, "ePopState");
     _ASSIGN_eventName(eBeforeScriptExecute, "eBeforeScriptExecute");

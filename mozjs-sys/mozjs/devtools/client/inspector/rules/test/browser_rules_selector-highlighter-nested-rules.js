@@ -38,7 +38,6 @@ const TEST_URI = `
   </main>`;
 
 add_task(async function () {
-  await pushPref("layout.css.nesting.enabled", true);
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
   const { inspector, view } = await openRuleView();
 
@@ -89,8 +88,8 @@ add_task(async function () {
   );
   ok(highlighterData.isShown, "The selector highlighter was shown");
 
-  info(`Clicking on ".title" selector icon`);
-  highlighterData = await clickSelectorIcon(view, ".title");
+  info(`Clicking on "& .title" selector icon`);
+  highlighterData = await clickSelectorIcon(view, "& .title");
   is(
     highlighterData.nodeFront.nodeName.toLowerCase(),
     "h1",

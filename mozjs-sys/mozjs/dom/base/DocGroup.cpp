@@ -50,9 +50,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 /* static */
 already_AddRefed<DocGroup> DocGroup::Create(
     BrowsingContextGroup* aBrowsingContextGroup, const nsACString& aKey) {
-  RefPtr<DocGroup> docGroup = new DocGroup(aBrowsingContextGroup, aKey);
-  docGroup->mEventTarget = mozilla::GetMainThreadSerialEventTarget();
-  return docGroup.forget();
+  return do_AddRef(new DocGroup(aBrowsingContextGroup, aKey));
 }
 
 /* static */
@@ -124,37 +122,6 @@ DocGroup::DocGroup(BrowsingContextGroup* aBrowsingContextGroup,
 DocGroup::~DocGroup() {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   MOZ_RELEASE_ASSERT(mDocuments.IsEmpty());
-
-  if (mIframePostMessageQueue) {
-    FlushIframePostMessageQueue();
-  }
-}
-
-nsresult DocGroup::Dispatch(TaskCategory aCategory,
-                            already_AddRefed<nsIRunnable>&& aRunnable) {
-  MOZ_RELEASE_ASSERT(NS_IsMainThread());
-
-  return SchedulerGroup::Dispatch(aCategory, std::move(aRunnable));
-}
-
-nsISerialEventTarget* DocGroup::EventTargetFor(TaskCategory aCategory) const {
-  MOZ_RELEASE_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(!mDocuments.IsEmpty());
-
-  // Here we have the same event target for every TaskCategory. The
-  // reason for that is that currently TaskCategory isn't used, and
-  // it's unsure if it ever will be (See Bug 1624819).
-  return mEventTarget;
-}
-
-AbstractThread* DocGroup::AbstractMainThreadFor(TaskCategory aCategory) {
-  MOZ_RELEASE_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(!mDocuments.IsEmpty());
-
-  // Here we have the same thread for every TaskCategory. The reason
-  // for that is that currently TaskCategory isn't used, and it's
-  // unsure if it ever will be (See Bug 1624819).
-  return AbstractThread::MainThread();
 }
 
 void DocGroup::SignalSlotChange(HTMLSlotElement& aSlot) {
@@ -168,58 +135,6 @@ void DocGroup::SignalSlotChange(HTMLSlotElement& aSlot) {
   }
 
   sPendingDocGroups->AppendElement(this);
-}
-
-bool DocGroup::TryToLoadIframesInBackground() {
-  return !FissionAutostart() &&
-         StaticPrefs::dom_separate_event_queue_for_post_message_enabled() &&
-         StaticPrefs::dom_cross_origin_iframes_loaded_in_background();
-}
-
-nsresult DocGroup::QueueIframePostMessages(
-    already_AddRefed<nsIRunnable>&& aRunnable, uint64_t aWindowId) {
-  if (DocGroup::TryToLoadIframesInBackground()) {
-    if (!mIframePostMessageQueue) {
-      nsCOMPtr<nsISerialEventTarget> target = GetMainThreadSerialEventTarget();
-      mIframePostMessageQueue = ThrottledEventQueue::Create(
-          target, "Background Loading Iframe PostMessage Queue",
-          nsIRunnablePriority::PRIORITY_DEFERRED_TIMERS);
-      nsresult rv = mIframePostMessageQueue->SetIsPaused(true);
-      MOZ_ALWAYS_SUCCEEDS(rv);
-    }
-
-    // Ensure the queue is disabled. Unlike the postMessageEvent queue
-    // in BrowsingContextGroup, this postMessage queue should always
-    // be paused, because if we leave it open, the postMessage may get
-    // dispatched to an unloaded iframe
-    MOZ_ASSERT(mIframePostMessageQueue);
-    MOZ_ASSERT(mIframePostMessageQueue->IsPaused());
-
-    mIframesUsedPostMessageQueue.Insert(aWindowId);
-
-    mIframePostMessageQueue->Dispatch(std::move(aRunnable), NS_DISPATCH_NORMAL);
-    return NS_OK;
-  }
-  return NS_ERROR_FAILURE;
-}
-
-void DocGroup::TryFlushIframePostMessages(uint64_t aWindowId) {
-  if (DocGroup::TryToLoadIframesInBackground()) {
-    mIframesUsedPostMessageQueue.Remove(aWindowId);
-    if (mIframePostMessageQueue && mIframesUsedPostMessageQueue.IsEmpty()) {
-      MOZ_ASSERT(mIframePostMessageQueue->IsPaused());
-      nsresult rv = mIframePostMessageQueue->SetIsPaused(true);
-      MOZ_ALWAYS_SUCCEEDS(rv);
-      FlushIframePostMessageQueue();
-    }
-  }
-}
-
-void DocGroup::FlushIframePostMessageQueue() {
-  nsCOMPtr<nsIRunnable> event;
-  while ((event = mIframePostMessageQueue->GetEvent())) {
-    Dispatch(TaskCategory::Other, event.forget());
-  }
 }
 
 nsTArray<RefPtr<HTMLSlotElement>> DocGroup::MoveSignalSlotList() {

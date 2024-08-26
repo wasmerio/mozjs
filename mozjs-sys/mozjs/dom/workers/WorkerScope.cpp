@@ -36,7 +36,6 @@
 #include "mozilla/Result.h"
 #include "mozilla/StaticAnalysisFunctions.h"
 #include "mozilla/StorageAccess.h"
-#include "mozilla/TaskCategory.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/AutoEntryScript.h"
@@ -338,13 +337,12 @@ void WorkerGlobalScopeBase::Control(
 }
 
 nsresult WorkerGlobalScopeBase::Dispatch(
-    TaskCategory aCategory, already_AddRefed<nsIRunnable>&& aRunnable) {
-  return EventTargetFor(aCategory)->Dispatch(std::move(aRunnable),
-                                             NS_DISPATCH_NORMAL);
+    already_AddRefed<nsIRunnable>&& aRunnable) const {
+  return SerialEventTarget()->Dispatch(std::move(aRunnable),
+                                       NS_DISPATCH_NORMAL);
 }
 
-nsISerialEventTarget* WorkerGlobalScopeBase::EventTargetFor(
-    TaskCategory) const {
+nsISerialEventTarget* WorkerGlobalScopeBase::SerialEventTarget() const {
   AssertIsOnWorkerThread();
   return mSerialEventTarget;
 }
@@ -406,6 +404,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(WorkerGlobalScope,
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCrypto)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPerformance)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWebTaskScheduler)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mTrustedTypePolicyFactory)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mLocation)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mNavigator)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mFontFaceSet)
@@ -422,6 +421,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(WorkerGlobalScope,
     tmp->mWebTaskScheduler->Disconnect();
     NS_IMPL_CYCLE_COLLECTION_UNLINK(mWebTaskScheduler)
   }
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mTrustedTypePolicyFactory)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mLocation)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mNavigator)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mFontFaceSet)
@@ -468,6 +468,7 @@ already_AddRefed<CacheStorage> WorkerGlobalScope::GetCaches(ErrorResult& aRv) {
   if (!mCacheStorage) {
     mCacheStorage = CacheStorage::CreateOnWorker(cache::DEFAULT_NAMESPACE, this,
                                                  mWorkerPrivate, aRv);
+    mWorkerPrivate->NotifyStorageKeyUsed();
   }
 
   RefPtr<CacheStorage> ref = mCacheStorage;
@@ -721,7 +722,7 @@ void WorkerGlobalScope::GetJSTestingFunctions(
 }
 
 already_AddRefed<Promise> WorkerGlobalScope::Fetch(
-    const RequestOrUSVString& aInput, const RequestInit& aInit,
+    const RequestOrUTF8String& aInput, const RequestInit& aInit,
     CallerType aCallerType, ErrorResult& aRv) {
   return FetchRequest(this, aInput, aInit, aCallerType, aRv);
 }
@@ -735,25 +736,28 @@ already_AddRefed<IDBFactory> WorkerGlobalScope::GetIndexedDB(
   if (!indexedDB) {
     StorageAccess access = mWorkerPrivate->StorageAccess();
 
+    bool allowed = true;
     if (access == StorageAccess::eDeny) {
       NS_WARNING("IndexedDB is not allowed in this worker!");
-      aErrorResult = NS_ERROR_DOM_SECURITY_ERR;
-      return nullptr;
+      allowed = false;
     }
 
     if (ShouldPartitionStorage(access) &&
         !StoragePartitioningEnabled(access,
                                     mWorkerPrivate->CookieJarSettings())) {
       NS_WARNING("IndexedDB is not allowed in this worker!");
-      aErrorResult = NS_ERROR_DOM_SECURITY_ERR;
-      return nullptr;
+      allowed = false;
     }
 
-    const PrincipalInfo& principalInfo =
-        mWorkerPrivate->GetEffectiveStoragePrincipalInfo();
+    auto windowID = mWorkerPrivate->WindowID();
 
-    auto res = IDBFactory::CreateForWorker(this, principalInfo,
-                                           mWorkerPrivate->WindowID());
+    auto principalInfoPtr =
+        allowed ? MakeUnique<PrincipalInfo>(
+                      mWorkerPrivate->GetEffectiveStoragePrincipalInfo())
+                : nullptr;
+    auto res = IDBFactory::CreateForWorker(this, std::move(principalInfoPtr),
+                                           windowID);
+
     if (NS_WARN_IF(res.isErr())) {
       aErrorResult = res.unwrapErr();
       return nullptr;
@@ -762,6 +766,8 @@ already_AddRefed<IDBFactory> WorkerGlobalScope::GetIndexedDB(
     indexedDB = res.unwrap();
     mIndexedDB = indexedDB;
   }
+
+  mWorkerPrivate->NotifyStorageKeyUsed();
 
   return indexedDB.forget();
 }
@@ -826,15 +832,16 @@ WorkerGlobalScope::GetServiceWorkerRegistration(
     const ServiceWorkerRegistrationDescriptor& aDescriptor) const {
   AssertIsOnWorkerThread();
   RefPtr<ServiceWorkerRegistration> ref;
-  ForEachEventTargetObject([&](DOMEventTargetHelper* aTarget, bool* aDoneOut) {
-    RefPtr<ServiceWorkerRegistration> swr = do_QueryObject(aTarget);
-    if (!swr || !swr->MatchesDescriptor(aDescriptor)) {
-      return;
-    }
+  ForEachGlobalTeardownObserver(
+      [&](GlobalTeardownObserver* aObserver, bool* aDoneOut) {
+        RefPtr<ServiceWorkerRegistration> swr = do_QueryObject(aObserver);
+        if (!swr || !swr->MatchesDescriptor(aDescriptor)) {
+          return;
+        }
 
-    ref = std::move(swr);
-    *aDoneOut = true;
-  });
+        ref = std::move(swr);
+        *aDoneOut = true;
+      });
   return ref;
 }
 
@@ -867,6 +874,14 @@ void WorkerGlobalScope::StorageAccessPermissionGranted() {
 
   // Reset DOM Cache
   mCacheStorage = nullptr;
+}
+
+TrustedTypePolicyFactory* WorkerGlobalScope::TrustedTypes() {
+  if (!mTrustedTypePolicyFactory) {
+    mTrustedTypePolicyFactory = MakeRefPtr<TrustedTypePolicyFactory>(this);
+  }
+
+  return mTrustedTypePolicyFactory;
 }
 
 bool WorkerGlobalScope::WindowInteractionAllowed() const {
@@ -909,21 +924,11 @@ bool DedicatedWorkerGlobalScope::WrapGlobalObject(
   JS::RealmOptions options;
   mWorkerPrivate->CopyJSRealmOptions(options);
 
-  const bool usesSystemPrincipal = mWorkerPrivate->UsesSystemPrincipal();
-
-  // Note that xpc::ShouldDiscardSystemSource() reads a prefs that is cached
-  // on the main thread. This is benignly racey.
-  const bool discardSource =
-      usesSystemPrincipal && xpc::ShouldDiscardSystemSource();
-
-  JS::RealmBehaviors& behaviors = options.behaviors();
-  behaviors.setDiscardSource(discardSource);
-
   xpc::SetPrefableRealmOptions(options);
 
   return DedicatedWorkerGlobalScope_Binding::Wrap(
       aCx, this, this, options,
-      nsJSPrincipals::get(mWorkerPrivate->GetPrincipal()), true, aReflector);
+      nsJSPrincipals::get(mWorkerPrivate->GetPrincipal()), aReflector);
 }
 
 void DedicatedWorkerGlobalScope::PostMessage(
@@ -1084,7 +1089,7 @@ bool SharedWorkerGlobalScope::WrapGlobalObject(
 
   return SharedWorkerGlobalScope_Binding::Wrap(
       aCx, this, this, options,
-      nsJSPrincipals::get(mWorkerPrivate->GetPrincipal()), true, aReflector);
+      nsJSPrincipals::get(mWorkerPrivate->GetPrincipal()), aReflector);
 }
 
 void SharedWorkerGlobalScope::Close() {
@@ -1125,7 +1130,7 @@ bool ServiceWorkerGlobalScope::WrapGlobalObject(
 
   return ServiceWorkerGlobalScope_Binding::Wrap(
       aCx, this, this, options,
-      nsJSPrincipals::get(mWorkerPrivate->GetPrincipal()), true, aReflector);
+      nsJSPrincipals::get(mWorkerPrivate->GetPrincipal()), aReflector);
 }
 
 already_AddRefed<Clients> ServiceWorkerGlobalScope::GetClients() {
@@ -1250,7 +1255,7 @@ bool WorkerDebuggerGlobalScope::WrapGlobalObject(
 
   return WorkerDebuggerGlobalScope_Binding::Wrap(
       aCx, this, this, options,
-      nsJSPrincipals::get(mWorkerPrivate->GetPrincipal()), true, aReflector);
+      nsJSPrincipals::get(mWorkerPrivate->GetPrincipal()), aReflector);
 }
 
 void WorkerDebuggerGlobalScope::GetGlobal(JSContext* aCx,

@@ -8,14 +8,14 @@
 
 // Error handling: Status return type + helper macros.
 
-#include <stdarg.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-
+#include <cstdarg>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <type_traits>
 #include <utility>
 
+#include "lib/jxl/base/common.h"
 #include "lib/jxl/base/compiler_specific.h"
 #include "lib/jxl/base/sanitizer_definitions.h"
 
@@ -68,20 +68,37 @@ namespace jxl {
 #define JXL_DEBUG_V_LEVEL 0
 #endif  // JXL_DEBUG_V_LEVEL
 
-// Pass -DJXL_DEBUG_ON_ABORT=0 to disable the debug messages on JXL_ASSERT,
-// JXL_CHECK and JXL_ABORT.
+// Pass -DJXL_DEBUG_ON_ABORT={0,1} to force disable/enable the debug messages on
+// JXL_ASSERT, JXL_CHECK and JXL_ABORT.
 #ifndef JXL_DEBUG_ON_ABORT
-#define JXL_DEBUG_ON_ABORT 1
+#define JXL_DEBUG_ON_ABORT JXL_DEBUG_ON_ERROR
 #endif  // JXL_DEBUG_ON_ABORT
 
-// Print a debug message on standard error. You should use the JXL_DEBUG macro
-// instead of calling Debug directly. This function returns false, so it can be
-// used as a return value in JXL_FAILURE.
+#ifdef USE_ANDROID_LOGGER
+#include <android/log.h>
+#define LIBJXL_ANDROID_LOG_TAG ("libjxl")
+inline void android_vprintf(const char* format, va_list args) {
+  char* message = nullptr;
+  int res = vasprintf(&message, format, args);
+  if (res != -1) {
+    __android_log_write(ANDROID_LOG_DEBUG, LIBJXL_ANDROID_LOG_TAG, message);
+    free(message);
+  }
+}
+#endif
+
+// Print a debug message on standard error or android logs. You should use the
+// JXL_DEBUG macro instead of calling Debug directly. This function returns
+// false, so it can be used as a return value in JXL_FAILURE.
 JXL_FORMAT(1, 2)
 inline JXL_NOINLINE bool Debug(const char* format, ...) {
   va_list args;
   va_start(args, format);
+#ifdef USE_ANDROID_LOGGER
+  android_vprintf(format, args);
+#else
   vfprintf(stderr, format, args);
+#endif
   va_end(args);
   return false;
 }
@@ -110,23 +127,15 @@ inline JXL_NOINLINE bool Debug(const char* format, ...) {
 // JXL_DEBUG version that prints the debug message if the global verbose level
 // defined at compile time by JXL_DEBUG_V_LEVEL is greater or equal than the
 // passed level.
+#if JXL_DEBUG_V_LEVEL > 0
 #define JXL_DEBUG_V(level, format, ...) \
   JXL_DEBUG(level <= JXL_DEBUG_V_LEVEL, format, ##__VA_ARGS__)
+#else
+#define JXL_DEBUG_V(level, format, ...)
+#endif
 
-// Warnings (via JXL_WARNING) are enabled by default in debug builds (opt and
-// debug).
-#ifdef JXL_DEBUG_WARNING
-#undef JXL_DEBUG_WARNING
-#define JXL_DEBUG_WARNING 1
-#else  // JXL_DEBUG_WARNING
-#ifdef NDEBUG
-#define JXL_DEBUG_WARNING 0
-#else  // JXL_DEBUG_WARNING
-#define JXL_DEBUG_WARNING 1
-#endif  // NDEBUG
-#endif  // JXL_DEBUG_WARNING
 #define JXL_WARNING(format, ...) \
-  JXL_DEBUG(JXL_DEBUG_WARNING, format, ##__VA_ARGS__)
+  JXL_DEBUG(JXL_DEBUG_BUILD, format, ##__VA_ARGS__)
 
 // Exits the program after printing a stack trace when possible.
 JXL_NORETURN inline JXL_NOINLINE bool Abort() {
@@ -150,6 +159,26 @@ JXL_NORETURN inline JXL_NOINLINE bool Abort() {
   ((JXL_DEBUG_ON_ABORT) && ::jxl::Debug(("%s:%d: JXL_ABORT: " format "\n"), \
                                         __FILE__, __LINE__, ##__VA_ARGS__), \
    ::jxl::Abort())
+
+#if JXL_DEBUG_BUILD
+#define JXL_DEBUG_ABORT(format, ...) JXL_ABORT(format, ##__VA_ARGS__)
+#else
+#define JXL_DEBUG_ABORT(format, ...)
+#endif
+
+// Use this for code paths that are unreachable unless the code would change
+// to make it reachable, in which case it will print a warning and abort in
+// debug builds. In release builds no code is produced for this, so only use
+// this if this path is really unreachable.
+#if JXL_DEBUG_BUILD
+#define JXL_UNREACHABLE(format, ...)                                          \
+  (::jxl::Debug(("%s:%d: JXL_UNREACHABLE: " format "\n"), __FILE__, __LINE__, \
+                ##__VA_ARGS__),                                               \
+   ::jxl::Abort(), JXL_FAILURE(format, ##__VA_ARGS__))
+#else  // JXL_DEBUG_BUILD
+#define JXL_UNREACHABLE(format, ...) \
+  JXL_FAILURE("internal: " format, ##__VA_ARGS__)
+#endif
 
 // Does not guarantee running the code, use only for debug mode checks.
 #if JXL_ENABLE_ASSERT
@@ -302,6 +331,8 @@ class JXL_MUST_USE_RESULT Status {
   StatusCode code_;
 };
 
+static constexpr Status OkStatus() { return Status(StatusCode::kOk); }
+
 // Helper function to create a Status and print the debug message or abort when
 // needed.
 inline JXL_FORMAT(2, 3) Status
@@ -312,7 +343,11 @@ inline JXL_FORMAT(2, 3) Status
       (JXL_DEBUG_ON_ALL_ERROR && !status)) {
     va_list args;
     va_start(args, format);
+#ifdef USE_ANDROID_LOGGER
+    android_vprintf(format, args);
+#else
     vfprintf(stderr, format, args);
+#endif
     va_end(args);
   }
 #ifdef JXL_CRASH_ON_ERROR
@@ -389,7 +424,7 @@ class JXL_MUST_USE_RESULT StatusOr {
 
  private:
   union Storage {
-    char dummy_;
+    char placeholder_;
     T data_;
     Storage() {}
     ~Storage() {}
@@ -400,12 +435,24 @@ class JXL_MUST_USE_RESULT StatusOr {
 
 #define JXL_ASSIGN_OR_RETURN(lhs, statusor) \
   PRIVATE_JXL_ASSIGN_OR_RETURN_IMPL(        \
-      assign_or_return_temporary_variable##__LINE__, lhs, statusor)
+      JXL_JOIN(assign_or_return_temporary_variable, __LINE__), lhs, statusor)
 
 // NOLINTBEGIN(bugprone-macro-parentheses)
 #define PRIVATE_JXL_ASSIGN_OR_RETURN_IMPL(name, lhs, statusor) \
-  auto name = std::move(statusor);                             \
+  auto name = statusor;                                        \
   JXL_RETURN_IF_ERROR(name.status());                          \
+  lhs = std::move(name).value();
+// NOLINTEND(bugprone-macro-parentheses)
+
+// NB: do not use outside of tests / tools!!!
+#define JXL_ASSIGN_OR_DIE(lhs, statusor) \
+  PRIVATE_JXL_ASSIGN_OR_DIE_IMPL(        \
+      JXL_JOIN(assign_or_die_temporary_variable, __LINE__), lhs, statusor)
+
+// NOLINTBEGIN(bugprone-macro-parentheses)
+#define PRIVATE_JXL_ASSIGN_OR_DIE_IMPL(name, lhs, statusor) \
+  auto name = statusor;                                     \
+  if (!name.ok()) jxl::Abort();                             \
   lhs = std::move(name).value();
 // NOLINTEND(bugprone-macro-parentheses)
 

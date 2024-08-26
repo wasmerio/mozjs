@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "TimeoutManager.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
 #include "mozilla/Logging.h"
 #include "mozilla/ProfilerMarkers.h"
 #include "mozilla/ScopeExit.h"
@@ -1124,6 +1124,20 @@ void TimeoutManager::Resume() {
 
 void TimeoutManager::Freeze() {
   MOZ_LOG(gTimeoutLog, LogLevel::Debug, ("Freeze(TimeoutManager=%p)\n", this));
+
+  // When freezing, preemptively move timeouts from the idle timeout queue to
+  // the normal queue. This way they get scheduled automatically when we thaw.
+  // We don't need to cancel the idle executor here, since that is done in
+  // Suspend.
+  size_t num = 0;
+  while (RefPtr<Timeout> timeout = mIdleTimeouts.GetLast()) {
+    num++;
+    timeout->remove();
+    mTimeouts.InsertFront(timeout);
+  }
+
+  MOZ_LOG(gTimeoutLog, LogLevel::Debug,
+          ("%p: Moved %zu (frozen) timeouts from Idle to active", this, num));
 
   TimeStamp now = TimeStamp::Now();
   ForEachUnorderedTimeout([&](Timeout* aTimeout) {

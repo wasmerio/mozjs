@@ -5,6 +5,7 @@
 #ifndef nsTableWrapperFrame_h__
 #define nsTableWrapperFrame_h__
 
+#include "LayoutConstants.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Maybe.h"
 #include "nscore.h"
@@ -36,11 +37,10 @@ class nsTableWrapperFrame : public nsContainerFrame {
 
   // nsIFrame overrides - see there for a description
 
-  virtual void DestroyFrom(nsIFrame* aDestructRoot,
-                           PostDestroyData& aPostDestroyData) override;
+  void Destroy(DestroyContext&) override;
 
-  virtual const nsFrameList& GetChildList(ChildListID aListID) const override;
-  virtual void GetChildLists(nsTArray<ChildList>* aLists) const override;
+  const nsFrameList& GetChildList(ChildListID aListID) const override;
+  void GetChildLists(nsTArray<ChildList>* aLists) const override;
 
   void SetInitialChildList(ChildListID aListID,
                            nsFrameList&& aChildList) override;
@@ -48,18 +48,18 @@ class nsTableWrapperFrame : public nsContainerFrame {
   void InsertFrames(ChildListID aListID, nsIFrame* aPrevFrame,
                     const nsLineList::iterator* aPrevFrameLine,
                     nsFrameList&& aFrameList) override;
-  virtual void RemoveFrame(ChildListID aListID, nsIFrame* aOldFrame) override;
+  void RemoveFrame(DestroyContext&, ChildListID, nsIFrame*) override;
 
-  virtual nsContainerFrame* GetContentInsertionFrame() override {
+  nsContainerFrame* GetContentInsertionFrame() override {
     return PrincipalChildList().FirstChild()->GetContentInsertionFrame();
   }
 
 #ifdef ACCESSIBILITY
-  virtual mozilla::a11y::AccType AccessibleType() override;
+  mozilla::a11y::AccType AccessibleType() override;
 #endif
 
-  virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
-                                const nsDisplayListSet& aLists) override;
+  void BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                        const nsDisplayListSet& aLists) override;
 
   void BuildDisplayListForInnerTable(nsDisplayListBuilder* aBuilder,
                                      const nsDisplayListSet& aLists);
@@ -71,8 +71,8 @@ class nsTableWrapperFrame : public nsContainerFrame {
       mozilla::WritingMode aWM, BaselineSharingGroup aBaselineGroup,
       BaselineExportContext aExportContext) const override;
 
-  virtual nscoord GetMinISize(gfxContext* aRenderingContext) override;
-  virtual nscoord GetPrefISize(gfxContext* aRenderingContext) override;
+  nscoord GetMinISize(gfxContext* aRenderingContext) override;
+  nscoord GetPrefISize(gfxContext* aRenderingContext) override;
 
   SizeComputationResult ComputeSize(
       gfxContext* aRenderingContext, mozilla::WritingMode aWM,
@@ -93,15 +93,15 @@ class nsTableWrapperFrame : public nsContainerFrame {
   /** process a reflow command for the table.
    * This involves reflowing the caption and the inner table.
    * @see nsIFrame::Reflow */
-  virtual void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
-                      const ReflowInput& aReflowInput,
-                      nsReflowStatus& aStatus) override;
+  void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
+              const ReflowInput& aReflowInput,
+              nsReflowStatus& aStatus) override;
 
 #ifdef DEBUG_FRAME_DUMP
-  virtual nsresult GetFrameName(nsAString& aResult) const override;
+  nsresult GetFrameName(nsAString& aResult) const override;
 #endif
 
-  virtual ComputedStyle* GetParentComputedStyle(
+  ComputedStyle* GetParentComputedStyle(
       nsIFrame** aProviderFrame) const override;
 
   /**
@@ -185,27 +185,33 @@ class nsTableWrapperFrame : public nsContainerFrame {
 
   mozilla::StyleVerticalAlignKeyword GetCaptionVerticalAlign() const;
 
-  nscoord ComputeFinalBSize(const MaybeCaptionSide&,
-                            const mozilla::LogicalSize& aInnerSize,
+  nscoord ComputeFinalBSize(const mozilla::LogicalSize& aInnerSize,
                             const mozilla::LogicalSize& aCaptionSize,
                             const mozilla::LogicalMargin& aCaptionMargin,
                             const mozilla::WritingMode aWM) const;
 
-  nsresult GetCaptionOrigin(mozilla::StyleCaptionSide,
-                            const mozilla::LogicalSize& aContainBlockSize,
-                            const mozilla::LogicalSize& aInnerSize,
-                            const mozilla::LogicalSize& aCaptionSize,
-                            mozilla::LogicalMargin& aCaptionMargin,
-                            mozilla::LogicalPoint& aOrigin,
-                            mozilla::WritingMode aWM);
+  void GetCaptionOrigin(mozilla::StyleCaptionSide,
+                        const mozilla::LogicalSize& aInnerSize,
+                        const mozilla::LogicalSize& aCaptionSize,
+                        mozilla::LogicalMargin& aCaptionMargin,
+                        mozilla::LogicalPoint& aOrigin,
+                        mozilla::WritingMode aWM) const;
 
-  nsresult GetInnerOrigin(const MaybeCaptionSide&,
-                          const mozilla::LogicalSize& aContainBlockSize,
-                          const mozilla::LogicalSize& aCaptionSize,
-                          const mozilla::LogicalMargin& aCaptionMargin,
-                          const mozilla::LogicalSize& aInnerSize,
-                          mozilla::LogicalPoint& aOrigin,
-                          mozilla::WritingMode aWM);
+  void GetInnerOrigin(const MaybeCaptionSide&,
+                      const mozilla::LogicalSize& aCaptionSize,
+                      const mozilla::LogicalMargin& aCaptionMargin,
+                      const mozilla::LogicalSize& aInnerSize,
+                      mozilla::LogicalPoint& aOrigin,
+                      mozilla::WritingMode aWM) const;
+
+  // This is a helper for CreateReflowInputForInnerTable() and
+  // ComputeAutoSize(). It computes whether we need shrink-wrap behavior for
+  // children.
+  //
+  // Note: We don't need to call this in CreateReflowInputForCaption() because
+  // when we reflow the captions, we want them to stretch their inline-sizes to
+  // be at least as wide as the inner table frame.
+  mozilla::ComputeSizeFlags CreateComputeSizeFlagsForChild() const;
 
   // Create and init the child reflow input, using passed-in aChildRI, so that
   // caller can use it after we return.
@@ -229,11 +235,6 @@ class nsTableWrapperFrame : public nsContainerFrame {
 
   // Set the overflow areas in our reflow metrics
   void UpdateOverflowAreas(ReflowOutput& aMet);
-
-  virtual bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsContainerFrame::IsFrameOfType(aFlags &
-                                           (~eCanContainOverflowContainers));
-  }
 
   nsTableFrame* InnerTableFrame() const {
     return static_cast<nsTableFrame*>(mFrames.FirstChild());

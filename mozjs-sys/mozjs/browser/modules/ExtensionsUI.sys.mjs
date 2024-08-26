@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { EventEmitter } from "resource://gre/modules/EventEmitter.sys.mjs";
 
 const lazy = {};
@@ -16,12 +15,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ExtensionData: "resource://gre/modules/Extension.sys.mjs",
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
   OriginControls: "resource://gre/modules/ExtensionPermissions.sys.mjs",
+  QuarantinedDomains: "resource://gre/modules/ExtensionPermissions.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   lazy,
   "l10n",
-  () => new Localization(["browser/extensionsUI.ftl"], true)
+  () =>
+    new Localization(["browser/extensionsUI.ftl", "branding/brand.ftl"], true)
 );
 
 const DEFAULT_EXTENSION_ICON =
@@ -118,12 +119,12 @@ export var ExtensionsUI = {
 
   showAddonsManager(tabbrowser, strings, icon) {
     let global = tabbrowser.selectedBrowser.ownerGlobal;
-    return global
-      .BrowserOpenAddonsMgr("addons://list/extension")
-      .then(aomWin => {
+    return global.BrowserAddonUI.openAddonsMgr("addons://list/extension").then(
+      aomWin => {
         let aomBrowser = aomWin.docShell.chromeEventHandler;
         return this.showPermissionsPrompt(aomBrowser, strings, icon);
-      });
+      }
+    );
   },
 
   showSideloaded(tabbrowser, addon) {
@@ -133,7 +134,7 @@ export var ExtensionsUI = {
 
     let strings = this._buildStrings({
       addon,
-      permissions: addon.userPermissions,
+      permissions: addon.installPermissions,
       type: "sideload",
     });
 
@@ -184,7 +185,7 @@ export var ExtensionsUI = {
     );
   },
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     if (topic == "webextension-permission-prompt") {
       let { target, info } = subject.wrappedJSObject;
 
@@ -337,8 +338,6 @@ export var ExtensionsUI = {
 
   async showPermissionsPrompt(target, strings, icon) {
     let { browser, window } = getTabBrowser(target);
-
-    await window.ensureCustomElements("moz-support-link");
 
     // Wait for any pending prompts to complete before showing the next one.
     let pending;
@@ -588,21 +587,51 @@ export var ExtensionsUI = {
     });
   },
 
+  async showQuarantineConfirmation(browser, policy) {
+    let [title, line1, line2, allow, deny] = await lazy.l10n.formatMessages([
+      {
+        id: "webext-quarantine-confirmation-title",
+        args: { addonName: "<>" },
+      },
+      "webext-quarantine-confirmation-line-1",
+      "webext-quarantine-confirmation-line-2",
+      "webext-quarantine-confirmation-allow",
+      "webext-quarantine-confirmation-deny",
+    ]);
+
+    let attr = (msg, name) => msg.attributes.find(a => a.name === name)?.value;
+
+    let strings = {
+      addonName: policy.name,
+      header: title.value,
+      text: line1.value + "\n\n" + line2.value,
+      msgs: [],
+      acceptText: attr(allow, "label"),
+      acceptKey: attr(allow, "accesskey"),
+      cancelText: attr(deny, "label"),
+      cancelKey: attr(deny, "accesskey"),
+    };
+
+    let icon = policy.extension?.getPreferredIcon(32);
+
+    if (await ExtensionsUI.showPermissionsPrompt(browser, strings, icon)) {
+      lazy.QuarantinedDomains.setUserAllowedAddonIdPref(policy.id, true);
+    }
+  },
+
   // Populate extension toolbar popup menu with origin controls.
   originControlsMenu(popup, extensionId) {
     let policy = WebExtensionPolicy.getByID(extensionId);
 
     let win = popup.ownerGlobal;
+    let doc = popup.ownerDocument;
     let tab = win.gBrowser.selectedTab;
     let uri = tab.linkedBrowser?.currentURI;
     let state = lazy.OriginControls.getState(policy, tab);
 
-    let doc = popup.ownerDocument;
-    let whenClicked, alwaysOn, allDomains;
-    let separator = doc.createXULElement("menuseparator");
-
     let headerItem = doc.createXULElement("menuitem");
     headerItem.setAttribute("disabled", true);
+    let items = [headerItem];
 
     // MV2 normally don't have controls, but we show the quarantined state.
     if (!policy?.extension.originControls && !state.quarantined) {
@@ -610,24 +639,35 @@ export var ExtensionsUI = {
     }
 
     if (state.noAccess) {
-      if (state.quarantined) {
-        doc.l10n.setAttributes(headerItem, "origin-controls-quarantined");
-      } else {
-        doc.l10n.setAttributes(headerItem, "origin-controls-no-access");
-      }
+      doc.l10n.setAttributes(headerItem, "origin-controls-no-access");
     } else {
       doc.l10n.setAttributes(headerItem, "origin-controls-options");
     }
 
+    if (state.quarantined) {
+      doc.l10n.setAttributes(headerItem, "origin-controls-quarantined-status");
+
+      let allowQuarantined = doc.createXULElement("menuitem");
+      doc.l10n.setAttributes(
+        allowQuarantined,
+        "origin-controls-quarantined-allow"
+      );
+      allowQuarantined.addEventListener("command", () => {
+        this.showQuarantineConfirmation(tab.linkedBrowser, policy);
+      });
+      items.push(allowQuarantined);
+    }
+
     if (state.allDomains) {
-      allDomains = doc.createXULElement("menuitem");
+      let allDomains = doc.createXULElement("menuitem");
       allDomains.setAttribute("type", "radio");
       allDomains.setAttribute("checked", state.hasAccess);
       doc.l10n.setAttributes(allDomains, "origin-controls-option-all-domains");
+      items.push(allDomains);
     }
 
     if (state.whenClicked) {
-      whenClicked = doc.createXULElement("menuitem");
+      let whenClicked = doc.createXULElement("menuitem");
       whenClicked.setAttribute("type", "radio");
       whenClicked.setAttribute("checked", !state.hasAccess);
       doc.l10n.setAttributes(
@@ -638,10 +678,11 @@ export var ExtensionsUI = {
         await lazy.OriginControls.setWhenClicked(policy, uri);
         win.gUnifiedExtensions.updateAttention();
       });
+      items.push(whenClicked);
     }
 
     if (state.alwaysOn) {
-      alwaysOn = doc.createXULElement("menuitem");
+      let alwaysOn = doc.createXULElement("menuitem");
       alwaysOn.setAttribute("type", "radio");
       alwaysOn.setAttribute("checked", state.hasAccess);
       doc.l10n.setAttributes(alwaysOn, "origin-controls-option-always-on", {
@@ -651,11 +692,13 @@ export var ExtensionsUI = {
         await lazy.OriginControls.setAlwaysOn(policy, uri);
         win.gUnifiedExtensions.updateAttention();
       });
+      items.push(alwaysOn);
     }
 
-    // Insert all before Pin to toolbar OR Manage Extension, after any
-    // extension's menu items.
-    let items = [headerItem, whenClicked, alwaysOn, allDomains, separator];
+    items.push(doc.createXULElement("menuseparator"));
+
+    // Insert all items before Pin to toolbar OR Manage Extension, but after
+    // any extension's menu items.
     let manageItem =
       popup.querySelector(".customize-context-manageExtension") ||
       popup.querySelector(".unified-extensions-context-menu-pin-to-toolbar");

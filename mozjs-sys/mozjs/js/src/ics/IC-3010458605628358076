@@ -1,0 +1,1 @@
+SetElem, 3, 3, 3, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(1) LASTUSED(1) LASTUSED(1) , OP(GuardToObject) ID(0) OP(MegamorphicSetElement) ID(0) ID(1) ID(2) BOOL(0) OP(ReturnFromIC)  

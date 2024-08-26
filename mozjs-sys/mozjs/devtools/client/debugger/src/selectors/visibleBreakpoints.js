@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { createSelector } from "reselect";
+import { createSelector } from "devtools/client/shared/vendor/reselect";
 
 import { getBreakpointsList } from "./breakpoints";
 import { getSelectedSource } from "./sources";
 
-import { sortSelectedBreakpoints } from "../utils/breakpoint";
+import { sortSelectedBreakpoints } from "../utils/breakpoint/index";
 import { getSelectedLocation } from "../utils/selected-location";
 
 /*
@@ -22,9 +22,11 @@ export const getVisibleBreakpoints = createSelector(
     }
 
     return breakpoints.filter(
-      bp =>
+      breakpoint =>
         selectedSource &&
-        getSelectedLocation(bp, selectedSource)?.source.id === selectedSource.id
+        getSelectedLocation(breakpoint, selectedSource)?.source.id ===
+          selectedSource.id &&
+        !breakpoint.options.hidden
     );
   }
 );

@@ -158,6 +158,24 @@ HandlerService.prototype = {
       }
       let { handlers } = existingSchemeInfo;
       for (let newHandler of localeHandlers.schemes[scheme].handlers) {
+        if (!newHandler.uriTemplate) {
+          console.error(
+            `Ignoring protocol handler for ${scheme} without a uriTemplate!`
+          );
+          continue;
+        }
+        if (!newHandler.uriTemplate.startsWith("https://")) {
+          console.error(
+            `Ignoring protocol handler for ${scheme} with insecure template URL ${newHandler.uriTemplate}.`
+          );
+          continue;
+        }
+        if (!newHandler.uriTemplate.toLowerCase().includes("%s")) {
+          console.error(
+            `Ignoring protocol handler for ${scheme} with invalid template URL ${newHandler.uriTemplate}.`
+          );
+          continue;
+        }
         // If there is already a handler registered with the same template
         // URL, ignore the new one:
         let matchingTemplate = handler =>
@@ -306,7 +324,7 @@ HandlerService.prototype = {
   },
 
   // nsIObserver
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     if (topic != "handlersvc-json-replace") {
       return;
     }
@@ -471,6 +489,10 @@ HandlerService.prototype = {
     // the consumers to do it...
     if (handlerInfo.type == "application/pdf") {
       Services.obs.notifyObservers(null, TOPIC_PDFJS_HANDLER_CHANGED);
+    }
+
+    if (handlerInfo.type == "mailto") {
+      Services.obs.notifyObservers(null, "mailto::onClearCache");
     }
   },
 
@@ -708,7 +730,7 @@ HandlerService.prototype = {
     this._mockedProtocol = protocol;
     this._mockedHandler = {
       QueryInterface: ChromeUtils.generateQI([Ci.nsILocalHandlerApp]),
-      launchWithURI(uri, context) {
+      launchWithURI(uri) {
         Services.obs.notifyObservers(uri, "mocked-protocol-handler");
       },
       name: "Mocked handler",

@@ -21,6 +21,7 @@ use self::struct_layout::StructLayoutTracker;
 use super::BindgenOptions;
 
 use crate::callbacks::{DeriveInfo, FieldInfo, TypeKind as DeriveTypeKind};
+use crate::codegen::error::Error;
 use crate::ir::analysis::{HasVtable, Sizedness};
 use crate::ir::annotations::{
     Annotations, FieldAccessorKind, FieldVisibilityKind,
@@ -577,6 +578,9 @@ impl CodeGenerator for Module {
                 if result.saw_incomplete_array {
                     utils::prepend_incomplete_array_types(ctx, &mut *result);
                 }
+                if ctx.need_bindgen_float16_type() {
+                    utils::prepend_float16_type(&mut *result);
+                }
                 if ctx.need_bindgen_complex_type() {
                     utils::prepend_complex_type(&mut *result);
                 }
@@ -601,7 +605,10 @@ impl CodeGenerator for Module {
         let inner_items = result.inner(|result| {
             result.push(root_import(ctx, item));
 
-            let path = item.namespace_aware_canonical_path(ctx).join("::");
+            let path = item
+                .namespace_aware_canonical_path(ctx)
+                .join("::")
+                .into_boxed_str();
             if let Some(raw_lines) = ctx.options().module_lines.get(&path) {
                 for raw_line in raw_lines {
                     found_any = true;
@@ -714,18 +721,18 @@ impl CodeGenerator for Var {
                     let len = proc_macro2::Literal::usize_unsuffixed(
                         cstr_bytes.len(),
                     );
-                    let cstr = CStr::from_bytes_with_nul(&cstr_bytes).unwrap();
 
                     // TODO: Here we ignore the type we just made up, probably
                     // we should refactor how the variable type and ty ID work.
                     let array_ty = quote! { [u8; #len] };
                     let cstr_ty = quote! { ::#prefix::ffi::CStr };
 
-                    let bytes = proc_macro2::Literal::byte_string(
-                        cstr.to_bytes_with_nul(),
-                    );
+                    let bytes = proc_macro2::Literal::byte_string(&cstr_bytes);
 
-                    if rust_features.const_cstr && options.generate_cstr {
+                    if options.generate_cstr &&
+                        rust_features.const_cstr &&
+                        CStr::from_bytes_with_nul(&cstr_bytes).is_ok()
+                    {
                         result.push(quote! {
                             #(#attrs)*
                             #[allow(unsafe_code)]
@@ -1970,6 +1977,7 @@ impl CodeGenerator for CompInfo {
             ty,
             &canonical_name,
             visibility,
+            packed,
         );
 
         if !is_opaque {
@@ -2189,7 +2197,14 @@ impl CodeGenerator for CompInfo {
         if let Some(comment) = item.comment(ctx) {
             attributes.push(attributes::doc(comment));
         }
-        if packed && !is_opaque {
+
+        // if a type has both a "packed" attribute and an "align(N)" attribute, then check if the
+        // "packed" attr is redundant, and do not include it if so.
+        if packed &&
+            !is_opaque &&
+            !(explicit_align.is_some() &&
+                self.already_packed(ctx).unwrap_or(false))
+        {
             let n = layout.map_or(1, |l| l.align);
             assert!(ctx.options().rust_features().repr_packed_n || n == 1);
             let packed_repr = if n == 1 {
@@ -3920,6 +3935,16 @@ impl TryToRustTy for Type {
             }
             TypeKind::Opaque => self.try_to_opaque(ctx, item),
             TypeKind::Pointer(inner) | TypeKind::Reference(inner) => {
+                // Check that this type has the same size as the target's pointer type.
+                let size = self.get_layout(ctx, item).size;
+                if size != ctx.target_pointer_size() {
+                    return Err(Error::InvalidPointerSize {
+                        ty_name: self.name().unwrap_or("unknown").into(),
+                        ty_size: size,
+                        ptr_size: ctx.target_pointer_size(),
+                    });
+                }
+
                 let is_const = ctx.resolve_type(inner).is_const();
 
                 let inner =
@@ -4348,7 +4373,7 @@ fn unsupported_abi_diagnostic(
         .add_annotation(
             format!(
                 "The configured Rust version is {}.",
-                String::from(ctx.options().rust_target)
+                ctx.options().rust_target
             ),
             Level::Note,
         );
@@ -4912,7 +4937,7 @@ pub(crate) mod utils {
 
         let items = vec![use_objc, id_type];
         let old_items = mem::replace(result, items);
-        result.extend(old_items.into_iter());
+        result.extend(old_items);
     }
 
     pub(crate) fn prepend_block_header(
@@ -4931,7 +4956,7 @@ pub(crate) mod utils {
 
         let items = vec![use_block];
         let old_items = mem::replace(result, items);
-        result.extend(old_items.into_iter());
+        result.extend(old_items);
     }
 
     pub(crate) fn prepend_union_types(
@@ -4990,7 +5015,7 @@ pub(crate) mod utils {
             impl<T> ::#prefix::clone::Clone for __BindgenUnionField<T> {
                 #[inline]
                 fn clone(&self) -> Self {
-                    Self::new()
+                    *self
                 }
             }
         };
@@ -5043,7 +5068,7 @@ pub(crate) mod utils {
         ];
 
         let old_items = mem::replace(result, items);
-        result.extend(old_items.into_iter());
+        result.extend(old_items);
     }
 
     pub(crate) fn prepend_incomplete_array_types(
@@ -5119,7 +5144,21 @@ pub(crate) mod utils {
         ];
 
         let old_items = mem::replace(result, items);
-        result.extend(old_items.into_iter());
+        result.extend(old_items);
+    }
+
+    pub(crate) fn prepend_float16_type(
+        result: &mut Vec<proc_macro2::TokenStream>,
+    ) {
+        let float16_type = quote! {
+            #[derive(PartialEq, Copy, Clone, Hash, Debug, Default)]
+            #[repr(transparent)]
+            pub struct __BindgenFloat16(pub u16);
+        };
+
+        let items = vec![float16_type];
+        let old_items = mem::replace(result, items);
+        result.extend(old_items);
     }
 
     pub(crate) fn prepend_complex_type(
@@ -5136,7 +5175,7 @@ pub(crate) mod utils {
 
         let items = vec![complex_type];
         let old_items = mem::replace(result, items);
-        result.extend(old_items.into_iter());
+        result.extend(old_items);
     }
 
     pub(crate) fn build_path(

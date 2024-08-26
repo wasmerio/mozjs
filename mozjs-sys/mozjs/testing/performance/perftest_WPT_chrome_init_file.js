@@ -24,7 +24,7 @@ module.exports = {
   loadEventStart, loadEventEnd`,
   options: {
     test_parameters: {
-      location: "ec2-us-east-1",
+      location: "IAD_US_01",
       browser: "Chrome",
       connection: "Cable",
       timeout_limit: 21600,
@@ -76,7 +76,6 @@ module.exports = {
       "yahoo.co.jp",
       "twitter.com",
       "naver.com",
-      "canva.com",
       "ebay.com",
       "force.com",
       "amazon.in",

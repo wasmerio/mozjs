@@ -1,3 +1,7 @@
+// |reftest| skip-if(this.getBuildConfiguration("pbl"))
+// skip test if PBL enabled, because we do not get a full
+// decompilation with variable names in the TypeError.
+
 var BUGNUMBER = 1566143;
 var summary = "Implement the Optional Chain operator (?.) proposal";
 

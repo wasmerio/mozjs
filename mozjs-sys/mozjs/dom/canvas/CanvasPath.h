@@ -35,8 +35,8 @@ class CanvasPath final : public nsWrapperCache {
   static already_AddRefed<CanvasPath> Constructor(const GlobalObject& aGlobal);
   static already_AddRefed<CanvasPath> Constructor(const GlobalObject& aGlobal,
                                                   CanvasPath& aCanvasPath);
-  static already_AddRefed<CanvasPath> Constructor(const GlobalObject& aGlobal,
-                                                  const nsAString& aPathString);
+  static already_AddRefed<CanvasPath> Constructor(
+      const GlobalObject& aGlobal, const nsACString& aPathString);
 
   void ClosePath();
   void MoveTo(double x, double y);
@@ -88,6 +88,7 @@ class CanvasPath final : public nsWrapperCache {
 
   void EnsurePathBuilder() const;
   void EnsureCapped() const;
+  void EnsureActive() const;
 };
 
 }  // namespace dom

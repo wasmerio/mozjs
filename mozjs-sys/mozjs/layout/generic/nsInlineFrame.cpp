@@ -166,8 +166,7 @@ nsIFrame::FrameSearchResult nsInlineFrame::PeekOffsetCharacter(
   return CONTINUE;
 }
 
-void nsInlineFrame::DestroyFrom(nsIFrame* aDestructRoot,
-                                PostDestroyData& aPostDestroyData) {
+void nsInlineFrame::Destroy(DestroyContext& aContext) {
   nsFrameList* overflowFrames = GetOverflowFrames();
   if (overflowFrames) {
     // Fixup the parent pointers for any child frames on the OverflowList.
@@ -175,7 +174,7 @@ void nsInlineFrame::DestroyFrom(nsIFrame* aDestructRoot,
     // container (an ancestor).
     overflowFrames->ApplySetParent(this);
   }
-  nsContainerFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
+  nsContainerFrame::Destroy(aContext);
 }
 
 void nsInlineFrame::StealFrame(nsIFrame* aChild) {
@@ -271,7 +270,6 @@ void nsInlineFrame::Reflow(nsPresContext* aPresContext, ReflowOutput& aMetrics,
                            nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsInlineFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aMetrics, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   if (!aReflowInput.mLineLayout) {
@@ -799,7 +797,7 @@ LogicalSides nsInlineFrame::GetLogicalSkipSides() const {
         (prev && (prev->mRect.height || prev->mRect.width))) {
       // Prev continuation is not empty therefore we don't render our start
       // border edge.
-      skip |= eLogicalSideBitsIStart;
+      skip += LogicalSide::IStart;
     } else {
       // If the prev continuation is empty, then go ahead and let our start
       // edge border render.
@@ -811,7 +809,7 @@ LogicalSides nsInlineFrame::GetLogicalSkipSides() const {
         (next && (next->mRect.height || next->mRect.width))) {
       // Next continuation is not empty therefore we don't render our end
       // border edge.
-      skip |= eLogicalSideBitsIEnd;
+      skip += LogicalSide::IEnd;
     } else {
       // If the next continuation is empty, then go ahead and let our end
       // edge border render.
@@ -824,15 +822,15 @@ LogicalSides nsInlineFrame::GetLogicalSkipSides() const {
     // a split should skip the "start" side.  But figuring out which part of
     // the split we are involves getting our first continuation, which might be
     // expensive.  So don't bother if we already have the relevant bits set.
-    if (skip != LogicalSides(mWritingMode, eLogicalSideBitsIBoth)) {
+    if (skip != LogicalSides(mWritingMode, LogicalSides::IBoth)) {
       // We're missing one of the skip bits, so check whether we need to set it.
       // Only get the first continuation once, as an optimization.
       nsIFrame* firstContinuation = FirstContinuation();
       if (firstContinuation->FrameIsNonLastInIBSplit()) {
-        skip |= eLogicalSideBitsIEnd;
+        skip += LogicalSide::IEnd;
       }
       if (firstContinuation->FrameIsNonFirstInIBSplit()) {
-        skip |= eLogicalSideBitsIStart;
+        skip += LogicalSide::IStart;
       }
     }
   }

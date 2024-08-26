@@ -14,6 +14,7 @@
 #include "js/CompilationAndEvaluation.h"  // JS::Evaluate
 #include "js/GlobalObject.h"              // JS_NewGlobalObject
 #include "js/Initialization.h"
+#include "js/Prefs.h"
 #include "js/PropertyAndElement.h"  // JS_DefineFunction
 #include "js/RootingAPI.h"
 #include "js/SourceText.h"  // JS::Source{Ownership,Text}
@@ -119,7 +120,6 @@ JSObject* JSAPIRuntimeTest::createGlobal(JSPrincipals* principals) {
   JS::RealmOptions options;
   options.creationOptions()
       .setStreamsEnabled(true)
-      .setWeakRefsEnabled(JS::WeakRefSpecifier::EnabledWithCleanupSome)
       .setSharedMemoryAndAtomicsEnabled(true);
   newGlobal = JS_NewGlobalObject(cx, getGlobalClass(), principals,
                                  JS::FireOnNewGlobalHook, options);
@@ -231,6 +231,13 @@ int main(int argc, char* argv[]) {
         "light-weight entry point\n");
     return 0;
   }
+
+  // Override prefs for jsapi-tests.
+  JS::Prefs::setAtStartup_weakrefs(true);
+  JS::Prefs::setAtStartup_experimental_weakrefs_expose_cleanupSome(true);
+#ifdef NIGHTLY_BUILD
+  JS::Prefs::setAtStartup_experimental_symbols_as_weakmap_keys(true);
+#endif
 
   if (!options.frontendOnly) {
     if (!JS_Init()) {

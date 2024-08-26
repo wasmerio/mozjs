@@ -17,6 +17,7 @@
 #include "builtin/SelfHostingDefines.h"
 #include "gc/Barrier.h"
 #include "vm/NativeObject.h"
+#include "vm/TypedArrayObject.h"
 
 /*
  * [SMDOC] For-in enumeration
@@ -750,6 +751,8 @@ class IteratorObject : public NativeObject {
  public:
   static const JSClass class_;
   static const JSClass protoClass_;
+
+  static bool finishInit(JSContext* cx, HandleObject ctor, HandleObject proto);
 };
 
 /*
@@ -798,6 +801,13 @@ IteratorHelperObject* NewIteratorHelper(JSContext* cx);
 
 bool IterableToArray(JSContext* cx, HandleValue iterable,
                      MutableHandle<ArrayObject*> array);
+
+// Typed arrays and classes with an enumerate hook can have extra properties not
+// included in the shape's property map or the object's dense elements.
+static inline bool ClassCanHaveExtraEnumeratedProperties(const JSClass* clasp) {
+  return IsTypedArrayClass(clasp) || clasp->getNewEnumerate() ||
+         clasp->getEnumerate();
+}
 
 } /* namespace js */
 

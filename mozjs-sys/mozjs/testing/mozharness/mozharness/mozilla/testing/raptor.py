@@ -16,6 +16,7 @@ import sys
 import tempfile
 from shutil import copyfile, rmtree
 
+from mozsystemmonitor.resourcemonitor import SystemResourceMonitor
 from six import string_types
 
 import mozharness
@@ -48,11 +49,11 @@ RaptorErrorList = (
         {"regex": re.compile(r"""run-as: Package '.*' is unknown"""), "level": DEBUG},
         {"substr": r"""raptorDebug""", "level": DEBUG},
         {
-            "regex": re.compile(r"""^raptor[a-zA-Z-]*( - )?( )?(?i)error(:)?"""),
+            "regex": re.compile(r"""(?i)^raptor[a-z-]*( - )?( )?error(:)?"""),
             "level": ERROR,
         },
         {
-            "regex": re.compile(r"""^raptor[a-zA-Z-]*( - )?( )?(?i)critical(:)?"""),
+            "regex": re.compile(r"""(?i)^raptor[a-z-]*( - )?( )?critical(:)?"""),
             "level": CRITICAL,
         },
         {
@@ -189,13 +190,14 @@ class Raptor(
                         "firefox",
                         "chrome",
                         "chrome-m",
-                        "chromium",
                         "fennec",
                         "geckoview",
                         "refbrow",
                         "fenix",
                         "safari",
+                        "safari-tp",
                         "custom-car",
+                        "cstm-car-m",
                     ],
                     "dest": "app",
                     "help": "Name of the application we are testing (default: firefox).",
@@ -289,7 +291,7 @@ class Raptor(
                 ["--gecko-profile-interval"],
                 {
                     "dest": "gecko_profile_interval",
-                    "type": "int",
+                    "type": "float",
                     "help": "The interval between samples taken by the profiler (ms).",
                 },
             ],
@@ -355,6 +357,17 @@ class Raptor(
                         "The number of times a cold load test is repeated (for cold load tests "
                         "only, where the browser is shutdown and restarted between test "
                         "iterations)."
+                    ),
+                },
+            ],
+            [
+                ["--post-startup-delay"],
+                {
+                    "dest": "post_startup_delay",
+                    "type": "int",
+                    "help": (
+                        "How long to wait (ms) after browser start-up before "
+                        "starting the tests."
                     ),
                 },
             ],
@@ -606,6 +619,24 @@ class Raptor(
                     ),
                 },
             ],
+            [
+                ["--screenshot-on-failure"],
+                {
+                    "action": "store_true",
+                    "dest": "screenshot_on_failure",
+                    "default": False,
+                    "help": "Take a screenshot when the test fails.",
+                },
+            ],
+            [
+                ["--power-test"],
+                {
+                    "action": "store_true",
+                    "dest": "power_test",
+                    "default": False,
+                    "help": "Run power usage testing on mobile tests using a USB power meter.",
+                },
+            ],
         ]
         + testing_config_options
         + copy.deepcopy(code_coverage_config_options)
@@ -622,7 +653,9 @@ class Raptor(
                 "populate-webroot",
                 "create-virtualenv",
                 "install-chrome-android",
+                "install-chromium-android",
                 "install-chromium-distribution",
+                "install-safari-technology-preview",
                 "install",
                 "run-tests",
             ],
@@ -718,7 +751,10 @@ class Raptor(
         self.debug_mode = self.config.get("debug_mode", False)
         self.chromium_dist_path = None
         self.firefox_android_browsers = ["fennec", "geckoview", "refbrow", "fenix"]
-        self.android_browsers = self.firefox_android_browsers + ["chrome-m"]
+        self.android_browsers = self.firefox_android_browsers + [
+            "chrome-m",
+            "cstm-car-m",
+        ]
         self.browsertime_visualmetrics = self.config.get("browsertime_visualmetrics")
         self.browsertime_node = self.config.get("browsertime_node")
         self.browsertime_user_args = self.config.get("browsertime_user_args")
@@ -726,6 +762,8 @@ class Raptor(
         self.enable_marionette_trace = self.config.get("enable_marionette_trace")
         self.browser_cycles = self.config.get("browser_cycles")
         self.clean = self.config.get("clean")
+        self.page_timeout = self.config.get("page_timeout", None)
+        self.screenshot_on_failure = self.config.get("screenshot_on_failure")
 
         for (arg,), details in Raptor.browsertime_options:
             # Allow overriding defaults on the `./mach raptor-test ...` command-line.
@@ -786,9 +824,29 @@ class Raptor(
                 "from tooltool when running locally"
             )
             return
+
         self.info("Fetching and installing Google Chrome for Android")
         self.device.shell_output("cmd package install-existing com.android.chrome")
         self.info("Google Chrome for Android successfully installed")
+
+    def install_chromium_android(self):
+        """Install custom Chromium-as-Release for Android from toolchain fetch"""
+        if self.app != "cstm-car-m":
+            self.info("Chromium-as-Release for Android not required")
+            return
+        if self.config.get("run_local"):
+            self.info(
+                "Chromium-as-Release for Android will not be installed "
+                "when running locally"
+            )
+            return
+
+        self.info("Installing Custom Chromium-as-Release for Android")
+        cstm_car_m_apk = pathlib.Path(
+            os.environ["MOZ_FETCHES_DIR"], "chromium", "apks", "ChromePublic.apk"
+        )
+        self.device.install_app(str(cstm_car_m_apk))
+        self.info("Custom Chromium-as-Release for Android successfully installed")
 
     def download_chrome_android(self):
         # Fetch the APK
@@ -818,18 +876,32 @@ class Raptor(
         self.device.shell_output("settings put global verifier_verify_adb_installs 1")
         rmtree(tmpdir)
 
+    def install_safari_technology_preview(self):
+        """Ensure latest version of Safari TP binary is running in CI"""
+
+        if self.app != "safari-tp" or self.run_local:
+            return
+
+        import mozprocess
+
+        self.info("Checking for Safari Technology Preview updates...")
+        install_script = "/usr/local/bin/install_safari_softwareupdate_updates.py"
+        cmd = [sys.executable, install_script]
+        mozprocess.run_and_wait(cmd)
+
     def install_chromium_distribution(self):
         """Install Google Chromium distribution in production"""
         linux, mac, win = "linux", "mac", "win"
-        chrome, chromium, chromium_release = "chrome", "chromium", "custom-car"
+        chrome, chromium_release = (
+            "chrome",
+            "custom-car",
+        )
 
-        available_chromium_dists = [chrome, chromium, chromium_release]
+        available_chromium_dists = [
+            chrome,
+            chromium_release,
+        ]
         binary_location = {
-            chromium: {
-                linux: ["chrome-linux", "chrome"],
-                mac: ["chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"],
-                win: ["chrome-win", "Chrome.exe"],
-            },
             chromium_release: {
                 linux: ["chromium", "Default", "chrome"],
                 win: ["chromium", "Default", "chrome.exe"],
@@ -939,6 +1011,12 @@ class Raptor(
         elif self.app == "safari" and not self.run_local:
             binary_path = "/Applications/Safari.app/Contents/MacOS/Safari"
             kw_options["binary"] = binary_path
+        elif self.app == "safari-tp" and not self.run_local:
+            binary_path = "/Applications/Safari Technology Preview.app/Contents/MacOS/Safari Technology Preview"
+            kw_options["binary"] = binary_path
+        # Custom Chromium-as-Release for Android
+        elif self.app == "cstm-car-m":
+            kw_options["binary"] = "org.chromium.chrome"
         # Running on Chromium
         elif not self.run_local:
             # When running locally we already set the Chromium binary above, in init.
@@ -983,7 +1061,8 @@ class Raptor(
         if os.getenv("PERF_FLAGS"):
             for option in os.getenv("PERF_FLAGS").split():
                 if "=" in option:
-                    kw_option, value = option.split("=")
+                    eq_index = option.find("=")
+                    kw_option, value = option[:eq_index], option[eq_index + 1 :]
                     kw_options[kw_option] = value
                 else:
                     options.extend(["--" + option])
@@ -1033,6 +1112,19 @@ class Raptor(
                     for method in self.config.get("extra_summary_methods")
                 ]
             )
+        if self.config.get("page_timeout"):
+            options.extend([f"--page-timeout={self.page_timeout}"])
+        if self.config.get("post_startup_delay"):
+            options.extend(
+                [f"--post-startup-delay={self.config['post_startup_delay']}"]
+            )
+        if (
+            self.config.get("screenshot_on_failure", False)
+            or os.environ.get("MOZ_AUTOMATION", None) is not None
+        ):
+            options.extend(["--screenshot-on-failure"])
+        if self.config.get("power_test", False):
+            options.extend("--power-test")
 
         for (arg,), details in Raptor.browsertime_options:
             # Allow overriding defaults on the `./mach raptor-test ...` command-line
@@ -1084,6 +1176,7 @@ class Raptor(
         # Use in-tree wptserve for Python 3.10 compatibility
         extract_dirs = [
             "tools/wptserve/*",
+            "tools/wpt_third_party/h2/*",
             "tools/wpt_third_party/pywebsocket3/*",
         ]
         return super(Raptor, self).download_and_extract(
@@ -1146,7 +1239,6 @@ class Raptor(
             )
         self.register_virtualenv_module(
             requirements=[mozbase_requirements],
-            two_pass=True,
             editable=True,
         )
 
@@ -1167,11 +1259,11 @@ class Raptor(
         else:  # python version >= 3.8
             modules.extend(
                 [
-                    "numpy==1.22.0",
-                    "Pillow==9.0.0",
-                    "scipy==1.7.3",
+                    "numpy==1.23.5",
+                    "Pillow==9.2.0",
+                    "scipy==1.9.3",
                     "pyssim==0.4",
-                    "opencv-python==4.5.4.60",
+                    "opencv-python==4.6.0.66",
                 ]
             )
 
@@ -1421,4 +1513,6 @@ class RaptorOutputParser(OutputParser):
                 TBPL_RETRY, self.tbpl_status, levels=TBPL_WORST_LEVEL_TUPLE
             )
             return  # skip base parse_single_line
+        if line.startswith("raptor-browsertime Info: "):
+            SystemResourceMonitor.record_event(line[len("raptor-browsertime Info: ") :])
         super(RaptorOutputParser, self).parse_single_line(line)

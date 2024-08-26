@@ -14,11 +14,14 @@
 
 #include "api/audio/audio_frame.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
-#include "api/rtc_event_log/rtc_event_log.h"
+#include "api/environment/environment.h"
+#include "api/environment/environment_factory.h"
 #include "api/scoped_refptr.h"
+#include "api/test/mock_frame_transformer.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
 #include "call/rtp_transport_controller_send.h"
+#include "rtc_base/gunit.h"
 #include "test/gtest.h"
 #include "test/mock_transport.h"
 #include "test/scoped_key_value_config.h"
@@ -31,6 +34,7 @@ namespace {
 using ::testing::Invoke;
 using ::testing::NiceMock;
 using ::testing::Return;
+using ::testing::SaveArg;
 
 constexpr int kRtcpIntervalMs = 1000;
 constexpr int kSsrc = 333;
@@ -50,25 +54,24 @@ class ChannelSendTest : public ::testing::Test {
  protected:
   ChannelSendTest()
       : time_controller_(Timestamp::Seconds(1)),
+        env_(CreateEnvironment(&field_trials_,
+                               time_controller_.GetClock(),
+                               time_controller_.CreateTaskQueueFactory())),
         transport_controller_(
-            time_controller_.GetClock(),
-            RtpTransportConfig{
-                .bitrate_config = GetBitrateConfig(),
-                .event_log = &event_log_,
-                .task_queue_factory = time_controller_.GetTaskQueueFactory(),
-                .trials = &field_trials_,
-            }) {
+            RtpTransportConfig{.env = env_,
+                               .bitrate_config = GetBitrateConfig()}) {
     channel_ = voe::CreateChannelSend(
         time_controller_.GetClock(), time_controller_.GetTaskQueueFactory(),
-        &transport_, nullptr, &event_log_, nullptr, crypto_options_, false,
-        kRtcpIntervalMs, kSsrc, nullptr, nullptr, field_trials_);
+        &transport_, nullptr, &env_.event_log(), nullptr, crypto_options_,
+        false, kRtcpIntervalMs, kSsrc, nullptr, &transport_controller_,
+        env_.field_trials());
     encoder_factory_ = CreateBuiltinAudioEncoderFactory();
-    std::unique_ptr<AudioEncoder> encoder = encoder_factory_->MakeAudioEncoder(
-        kPayloadType, SdpAudioFormat("opus", kRtpRateHz, 2), {});
-    channel_->SetEncoder(kPayloadType, std::move(encoder));
+    SdpAudioFormat opus = SdpAudioFormat("opus", kRtpRateHz, 2);
+    std::unique_ptr<AudioEncoder> encoder =
+        encoder_factory_->MakeAudioEncoder(kPayloadType, opus, {});
+    channel_->SetEncoder(kPayloadType, opus, std::move(encoder));
     transport_controller_.EnsureStarted();
-    channel_->RegisterSenderCongestionControlObjects(&transport_controller_,
-                                                     nullptr);
+    channel_->RegisterSenderCongestionControlObjects(&transport_controller_);
     ON_CALL(transport_, SendRtcp).WillByDefault(Return(true));
     ON_CALL(transport_, SendRtp).WillByDefault(Return(true));
   }
@@ -91,7 +94,7 @@ class ChannelSendTest : public ::testing::Test {
 
   GlobalSimulatedTimeController time_controller_;
   webrtc::test::ScopedKeyValueConfig field_trials_;
-  RtcEventLogNull event_log_;
+  Environment env_;
   NiceMock<MockTransport> transport_;
   CryptoOptions crypto_options_;
   RtpTransportControllerSend transport_controller_;
@@ -121,11 +124,11 @@ TEST_F(ChannelSendTest, IncreaseRtpTimestampByPauseDuration) {
   channel_->StartSend();
   uint32_t timestamp;
   int sent_packets = 0;
-  auto send_rtp = [&](const uint8_t* data, size_t length,
+  auto send_rtp = [&](rtc::ArrayView<const uint8_t> data,
                       const PacketOptions& options) {
     ++sent_packets;
     RtpPacketReceived packet;
-    packet.Parse(data, length);
+    packet.Parse(data);
     timestamp = packet.Timestamp();
     return true;
   };
@@ -146,6 +149,46 @@ TEST_F(ChannelSendTest, IncreaseRtpTimestampByPauseDuration) {
   EXPECT_EQ(timestamp_gap_ms, 10020);
 }
 
+TEST_F(ChannelSendTest, FrameTransformerGetsCorrectTimestamp) {
+  rtc::scoped_refptr<MockFrameTransformer> mock_frame_transformer =
+      rtc::make_ref_counted<MockFrameTransformer>();
+  channel_->SetEncoderToPacketizerFrameTransformer(mock_frame_transformer);
+  rtc::scoped_refptr<TransformedFrameCallback> callback;
+  EXPECT_CALL(*mock_frame_transformer, RegisterTransformedFrameCallback)
+      .WillOnce(SaveArg<0>(&callback));
+  EXPECT_CALL(*mock_frame_transformer, UnregisterTransformedFrameCallback);
+
+  absl::optional<uint32_t> sent_timestamp;
+  auto send_rtp = [&](rtc::ArrayView<const uint8_t> data,
+                      const PacketOptions& options) {
+    RtpPacketReceived packet;
+    packet.Parse(data);
+    if (!sent_timestamp) {
+      sent_timestamp = packet.Timestamp();
+    }
+    return true;
+  };
+  EXPECT_CALL(transport_, SendRtp).WillRepeatedly(Invoke(send_rtp));
+
+  channel_->StartSend();
+  int64_t transformable_frame_timestamp = -1;
+  EXPECT_CALL(*mock_frame_transformer, Transform)
+      .WillOnce([&](std::unique_ptr<TransformableFrameInterface> frame) {
+        transformable_frame_timestamp = frame->GetTimestamp();
+        callback->OnTransformedFrame(std::move(frame));
+      });
+  // Insert two frames which should trigger a new packet.
+  ProcessNextFrame();
+  ProcessNextFrame();
+
+  // Ensure the RTP timestamp on the frame passed to the transformer
+  // includes the RTP offset and matches the actual RTP timestamp on the sent
+  // packet.
+  EXPECT_EQ_WAIT(transformable_frame_timestamp,
+                 0 + channel_->GetRtpRtcp()->StartTimestamp(), 1000);
+  EXPECT_TRUE_WAIT(sent_timestamp, 1000);
+  EXPECT_EQ(*sent_timestamp, transformable_frame_timestamp);
+}
 }  // namespace
 }  // namespace voe
 }  // namespace webrtc

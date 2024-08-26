@@ -221,7 +221,8 @@ class TcpTransport(object):
 
                 try:
                     chunk = sock.recv(recv_bytes)
-                except OSError:
+                except socket.timeout:
+                    # Lets handle it with our own timeout check
                     continue
 
                 if not chunk:
@@ -250,7 +251,7 @@ class TcpTransport(object):
                         else:
                             if body_length <= 0:
                                 err = "expected a positive integer"
-                            elif body_length > 2 ** 32 - 1:
+                            elif body_length > 2**32 - 1:
                                 err = "expected a 32 bit integer"
                         if err is not None:
                             raise ValueError(

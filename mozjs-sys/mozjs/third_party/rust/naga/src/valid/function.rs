@@ -1,8 +1,6 @@
 use crate::arena::Handle;
-#[cfg(feature = "validate")]
 use crate::arena::{Arena, UniqueArena};
 
-#[cfg(feature = "validate")]
 use super::validate_atomic_compare_exchange_struct;
 
 use super::{
@@ -10,10 +8,8 @@ use super::{
     ExpressionError, FunctionInfo, ModuleInfo,
 };
 use crate::span::WithSpan;
-#[cfg(feature = "validate")]
 use crate::span::{AddSpan as _, MapErrWithSpan as _};
 
-#[cfg(feature = "validate")]
 use bit_set::BitSet;
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -26,6 +22,8 @@ pub enum CallError {
     },
     #[error("Result expression {0:?} has already been introduced earlier")]
     ResultAlreadyInScope(Handle<crate::Expression>),
+    #[error("Result expression {0:?} is populated by multiple `Call` statements")]
+    ResultAlreadyPopulated(Handle<crate::Expression>),
     #[error("Result value is invalid")]
     ResultValue(#[source] ExpressionError),
     #[error("Requires {required} arguments, but {seen} are provided")]
@@ -45,10 +43,37 @@ pub enum CallError {
 pub enum AtomicError {
     #[error("Pointer {0:?} to atomic is invalid.")]
     InvalidPointer(Handle<crate::Expression>),
+    #[error("Address space {0:?} does not support 64bit atomics.")]
+    InvalidAddressSpace(crate::AddressSpace),
+    #[error("Operand {0:?} has invalid type.")]
+    InvalidOperand(Handle<crate::Expression>),
+    #[error("Result expression {0:?} is not an `AtomicResult` expression")]
+    InvalidResultExpression(Handle<crate::Expression>),
+    #[error("Result expression {0:?} is marked as an `exchange`")]
+    ResultExpressionExchange(Handle<crate::Expression>),
+    #[error("Result expression {0:?} is not marked as an `exchange`")]
+    ResultExpressionNotExchange(Handle<crate::Expression>),
+    #[error("Result type for {0:?} doesn't match the statement")]
+    ResultTypeMismatch(Handle<crate::Expression>),
+    #[error("Exchange operations must return a value")]
+    MissingReturnValue,
+    #[error("Capability {0:?} is required")]
+    MissingCapability(super::Capabilities),
+    #[error("Result expression {0:?} is populated by multiple `Atomic` statements")]
+    ResultAlreadyPopulated(Handle<crate::Expression>),
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum SubgroupError {
     #[error("Operand {0:?} has invalid type.")]
     InvalidOperand(Handle<crate::Expression>),
     #[error("Result type for {0:?} doesn't match the statement")]
     ResultTypeMismatch(Handle<crate::Expression>),
+    #[error("Support for subgroup operation {0:?} is required")]
+    UnsupportedOperation(super::SubgroupOperationSet),
+    #[error("Unknown operation")]
+    UnknownOperation,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -58,6 +83,8 @@ pub enum LocalVariableError {
     InvalidType(Handle<crate::Type>),
     #[error("Initializer doesn't match the variable type")]
     InitializerType,
+    #[error("Initializer is not a const or override expression")]
+    NonConstOrOverrideInitializer,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -108,13 +135,13 @@ pub enum FunctionError {
     MissingDefaultCase,
     #[error("Multiple `default` cases are present")]
     MultipleDefaultCases,
-    #[error("The last `switch` case contains a `falltrough`")]
+    #[error("The last `switch` case contains a `fallthrough`")]
     LastCaseFallTrough,
     #[error("The pointer {0:?} doesn't relate to a valid destination for a store")]
     InvalidStorePointer(Handle<crate::Expression>),
     #[error("The value {0:?} can not be stored")]
     InvalidStoreValue(Handle<crate::Expression>),
-    #[error("Store of {value:?} into {pointer:?} doesn't have matching types")]
+    #[error("The type of {value:?} doesn't match the type stored in {pointer:?}")]
     InvalidStoreTypes {
         pointer: Handle<crate::Expression>,
         value: Handle<crate::Expression>,
@@ -137,6 +164,8 @@ pub enum FunctionError {
     InvalidRayDescriptor(Handle<crate::Expression>),
     #[error("Ray Query {0:?} does not have a matching type")]
     InvalidRayQueryType(Handle<crate::Type>),
+    #[error("Shader requires capability {0:?}")]
+    MissingCapability(super::Capabilities),
     #[error(
         "Required uniformity of control flow for {0:?} in {1:?} is not fulfilled because of {2:?}"
     )]
@@ -149,10 +178,25 @@ pub enum FunctionError {
     PipelineInputRegularFunction { name: String },
     #[error("Functions that are not entry points cannot have `@location` or `@builtin` attributes on their return value types")]
     PipelineOutputRegularFunction,
+    #[error("Required uniformity for WorkGroupUniformLoad is not fulfilled because of {0:?}")]
+    // The actual load statement will be "pointed to" by the span
+    NonUniformWorkgroupUniformLoad(UniformityDisruptor),
+    // This is only possible with a misbehaving frontend
+    #[error("The expression {0:?} for a WorkGroupUniformLoad isn't a WorkgroupUniformLoadResult")]
+    WorkgroupUniformLoadExpressionMismatch(Handle<crate::Expression>),
+    #[error("The expression {0:?} is not valid as a WorkGroupUniformLoad argument. It should be a Pointer in Workgroup address space")]
+    WorkgroupUniformLoadInvalidPointer(Handle<crate::Expression>),
+    #[error("Subgroup operation is invalid")]
+    InvalidSubgroup(#[from] SubgroupError),
+    #[error("Emit statement should not cover \"result\" expressions like {0:?}")]
+    EmitResult(Handle<crate::Expression>),
+    #[error("Expression not visited by the appropriate statement")]
+    UnvisitedExpression(Handle<crate::Expression>),
 }
 
 bitflags::bitflags! {
     #[repr(transparent)]
+    #[derive(Clone, Copy)]
     struct ControlFlowAbility: u8 {
         /// The control can return out of this block.
         const RETURN = 0x1;
@@ -163,13 +207,11 @@ bitflags::bitflags! {
     }
 }
 
-#[cfg(feature = "validate")]
 struct BlockInfo {
     stages: super::ShaderStages,
     finished: bool,
 }
 
-#[cfg(feature = "validate")]
 struct BlockContext<'a> {
     abilities: ControlFlowAbility,
     info: &'a FunctionInfo,
@@ -183,7 +225,6 @@ struct BlockContext<'a> {
     return_type: Option<Handle<crate::Type>>,
 }
 
-#[cfg(feature = "validate")]
 impl<'a> BlockContext<'a> {
     fn new(
         fun: &'a crate::Function,
@@ -218,9 +259,7 @@ impl<'a> BlockContext<'a> {
         handle: Handle<crate::Expression>,
         valid_expressions: &BitSet,
     ) -> Result<&crate::TypeInner, WithSpan<ExpressionError>> {
-        if handle.index() >= self.expressions.len() {
-            Err(ExpressionError::DoesntExist.with_span())
-        } else if !valid_expressions.contains(handle.index()) {
+        if !valid_expressions.contains(handle.index()) {
             Err(ExpressionError::NotInScope.with_span_handle(handle, self.expressions))
         } else {
             Ok(self.info[handle].ty.inner_with(self.types))
@@ -236,23 +275,12 @@ impl<'a> BlockContext<'a> {
             .map_err_inner(|source| FunctionError::Expression { handle, source }.with_span())
     }
 
-    fn resolve_pointer_type(
-        &self,
-        handle: Handle<crate::Expression>,
-    ) -> Result<&crate::TypeInner, FunctionError> {
-        if handle.index() >= self.expressions.len() {
-            Err(FunctionError::Expression {
-                handle,
-                source: ExpressionError::DoesntExist,
-            })
-        } else {
-            Ok(self.info[handle].ty.inner_with(self.types))
-        }
+    fn resolve_pointer_type(&self, handle: Handle<crate::Expression>) -> &crate::TypeInner {
+        self.info[handle].ty.inner_with(self.types)
     }
 }
 
 impl super::Validator {
-    #[cfg(feature = "validate")]
     fn validate_call(
         &mut self,
         function: Handle<crate::Function>,
@@ -295,7 +323,13 @@ impl super::Validator {
             }
             match context.expressions[expr] {
                 crate::Expression::CallResult(callee)
-                    if fun.result.is_some() && callee == function => {}
+                    if fun.result.is_some() && callee == function =>
+                {
+                    if !self.needs_visit.remove(expr.index()) {
+                        return Err(CallError::ResultAlreadyPopulated(expr)
+                            .with_span_handle(expr, context.expressions));
+                    }
+                }
                 _ => {
                     return Err(CallError::ExpressionMismatch(result)
                         .with_span_handle(expr, context.expressions))
@@ -309,7 +343,6 @@ impl super::Validator {
         Ok(callee_info.available_stages)
     }
 
-    #[cfg(feature = "validate")]
     fn emit_expression(
         &mut self,
         handle: Handle<crate::Expression>,
@@ -324,78 +357,311 @@ impl super::Validator {
         }
     }
 
-    #[cfg(feature = "validate")]
     fn validate_atomic(
         &mut self,
         pointer: Handle<crate::Expression>,
         fun: &crate::AtomicFunction,
         value: Handle<crate::Expression>,
+        result: Option<Handle<crate::Expression>>,
+        span: crate::Span,
+        context: &BlockContext,
+    ) -> Result<(), WithSpan<FunctionError>> {
+        // The `pointer` operand must be a pointer to an atomic value.
+        let pointer_inner = context.resolve_type(pointer, &self.valid_expression_set)?;
+        let crate::TypeInner::Pointer {
+            base: pointer_base,
+            space: pointer_space,
+        } = *pointer_inner
+        else {
+            log::error!("Atomic operation on type {:?}", *pointer_inner);
+            return Err(AtomicError::InvalidPointer(pointer)
+                .with_span_handle(pointer, context.expressions)
+                .into_other());
+        };
+        let crate::TypeInner::Atomic(pointer_scalar) = context.types[pointer_base].inner else {
+            log::error!(
+                "Atomic pointer to type {:?}",
+                context.types[pointer_base].inner
+            );
+            return Err(AtomicError::InvalidPointer(pointer)
+                .with_span_handle(pointer, context.expressions)
+                .into_other());
+        };
+
+        // The `value` operand must be a scalar of the same type as the atomic.
+        let value_inner = context.resolve_type(value, &self.valid_expression_set)?;
+        let crate::TypeInner::Scalar(value_scalar) = *value_inner else {
+            log::error!("Atomic operand type {:?}", *value_inner);
+            return Err(AtomicError::InvalidOperand(value)
+                .with_span_handle(value, context.expressions)
+                .into_other());
+        };
+        if pointer_scalar != value_scalar {
+            log::error!("Atomic operand type {:?}", *value_inner);
+            return Err(AtomicError::InvalidOperand(value)
+                .with_span_handle(value, context.expressions)
+                .into_other());
+        }
+
+        // Check for the special restrictions on 64-bit atomic operations.
+        //
+        // We don't need to consider other widths here: this function has already checked
+        // that `pointer`'s type is an `Atomic`, and `validate_type` has already checked
+        // that that `Atomic` type has a permitted scalar width.
+        if pointer_scalar.width == 8 {
+            // `Capabilities::SHADER_INT64_ATOMIC_ALL_OPS` enables all sorts of 64-bit
+            // atomic operations.
+            if self
+                .capabilities
+                .contains(super::Capabilities::SHADER_INT64_ATOMIC_ALL_OPS)
+            {
+                // okay
+            } else {
+                // `Capabilities::SHADER_INT64_ATOMIC_MIN_MAX` allows `Min` and
+                // `Max` on operations in `Storage`, without a return value.
+                if matches!(
+                    *fun,
+                    crate::AtomicFunction::Min | crate::AtomicFunction::Max
+                ) && matches!(pointer_space, crate::AddressSpace::Storage { .. })
+                    && result.is_none()
+                {
+                    if !self
+                        .capabilities
+                        .contains(super::Capabilities::SHADER_INT64_ATOMIC_MIN_MAX)
+                    {
+                        log::error!("Int64 min-max atomic operations are not supported");
+                        return Err(AtomicError::MissingCapability(
+                            super::Capabilities::SHADER_INT64_ATOMIC_MIN_MAX,
+                        )
+                        .with_span_handle(value, context.expressions)
+                        .into_other());
+                    }
+                } else {
+                    // Otherwise, we require the full 64-bit atomic capability.
+                    log::error!("Int64 atomic operations are not supported");
+                    return Err(AtomicError::MissingCapability(
+                        super::Capabilities::SHADER_INT64_ATOMIC_ALL_OPS,
+                    )
+                    .with_span_handle(value, context.expressions)
+                    .into_other());
+                }
+            }
+        }
+
+        // The result expression must be appropriate to the operation.
+        match result {
+            Some(result) => {
+                // The `result` handle must refer to an `AtomicResult` expression.
+                let crate::Expression::AtomicResult {
+                    ty: result_ty,
+                    comparison,
+                } = context.expressions[result]
+                else {
+                    return Err(AtomicError::InvalidResultExpression(result)
+                        .with_span_handle(result, context.expressions)
+                        .into_other());
+                };
+
+                // Note that this expression has been visited by the proper kind
+                // of statement.
+                if !self.needs_visit.remove(result.index()) {
+                    return Err(AtomicError::ResultAlreadyPopulated(result)
+                        .with_span_handle(result, context.expressions)
+                        .into_other());
+                }
+
+                // The constraints on the result type depend on the atomic function.
+                if let crate::AtomicFunction::Exchange {
+                    compare: Some(compare),
+                } = *fun
+                {
+                    // The comparison value must be a scalar of the same type as the
+                    // atomic we're operating on.
+                    let compare_inner =
+                        context.resolve_type(compare, &self.valid_expression_set)?;
+                    if !compare_inner.equivalent(value_inner, context.types) {
+                        log::error!(
+                            "Atomic exchange comparison has a different type from the value"
+                        );
+                        return Err(AtomicError::InvalidOperand(compare)
+                            .with_span_handle(compare, context.expressions)
+                            .into_other());
+                    }
+
+                    // The result expression must be an `__atomic_compare_exchange_result`
+                    // struct whose `old_value` member is of the same type as the atomic
+                    // we're operating on.
+                    let crate::TypeInner::Struct { ref members, .. } =
+                        context.types[result_ty].inner
+                    else {
+                        return Err(AtomicError::ResultTypeMismatch(result)
+                            .with_span_handle(result, context.expressions)
+                            .into_other());
+                    };
+                    if !validate_atomic_compare_exchange_struct(
+                        context.types,
+                        members,
+                        |ty: &crate::TypeInner| *ty == crate::TypeInner::Scalar(pointer_scalar),
+                    ) {
+                        return Err(AtomicError::ResultTypeMismatch(result)
+                            .with_span_handle(result, context.expressions)
+                            .into_other());
+                    }
+
+                    // The result expression must be for a comparison operation.
+                    if !comparison {
+                        return Err(AtomicError::ResultExpressionNotExchange(result)
+                            .with_span_handle(result, context.expressions)
+                            .into_other());
+                    }
+                } else {
+                    // The result expression must be a scalar of the same type as the
+                    // atomic we're operating on.
+                    let result_inner = &context.types[result_ty].inner;
+                    if !result_inner.equivalent(value_inner, context.types) {
+                        return Err(AtomicError::ResultTypeMismatch(result)
+                            .with_span_handle(result, context.expressions)
+                            .into_other());
+                    }
+
+                    // The result expression must not be for a comparison.
+                    if comparison {
+                        return Err(AtomicError::ResultExpressionExchange(result)
+                            .with_span_handle(result, context.expressions)
+                            .into_other());
+                    }
+                }
+                self.emit_expression(result, context)?;
+            }
+
+            None => {
+                // Exchange operations must always produce a value.
+                if let crate::AtomicFunction::Exchange { compare: None } = *fun {
+                    log::error!("Atomic exchange's value is unused");
+                    return Err(AtomicError::MissingReturnValue
+                        .with_span_static(span, "atomic exchange operation")
+                        .into_other());
+                }
+            }
+        }
+
+        Ok(())
+    }
+    fn validate_subgroup_operation(
+        &mut self,
+        op: &crate::SubgroupOperation,
+        collective_op: &crate::CollectiveOperation,
+        argument: Handle<crate::Expression>,
         result: Handle<crate::Expression>,
         context: &BlockContext,
     ) -> Result<(), WithSpan<FunctionError>> {
-        let pointer_inner = context.resolve_type(pointer, &self.valid_expression_set)?;
-        let (ptr_kind, ptr_width) = match *pointer_inner {
-            crate::TypeInner::Pointer { base, .. } => match context.types[base].inner {
-                crate::TypeInner::Atomic { kind, width } => (kind, width),
-                ref other => {
-                    log::error!("Atomic pointer to type {:?}", other);
-                    return Err(AtomicError::InvalidPointer(pointer)
-                        .with_span_handle(pointer, context.expressions)
-                        .into_other());
-                }
-            },
-            ref other => {
-                log::error!("Atomic on type {:?}", other);
-                return Err(AtomicError::InvalidPointer(pointer)
-                    .with_span_handle(pointer, context.expressions)
+        let argument_inner = context.resolve_type(argument, &self.valid_expression_set)?;
+
+        let (is_scalar, scalar) = match *argument_inner {
+            crate::TypeInner::Scalar(scalar) => (true, scalar),
+            crate::TypeInner::Vector { scalar, .. } => (false, scalar),
+            _ => {
+                log::error!("Subgroup operand type {:?}", argument_inner);
+                return Err(SubgroupError::InvalidOperand(argument)
+                    .with_span_handle(argument, context.expressions)
                     .into_other());
             }
         };
 
-        let value_inner = context.resolve_type(value, &self.valid_expression_set)?;
-        match *value_inner {
-            crate::TypeInner::Scalar { width, kind } if kind == ptr_kind && width == ptr_width => {}
-            ref other => {
-                log::error!("Atomic operand type {:?}", other);
-                return Err(AtomicError::InvalidOperand(value)
-                    .with_span_handle(value, context.expressions)
+        use crate::ScalarKind as sk;
+        use crate::SubgroupOperation as sg;
+        match (scalar.kind, *op) {
+            (sk::Bool, sg::All | sg::Any) if is_scalar => {}
+            (sk::Sint | sk::Uint | sk::Float, sg::Add | sg::Mul | sg::Min | sg::Max) => {}
+            (sk::Sint | sk::Uint, sg::And | sg::Or | sg::Xor) => {}
+
+            (_, _) => {
+                log::error!("Subgroup operand type {:?}", argument_inner);
+                return Err(SubgroupError::InvalidOperand(argument)
+                    .with_span_handle(argument, context.expressions)
                     .into_other());
+            }
+        };
+
+        use crate::CollectiveOperation as co;
+        match (*collective_op, *op) {
+            (
+                co::Reduce,
+                sg::All
+                | sg::Any
+                | sg::Add
+                | sg::Mul
+                | sg::Min
+                | sg::Max
+                | sg::And
+                | sg::Or
+                | sg::Xor,
+            ) => {}
+            (co::InclusiveScan | co::ExclusiveScan, sg::Add | sg::Mul) => {}
+
+            (_, _) => {
+                return Err(SubgroupError::UnknownOperation.with_span().into_other());
+            }
+        };
+
+        self.emit_expression(result, context)?;
+        match context.expressions[result] {
+            crate::Expression::SubgroupOperationResult { ty }
+                if { &context.types[ty].inner == argument_inner } => {}
+            _ => {
+                return Err(SubgroupError::ResultTypeMismatch(result)
+                    .with_span_handle(result, context.expressions)
+                    .into_other())
             }
         }
-
-        if let crate::AtomicFunction::Exchange { compare: Some(cmp) } = *fun {
-            if context.resolve_type(cmp, &self.valid_expression_set)? != value_inner {
-                log::error!("Atomic exchange comparison has a different type from the value");
-                return Err(AtomicError::InvalidOperand(cmp)
-                    .with_span_handle(cmp, context.expressions)
-                    .into_other());
+        Ok(())
+    }
+    fn validate_subgroup_gather(
+        &mut self,
+        mode: &crate::GatherMode,
+        argument: Handle<crate::Expression>,
+        result: Handle<crate::Expression>,
+        context: &BlockContext,
+    ) -> Result<(), WithSpan<FunctionError>> {
+        match *mode {
+            crate::GatherMode::BroadcastFirst => {}
+            crate::GatherMode::Broadcast(index)
+            | crate::GatherMode::Shuffle(index)
+            | crate::GatherMode::ShuffleDown(index)
+            | crate::GatherMode::ShuffleUp(index)
+            | crate::GatherMode::ShuffleXor(index) => {
+                let index_ty = context.resolve_type(index, &self.valid_expression_set)?;
+                match *index_ty {
+                    crate::TypeInner::Scalar(crate::Scalar::U32) => {}
+                    _ => {
+                        log::error!(
+                            "Subgroup gather index type {:?}, expected unsigned int",
+                            index_ty
+                        );
+                        return Err(SubgroupError::InvalidOperand(argument)
+                            .with_span_handle(index, context.expressions)
+                            .into_other());
+                    }
+                }
             }
+        }
+        let argument_inner = context.resolve_type(argument, &self.valid_expression_set)?;
+        if !matches!(*argument_inner,
+            crate::TypeInner::Scalar ( scalar, .. ) | crate::TypeInner::Vector { scalar, .. }
+            if matches!(scalar.kind, crate::ScalarKind::Uint | crate::ScalarKind::Sint | crate::ScalarKind::Float)
+        ) {
+            log::error!("Subgroup gather operand type {:?}", argument_inner);
+            return Err(SubgroupError::InvalidOperand(argument)
+                .with_span_handle(argument, context.expressions)
+                .into_other());
         }
 
         self.emit_expression(result, context)?;
         match context.expressions[result] {
-            crate::Expression::AtomicResult { ty, comparison }
-                if {
-                    let scalar_predicate = |ty: &crate::TypeInner| {
-                        *ty == crate::TypeInner::Scalar {
-                            kind: ptr_kind,
-                            width: ptr_width,
-                        }
-                    };
-                    match &context.types[ty].inner {
-                        ty if !comparison => scalar_predicate(ty),
-                        &crate::TypeInner::Struct { ref members, .. } if comparison => {
-                            validate_atomic_compare_exchange_struct(
-                                context.types,
-                                members,
-                                scalar_predicate,
-                            )
-                        }
-                        _ => false,
-                    }
-                } => {}
+            crate::Expression::SubgroupOperationResult { ty }
+                if { &context.types[ty].inner == argument_inner } => {}
             _ => {
-                return Err(AtomicError::ResultTypeMismatch(result)
+                return Err(SubgroupError::ResultTypeMismatch(result)
                     .with_span_handle(result, context.expressions)
                     .into_other())
             }
@@ -403,13 +669,12 @@ impl super::Validator {
         Ok(())
     }
 
-    #[cfg(feature = "validate")]
     fn validate_block_impl(
         &mut self,
         statements: &crate::Block,
         context: &BlockContext,
     ) -> Result<BlockInfo, WithSpan<FunctionError>> {
-        use crate::{Statement as S, TypeInner as Ti};
+        use crate::{AddressSpace, Statement as S, TypeInner as Ti};
         let mut finished = false;
         let mut stages = super::ShaderStages::all();
         for (statement, &span) in statements.span_iter() {
@@ -420,7 +685,45 @@ impl super::Validator {
             match *statement {
                 S::Emit(ref range) => {
                     for handle in range.clone() {
-                        self.emit_expression(handle, context)?;
+                        use crate::Expression as Ex;
+                        match context.expressions[handle] {
+                            Ex::Literal(_)
+                            | Ex::Constant(_)
+                            | Ex::Override(_)
+                            | Ex::ZeroValue(_)
+                            | Ex::Compose { .. }
+                            | Ex::Access { .. }
+                            | Ex::AccessIndex { .. }
+                            | Ex::Splat { .. }
+                            | Ex::Swizzle { .. }
+                            | Ex::FunctionArgument(_)
+                            | Ex::GlobalVariable(_)
+                            | Ex::LocalVariable(_)
+                            | Ex::Load { .. }
+                            | Ex::ImageSample { .. }
+                            | Ex::ImageLoad { .. }
+                            | Ex::ImageQuery { .. }
+                            | Ex::Unary { .. }
+                            | Ex::Binary { .. }
+                            | Ex::Select { .. }
+                            | Ex::Derivative { .. }
+                            | Ex::Relational { .. }
+                            | Ex::Math { .. }
+                            | Ex::As { .. }
+                            | Ex::ArrayLength(_)
+                            | Ex::RayQueryGetIntersection { .. } => {
+                                self.emit_expression(handle, context)?
+                            }
+                            Ex::CallResult(_)
+                            | Ex::AtomicResult { .. }
+                            | Ex::WorkGroupUniformLoadResult { .. }
+                            | Ex::RayQueryProceedResult
+                            | Ex::SubgroupBallotResult
+                            | Ex::SubgroupOperationResult { .. } => {
+                                return Err(FunctionError::EmitResult(handle)
+                                    .with_span_handle(handle, context.expressions));
+                            }
+                        }
                     }
                 }
                 S::Block(ref block) => {
@@ -434,10 +737,10 @@ impl super::Validator {
                     ref reject,
                 } => {
                     match *context.resolve_type(condition, &self.valid_expression_set)? {
-                        Ti::Scalar {
+                        Ti::Scalar(crate::Scalar {
                             kind: crate::ScalarKind::Bool,
                             width: _,
-                        } => {}
+                        }) => {}
                         _ => {
                             return Err(FunctionError::InvalidIfType(condition)
                                 .with_span_handle(condition, context.expressions))
@@ -549,10 +852,10 @@ impl super::Validator {
 
                     if let Some(condition) = break_if {
                         match *context.resolve_type(condition, &self.valid_expression_set)? {
-                            Ti::Scalar {
+                            Ti::Scalar(crate::Scalar {
                                 kind: crate::ScalarKind::Bool,
                                 width: _,
-                            } => {}
+                            }) => {}
                             _ => {
                                 return Err(FunctionError::InvalidIfType(condition)
                                     .with_span_handle(condition, context.expressions))
@@ -617,15 +920,34 @@ impl super::Validator {
                     stages &= super::ShaderStages::FRAGMENT;
                     finished = true;
                 }
-                S::Barrier(_) => {
+                S::Barrier(barrier) => {
                     stages &= super::ShaderStages::COMPUTE;
+                    if barrier.contains(crate::Barrier::SUB_GROUP) {
+                        if !self.capabilities.contains(
+                            super::Capabilities::SUBGROUP | super::Capabilities::SUBGROUP_BARRIER,
+                        ) {
+                            return Err(FunctionError::MissingCapability(
+                                super::Capabilities::SUBGROUP
+                                    | super::Capabilities::SUBGROUP_BARRIER,
+                            )
+                            .with_span_static(span, "missing capability for this operation"));
+                        }
+                        if !self
+                            .subgroup_operations
+                            .contains(super::SubgroupOperationSet::BASIC)
+                        {
+                            return Err(FunctionError::InvalidSubgroup(
+                                SubgroupError::UnsupportedOperation(
+                                    super::SubgroupOperationSet::BASIC,
+                                ),
+                            )
+                            .with_span_static(span, "support for this operation is not present"));
+                        }
+                    }
                 }
                 S::Store { pointer, value } => {
                     let mut current = pointer;
                     loop {
-                        let _ = context
-                            .resolve_pointer_type(current)
-                            .map_err(|e| e.with_span())?;
                         match context.expressions[current] {
                             crate::Expression::Access { base, .. }
                             | crate::Expression::AccessIndex { base, .. } => current = base,
@@ -648,27 +970,23 @@ impl super::Validator {
                         _ => {}
                     }
 
-                    let pointer_ty = context
-                        .resolve_pointer_type(pointer)
-                        .map_err(|e| e.with_span())?;
+                    let pointer_ty = context.resolve_pointer_type(pointer);
 
                     let good = match *pointer_ty {
                         Ti::Pointer { base, space: _ } => match context.types[base].inner {
-                            Ti::Atomic { kind, width } => *value_ty == Ti::Scalar { kind, width },
+                            Ti::Atomic(scalar) => *value_ty == Ti::Scalar(scalar),
                             ref other => value_ty == other,
                         },
                         Ti::ValuePointer {
                             size: Some(size),
-                            kind,
-                            width,
+                            scalar,
                             space: _,
-                        } => *value_ty == Ti::Vector { size, kind, width },
+                        } => *value_ty == Ti::Vector { size, scalar },
                         Ti::ValuePointer {
                             size: None,
-                            kind,
-                            width,
+                            scalar,
                             space: _,
-                        } => *value_ty == Ti::Scalar { kind, width },
+                        } => *value_ty == Ti::Scalar(scalar),
                         _ => false,
                     };
                     if !good {
@@ -757,10 +1075,10 @@ impl super::Validator {
                             }
                             if let Some(expr) = array_index {
                                 match *context.resolve_type(expr, &self.valid_expression_set)? {
-                                    Ti::Scalar {
+                                    Ti::Scalar(crate::Scalar {
                                         kind: crate::ScalarKind::Sint | crate::ScalarKind::Uint,
                                         width: _,
-                                    } => {}
+                                    }) => {}
                                     _ => {
                                         return Err(FunctionError::InvalidImageStore(
                                             ExpressionError::InvalidImageArrayIndexType(expr),
@@ -772,9 +1090,11 @@ impl super::Validator {
                             match class {
                                 crate::ImageClass::Storage { format, .. } => {
                                     crate::TypeInner::Vector {
-                                        kind: format.into(),
                                         size: crate::VectorSize::Quad,
-                                        width: 4,
+                                        scalar: crate::Scalar {
+                                            kind: format.into(),
+                                            width: 4,
+                                        },
                                     }
                                 }
                                 _ => {
@@ -819,7 +1139,44 @@ impl super::Validator {
                     value,
                     result,
                 } => {
-                    self.validate_atomic(pointer, fun, value, result, context)?;
+                    self.validate_atomic(pointer, fun, value, result, span, context)?;
+                }
+                S::WorkGroupUniformLoad { pointer, result } => {
+                    stages &= super::ShaderStages::COMPUTE;
+                    let pointer_inner =
+                        context.resolve_type(pointer, &self.valid_expression_set)?;
+                    match *pointer_inner {
+                        Ti::Pointer {
+                            space: AddressSpace::WorkGroup,
+                            ..
+                        } => {}
+                        Ti::ValuePointer {
+                            space: AddressSpace::WorkGroup,
+                            ..
+                        } => {}
+                        _ => {
+                            return Err(FunctionError::WorkgroupUniformLoadInvalidPointer(pointer)
+                                .with_span_static(span, "WorkGroupUniformLoad"))
+                        }
+                    }
+                    self.emit_expression(result, context)?;
+                    let ty = match &context.expressions[result] {
+                        &crate::Expression::WorkGroupUniformLoadResult { ty } => ty,
+                        _ => {
+                            return Err(FunctionError::WorkgroupUniformLoadExpressionMismatch(
+                                result,
+                            )
+                            .with_span_static(span, "WorkGroupUniformLoad"));
+                        }
+                    };
+                    let expected_pointer_inner = Ti::Pointer {
+                        base: ty,
+                        space: AddressSpace::WorkGroup,
+                    };
+                    if !expected_pointer_inner.equivalent(pointer_inner, context.types) {
+                        return Err(FunctionError::WorkgroupUniformLoadInvalidPointer(pointer)
+                            .with_span_static(span, "WorkGroupUniformLoad"));
+                    }
                 }
                 S::RayQuery { query, ref fun } => {
                     let query_var = match *context.get_expression(query) {
@@ -871,12 +1228,91 @@ impl super::Validator {
                         crate::RayQueryFunction::Terminate => {}
                     }
                 }
+                S::SubgroupBallot { result, predicate } => {
+                    stages &= self.subgroup_stages;
+                    if !self.capabilities.contains(super::Capabilities::SUBGROUP) {
+                        return Err(FunctionError::MissingCapability(
+                            super::Capabilities::SUBGROUP,
+                        )
+                        .with_span_static(span, "missing capability for this operation"));
+                    }
+                    if !self
+                        .subgroup_operations
+                        .contains(super::SubgroupOperationSet::BALLOT)
+                    {
+                        return Err(FunctionError::InvalidSubgroup(
+                            SubgroupError::UnsupportedOperation(
+                                super::SubgroupOperationSet::BALLOT,
+                            ),
+                        )
+                        .with_span_static(span, "support for this operation is not present"));
+                    }
+                    if let Some(predicate) = predicate {
+                        let predicate_inner =
+                            context.resolve_type(predicate, &self.valid_expression_set)?;
+                        if !matches!(
+                            *predicate_inner,
+                            crate::TypeInner::Scalar(crate::Scalar::BOOL,)
+                        ) {
+                            log::error!(
+                                "Subgroup ballot predicate type {:?} expected bool",
+                                predicate_inner
+                            );
+                            return Err(SubgroupError::InvalidOperand(predicate)
+                                .with_span_handle(predicate, context.expressions)
+                                .into_other());
+                        }
+                    }
+                    self.emit_expression(result, context)?;
+                }
+                S::SubgroupCollectiveOperation {
+                    ref op,
+                    ref collective_op,
+                    argument,
+                    result,
+                } => {
+                    stages &= self.subgroup_stages;
+                    if !self.capabilities.contains(super::Capabilities::SUBGROUP) {
+                        return Err(FunctionError::MissingCapability(
+                            super::Capabilities::SUBGROUP,
+                        )
+                        .with_span_static(span, "missing capability for this operation"));
+                    }
+                    let operation = op.required_operations();
+                    if !self.subgroup_operations.contains(operation) {
+                        return Err(FunctionError::InvalidSubgroup(
+                            SubgroupError::UnsupportedOperation(operation),
+                        )
+                        .with_span_static(span, "support for this operation is not present"));
+                    }
+                    self.validate_subgroup_operation(op, collective_op, argument, result, context)?;
+                }
+                S::SubgroupGather {
+                    ref mode,
+                    argument,
+                    result,
+                } => {
+                    stages &= self.subgroup_stages;
+                    if !self.capabilities.contains(super::Capabilities::SUBGROUP) {
+                        return Err(FunctionError::MissingCapability(
+                            super::Capabilities::SUBGROUP,
+                        )
+                        .with_span_static(span, "missing capability for this operation"));
+                    }
+                    let operation = mode.required_operations();
+                    if !self.subgroup_operations.contains(operation) {
+                        return Err(FunctionError::InvalidSubgroup(
+                            SubgroupError::UnsupportedOperation(operation),
+                        )
+                        .with_span_static(span, "support for this operation is not present"));
+                    }
+                    self.validate_subgroup_gather(mode, argument, result, context)?;
+                }
             }
         }
         Ok(BlockInfo { stages, finished })
     }
 
-    #[cfg(feature = "validate")]
     fn validate_block(
         &mut self,
         statements: &crate::Block,
@@ -890,43 +1326,34 @@ impl super::Validator {
         Ok(info)
     }
 
-    #[cfg(feature = "validate")]
     fn validate_local_var(
         &self,
         var: &crate::LocalVariable,
-        types: &UniqueArena<crate::Type>,
-        constants: &Arena<crate::Constant>,
+        gctx: crate::proc::GlobalCtx,
+        fun_info: &FunctionInfo,
+        local_expr_kind: &crate::proc::ExpressionKindTracker,
     ) -> Result<(), LocalVariableError> {
         log::debug!("var {:?}", var);
         let type_info = self
             .types
             .get(var.ty.index())
             .ok_or(LocalVariableError::InvalidType(var.ty))?;
-        if !type_info
-            .flags
-            .contains(super::TypeFlags::DATA | super::TypeFlags::SIZED)
-        {
+        if !type_info.flags.contains(super::TypeFlags::CONSTRUCTIBLE) {
             return Err(LocalVariableError::InvalidType(var.ty));
         }
 
-        if let Some(const_handle) = var.init {
-            match constants[const_handle].inner {
-                crate::ConstantInner::Scalar { width, ref value } => {
-                    let ty_inner = crate::TypeInner::Scalar {
-                        width,
-                        kind: value.scalar_kind(),
-                    };
-                    if types[var.ty].inner != ty_inner {
-                        return Err(LocalVariableError::InitializerType);
-                    }
-                }
-                crate::ConstantInner::Composite { ty, components: _ } => {
-                    if ty != var.ty {
-                        return Err(LocalVariableError::InitializerType);
-                    }
-                }
+        if let Some(init) = var.init {
+            let decl_ty = &gctx.types[var.ty].inner;
+            let init_ty = fun_info[init].ty.inner_with(gctx.types);
+            if !decl_ty.equivalent(init_ty, gctx.types) {
+                return Err(LocalVariableError::InitializerType);
+            }
+
+            if !local_expr_kind.is_const_or_override(init) {
+                return Err(LocalVariableError::NonConstOrOverrideInitializer);
             }
         }
+
         Ok(())
     }
 
@@ -935,14 +1362,15 @@ impl super::Validator {
         fun: &crate::Function,
         module: &crate::Module,
         mod_info: &ModuleInfo,
-        #[cfg_attr(not(feature = "validate"), allow(unused))] entry_point: bool,
+        entry_point: bool,
+        global_expr_kind: &crate::proc::ExpressionKindTracker,
     ) -> Result<FunctionInfo, WithSpan<FunctionError>> {
-        #[cfg_attr(not(feature = "validate"), allow(unused_mut))]
         let mut info = mod_info.process_function(fun, module, self.flags, self.capabilities)?;
 
-        #[cfg(feature = "validate")]
+        let local_expr_kind = crate::proc::ExpressionKindTracker::from_arena(&fun.expressions);
+
         for (var_handle, var) in fun.local_variables.iter() {
-            self.validate_local_var(var, &module.types, &module.constants)
+            self.validate_local_var(var, module.to_ctx(), &info, &local_expr_kind)
                 .map_err(|source| {
                     FunctionError::LocalVariable {
                         handle: var_handle,
@@ -954,15 +1382,9 @@ impl super::Validator {
                 })?;
         }
 
-        #[cfg(feature = "validate")]
         for (index, argument) in fun.arguments.iter().enumerate() {
             match module.types[argument.ty].inner.pointer_space() {
-                Some(
-                    crate::AddressSpace::Private
-                    | crate::AddressSpace::Function
-                    | crate::AddressSpace::WorkGroup,
-                )
-                | None => {}
+                Some(crate::AddressSpace::Private | crate::AddressSpace::Function) | None => {}
                 Some(other) => {
                     return Err(FunctionError::InvalidArgumentPointerSpace {
                         index,
@@ -992,7 +1414,6 @@ impl super::Validator {
             }
         }
 
-        #[cfg(feature = "validate")]
         if let Some(ref result) = fun.result {
             if !self.types[result.ty.index()]
                 .flags
@@ -1010,19 +1431,28 @@ impl super::Validator {
 
         self.valid_expression_set.clear();
         self.valid_expression_list.clear();
+        self.needs_visit.clear();
         for (handle, expr) in fun.expressions.iter() {
             if expr.needs_pre_emit() {
                 self.valid_expression_set.insert(handle.index());
             }
-            #[cfg(feature = "validate")]
             if self.flags.contains(super::ValidationFlags::EXPRESSIONS) {
+                // Mark expressions that need to be visited by a particular kind of
+                // statement.
+                if let crate::Expression::CallResult(_) | crate::Expression::AtomicResult { .. } =
+                    *expr
+                {
+                    self.needs_visit.insert(handle.index());
+                }
+
                 match self.validate_expression(
                     handle,
                     expr,
                     fun,
                     module,
                     &info,
-                    &mod_info.functions,
+                    mod_info,
+                    global_expr_kind,
                 ) {
                     Ok(stages) => info.available_stages &= stages,
                     Err(source) => {
@@ -1033,7 +1463,6 @@ impl super::Validator {
             }
         }
 
-        #[cfg(feature = "validate")]
         if self.flags.contains(super::ValidationFlags::BLOCKS) {
             let stages = self
                 .validate_block(
@@ -1042,6 +1471,15 @@ impl super::Validator {
                 )?
                 .stages;
             info.available_stages &= stages;
+
+            if self.flags.contains(super::ValidationFlags::EXPRESSIONS) {
+                if let Some(unvisited) = self.needs_visit.iter().next() {
+                    let index = std::num::NonZeroU32::new(unvisited as u32 + 1).unwrap();
+                    let handle = Handle::new(index);
+                    return Err(FunctionError::UnvisitedExpression(handle)
+                        .with_span_handle(handle, &fun.expressions));
+                }
+            }
         }
         Ok(info)
     }

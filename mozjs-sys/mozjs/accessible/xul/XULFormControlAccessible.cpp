@@ -10,7 +10,7 @@
 #include "nsAccUtils.h"
 #include "DocAccessible.h"
 #include "Relation.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "States.h"
 #include "TreeWalker.h"
 #include "XULMenuAccessible.h"
@@ -131,7 +131,6 @@ bool XULButtonAccessible::IsAcceptableChild(nsIContent* aEl) const {
       //   menu buttons can have popup accessibles (@type="menu" or
       //   columnpicker).
       aEl->IsXULElement(nsGkAtoms::menupopup) ||
-      aEl->IsXULElement(nsGkAtoms::popup) ||
       // A XUL button can be labelled by a direct child text node, so we need to
       // allow that as a child so it will be picked up when computing name from
       // subtree.
@@ -406,12 +405,10 @@ bool XULToolbarButtonAccessible::IsSeparator(LocalAccessible* aAccessible) {
 // XULToolbarButtonAccessible: Widgets
 
 bool XULToolbarButtonAccessible::IsAcceptableChild(nsIContent* aEl) const {
-  // In general XUL button has not accessible children. Nevertheless menu
-  // buttons can have popup accessibles (@type="menu" or columnpicker).
-  // Also: Toolbar buttons can have labels as children.
-  // But only if the label attribute is not present.
-  return aEl->IsXULElement(nsGkAtoms::menupopup) ||
-         aEl->IsXULElement(nsGkAtoms::popup) ||
+  return XULButtonAccessible::IsAcceptableChild(aEl) ||
+         // In addition to the children allowed by buttons, toolbarbuttons can
+         // have labels as children, but only if the label attribute is not
+         // present.
          (aEl->IsXULElement(nsGkAtoms::label) &&
           !mContent->AsElement()->HasAttr(nsGkAtoms::label));
 }

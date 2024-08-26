@@ -366,7 +366,7 @@ static void ReadableByteStreamControllerFinalize(JS::GCContext* gcx,
       return PromiseRejectedWithPendingError(cx);
     }
 
-    RootedArrayBufferObject buffer(cx, &bufferObj->as<ArrayBufferObject>());
+    Rooted<ArrayBufferObject*> buffer(cx, &bufferObj->as<ArrayBufferObject>());
 
     // Let pullIntoDescriptor be a new pull-into descriptor with buffer
     // buffer.[[Value]], buffer byte length autoAllocateChunkSize, byte offset

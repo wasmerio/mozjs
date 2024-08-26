@@ -31,12 +31,13 @@ class Platforms(ClassificationEnum):
 class Apps(ClassificationEnum):
     FIREFOX = {"value": "firefox", "index": 0}
     CHROME = {"value": "chrome", "index": 1}
-    CHROMIUM = {"value": "chromium", "index": 2}
-    GECKOVIEW = {"value": "geckoview", "index": 3}
-    FENIX = {"value": "fenix", "index": 4}
-    CHROME_M = {"value": "chrome-m", "index": 5}
-    SAFARI = {"value": "safari", "index": 6}
-    CHROMIUM_RELEASE = {"value": "custom-car", "index": 7}
+    GECKOVIEW = {"value": "geckoview", "index": 2}
+    FENIX = {"value": "fenix", "index": 3}
+    CHROME_M = {"value": "chrome-m", "index": 4}
+    SAFARI = {"value": "safari", "index": 5}
+    CHROMIUM_RELEASE = {"value": "custom-car", "index": 6}
+    CHROMIUM_RELEASE_M = {"value": "cstm-car-m", "index": 7}
+    SAFARI_TP = {"value": "safari-tp", "index": 8}
 
 
 class Suites(ClassificationEnum):
@@ -75,6 +76,10 @@ def check_for_custom_car(custom_car=False, **kwargs):
 
 def check_for_safari(safari=False, **kwargs):
     return safari
+
+
+def check_for_safari_tp(safari_tp=False, **kwargs):
+    return safari_tp
 
 
 def check_for_live_sites(live_sites=False, **kwargs):
@@ -123,7 +128,7 @@ class ClassificationProvider:
     def apps(self):
         return {
             Apps.FIREFOX.value: {
-                "query": "!chrom !geckoview !fenix !safari !custom-car",
+                "query": "!chrom !geckoview !fenix !safari !m-car !safari-tp",
                 "platforms": [Platforms.DESKTOP.value],
             },
             Apps.CHROME.value: {
@@ -132,18 +137,14 @@ class ClassificationProvider:
                 "restriction": check_for_chrome,
                 "platforms": [Platforms.DESKTOP.value],
             },
-            Apps.CHROMIUM.value: {
-                "query": "'chromium",
-                "negation": "!chrom",
-                "restriction": check_for_chrome,
-                "platforms": [Platforms.DESKTOP.value],
-            },
             Apps.GECKOVIEW.value: {
                 "query": "'geckoview",
+                "negation": "!geckoview",
                 "platforms": [Platforms.ANDROID.value],
             },
             Apps.FENIX.value: {
                 "query": "'fenix",
+                "negation": "!fenix",
                 "platforms": [Platforms.ANDROID.value],
             },
             Apps.CHROME_M.value: {
@@ -158,15 +159,27 @@ class ClassificationProvider:
                 "restriction": check_for_safari,
                 "platforms": [Platforms.MACOSX.value],
             },
+            Apps.SAFARI_TP.value: {
+                "query": "'safari-tp",
+                "negation": "!safari-tp",
+                "restriction": check_for_safari_tp,
+                "platforms": [Platforms.MACOSX.value],
+            },
             Apps.CHROMIUM_RELEASE.value: {
-                "query": "'custom-car",
-                "negation": "!custom-car",
+                "query": "'m-car",
+                "negation": "!m-car",
                 "restriction": check_for_custom_car,
                 "platforms": [
                     Platforms.LINUX.value,
                     Platforms.WINDOWS.value,
                     Platforms.MACOSX.value,
                 ],
+            },
+            Apps.CHROMIUM_RELEASE_M.value: {
+                "query": "'m-car",
+                "negation": "!m-car",
+                "restriction": check_for_custom_car,
+                "platforms": [Platforms.ANDROID.value],
             },
         }
 
@@ -193,7 +206,6 @@ class ClassificationProvider:
                 "apps": [  # XXX No live CaR tests
                     Apps.FIREFOX.value,
                     Apps.CHROME.value,
-                    Apps.CHROMIUM.value,
                     Apps.FENIX.value,
                     Apps.GECKOVIEW.value,
                     Apps.SAFARI.value,
@@ -261,28 +273,25 @@ class ClassificationProvider:
         return {
             "Pageload": {
                 "query": {
-                    Suites.RAPTOR.value: ["'browsertime 'tp6"],
+                    Suites.RAPTOR.value: ["'browsertime 'tp6 !tp6-bench"],
                 },
-                "suites": [Suites.RAPTOR.value],
-                "tasks": [],
-            },
-            "Pageload (essential)": {
-                "query": {
-                    Suites.RAPTOR.value: ["'browsertime 'tp6 'essential"],
-                },
-                "variant-restrictions": {Suites.RAPTOR.value: [Variants.FISSION.value]},
                 "suites": [Suites.RAPTOR.value],
                 "app-restrictions": {
                     Suites.RAPTOR.value: [
                         Apps.FIREFOX.value,
                         Apps.CHROME.value,
-                        Apps.CHROMIUM.value,
                         Apps.FENIX.value,
                         Apps.GECKOVIEW.value,
+                        Apps.SAFARI.value,
                         Apps.CHROMIUM_RELEASE.value,
+                        Apps.CHROMIUM_RELEASE_M.value,
+                        Apps.CHROME_M.value,
                     ],
                 },
                 "tasks": [],
+                "description": "A group of tests that measures various important pageload metrics. More information "
+                "can about what is exactly measured can found here:"
+                " https://firefox-source-docs.mozilla.org/testing/perfdocs/raptor.html#desktop",
             },
             "Speedometer 3": {
                 "query": {
@@ -292,6 +301,8 @@ class ClassificationProvider:
                 "suites": [Suites.RAPTOR.value],
                 "app-restrictions": {},
                 "tasks": [],
+                "description": "A group of Speedometer3 tests on various platforms and architectures, speedometer3 is"
+                "currently the best benchmark we have for a baseline on real-world web performance",
             },
             "Responsiveness": {
                 "query": {
@@ -303,20 +314,36 @@ class ClassificationProvider:
                     Suites.RAPTOR.value: [
                         Apps.FIREFOX.value,
                         Apps.CHROME.value,
-                        Apps.CHROMIUM.value,
                         Apps.FENIX.value,
                         Apps.GECKOVIEW.value,
                     ],
                 },
                 "tasks": [],
+                "description": "A group of tests that ensure that the interactive part of the browser stays fast and"
+                "responsive",
             },
             "Benchmarks": {
                 "query": {
-                    Suites.RAPTOR.value: ["'browsertime 'benchmark"],
+                    Suites.RAPTOR.value: ["'browsertime 'benchmark !tp6-bench"],
                 },
                 "suites": [Suites.RAPTOR.value],
                 "variant-restrictions": {Suites.RAPTOR.value: []},
+                "app-restrictions": {
+                    Suites.RAPTOR.value: [
+                        Apps.FIREFOX.value,
+                        Apps.CHROME.value,
+                        Apps.FENIX.value,
+                        Apps.GECKOVIEW.value,
+                        Apps.SAFARI.value,
+                        Apps.CHROMIUM_RELEASE.value,
+                        Apps.CHROMIUM_RELEASE_M.value,
+                        Apps.CHROME_M.value,
+                    ],
+                },
                 "tasks": [],
+                "description": "A group of tests that benchmark how the browser performs in various categories. "
+                "More information about what exact benchmarks we run can be found here: "
+                "https://firefox-source-docs.mozilla.org/testing/perfdocs/raptor.html#benchmarks",
             },
             "DAMP (Devtools)": {
                 "query": {
@@ -324,6 +351,10 @@ class ClassificationProvider:
                 },
                 "suites": [Suites.TALOS.value],
                 "tasks": [],
+                "description": "The DAMP tests are a group of tests that measure the performance of the browsers "
+                "devtools under certain conditiones. More information on the DAMP tests can be found"
+                " here: https://firefox-source-docs.mozilla.org/devtools/tests/performance-tests"
+                "-damp.html#what-does-it-do",
             },
             "Talos PerfTests": {
                 "query": {
@@ -331,6 +362,8 @@ class ClassificationProvider:
                 },
                 "suites": [Suites.TALOS.value],
                 "tasks": [],
+                "description": "This selects all of the talos performance tests. More information can be found here: "
+                "https://firefox-source-docs.mozilla.org/testing/perfdocs/talos.html#test-types",
             },
             "Resource Usage": {
                 "query": {
@@ -349,6 +382,8 @@ class ClassificationProvider:
                     Suites.TALOS.value: [Apps.FIREFOX.value],
                 },
                 "tasks": [],
+                "description": "A group of tests that monitor resource usage of various metrics like power, CPU, and"
+                "memory",
             },
             "Graphics, & Media Playback": {
                 "query": {
@@ -362,11 +397,32 @@ class ClassificationProvider:
                     Suites.RAPTOR.value: [
                         Apps.FIREFOX.value,
                         Apps.CHROME.value,
-                        Apps.CHROMIUM.value,
                         Apps.FENIX.value,
                         Apps.GECKOVIEW.value,
                     ],
                 },
                 "tasks": [],
+                "description": "A group of tests that monitor key graphics and media metrics to keep the browser fast",
+            },
+            "Pageload Lite": {
+                "query": {
+                    Suites.RAPTOR.value: ["'browsertime 'tp6-bench"],
+                },
+                "suites": [Suites.RAPTOR.value],
+                "platform-restrictions": [
+                    Platforms.DESKTOP.value,
+                    Platforms.LINUX.value,
+                    Platforms.MACOSX.value,
+                    Platforms.WINDOWS.value,
+                ],
+                "variant-restrictions": {Suites.RAPTOR.value: [Variants.FISSION.value]},
+                "app-restrictions": {
+                    Suites.RAPTOR.value: [Apps.FIREFOX.value],
+                },
+                "tasks": [],
+                "description": (
+                    "Similar to the Pageload category, but it provides a minimum set "
+                    "of pageload tests to run for performance testing."
+                ),
             },
         }

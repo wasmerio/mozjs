@@ -21,7 +21,7 @@ async function testVal(urlFormatString, clobberedURLString = null) {
   info("Setting the value property directly");
   gURLBar.value = str;
   gBrowser.selectedBrowser.focus();
-  UrlbarTestUtils.checkFormatting(window, urlFormatString, {
+  await UrlbarTestUtils.checkFormatting(window, urlFormatString, {
     clobberedURLString,
   });
 
@@ -33,19 +33,23 @@ async function testVal(urlFormatString, clobberedURLString = null) {
     "URL is not highlighted"
   );
   gBrowser.selectedBrowser.focus();
-  UrlbarTestUtils.checkFormatting(window, urlFormatString, {
+  await UrlbarTestUtils.checkFormatting(window, urlFormatString, {
     clobberedURLString,
     additionalMsg: "with input simulation",
   });
 }
 
 add_task(async function () {
-  const prefname = "browser.urlbar.formatting.enabled";
+  const PREF_FORMATTING = "browser.urlbar.formatting.enabled";
+  const PREF_TRIM_HTTPS = "browser.urlbar.trimHttps";
 
   registerCleanupFunction(function () {
-    Services.prefs.clearUserPref(prefname);
+    Services.prefs.clearUserPref(PREF_FORMATTING);
+    Services.prefs.clearUserPref(PREF_TRIM_HTTPS);
     gURLBar.setURI();
   });
+
+  Services.prefs.setBoolPref(PREF_TRIM_HTTPS, false);
 
   gBrowser.selectedBrowser.focus();
 
@@ -75,6 +79,9 @@ add_task(async function () {
 
   await testVal("<https://>mozilla.org<   >");
   await testVal("mozilla.org<   >");
+  // RTL characters in domain change order of domain and suffix. Domain should
+  // be highlighted correctly.
+  await testVal("<http://>اختبار.اختبار</www.mozilla.org/index.html>");
 
   await testVal("<https://>mozilla.org</file.ext>");
   await testVal("<https://>mozilla.org</sub/file.ext>");
@@ -149,7 +156,35 @@ add_task(async function () {
   await testVal("foo-://mozilla.org/");
 
   // Disable formatting.
-  Services.prefs.setBoolPref(prefname, false);
+  Services.prefs.setBoolPref(PREF_FORMATTING, false);
 
   await testVal("https://mozilla.org");
+});
+
+add_task(async function test_url_formatting_after_visiting_bookmarks() {
+  SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.urlbar.trimURLs", true],
+      ["browser.urlbar.trimHttps", true],
+      ["browser.urlbar.formatting.enabled", true],
+    ],
+  });
+  await PlacesTestUtils.addBookmarkWithDetails({
+    uri: "https://something.example.com/test",
+  });
+  await search({
+    searchString: "something",
+    valueBefore: "something",
+    valueAfter: "something.example.com/",
+    placeholderAfter: "something.example.com/",
+  });
+  EventUtils.sendKey("DOWN");
+  EventUtils.sendKey("RETURN");
+  await BrowserTestUtils.browserLoaded(gBrowser, false, null, true);
+
+  await UrlbarTestUtils.checkFormatting(
+    window,
+    "<something.>example.com</test>"
+  );
+  SpecialPowers.popPrefEnv();
 });

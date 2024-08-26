@@ -5,23 +5,15 @@
 "use strict";
 
 module.exports = {
-  extends: ["plugin:mozilla/require-jsdoc"],
   rules: {
     "block-scoped-var": "error",
     complexity: ["error", { max: 22 }],
     "max-nested-callbacks": ["error", 3],
     "no-extend-native": "error",
-    "no-fallthrough": [
-      "error",
-      {
-        commentPattern:
-          ".*[Ii]ntentional(?:ly)?\\s+fall(?:ing)?[\\s-]*through.*",
-      },
-    ],
     "no-multi-str": "error",
     "no-return-assign": "error",
     "no-shadow": "error",
-    "no-unused-vars": ["error", { args: "after-used", vars: "all" }],
+    "no-unused-vars": ["error", { argsIgnorePattern: "^_", vars: "all" }],
     strict: ["error", "global"],
     yoda: "error",
   },
@@ -33,7 +25,7 @@ module.exports = {
         "no-unused-vars": [
           "error",
           {
-            args: "none",
+            argsIgnorePattern: "^_",
             vars: "local",
           },
         ],

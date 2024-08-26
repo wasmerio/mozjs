@@ -259,7 +259,7 @@ add_task(async function () {
     desc: "Selecting the next result and then backspace should delete the last character and not re-trigger autofill",
     typed: "ex",
     autofilled: "example.com/",
-    modified: "example.com/fo",
+    modified: "http://example.com/fo",
     keys: ["KEY_ArrowDown", "KEY_Backspace"],
     type: UrlbarUtils.RESULT_TYPE.URL,
   });

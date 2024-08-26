@@ -8,14 +8,13 @@
  * of UrlbarTokenizer.TYPE.
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
+  PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.UrlbarUtils.getLogger({ prefix: "Tokenizer" })
 );
 
@@ -74,7 +73,6 @@ export var UrlbarTokenizer = {
     SEARCH: "?",
     TITLE: "#",
     URL: "$",
-    ACTION: ">",
   },
 
   // The keys of characters in RESTRICT that will enter search mode.
@@ -84,7 +82,6 @@ export var UrlbarTokenizer = {
       this.RESTRICT.BOOKMARK,
       this.RESTRICT.OPENPAGE,
       this.RESTRICT.SEARCH,
-      this.RESTRICT.ACTION,
     ]);
   },
 
@@ -247,7 +244,7 @@ export var UrlbarTokenizer = {
       queryContext.tokens = [];
       return queryContext;
     }
-    let unfiltered = splitString(queryContext.searchString);
+    let unfiltered = splitString(queryContext);
     let tokens = filterTokens(unfiltered);
     queryContext.tokens = tokens;
     return queryContext;
@@ -277,13 +274,17 @@ const CHAR_TO_TYPE_MAP = new Map(
 );
 
 /**
- * Given a search string, splits it into string tokens.
+ * Given a queryContext object, splits its searchString into string tokens.
  *
- * @param {string} searchString
- *        The search string to split
+ * @param {UrlbarQueryContext} queryContext
+ *        The query context object to tokenize.
+ * @param {string} queryContext.searchString
+ *        The search string to split.
+ * @param {object} queryContext.searchMode
+ *        A search mode object.
  * @returns {Array} An array of string tokens.
  */
-function splitString(searchString) {
+function splitString({ searchString, searchMode }) {
   // The first step is splitting on unicode whitespaces. We ignore whitespaces
   // if the search string starts with "data:", to better support Web developers
   // and compatiblity with other browsers.
@@ -312,7 +313,13 @@ function splitString(searchString) {
   // enforce restrictions, for example typing questions would restrict to
   // search results.
   const hasRestrictionToken = tokens.some(t => CHAR_TO_TYPE_MAP.has(t));
-  if (hasRestrictionToken) {
+
+  const firstToken = tokens[0];
+  const isFirstTokenAKeyword =
+    !Object.values(UrlbarTokenizer.RESTRICT).includes(firstToken) &&
+    lazy.PlacesUtils.keywords.isKeywordFromCache(firstToken);
+
+  if (hasRestrictionToken || isFirstTokenAKeyword) {
     return tokens;
   }
 
@@ -320,10 +327,10 @@ function splitString(searchString) {
   // token, or at the end of the last token. We only count trailing restriction
   // chars if they are the search restriction char, which is "?". This is to
   // allow for a typed question to yield only search results.
-  const firstToken = tokens[0];
   if (
     CHAR_TO_TYPE_MAP.has(firstToken[0]) &&
-    !UrlbarTokenizer.REGEXP_PERCENT_ENCODED_START.test(firstToken)
+    !UrlbarTokenizer.REGEXP_PERCENT_ENCODED_START.test(firstToken) &&
+    !searchMode
   ) {
     tokens[0] = firstToken.substring(1);
     tokens.splice(0, 0, firstToken[0]);
@@ -358,6 +365,10 @@ function splitString(searchString) {
 function filterTokens(tokens) {
   let filtered = [];
   let restrictions = [];
+  const isFirstTokenAKeyword =
+    !Object.values(UrlbarTokenizer.RESTRICT).includes(tokens[0]) &&
+    lazy.PlacesUtils.keywords.isKeywordFromCache(tokens[0]);
+
   for (let i = 0; i < tokens.length; ++i) {
     let token = tokens[i];
     let tokenObj = {
@@ -370,6 +381,11 @@ function filterTokens(tokens) {
     if (tokens.length > 1 && token.length > 500) {
       filtered.push(tokenObj);
       break;
+    }
+
+    if (isFirstTokenAKeyword) {
+      filtered.push(tokenObj);
+      continue;
     }
 
     let restrictionType = CHAR_TO_TYPE_MAP.get(token);

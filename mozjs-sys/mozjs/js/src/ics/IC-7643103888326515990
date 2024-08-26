@@ -1,0 +1,1 @@
+GetElem, 2, 2, 6, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(Id) , LASTUSED(4) LASTUSED(3) , OP(GuardToObject) ID(0) OP(GuardIsProxy) ID(0) OP(GuardIsNotDOMProxy) ID(0) OP(GuardIsUndefined) ID(1) OP(ProxyGetResult) ID(0) OFFSET(0) OP(ReturnFromIC)  

@@ -32,6 +32,7 @@ namespace jit {
 class BaselineFrame;
 class CacheIRStubInfo;
 class ICScript;
+class ICStubSpace;
 
 enum class VMFunctionId;
 
@@ -112,22 +113,40 @@ void FallbackICSpew(JSContext* cx, ICFallbackStub* stub, const char* fmt, ...)
 class ICEntry {
   // A pointer to the first IC stub for this instruction.
   ICStub* firstStub_;
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  // Cache the JitCode function pointer in the ICEntry itself.
+  uint8_t* jitCode_;
+#endif
 
  public:
-  explicit ICEntry(ICStub* firstStub) : firstStub_(firstStub) {}
+  explicit ICEntry(ICStub* firstStub) : firstStub_(firstStub) {
+    updateJitCode(firstStub);
+  }
 
   ICStub* firstStub() const {
     MOZ_ASSERT(firstStub_);
     return firstStub_;
   }
 
-  void setFirstStub(ICStub* stub) { firstStub_ = stub; }
+  void setFirstStub(ICStub* stub) {
+    firstStub_ = stub;
+    updateJitCode(stub);
+  }
+
+  void updateJitCode(ICStub* stub);
+
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  uint8_t* rawJitCode() const {
+    return jitCode_;
+  }
+#endif
 
   static constexpr size_t offsetOfFirstStub() {
     return offsetof(ICEntry, firstStub_);
   }
 
   void trace(JSTracer* trc);
+  bool traceWeak(JSTracer* trc);
 };
 
 //
@@ -190,13 +209,19 @@ class ICStub {
     // call JitCode::FromExecutable on the raw pointer.
     return isFallback();
   }
+
+#ifndef ENABLE_PORTABLE_BASELINE_INTERP
   JitCode* jitCode() {
     MOZ_ASSERT(!usesTrampolineCode());
     return JitCode::FromExecutable(stubCode_);
   }
-  bool hasJitCode() {
-    return !!stubCode_;
-  }
+  bool hasJitCode() { return !!stubCode_; }
+#else  // !ENABLE_PORTABLE_BASELINE_INTERP
+  JitCode* jitCode() { return nullptr; }
+  bool hasJitCode() { return false; }
+  uint8_t* rawJitCode() const { return stubCode_; }
+  void updateRawJitCode(uint8_t* ptr) { stubCode_ = ptr; }
+#endif
 
   uint32_t enteredCount() const { return enteredCount_; }
   inline void incrementEnteredCount() { enteredCount_++; }
@@ -209,6 +234,12 @@ class ICStub {
     return offsetof(ICStub, enteredCount_);
   }
 };
+
+inline void ICEntry::updateJitCode(ICStub* stub) {
+#ifdef ENABLE_PORTABLE_BASELINE_INTERP
+  jitCode_ = stub->rawJitCode();
+#endif
+}
 
 class ICFallbackStub final : public ICStub {
   friend class ICStubConstIterator;
@@ -235,15 +266,15 @@ class ICFallbackStub final : public ICStub {
   // Add a new stub to the IC chain terminated by this fallback stub.
   inline void addNewStub(ICEntry* icEntry, ICCacheIRStub* stub);
 
-  void discardStubs(JSContext* cx, ICEntry* icEntry);
+  void discardStubs(Zone* zone, ICEntry* icEntry);
 
   void clearUsedByTranspiler() { state_.clearUsedByTranspiler(); }
   void setUsedByTranspiler() { state_.setUsedByTranspiler(); }
   bool usedByTranspiler() const { return state_.usedByTranspiler(); }
 
-  void clearHasFoldedStub() { state_.clearHasFoldedStub(); }
-  void setHasFoldedStub() { state_.setHasFoldedStub(); }
-  bool hasFoldedStub() const { return state_.hasFoldedStub(); }
+  void clearMayHaveFoldedStub() { state_.clearMayHaveFoldedStub(); }
+  void setMayHaveFoldedStub() { state_.setMayHaveFoldedStub(); }
+  bool mayHaveFoldedStub() const { return state_.mayHaveFoldedStub(); }
 
   TrialInliningState trialInliningState() const {
     return state_.trialInliningState();
@@ -256,6 +287,8 @@ class ICFallbackStub final : public ICStub {
 
   void unlinkStub(Zone* zone, ICEntry* icEntry, ICCacheIRStub* prev,
                   ICCacheIRStub* stub);
+  void unlinkStubUnbarriered(ICEntry* icEntry, ICCacheIRStub* prev,
+                             ICCacheIRStub* stub);
 };
 
 class ICCacheIRStub final : public ICStub {
@@ -272,7 +305,9 @@ class ICCacheIRStub final : public ICStub {
  public:
   ICCacheIRStub(JitCode* stubCode, const CacheIRStubInfo* stubInfo)
       : ICStub(stubCode ? stubCode->raw() : nullptr, /* isFallback = */ false),
-        stubInfo_(stubInfo) {}
+        stubInfo_(stubInfo) {
+    MOZ_ASSERT_IF(!IsPortableBaselineInterpreterEnabled(), stubCode);
+  }
 
   ICStub* next() const { return next_; }
   void setNext(ICStub* stub) { next_ = stub; }
@@ -285,13 +320,12 @@ class ICCacheIRStub final : public ICStub {
   uint8_t* stubDataStart();
 
   void trace(JSTracer* trc);
+  bool traceWeak(JSTracer* trc);
 
-  // Optimized stubs get purged on GC.  But some stubs can be active on the
-  // stack during GC - specifically the ones that can make calls.  To ensure
-  // that these do not get purged, all stubs that can make calls are allocated
-  // in the fallback stub space.
+  ICCacheIRStub* clone(JSRuntime* rt, ICStubSpace& newSpace);
+
+  // Returns true if this stub can call JS or VM code that can trigger a GC.
   bool makesGCCalls() const;
-  bool allocatedInFallbackSpace() const { return makesGCCalls(); }
 
   static constexpr size_t offsetOfNext() {
     return offsetof(ICCacheIRStub, next_);
@@ -409,6 +443,10 @@ extern bool DoTypeOfFallback(JSContext* cx, BaselineFrame* frame,
                              ICFallbackStub* stub, HandleValue val,
                              MutableHandleValue res);
 
+extern bool DoTypeOfEqFallback(JSContext* cx, BaselineFrame* frame,
+                               ICFallbackStub* stub, HandleValue val,
+                               MutableHandleValue res);
+
 extern bool DoToPropertyKeyFallback(JSContext* cx, BaselineFrame* frame,
                                     ICFallbackStub* stub, HandleValue val,
                                     MutableHandleValue res);
@@ -436,6 +474,11 @@ extern bool DoCompareFallback(JSContext* cx, BaselineFrame* frame,
 
 extern bool DoCloseIterFallback(JSContext* cx, BaselineFrame* frame,
                                 ICFallbackStub* stub, HandleObject iter);
+
+extern bool DoOptimizeGetIteratorFallback(JSContext* cx, BaselineFrame* frame,
+                                          ICFallbackStub* stub,
+                                          HandleValue value,
+                                          MutableHandleValue res);
 
 }  // namespace jit
 }  // namespace js

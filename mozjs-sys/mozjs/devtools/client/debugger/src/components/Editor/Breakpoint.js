@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { PureComponent } from "react";
-import PropTypes from "prop-types";
+import { PureComponent } from "devtools/client/shared/vendor/react";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 
-import { getDocument, toEditorLine } from "../../utils/editor";
+import { getDocument, toEditorLine } from "../../utils/editor/index";
 import { getSelectedLocation } from "../../utils/selected-location";
 import { features } from "../../utils/prefs";
-const classnames = require("devtools/client/shared/classnames.js");
+const classnames = require("resource://devtools/client/shared/classnames.js");
 
 const breakpointSvg = document.createElement("div");
 breakpointSvg.innerHTML =
@@ -17,7 +17,6 @@ breakpointSvg.innerHTML =
 class Breakpoint extends PureComponent {
   static get propTypes() {
     return {
-      cx: PropTypes.object.isRequired,
       breakpoint: PropTypes.object.isRequired,
       editor: PropTypes.object.isRequired,
       selectedSource: PropTypes.object,
@@ -53,7 +52,6 @@ class Breakpoint extends PureComponent {
 
   onClick = event => {
     const {
-      cx,
       continueToHere,
       toggleBreakpointsAtLine,
       removeBreakpointsAtLine,
@@ -61,7 +59,7 @@ class Breakpoint extends PureComponent {
       selectedSource,
     } = this.props;
 
-    // ignore right clicks
+    // ignore ctrl + click and right clicks when clicking on the breakpoint
     if ((event.ctrlKey && event.button === 0) || event.button === 2) {
       return;
     }
@@ -71,20 +69,16 @@ class Breakpoint extends PureComponent {
 
     const selectedLocation = getSelectedLocation(breakpoint, selectedSource);
     if (event.metaKey) {
-      continueToHere(cx, selectedLocation);
+      continueToHere(selectedLocation);
       return;
     }
 
     if (event.shiftKey) {
-      toggleBreakpointsAtLine(cx, !breakpoint.disabled, selectedLocation.line);
+      toggleBreakpointsAtLine(!breakpoint.disabled, selectedLocation.line);
       return;
     }
 
-    removeBreakpointsAtLine(
-      cx,
-      selectedLocation.source.id,
-      selectedLocation.line
-    );
+    removeBreakpointsAtLine(selectedLocation.source, selectedLocation.line);
   };
 
   onContextMenu = event => {
@@ -99,8 +93,6 @@ class Breakpoint extends PureComponent {
 
   addBreakpoint(props) {
     const { breakpoint, editor, selectedSource } = props;
-    const selectedLocation = getSelectedLocation(breakpoint, selectedSource);
-
     // Hidden Breakpoints are never rendered on the client
     if (breakpoint.options.hidden) {
       return;
@@ -110,9 +102,13 @@ class Breakpoint extends PureComponent {
       return;
     }
 
-    const sourceId = selectedSource.id;
-    const line = toEditorLine(sourceId, selectedLocation.line);
-    const doc = getDocument(sourceId);
+    const doc = getDocument(selectedSource.id);
+    if (!doc) {
+      return;
+    }
+
+    const selectedLocation = getSelectedLocation(breakpoint, selectedSource);
+    const line = toEditorLine(selectedSource.id, selectedLocation.line);
 
     doc.setGutterMarker(line, "breakpoints", this.makeMarker());
 
@@ -138,15 +134,13 @@ class Breakpoint extends PureComponent {
       return;
     }
 
-    const sourceId = selectedSource.id;
-    const doc = getDocument(sourceId);
-
+    const doc = getDocument(selectedSource.id);
     if (!doc) {
       return;
     }
 
     const selectedLocation = getSelectedLocation(breakpoint, selectedSource);
-    const line = toEditorLine(sourceId, selectedLocation.line);
+    const line = toEditorLine(selectedSource.id, selectedLocation.line);
 
     doc.setGutterMarker(line, "breakpoints", null);
     doc.removeLineClass(line, "wrap", "new-breakpoint");

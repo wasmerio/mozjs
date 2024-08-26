@@ -19,7 +19,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "gWidgetsBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gWidgetsBundle", function () {
   const kUrl =
     "chrome://browser/locale/customizableui/customizableWidgets.properties";
   return Services.strings.createBundle(kUrl);
@@ -57,7 +57,7 @@ const kSubviewEvents = ["ViewShowing", "ViewHiding"];
  * The current version. We can use this to auto-add new default widgets as necessary.
  * (would be const but isn't because of testing purposes)
  */
-var kVersion = 19;
+var kVersion = 20;
 
 /**
  * Buttons removed from built-ins by version they were removed. kVersion must be
@@ -185,7 +185,14 @@ XPCOMUtils.defineLazyPreferenceGetter(
   }
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "resetPBMToolbarButtonEnabled",
+  "browser.privatebrowsing.resetPBM.enabled",
+  false
+);
+
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -242,6 +249,7 @@ var CustomizableUIInternal = {
       Services.policies.isAllowed("removeHomeButtonByDefault")
         ? null
         : "home-button",
+      Services.prefs.getBoolPref("sidebar.revamp") ? "sidebar-button" : null,
       "spring",
       "urlbar-container",
       "spring",
@@ -249,6 +257,7 @@ var CustomizableUIInternal = {
       "downloads-button",
       AppConstants.MOZ_DEV_EDITION ? "developer-button" : null,
       "fxa-toolbar-menu-button",
+      lazy.resetPBMToolbarButtonEnabled ? "reset-pbm-toolbar-button" : null,
     ].filter(name => name);
 
     this.registerArea(
@@ -366,6 +375,14 @@ var CustomizableUIInternal = {
           shouldSetPref = shouldAdd;
         } else if (widget._introducedInVersion > currentVersion) {
           shouldAdd = true;
+        } else if (
+          widget._introducedByPref &&
+          Services.prefs.getBoolPref(widget._introducedByPref)
+        ) {
+          shouldSetPref = shouldAdd = !Services.prefs.getBoolPref(
+            prefId,
+            false
+          );
         }
 
         if (shouldAdd) {
@@ -658,6 +675,18 @@ var CustomizableUIInternal = {
         ...addonsPlacements,
       ];
     }
+
+    // Add the PBM reset button as the right most button item
+    if (currentVersion < 20) {
+      let navbarPlacements = gSavedState.placements[CustomizableUI.AREA_NAVBAR];
+      // Place the button as the first item to the left of the hamburger menu
+      if (
+        navbarPlacements &&
+        !navbarPlacements.includes("reset-pbm-toolbar-button")
+      ) {
+        navbarPlacements.push("reset-pbm-toolbar-button");
+      }
+    }
   },
 
   _updateForNewProtonVersion() {
@@ -758,7 +787,7 @@ var CustomizableUIInternal = {
         !widget ||
         widget.source !== CustomizableUI.SOURCE_BUILTIN ||
         !widget.defaultArea ||
-        !widget._introducedInVersion ||
+        !(widget._introducedInVersion || widget._introducedByPref) ||
         savedPlacements.includes(widget.id)
       ) {
         continue;
@@ -1231,8 +1260,8 @@ var CustomizableUIInternal = {
   },
 
   addPanelCloseListeners(aPanel) {
-    Services.els.addSystemEventListener(aPanel, "click", this, false);
-    Services.els.addSystemEventListener(aPanel, "keypress", this, false);
+    aPanel.addEventListener("click", this, { mozSystemGroup: true });
+    aPanel.addEventListener("keypress", this, { mozSystemGroup: true });
     let win = aPanel.ownerGlobal;
     if (!gPanelsForWindow.has(win)) {
       gPanelsForWindow.set(win, new Set());
@@ -1241,8 +1270,8 @@ var CustomizableUIInternal = {
   },
 
   removePanelCloseListeners(aPanel) {
-    Services.els.removeSystemEventListener(aPanel, "click", this, false);
-    Services.els.removeSystemEventListener(aPanel, "keypress", this, false);
+    aPanel.removeEventListener("click", this, { mozSystemGroup: true });
+    aPanel.removeEventListener("keypress", this, { mozSystemGroup: true });
     let win = aPanel.ownerGlobal;
     let panels = gPanelsForWindow.get(win);
     if (panels) {
@@ -1434,7 +1463,7 @@ var CustomizableUIInternal = {
     }
   },
 
-  onCustomizeEnd(aWindow) {
+  onCustomizeEnd() {
     this._clearPreviousUIState();
   },
 
@@ -2963,6 +2992,7 @@ var CustomizableUIInternal = {
       l10nId: null,
       showInPrivateBrowsing: true,
       _introducedInVersion: -1,
+      _introducedByPref: null,
       keepBroadcastAttributesWhenCustomizing: false,
       disallowSubView: false,
       webExtension: false,
@@ -3045,6 +3075,10 @@ var CustomizableUIInternal = {
 
     if (aSource == CustomizableUI.SOURCE_BUILTIN) {
       widget._introducedInVersion = aData.introducedInVersion || 0;
+
+      if (aData._introducedByPref) {
+        widget._introducedByPref = aData._introducedByPref;
+      }
     }
 
     this.wrapWidgetEventHandler("onBeforeCreated", widget);
@@ -4783,7 +4817,12 @@ export var CustomizableUI = {
         let item = menuChild;
         if (!item.hasAttribute("onclick")) {
           subviewItem.addEventListener("click", event => {
-            let newEvent = new doc.defaultView.MouseEvent(event.type, event);
+            const ClickEventConstructor = Services.prefs.getBoolPref(
+              "dom.w3c_pointer_events.dispatch_click_as_pointer_event"
+            )
+              ? doc.ownerGlobal.PointerEvent
+              : doc.ownerGlobal.MouseEvent;
+            let newEvent = new ClickEventConstructor("click", event);
 
             // Telemetry should only pay attention to the original event.
             lazy.BrowserUsageTelemetry.ignoreEvent(newEvent);
@@ -5463,7 +5502,10 @@ class OverflowableToolbar {
       let mainViewId = multiview.getAttribute("mainViewId");
       let mainView = doc.getElementById(mainViewId);
       let contextMenu = doc.getElementById(mainView.getAttribute("context"));
-      Services.els.addSystemEventListener(contextMenu, "command", this, true);
+      contextMenu.addEventListener("command", this, {
+        capture: true,
+        mozSystemGroup: true,
+      });
       let anchor = this.#defaultListButton.icon;
 
       let popupshown = false;
@@ -6062,12 +6104,10 @@ class OverflowableToolbar {
     let contextMenuId = this.#defaultListPanel.getAttribute("context");
     if (contextMenuId) {
       let contextMenu = doc.getElementById(contextMenuId);
-      Services.els.removeSystemEventListener(
-        contextMenu,
-        "command",
-        this,
-        true
-      );
+      contextMenu.removeEventListener("command", this, {
+        capture: true,
+        mozSystemGroup: true,
+      });
     }
   }
 
@@ -6194,7 +6234,7 @@ class OverflowableToolbar {
    * nsIObserver implementation starts here.
    */
 
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     // This nsIObserver method allows us to defer initialization until after
     // this window has finished painting and starting up.
     if (

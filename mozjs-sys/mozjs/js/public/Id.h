@@ -37,6 +37,11 @@
 #include "js/TracingAPI.h"
 #include "js/TypeDecls.h"
 
+namespace js {
+class JS_PUBLIC_API GenericPrinter;
+class JSONPrinter;
+}  // namespace js
+
 namespace JS {
 
 enum class SymbolCode : uint32_t;
@@ -204,6 +209,16 @@ class PropertyKey {
     return reinterpret_cast<JSLinearString*>(toString());
   }
 
+#if defined(DEBUG) || defined(JS_JITSPEW)
+  void dump() const;
+  void dump(js::GenericPrinter& out) const;
+  void dump(js::JSONPrinter& json) const;
+
+  void dumpFields(js::JSONPrinter& json) const;
+  void dumpPropertyName(js::GenericPrinter& out) const;
+  void dumpStringContent(js::GenericPrinter& out) const;
+#endif
+
  private:
   static bool isNonIntAtom(JSAtom* atom);
   static bool isNonIntAtom(JSString* atom);
@@ -276,6 +291,15 @@ struct BarrierMethods<jsid> {
       return id.toGCThing();
     }
     return nullptr;
+  }
+  static void writeBarriers(jsid* idp, jsid prev, jsid next) {
+    if (prev.isString()) {
+      JS::IncrementalPreWriteBarrier(JS::GCCellPtr(prev.toString()));
+    }
+    if (prev.isSymbol()) {
+      JS::IncrementalPreWriteBarrier(JS::GCCellPtr(prev.toSymbol()));
+    }
+    postWriteBarrier(idp, prev, next);
   }
   static void postWriteBarrier(jsid* idp, jsid prev, jsid next) {
     MOZ_ASSERT_IF(next.isString(), !gc::IsInsideNursery(next.toString()));

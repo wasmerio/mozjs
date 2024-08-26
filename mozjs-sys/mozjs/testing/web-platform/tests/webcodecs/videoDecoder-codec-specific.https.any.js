@@ -4,6 +4,8 @@
 // META: variant=?vp9
 // META: variant=?h264_avc
 // META: variant=?h264_annexb
+// META: variant=?h265_hevc
+// META: variant=?h265_annexb
 
 const AV1_DATA = {
   src: 'av1.mp4',
@@ -99,6 +101,43 @@ const H264_ANNEXB_DATA = {
   ]
 };
 
+const H265_HEVC_DATA = {
+  src: 'h265.mp4',
+  config: {
+    codec: 'hev1.1.6.L60.90',
+    description: {offset: 5821, size: 2406},
+    codedWidth: 320,
+    codedHeight: 240,
+    displayAspectWidth: 320,
+    displayAspectHeight: 240,
+  },
+  chunks: [
+    {offset: 44, size: 2515}, {offset: 2559, size: 279},
+    {offset: 2838, size: 327}, {offset: 3165, size: 329},
+    {offset: 3494, size: 308}, {offset: 3802, size: 292},
+    {offset: 4094, size: 352}, {offset: 4446, size: 296},
+    {offset: 4742, size: 216}, {offset: 4958, size: 344}
+  ]
+};
+
+const H265_ANNEXB_DATA = {
+  src: 'h265.annexb',
+  config: {
+    codec: 'hev1.1.6.L60.90',
+    codedWidth: 320,
+    codedHeight: 240,
+    displayAspectWidth: 320,
+    displayAspectHeight: 240,
+  },
+  chunks: [
+    {offset: 0, size: 4894}, {offset: 4894, size: 279},
+    {offset: 5173, size: 327}, {offset: 5500, size: 329},
+    {offset: 5829, size: 308}, {offset: 6137, size: 292},
+    {offset: 6429, size: 352}, {offset: 6781, size: 296},
+    {offset: 7077, size: 216}, {offset: 7293, size: 344}
+  ]
+};
+
 // Allows mutating `callbacks` after constructing the VideoDecoder, wraps calls
 // in t.step().
 function createVideoDecoder(t, callbacks) {
@@ -158,7 +197,9 @@ promise_setup(async () => {
     '?vp8': VP8_DATA,
     '?vp9': VP9_DATA,
     '?h264_avc': H264_AVC_DATA,
-    '?h264_annexb': H264_ANNEXB_DATA
+    '?h264_annexb': H264_ANNEXB_DATA,
+    '?h265_hevc': H265_HEVC_DATA,
+    '?h265_annexb': H265_ANNEXB_DATA
   }[location.search];
 
   // Fetch the media data and prepare buffers.
@@ -377,7 +418,7 @@ promise_test(async t => {
 
   await promise_rejects_dom(t, "EncodingError",
     decoder.flush().catch((e) => {
-      assert_equals(errors, 0);
+      assert_equals(errors, 1);
       throw e;
     })
   );
@@ -412,7 +453,7 @@ promise_test(async t => {
 
   await promise_rejects_dom(t, "EncodingError",
     decoder.flush().catch((e) => {
-      assert_equals(errors, 0);
+      assert_equals(errors, 1);
       throw e;
     })
   );
@@ -515,6 +556,75 @@ promise_test(async t => {
   const callbacks = {};
   const decoder = createVideoDecoder(t, callbacks);
 
+  decoder.configure(CONFIG);
+  decoder.decode(CHUNKS[0]);
+  const flushDone = decoder.flush();
+
+  let flushDoneInCallback;
+  let outputs = 0;
+  await new Promise(resolve => {
+    callbacks.output = frame => {
+      decoder.reset();
+      frame.close();
+
+      callbacks.output = frame => {
+        outputs++;
+        frame.close();
+      };
+      callbacks.error = e => {
+        t.unreached_func('unexpected error()');
+      };
+      decoder.configure(CONFIG);
+      decoder.decode(CHUNKS[0]);
+      flushDoneInCallback = decoder.flush();
+
+      resolve();
+    };
+  });
+
+  // First flush should have been synchronously rejected.
+  await promise_rejects_dom(t, 'AbortError', flushDone);
+  // Wait for the second flush and check the output count.
+  await flushDoneInCallback;
+  assert_equals(outputs, 1, 'outputs');
+}, 'Test new flush after reset in a flush callback');
+
+promise_test(async t => {
+  await checkImplements();
+  const callbacks = {};
+  const decoder = createVideoDecoder(t, callbacks);
+
+  decoder.configure(CONFIG);
+  decoder.decode(CHUNKS[0]);
+  const flushDone = decoder.flush();
+  let flushDoneInCallback;
+
+  await new Promise(resolve => {
+    callbacks.output = frame => {
+      decoder.reset();
+      frame.close();
+
+      callbacks.output = frame => { frame.close(); };
+      decoder.configure(CONFIG);
+      decoder.decode(CHUNKS[0]);
+      decoder.decode(createCorruptChunk(1));
+      flushDoneInCallback = decoder.flush();
+
+      resolve();
+    };
+  });
+
+  // First flush should have been synchronously rejected.
+  await promise_rejects_dom(t, 'AbortError', flushDone);
+  // Wait for the second flush and check the error in the rejected promise.
+  await promise_rejects_dom(t, 'EncodingError', flushDoneInCallback);
+}, 'Test decoding a corrupt frame after reset in a flush callback');
+
+promise_test(async t => {
+  await checkImplements();
+  const callbacks = {};
+  const decoder = createVideoDecoder(t, callbacks);
+
   decoder.configure({...CONFIG, optimizeForLatency: true});
   decoder.decode(CHUNKS[0]);
 
@@ -526,7 +636,6 @@ promise_test(async t => {
     };
   });
 }, 'Test low-latency decoding');
-
 
 promise_test(async t => {
   await checkImplements();

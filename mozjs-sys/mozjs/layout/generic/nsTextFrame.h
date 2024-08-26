@@ -198,12 +198,7 @@ class nsTextFrame : public nsIFrame {
 
   explicit nsTextFrame(ComputedStyle* aStyle, nsPresContext* aPresContext,
                        ClassID aID = kClassID)
-      : nsIFrame(aStyle, aPresContext, aID),
-        mNextContinuation(nullptr),
-        mContentOffset(0),
-        mContentLengthHint(0),
-        mAscent(0),
-        mIsSelected(SelectionState::Unknown) {}
+      : nsIFrame(aStyle, aPresContext, aID) {}
 
   NS_DECL_FRAMEARENA_HELPERS(nsTextFrame)
 
@@ -222,10 +217,9 @@ class nsTextFrame : public nsIFrame {
   void Init(nsIContent* aContent, nsContainerFrame* aParent,
             nsIFrame* aPrevInFlow) override;
 
-  void DestroyFrom(nsIFrame* aDestructRoot,
-                   PostDestroyData& aPostDestroyData) override;
+  void Destroy(DestroyContext&) override;
 
-  mozilla::Maybe<Cursor> GetCursor(const nsPoint&) final;
+  Cursor GetCursor(const nsPoint&) final;
 
   nsresult CharacterDataChanged(const CharacterDataChangeInfo&) final;
 
@@ -278,13 +272,6 @@ class nsTextFrame : public nsIFrame {
   }
   nsTextFrame* LastInFlow() const final;
   nsTextFrame* LastContinuation() const final;
-
-  bool IsFrameOfType(uint32_t aFlags) const final {
-    // Set the frame state bit for text frames to mark them as replaced.
-    // XXX kipp: temporary
-    return nsIFrame::IsFrameOfType(
-        aFlags & ~(nsIFrame::eReplaced | nsIFrame::eLineParticipant));
-  }
 
   bool ShouldSuppressLineBreak() const;
 
@@ -526,20 +513,22 @@ class nsTextFrame : public nsIFrame {
      * Called before (for under/over-line) or after (for line-through) the text
      * is drawn to have a text decoration line drawn.
      */
-    virtual void PaintDecorationLine(Rect aPath, nscolor aColor) {}
+    virtual void PaintDecorationLine(Rect aPath, bool aPaintingShadows,
+                                     nscolor aColor) {}
 
     /**
      * Called after selected text is drawn to have a decoration line drawn over
      * the text. (All types of text decoration are drawn after the text when
      * text is selected.)
      */
-    virtual void PaintSelectionDecorationLine(Rect aPath, nscolor aColor) {}
+    virtual void PaintSelectionDecorationLine(Rect aPath, bool aPaintingShadows,
+                                              nscolor aColor) {}
 
     /**
      * Called just before any paths have been emitted to the gfxContext
      * for the glyphs of the frame's text.
      */
-    virtual void NotifyBeforeText(nscolor aColor) {}
+    virtual void NotifyBeforeText(bool aPaintingShadows, nscolor aColor) {}
 
     /**
      * Called just after all the paths have been emitted to the gfxContext
@@ -787,7 +776,7 @@ class nsTextFrame : public nsIFrame {
 
   mutable RefPtr<nsFontMetrics> mFontMetrics;
   RefPtr<gfxTextRun> mTextRun;
-  nsTextFrame* mNextContinuation;
+  nsTextFrame* mNextContinuation = nullptr;
   // The key invariant here is that mContentOffset never decreases along
   // a next-continuation chain. And of course mContentOffset is always <= the
   // the text node's content length, and the mContentOffset for the first frame
@@ -797,13 +786,13 @@ class nsTextFrame : public nsIFrame {
   // frame's offset, or the text length if there is no next frame. This means
   // the frames always map the text node without overlapping or leaving any
   // gaps.
-  int32_t mContentOffset;
+  int32_t mContentOffset = 0;
   // This does *not* indicate the length of text currently mapped by the frame;
   // instead it's a hint saying that this frame *wants* to map this much text
   // so if we create a new continuation, this is where that continuation should
   // start.
-  int32_t mContentLengthHint;
-  nscoord mAscent;
+  int32_t mContentLengthHint = 0;
+  nscoord mAscent = 0;
 
   // Cached selection state.
   enum class SelectionState : uint8_t {
@@ -811,7 +800,7 @@ class nsTextFrame : public nsIFrame {
     Selected,
     NotSelected,
   };
-  mutable SelectionState mIsSelected;
+  mutable SelectionState mIsSelected = SelectionState::Unknown;
 
   // Flags used to track whether certain properties are present.
   // (Public to keep MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS happy.)
@@ -984,7 +973,7 @@ class nsTextFrame : public nsIFrame {
    * @return            true if the selection affects colors, false otherwise
    */
   static bool GetSelectionTextColors(SelectionType aSelectionType,
-                                     const nsAtom* aHighlightName,
+                                     nsAtom* aHighlightName,
                                      nsTextPaintStyle& aTextPaintStyle,
                                      const TextRangeStyle& aRangeStyle,
                                      nscolor* aForeground,
@@ -1072,6 +1061,17 @@ class nsTextFrame : public nsIFrame {
 
   nsPoint GetPointFromIterator(const gfxSkipCharsIterator& aIter,
                                PropertyProvider& aProperties);
+
+  /**
+   * Return the content offset of the first preserved newline in this frame,
+   * or return -1 if no preserved NL.
+   */
+  struct NewlineProperty;
+  int32_t GetContentNewLineOffset(int32_t aOffset,
+                                  NewlineProperty*& aCachedNewlineOffset);
+
+  void MaybeSplitFramesForFirstLetter();
+  void SetFirstLetterLength(int32_t aLength);
 };
 
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(nsTextFrame::TrimmedOffsetFlags)

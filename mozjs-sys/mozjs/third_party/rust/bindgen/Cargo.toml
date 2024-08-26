@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.60.0"
 name = "bindgen"
-version = "0.66.1"
+version = "0.69.4"
 authors = [
     "Jyun-Yan You <jyyou.tw@gmail.com>",
     "Emilio Cobos Álvarez <emilio@crisal.io>",
@@ -37,6 +37,29 @@ categories = [
 license = "BSD-3-Clause"
 repository = "https://github.com/rust-lang/rust-bindgen"
 
+[package.metadata.docs.rs]
+features = ["experimental"]
+
+[package.metadata.release]
+pre-release-hook = [
+    "../node_modules/doctoc/doctoc.js",
+    "../CHANGELOG.md",
+]
+release = true
+
+[[package.metadata.release.pre-release-replacements]]
+file = "../CHANGELOG.md"
+replace = """
+# Unreleased
+## Added
+## Changed
+## Removed
+## Fixed
+## Security
+
+# {{version}} ({{date}})"""
+search = "# Unreleased"
+
 [lib]
 name = "bindgen"
 path = "lib.rs"
@@ -56,6 +79,10 @@ version = "0.6"
 version = "1"
 features = ["clang_6_0"]
 
+[dependencies.itertools]
+version = ">=0.10,<0.13"
+default-features = false
+
 [dependencies.lazy_static]
 version = "1"
 
@@ -66,11 +93,9 @@ version = "1"
 version = "0.4"
 optional = true
 
-[dependencies.peeking_take_while]
-version = "0.1.2"
-
 [dependencies.prettyplease]
-version = "0.2.0"
+version = "0.2.7"
+features = ["verbatim"]
 optional = true
 
 [dependencies.proc-macro2]
@@ -82,10 +107,10 @@ version = "1"
 default-features = false
 
 [dependencies.regex]
-version = "1.5"
+version = "1.5.1"
 features = [
     "std",
-    "unicode",
+    "unicode-perl",
 ]
 default-features = false
 
@@ -111,7 +136,7 @@ default-features = false
 [features]
 __cli = []
 __testing_only_extra_assertions = []
-__testing_only_libclang_5 = []
+__testing_only_libclang_16 = []
 __testing_only_libclang_9 = []
 default = [
     "logging",

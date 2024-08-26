@@ -1,0 +1,1 @@
+SetProp, 2, 2, 4, JSVAL_TYPE_UNKNOWN, 32, STUBFIELD(Id) STUBFIELD(WeakGetterSetter) STUBFIELD(JSObject) STUBFIELD(RawInt32) , LASTUSED(2) LASTUSED(2) , OP(GuardToObject) ID(0) OP(GuardHasGetterSetter) ID(0) OFFSET(0) OFFSET(1) OP(CallScriptedSetter) ID(0) OFFSET(2) ID(1) BOOL(1) OFFSET(3) OP(ReturnFromIC)  

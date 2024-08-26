@@ -106,12 +106,12 @@ NS_IMPL_RELEASE(SharedWorkerInterfaceRequestor)
 NS_IMPL_QUERY_INTERFACE(SharedWorkerInterfaceRequestor, nsIInterfaceRequestor)
 
 // Normal runnable because AddPortIdentifier() is going to exec JS code.
-class MessagePortIdentifierRunnable final : public WorkerRunnable {
+class MessagePortIdentifierRunnable final : public WorkerThreadRunnable {
  public:
   MessagePortIdentifierRunnable(WorkerPrivate* aWorkerPrivate,
                                 RemoteWorkerChild* aActor,
                                 const MessagePortIdentifier& aPortIdentifier)
-      : WorkerRunnable(aWorkerPrivate),
+      : WorkerThreadRunnable("MessagePortIdentifierRunnable"),
         mActor(aActor),
         mPortIdentifier(aPortIdentifier) {}
 
@@ -128,6 +128,28 @@ class MessagePortIdentifierRunnable final : public WorkerRunnable {
   RefPtr<RemoteWorkerChild> mActor;
   UniqueMessagePortId mPortIdentifier;
 };
+
+// This is used to propagate the CSP violation when loading the SharedWorker
+// main-script and nothing else.
+class RemoteWorkerCSPEventListener final : public nsICSPEventListener {
+ public:
+  NS_DECL_ISUPPORTS
+
+  explicit RemoteWorkerCSPEventListener(RemoteWorkerChild* aActor)
+      : mActor(aActor){};
+
+  NS_IMETHOD OnCSPViolationEvent(const nsAString& aJSON) override {
+    mActor->CSPViolationPropagationOnMainThread(aJSON);
+    return NS_OK;
+  }
+
+ private:
+  ~RemoteWorkerCSPEventListener() = default;
+
+  RefPtr<RemoteWorkerChild> mActor;
+};
+
+NS_IMPL_ISUPPORTS(RemoteWorkerCSPEventListener, nsICSPEventListener)
 
 }  // anonymous namespace
 
@@ -179,8 +201,7 @@ void RemoteWorkerChild::ActorDestroy(ActorDestroyReason) {
     RefPtr<nsIRunnable> runnable =
         NewRunnableMethod("RequestWorkerCancellation", this,
                           &RemoteWorkerChild::RequestWorkerCancellation);
-    MOZ_ALWAYS_SUCCEEDS(
-        SchedulerGroup::Dispatch(TaskCategory::Other, runnable.forget()));
+    MOZ_ALWAYS_SUCCEEDS(SchedulerGroup::Dispatch(runnable.forget()));
   }
 }
 
@@ -202,8 +223,7 @@ void RemoteWorkerChild::ExecWorker(const RemoteWorkerData& aData) {
         Unused << NS_WARN_IF(NS_FAILED(rv));
       });
 
-  MOZ_ALWAYS_SUCCEEDS(
-      SchedulerGroup::Dispatch(TaskCategory::Other, r.forget()));
+  MOZ_ALWAYS_SUCCEEDS(SchedulerGroup::Dispatch(r.forget()));
 }
 
 nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
@@ -212,7 +232,12 @@ nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
   // Ensure that the IndexedDatabaseManager is initialized so that if any
   // workers do any IndexedDB calls that all of IDB's prefs/etc. are
   // initialized.
-  Unused << NS_WARN_IF(!IndexedDatabaseManager::GetOrCreate());
+  IndexedDatabaseManager* idm = IndexedDatabaseManager::GetOrCreate();
+  if (idm) {
+    Unused << NS_WARN_IF(NS_FAILED(idm->EnsureLocale()));
+  } else {
+    NS_WARNING("Failed to get IndexedDatabaseManager!");
+  }
 
   auto scopeExit =
       MakeScopeExit([&] { ExceptionalErrorTransitionDuringExecWorker(); });
@@ -260,12 +285,17 @@ nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
   info.mLoadingPrincipal = loadingPrincipalOrErr.unwrap();
   info.mStorageAccess = aData.storageAccess();
   info.mUseRegularPrincipal = aData.useRegularPrincipal();
-  info.mHasStorageAccessPermissionGranted =
-      aData.hasStorageAccessPermissionGranted();
-  info.mIsThirdPartyContextToTopWindow = aData.isThirdPartyContextToTopWindow();
+  info.mUsingStorageAccess = aData.usingStorageAccess();
+  info.mIsThirdPartyContext = aData.isThirdPartyContext();
   info.mOriginAttributes =
       BasePrincipal::Cast(principal)->OriginAttributesRef();
   info.mShouldResistFingerprinting = aData.shouldResistFingerprinting();
+  Maybe<RFPTarget> overriddenFingerprintingSettings;
+  if (aData.overriddenFingerprintingSettings().isSome()) {
+    overriddenFingerprintingSettings.emplace(
+        RFPTarget(aData.overriddenFingerprintingSettings().ref()));
+  }
+  info.mOverriddenFingerprintingSettings = overriddenFingerprintingSettings;
   net::CookieJarSettings::Deserialize(aData.cookieJarSettings(),
                                       getter_AddRefs(info.mCookieJarSettings));
   info.mCookieJarSettingsArgs = aData.cookieJarSettings();
@@ -332,6 +362,14 @@ nsresult RemoteWorkerChild::ExecWorkerOnMainThread(RemoteWorkerData&& aData) {
         info.mResolvedScriptURI, aData.type(), aData.credentials(), clientInfo,
         nsIContentPolicy::TYPE_INTERNAL_SHARED_WORKER, info.mCookieJarSettings,
         info.mReferrerInfo, getter_AddRefs(info.mChannel));
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    nsCOMPtr<nsILoadInfo> loadInfo = info.mChannel->LoadInfo();
+
+    auto* cspEventListener = new RemoteWorkerCSPEventListener(this);
+    rv = loadInfo->SetCspEventListener(cspEventListener);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -446,8 +484,7 @@ void RemoteWorkerChild::InitializeOnWorker() {
   nsCOMPtr<nsIRunnable> r =
       NewRunnableMethod("TransitionStateToRunning", this,
                         &RemoteWorkerChild::TransitionStateToRunning);
-  MOZ_ALWAYS_SUCCEEDS(
-      SchedulerGroup::Dispatch(TaskCategory::Other, r.forget()));
+  MOZ_ALWAYS_SUCCEEDS(SchedulerGroup::Dispatch(r.forget()));
 }
 
 RefPtr<GenericNonExclusivePromise> RemoteWorkerChild::GetTerminationPromise() {
@@ -570,6 +607,21 @@ void RemoteWorkerChild::ErrorPropagationOnMainThread(
   nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
       "RemoteWorkerChild::ErrorPropagationOnMainThread",
       [self = std::move(self), value]() { self->ErrorPropagation(value); });
+
+  GetActorEventTarget()->Dispatch(r.forget(), NS_DISPATCH_NORMAL);
+}
+
+void RemoteWorkerChild::CSPViolationPropagationOnMainThread(
+    const nsAString& aJSON) {
+  AssertIsOnMainThread();
+
+  RefPtr<RemoteWorkerChild> self = this;
+  nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
+      "RemoteWorkerChild::ErrorPropagationDispatch",
+      [self = std::move(self), json = nsString(aJSON)]() {
+        CSPViolation violation(json);
+        self->ErrorPropagation(violation);
+      });
 
   GetActorEventTarget()->Dispatch(r.forget(), NS_DISPATCH_NORMAL);
 }
@@ -838,8 +890,7 @@ class RemoteWorkerChild::SharedWorkerOp : public RemoteWorkerChild::Op {
           self->StartOnMainThread(owner);
         });
 
-    MOZ_ALWAYS_SUCCEEDS(
-        SchedulerGroup::Dispatch(TaskCategory::Other, r.forget()));
+    MOZ_ALWAYS_SUCCEEDS(SchedulerGroup::Dispatch(r.forget()));
 
 #ifdef DEBUG
     mStarted = true;
@@ -882,7 +933,7 @@ class RemoteWorkerChild::SharedWorkerOp : public RemoteWorkerChild::Op {
           new MessagePortIdentifierRunnable(
               workerPrivate, aOwner,
               mOp.get_RemoteWorkerPortIdentifierOp().portIdentifier());
-      if (NS_WARN_IF(!r->Dispatch())) {
+      if (NS_WARN_IF(!r->Dispatch(workerPrivate))) {
         aOwner->ErrorPropagationDispatch(NS_ERROR_FAILURE);
       }
     } else if (mOp.type() == RemoteWorkerOp::TRemoteWorkerAddWindowIDOp) {

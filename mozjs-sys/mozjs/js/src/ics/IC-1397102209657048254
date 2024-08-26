@@ -1,0 +1,1 @@
+Call, 1, 2, 4, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(RawInt32) , LASTUSED(0) LASTUSED(2) , OP(LoadArgumentFixedSlot) ID(1) BYTE(1) OP(GuardToObject) ID(1) OP(LoadFixedSlotTypedResult) ID(1) OFFSET(0) VALUETYPE(JSVAL_TYPE_INT32) OP(ReturnFromIC)  

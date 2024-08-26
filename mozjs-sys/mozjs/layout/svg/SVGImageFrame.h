@@ -72,14 +72,6 @@ class SVGImageFrame final : public nsIFrame,
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override;
 
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    if (aFlags & eSupportsContainLayoutAndPaint) {
-      return false;
-    }
-
-    return nsIFrame::IsFrameOfType(aFlags & ~nsIFrame::eSVG);
-  }
-
   nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
                             int32_t aModType) override;
 
@@ -89,8 +81,8 @@ class SVGImageFrame final : public nsIFrame,
 
   void Init(nsIContent* aContent, nsContainerFrame* aParent,
             nsIFrame* aPrevInFlow) override;
-  void DestroyFrom(nsIFrame* aDestructRoot,
-                   PostDestroyData& aPostDestroyData) override;
+  void Destroy(DestroyContext&) override;
+
   void DidSetComputedStyle(ComputedStyle* aOldStyle) final;
 
   bool IsSVGTransformed(Matrix* aOwnTransforms = nullptr,
@@ -117,6 +109,8 @@ class SVGImageFrame final : public nsIFrame,
 
  private:
   bool IgnoreHitTest() const;
+
+  already_AddRefed<imgIRequest> GetCurrentRequest() const;
 
   gfx::Matrix GetRasterImageTransform(int32_t aNativeWidth,
                                       int32_t aNativeHeight);

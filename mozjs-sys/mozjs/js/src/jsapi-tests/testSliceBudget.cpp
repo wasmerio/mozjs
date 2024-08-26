@@ -9,6 +9,9 @@
 #include "jsapi-tests/tests.h"
 
 using namespace js;
+using JS::SliceBudget;
+using JS::TimeBudget;
+using JS::WorkBudget;
 
 BEGIN_TEST(testSliceBudgetUnlimited) {
   SliceBudget budget = SliceBudget::unlimited();
@@ -104,10 +107,13 @@ BEGIN_TEST(testSliceBudgetInterruptibleTime) {
   // Do enough work for an expensive check.
   budget.step(1000);
 
-  // Interrupt requested! This will reset the external flag, but internally
-  // remember that an interrupt was requested.
+  // Interrupt requested!
   CHECK(budget.isOverBudget());
-  CHECK(!wantInterrupt);
+
+  // The external flag is not reset, but the budget will internally remember
+  // that an interrupt was requested.
+  CHECK(wantInterrupt);
+  wantInterrupt = false;
   CHECK(budget.isOverBudget());
 
   // This doesn't test the deadline is correct as that would require waiting.

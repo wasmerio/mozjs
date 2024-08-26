@@ -30,6 +30,7 @@ add_setup(async () => {
 });
 
 add_task(async function test_startupCache_write_byteLength() {
+  Services.fog.testResetFOG();
   const extension = ExtensionTestUtils.loadExtension({
     useAddonManager: "permanent",
     manifest: {
@@ -54,7 +55,11 @@ add_task(async function test_startupCache_write_byteLength() {
     "number",
     "Got a numeric byteLength for the expected startupCache data"
   );
-  ok(expectedByteLength > 0, "Got a non-zero byteLength as expected");
+  Assert.greater(
+    expectedByteLength,
+    0,
+    "Got a non-zero byteLength as expected"
+  );
   await StartupCache._saveNow();
 
   let scalars = TelemetryTestUtils.getProcessScalars("parent");
@@ -62,6 +67,11 @@ add_task(async function test_startupCache_write_byteLength() {
     scalars["extensions.startupCache.write_byteLength"],
     expectedByteLength,
     "Got the expected value set in the 'extensions.startupCache.write_byteLength' scalar"
+  );
+  equal(
+    Glean.extensions.startupCacheWriteBytelength.testGetValue(),
+    expectedByteLength,
+    "Expected 'extensions.startupCache.write_byteLength' Glean metric."
   );
 
   await extension.unload();
@@ -72,6 +82,7 @@ add_task(async function test_startupCache_read_errors() {
 
   // Clear any pre-existing keyed scalar.
   TelemetryTestUtils.getProcessScalars("parent", /* keyed */ true, true);
+  Services.fog.testResetFOG();
 
   // Temporarily point StartupCache._file to a path that is
   // not going to exist for sure.
@@ -101,6 +112,11 @@ add_task(async function test_startupCache_read_errors() {
     },
     "Got the expected value set in the 'extensions.startupCache.read_errors' keyed scalar"
   );
+  Assert.deepEqual(
+    Glean.extensions.startupCacheReadErrors.NotFoundError.testGetValue(),
+    1,
+    "Expected value for 'extensions.startupCache.read_errors' Glean metric."
+  );
 
   restoreStartupCacheFile();
 });
@@ -114,9 +130,9 @@ add_task(async function test_startupCache_load_timestamps() {
 
   let gleanMetric = Glean.extensions.startupCacheLoadTime.testGetValue();
   equal(
-    typeof gleanMetric,
-    "undefined",
-    "Expect extensions.startup_cache_load_time Glean metric to be initially undefined"
+    gleanMetric,
+    null,
+    "Expect extensions.startup_cache_load_time Glean metric to be initially null"
   );
 
   // Make sure the _readData has been called and we can expect
@@ -140,16 +156,18 @@ add_task(async function test_startupCache_load_timestamps() {
   );
 
   const scalars = TelemetryTestUtils.getProcessScalars("parent", false, true);
+  const mirror = scalars["extensions.startupCache.load_time"];
 
   equal(
-    typeof scalars["extensions.startupCache.load_time"],
+    typeof mirror,
     "number",
     "Expect extensions.startupCache.load_time mirrored scalar to be set to a number"
   );
 
-  equal(
-    scalars["extensions.startupCache.load_time"],
-    gleanMetric,
-    "Expect the glean metric and mirrored scalar to be set to the same value"
+  // See https://bugzilla.mozilla.org/show_bug.cgi?id=1865850.
+  Assert.lessOrEqual(
+    Math.abs(gleanMetric - mirror),
+    1,
+    `Expect Glean metric ${gleanMetric} and mirrored scalar ${mirror} to be within 1ms of each other.`
   );
 });

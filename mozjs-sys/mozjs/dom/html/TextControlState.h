@@ -216,7 +216,7 @@ class TextControlState final : public SupportsWeakPtr {
   bool IsBusy() const { return !!mHandlingState || mValueTransferInProgress; }
 
   MOZ_CAN_RUN_SCRIPT TextEditor* GetTextEditor();
-  TextEditor* GetTextEditorWithoutCreation();
+  TextEditor* GetTextEditorWithoutCreation() const;
   nsISelectionController* GetSelectionController() const;
   nsFrameSelection* GetConstFrameSelection();
   nsresult BindToFrame(nsTextControlFrame* aFrame);
@@ -288,7 +288,8 @@ class TextControlState final : public SupportsWeakPtr {
    * GetValue() returns current value either with or without TextEditor.
    * The result never includes \r.
    */
-  void GetValue(nsAString& aValue, bool aIgnoreWrap) const;
+  void GetValue(nsAString& aValue, bool aIgnoreWrap, bool aForDisplay) const;
+
   /**
    * ValueEquals() is designed for internal use so that aValue shouldn't
    * include \r character.  It should be handled before calling this with

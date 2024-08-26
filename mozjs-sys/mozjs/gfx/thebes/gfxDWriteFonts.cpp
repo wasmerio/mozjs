@@ -96,11 +96,15 @@ gfxDWriteFont::gfxDWriteFont(const RefPtr<UnscaledFontDWrite>& aUnscaledFont,
       case 0:  // never use the DWrite simulation
         mApplySyntheticBold = true;
         break;
-      case 1:  // use DWrite simulation for installed fonts but not webfonts
-        mApplySyntheticBold = aFontEntry->mIsDataUserFont;
+      case 1:  // use DWrite simulation for installed fonts except COLR fonts,
+               // but not webfonts
+        mApplySyntheticBold =
+            aFontEntry->mIsDataUserFont ||
+            aFontEntry->HasFontTable(TRUETYPE_TAG('C', 'O', 'L', 'R'));
         break;
-      default:  // always use DWrite bold simulation
-        // the flag is initialized to false in gfxFont
+      default:  // always use DWrite bold simulation, except for COLR fonts
+        mApplySyntheticBold =
+            aFontEntry->HasFontTable(TRUETYPE_TAG('C', 'O', 'L', 'R'));
         break;
     }
   }
@@ -134,6 +138,10 @@ bool gfxDWriteFont::InitDWriteSupport() {
 /* static */
 void gfxDWriteFont::UpdateSystemTextVars() {
   MOZ_ASSERT(XRE_IsParentProcess());
+
+  if (!gfxVars::IsInitialized()) {
+    return;
+  }
 
   BYTE newQuality = GetSystemTextQuality();
   if (gfxVars::SystemTextQuality() != newQuality) {
@@ -268,12 +276,14 @@ void gfxDWriteFont::UpdateClearTypeVars() {
     gfxVars::SetSystemTextRenderingMode(renderingMode);
   }
 
+#if 0
   // Set cairo dwrite params in the parent process where it might still be
   // needed for printing. We use the validated pref int directly for rendering
   // mode, because a negative (i.e. not set) rendering mode is also used for
   // deciding on forcing GDI in cairo.
   cairo_dwrite_set_cleartype_params(gamma, enhancedContrast, clearTypeLevel,
                                     pixelGeometry, renderingModePref);
+#endif
 }
 
 gfxFont* gfxDWriteFont::CopyWithAntialiasOption(
@@ -679,7 +689,8 @@ bool gfxDWriteFont::GetForceGDIClassic() const {
          static_cast<gfxDWriteFontEntry*>(mFontEntry.get())
              ->GetForceGDIClassic() &&
          GetAdjustedSize() <= gfxDWriteFontList::PlatformFontList()
-                                  ->GetForceGDIClassicMaxFontSize();
+                                  ->GetForceGDIClassicMaxFontSize() &&
+         GetAdjustedSize() >= 6.0;
 }
 
 DWRITE_MEASURING_MODE

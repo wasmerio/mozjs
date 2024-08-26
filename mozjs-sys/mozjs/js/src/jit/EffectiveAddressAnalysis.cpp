@@ -7,6 +7,7 @@
 #include "jit/EffectiveAddressAnalysis.h"
 
 #include "jit/IonAnalysis.h"
+#include "jit/MIR-wasm.h"
 #include "jit/MIR.h"
 #include "jit/MIRGenerator.h"
 #include "jit/MIRGraph.h"
@@ -205,7 +206,7 @@ void EffectiveAddressAnalysis::analyzeAsmJSHeapAccess(AsmJSMemoryAccess* ins) {
     int32_t imm = base->toConstant()->toInt32();
     if (imm >= 0) {
       int32_t end = (uint32_t)imm + ins->byteSize();
-      if (end >= imm && (uint32_t)end <= mir_->minWasmHeapLength()) {
+      if (end >= imm && (uint32_t)end <= mir_->minWasmMemory0Length()) {
         ins->removeBoundsCheck();
       }
     }

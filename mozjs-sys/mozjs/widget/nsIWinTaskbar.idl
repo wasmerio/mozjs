@@ -9,12 +9,12 @@
 #include "nsIBaseWindow.idl"
 
 interface nsIDocShell;
+interface nsIJumpListBuilder;
 interface nsITaskbarTabPreview;
 interface nsITaskbarWindowPreview;
 interface nsITaskbarPreviewController;
 interface nsITaskbarProgress;
 interface nsITaskbarOverlayIconController;
-interface nsIJumpListBuilder;
 interface mozIDOMWindow;
 
 /*
@@ -120,20 +120,30 @@ interface nsIWinTaskbar : nsISupports
    */
 
   /**
-   * Retrieve a taskbar jump list builder
+   * Retrieves a Windows Jump List builder. This jump list builder can be used
+   * to asynchronously add, remove, and update items in the Windows Jump List.
    *
-   * Fails if a jump list build operation has already been initiated, developers
-   * should make use of a single instance of nsIJumpListBuilder for building lists
-   * within an application.
-   *
-   * @throw NS_ERROR_ALREADY_INITIALIZED if an nsIJumpListBuilder instance is
-   * currently building a list.
+   * @throws NS_ERROR_UNEXPECTED if the builder failed to be created.
    */
   nsIJumpListBuilder createJumpListBuilder(in boolean aPrivateBrowsing);
 
   /**
    * Application window taskbar group settings
    */
+
+  /**
+   * Get the grouping id for a window.
+   *
+   * The runtime sets a default, global grouping id for all windows on startup.
+   * getGroupIdForWindow allows finding the grouping of individual windows
+   * on the taskbar.
+   *
+   * @throw NS_ERROR_INVALID_ARG if the window is not a valid top level window
+   * associated with a widget.
+   * @throw NS_ERROR_FAILURE if the property on the window could not be set.
+   * @throw NS_ERROR_UNEXPECTED for general failures.
+   */
+  AString getGroupIdForWindow(in mozIDOMWindow aParent);
 
   /**
    * Set the grouping id for a window.

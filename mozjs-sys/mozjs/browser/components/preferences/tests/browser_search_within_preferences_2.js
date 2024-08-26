@@ -178,3 +178,113 @@ add_task(async function () {
 
   await BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
+
+/**
+ * Test that search works as expected for custom elements that utilize both
+ * slots and shadow DOM. We should be able to find text the shadow DOM.
+ */
+add_task(async function testSearchShadowDOM() {
+  await openPreferencesViaOpenPreferencesAPI("paneGeneral", {
+    leaveOpen: true,
+  });
+
+  // Create the toggle.
+  let { mozElements, SHADOW_DOM_TEXT } = createMozCustomElements(gBrowser);
+
+  mozElements.forEach(el => {
+    ok(
+      !BrowserTestUtils.isVisible(el),
+      `${el.localName} is not visible prior to search.`
+    );
+  });
+
+  // Perform search with text found in moz-toggle's shadow DOM.
+  let query = SHADOW_DOM_TEXT;
+  let searchCompletedPromise = BrowserTestUtils.waitForEvent(
+    gBrowser.contentWindow,
+    "PreferencesSearchCompleted",
+    evt => evt.detail == query
+  );
+  EventUtils.sendString(query);
+  await searchCompletedPromise;
+  mozElements.forEach(el => {
+    ok(
+      BrowserTestUtils.isVisible(el),
+      `${el.localName} is visible after searching for string in the shadow DOM.`
+    );
+  });
+
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
+});
+
+/**
+ * Test that search works as expected for custom elements that utilize both
+ * slots and shadow DOM. We should be able to find text the light DOM.
+ */
+add_task(async function testSearchLightDOM() {
+  await openPreferencesViaOpenPreferencesAPI("paneGeneral", {
+    leaveOpen: true,
+  });
+
+  // Create the toggle.
+  let { mozElements, LIGHT_DOM_TEXT } = createMozCustomElements(gBrowser, [
+    "moz-toggle",
+  ]);
+  let toggle = mozElements[0];
+
+  // Perform search with text found in moz-toggle's slotted content.
+  let query = LIGHT_DOM_TEXT;
+  let searchCompletedPromise = BrowserTestUtils.waitForEvent(
+    gBrowser.contentWindow,
+    "PreferencesSearchCompleted",
+    evt => evt.detail == query
+  );
+  EventUtils.sendString(query);
+  await searchCompletedPromise;
+  ok(
+    BrowserTestUtils.isVisible(toggle),
+    "Toggle is visible again after searching for text found in slotted content."
+  );
+
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
+});
+
+const MOZ_CUSTOM_ELEMENTS = [
+  "moz-toggle",
+  "moz-radio-group",
+  "moz-radio",
+  "moz-checkbox",
+];
+
+// Create multiple moz- custom elements with the same label.
+function createMozCustomElements(gBrowser, elements = MOZ_CUSTOM_ELEMENTS) {
+  const SHADOW_DOM_TEXT = "This text lives in the shadow DOM";
+  const LIGHT_DOM_TEXT = "This text lives in the light DOM";
+
+  let doc = gBrowser.contentDocument;
+  let mozElements = elements.map(tag => {
+    let el = doc.createElement(tag);
+    el.label = SHADOW_DOM_TEXT;
+    return el;
+  });
+  let [toggle, radioGroup, radioButton, ...rest] = mozElements;
+  let protectionsGroup = doc.getElementById("trackingGroup");
+
+  if (toggle) {
+    let link = doc.createElement("a");
+    link.href = "https://mozilla.org/";
+    link.textContent = LIGHT_DOM_TEXT;
+    toggle.append(link);
+    link.slot = "support-link";
+    protectionsGroup.append(toggle);
+  }
+
+  if (radioGroup && radioButton) {
+    radioGroup.appendChild(radioButton);
+    protectionsGroup.append(radioGroup);
+  }
+
+  protectionsGroup.append(...rest);
+
+  return { SHADOW_DOM_TEXT, LIGHT_DOM_TEXT, mozElements };
+}

@@ -11,6 +11,7 @@ class TimeStamp;
 }
 #include "nsTArrayForwardDeclare.h"
 #include "nsCOMPtr.h"
+#include "mozilla/Unused.h"
 %}
 
 native TimeStamp(mozilla::TimeStamp);
@@ -25,7 +26,7 @@ interface nsIServerTiming : nsISupports {
 [ref] native nsServerTimingArrayRef(nsTArray<nsCOMPtr<nsIServerTiming>>);
 
 // All properties return zero if the value is not available
-[scriptable, uuid(ca63784d-959c-4c3a-9a59-234a2a520de0)]
+[scriptable, builtinclass, uuid(ca63784d-959c-4c3a-9a59-234a2a520de0)]
 interface nsITimedChannel : nsISupports {
   // Set this attribute to true to enable collection of timing data.
   // channelCreationTime will be available even with this attribute set to
@@ -85,6 +86,24 @@ interface nsITimedChannel : nsISupports {
     return NS_SUCCEEDED(TimingAllowCheck(aOrigin, &allowed)) && allowed;
   }
   %}
+  // Determines if bodyInfo should be opaque to the given origin
+  cenum BodyInfoAccess : 8 {
+    DISALLOWED  = 0,
+    ALLOW_SIZES = 1,
+    ALLOW_ALL   = 2
+  };
+  [noscript] nsITimedChannel_BodyInfoAccess bodyInfoAccessAllowedCheck(in nsIPrincipal origin);
+  %{C++
+  inline BodyInfoAccess BodyInfoAccessAllowedCheck(nsIPrincipal* aOrigin) {
+    BodyInfoAccess allowed = BodyInfoAccess::DISALLOWED;
+    mozilla::Unused << BodyInfoAccessAllowedCheck(aOrigin, &allowed);
+    return allowed;
+  }
+  %}
+
+  // Whether this request is render-blocking:
+  // https://w3c.github.io/resource-timing/#dom-renderblockingstatustype
+  [noscript] attribute boolean renderBlocking;
 
   // The following are only set if the document is (partially) read from the
   // cache
@@ -124,5 +143,5 @@ interface nsITimedChannel : nsISupports {
   [noscript] attribute boolean reportResourceTiming;
 
   readonly attribute nsIArray serverTiming;
-  nsServerTimingArrayRef getNativeServerTiming();
+  [noscript] nsServerTimingArrayRef getNativeServerTiming();
 };

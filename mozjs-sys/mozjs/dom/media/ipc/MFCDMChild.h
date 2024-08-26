@@ -25,11 +25,12 @@ class MFCDMChild final : public PMFCDMChild {
   explicit MFCDMChild(const nsAString& aKeySystem);
 
   using CapabilitiesPromise = MozPromise<MFCDMCapabilitiesIPDL, nsresult, true>;
-  RefPtr<CapabilitiesPromise> GetCapabilities(bool aIsHWSecured);
+  RefPtr<CapabilitiesPromise> GetCapabilities(
+      MFCDMCapabilitiesRequest&& aRequest);
 
   template <typename PromiseType>
   already_AddRefed<PromiseType> InvokeAsync(
-      std::function<void()>&& aCall, const char* aCallerName,
+      std::function<void()>&& aCall, StaticString aCallerName,
       MozPromiseHolder<PromiseType>& aPromise);
 
   using InitPromise = MozPromise<MFCDMInitIPDL, nsresult, true>;
@@ -59,6 +60,12 @@ class MFCDMChild final : public PMFCDMChild {
 
   RefPtr<GenericPromise> RemoveSession(uint32_t aPromiseId,
                                        const nsAString& aSessionId);
+
+  RefPtr<GenericPromise> SetServerCertificate(uint32_t aPromiseId,
+                                              nsTArray<uint8_t>& aCert);
+
+  RefPtr<GenericPromise> GetStatusForPolicy(
+      uint32_t aPromiseId, const dom::HDCPVersion& aMinHdcpVersion);
 
   mozilla::ipc::IPCResult RecvOnSessionKeyMessage(
       const MFCDMKeyMessage& aMessage);

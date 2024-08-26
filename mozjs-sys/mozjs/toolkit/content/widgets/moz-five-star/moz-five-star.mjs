@@ -5,7 +5,7 @@
 import { ifDefined, html } from "../vendor/lit.all.mjs";
 import { MozLitElement } from "../lit-utils.mjs";
 
-MozXULElement.insertFTLIfNeeded("toolkit/global/mozFiveStar.ftl");
+window.MozXULElement?.insertFTLIfNeeded("toolkit/global/mozFiveStar.ftl");
 
 /**
  * The visual representation is five stars, each of them either empty,
@@ -29,11 +29,6 @@ export default class MozFiveStar extends MozLitElement {
     };
   }
 
-  // Use a relative URL in storybook to get faster reloads on style changes.
-  static stylesheetUrl = window.IS_STORYBOOK
-    ? "./moz-five-star/moz-five-star.css"
-    : "chrome://global/content/elements/moz-five-star.css";
-
   getStarsFill() {
     let starFill = [];
     let roundedRating = Math.round(this.rating * 2) / 2;
@@ -52,12 +47,18 @@ export default class MozFiveStar extends MozLitElement {
   render() {
     let starFill = this.getStarsFill();
     return html`
-      <link rel="stylesheet" href=${this.constructor.stylesheetUrl} />
+      <link
+        rel="stylesheet"
+        href="chrome://global/content/elements/moz-five-star.css"
+      />
       <div
         class="stars"
-        data-l10n-id=${ifDefined(this.title ? null : "moz-five-star-rating")}
+        role="img"
+        data-l10n-id=${ifDefined(
+          this.title ? undefined : "moz-five-star-rating"
+        )}
         data-l10n-args=${ifDefined(
-          this.title ? null : JSON.stringify({ rating: this.rating ?? 0 })
+          this.title ? undefined : JSON.stringify({ rating: this.rating ?? 0 })
         )}
       >
         ${starFill.map(

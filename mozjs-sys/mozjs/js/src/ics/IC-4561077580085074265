@@ -1,0 +1,1 @@
+Call, 1, 2, 5, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(0) LASTUSED(3) , OP(LoadArgumentFixedSlot) ID(1) BYTE(0) OP(GuardToObject) ID(1) OP(GuardIsResizableTypedArray) ID(1) OP(ResizableTypedArrayLengthInt32Result) ID(1) OP(ReturnFromIC)  

@@ -94,7 +94,7 @@ export var TabCrashHandler = {
     Services.obs.addObserver(this, "oop-frameloader-crashed");
   },
 
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     switch (aTopic) {
       case "ipc:content-shutdown": {
         aSubject.QueryInterface(Ci.nsIPropertyBag2);
@@ -370,7 +370,7 @@ export var TabCrashHandler = {
    * @param dumpID
    *        Minidump id of the crash.
    */
-  showSubFrameNotification(browser, childID, dumpID) {
+  async showSubFrameNotification(browser, childID, dumpID) {
     let gBrowser = browser.getTabBrowser();
     let notificationBox = gBrowser.getNotificationBox(browser);
 
@@ -417,7 +417,7 @@ export var TabCrashHandler = {
       },
     ];
 
-    notification = notificationBox.appendNotification(
+    notification = await notificationBox.appendNotification(
       value,
       {
         label: { "l10n-id": "crashed-subframe-message" },
@@ -845,7 +845,7 @@ export var UnsubmittedCrashHandler = {
     Services.obs.removeObserver(this, "profile-before-change");
   },
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     switch (topic) {
       case "profile-before-change": {
         this.uninit();
@@ -890,6 +890,7 @@ export var UnsubmittedCrashHandler = {
     }
 
     if (reportIDs.length) {
+      Glean.crashSubmission.pending.add(reportIDs.length);
       if (this.autoSubmit) {
         this.submitReports(reportIDs, lazy.CrashSubmit.SUBMITTED_FROM_AUTO);
       } else if (this.shouldShowPendingSubmissionsNotification()) {
@@ -956,12 +957,12 @@ export var UnsubmittedCrashHandler = {
    *        The Array of report IDs to offer the user to send.
    * @returns The <xul:notification> if one is shown. null otherwise.
    */
-  showPendingSubmissionsNotification(reportIDs) {
+  async showPendingSubmissionsNotification(reportIDs) {
     if (!reportIDs.length) {
       return null;
     }
 
-    let notification = this.show({
+    let notification = await this.show({
       notificationID: "pending-crash-reports",
       reportIDs,
       onAction: () => {

@@ -7,26 +7,30 @@ import os
 import six
 from mozlog.commandline import add_logging_group
 
-(FIREFOX, CHROME, CHROMIUM, SAFARI, CHROMIUM_RELEASE) = DESKTOP_APPS = [
+(FIREFOX, CHROME, SAFARI, SAFARI_TP, CHROMIUM_RELEASE) = DESKTOP_APPS = [
     "firefox",
     "chrome",
-    "chromium",
     "safari",
+    "safari-tp",
     "custom-car",
 ]
-(GECKOVIEW, REFBROW, FENIX, CHROME_ANDROID) = FIREFOX_ANDROID_APPS = [
+(GECKOVIEW, REFBROW, FENIX) = FIREFOX_ANDROID_APPS = [
     "geckoview",
     "refbrow",
     "fenix",
-    "chrome-m",
 ]
+(CHROME_ANDROID, CHROMIUM_RELEASE_ANDROID) = CHROME_ANDROID_APPS = [
+    "chrome-m",
+    "cstm-car-m",
+]
+FIREFOX_APPS = FIREFOX_ANDROID_APPS + [FIREFOX]
 
-CHROMIUM_DISTROS = [CHROME, CHROMIUM]
+CHROMIUM_DISTROS = [CHROME, CHROMIUM_RELEASE]
 APPS = {
     FIREFOX: {"long_name": "Firefox Desktop"},
     CHROME: {"long_name": "Google Chrome Desktop"},
-    CHROMIUM: {"long_name": "Google Chromium Desktop"},
     SAFARI: {"long_name": "Safari Desktop"},
+    SAFARI_TP: {"long_name": "Safari Technology Preview Desktop"},
     CHROMIUM_RELEASE: {"long_name": "Custom Chromium-as-Release desktop"},
     GECKOVIEW: {
         "long_name": "Firefox GeckoView on Android",
@@ -48,8 +52,24 @@ APPS = {
         "default_activity": "com.android.chrome/com.google.android.apps.chrome.Main",
         "default_intent": "android.intent.action.VIEW",
     },
+    CHROMIUM_RELEASE_ANDROID: {
+        "long_name": "Custom Chromium-as-Release on Android",
+        "default_activity": "com.android.chrome/com.google.android.apps.chrome.Main",
+        "default_intent": "android.intent.action.VIEW",
+    },
 }
 INTEGRATED_APPS = list(APPS.keys())
+
+GECKO_PROFILER_APPS = (FIREFOX, GECKOVIEW, REFBROW, FENIX)
+
+TRACE_APPS = (CHROME, CHROMIUM_RELEASE)
+
+APP_BINARIES = {
+    "fenix": "org.mozilla.fenix",
+    "focus": "org.mozilla.focus",
+    "geckoview": "org.mozilla.geckoview_example",
+    "refbrow": "org.mozilla.reference.browser",
+}
 
 
 def print_all_activities():
@@ -180,7 +200,7 @@ def create_parser(mach_interface=False):
     add_arg(
         "--gecko-profile-interval",
         dest="gecko_profile_interval",
-        type=int,
+        type=float,
         help="How frequently to take samples (milliseconds)",
     )
     add_arg(
@@ -231,7 +251,7 @@ def create_parser(mach_interface=False):
         "--post-startup-delay",
         dest="post_startup_delay",
         type=int,
-        default=30000,
+        default=None,
         help="How long to wait (ms) after browser start-up before starting the tests",
     )
     add_arg(
@@ -507,6 +527,20 @@ def create_parser(mach_interface=False):
         type=str,
         help="Repository branch that should be used for a particular benchmark test.",
     )
+    add_arg(
+        "--screenshot-on-failure",
+        action="store_true",
+        dest="screenshot_on_failure",
+        default=False,
+        help="Take a screenshot when the test fails.",
+    )
+    add_arg(
+        "--power-test",
+        action="store_true",
+        dest="power_test",
+        default=False,
+        help="Gather power usage measurements on this test (Android only).",
+    )
 
     add_logging_group(parser)
     return parser
@@ -515,7 +549,11 @@ def create_parser(mach_interface=False):
 def verify_options(parser, args):
     ctx = vars(args)
     if args.binary is None and args.app != "chrome-m":
-        parser.error("--binary is required!")
+        args.binary = APP_BINARIES.get(args.app, None)
+        if args.binary is None:
+            parser.error("--binary is required!")
+        else:
+            print(f"Using {args.binary} as default binary argument for {args.app} app")
 
     # Debug-mode is disabled in CI (check for attribute in case of mach_interface issues)
     if hasattr(args, "run_local") and (not args.run_local and args.debug_mode):
@@ -591,6 +629,13 @@ def verify_options(parser, args):
                 "When a benchmark repository is provided, a revision is also required."
             )
 
+    if args.post_startup_delay:
+        if args.post_startup_delay < 0:
+            parser.error("--post-startup-delay must be a positive integer (in ms).")
+
+    if args.power_test and args.app not in FIREFOX_ANDROID_APPS + CHROME_ANDROID_APPS:
+        parser.error("--power-test is only available with Android apps.")
+
 
 def parse_args(argv=None):
     parser = create_parser()
@@ -627,10 +672,10 @@ class _PrintTests(_StopAction):
         from manifestparser import TestManifest
 
         here = os.path.abspath(os.path.dirname(__file__))
-        raptor_ini = os.path.join(here, "raptor.ini")
+        raptor_toml = os.path.join(here, "raptor.toml")
 
         for _app in self.integrated_apps:
-            test_manifest = TestManifest([raptor_ini], strict=False)
+            test_manifest = TestManifest([raptor_toml], strict=False)
             info = {"app": _app}
             available_tests = test_manifest.active_tests(
                 exists=False, disabled=False, filters=[self.filter_app], **info
@@ -659,7 +704,9 @@ class _PrintTests(_StopAction):
                     # no test name; skip it
                     continue
 
-                suite = os.path.basename(next_test["manifest"])[:-4]
+                suite = ".".join(
+                    os.path.basename(next_test["manifest"]).split(".")[:-1]
+                )
                 if suite not in test_list:
                     test_list[suite] = {"type": None, "subtests": []}
 
@@ -671,7 +718,9 @@ class _PrintTests(_StopAction):
                         subtest = next_test["name"]
                         measure = next_test.get("measure")
                         if measure is not None:
-                            subtest = "{0} ({1})".format(subtest, measure)
+                            subtest = "{0} ({1})".format(
+                                subtest, measure.replace("\n", ", ")
+                            )
                         test_list[suite]["subtests"].append(subtest)
 
             # print the list in a nice, readable format

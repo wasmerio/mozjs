@@ -1608,7 +1608,7 @@ impl SourceLocation {
             let mut line = 0;
             let mut col = 0;
             let mut off = 0;
-            clang_getSpellingLocation(
+            clang_getFileLocation(
                 self.x, &mut file, &mut line, &mut col, &mut off,
             );
             (File { x: file }, line as usize, col as usize, off as usize)
@@ -1813,14 +1813,14 @@ impl TranslationUnit {
     pub(crate) fn parse(
         ix: &Index,
         file: &str,
-        cmd_args: &[String],
+        cmd_args: &[Box<str>],
         unsaved: &[UnsavedFile],
         opts: CXTranslationUnit_Flags,
     ) -> Option<TranslationUnit> {
         let fname = CString::new(file).unwrap();
         let _c_args: Vec<CString> = cmd_args
             .iter()
-            .map(|s| CString::new(s.clone()).unwrap())
+            .map(|s| CString::new(s.as_bytes()).unwrap())
             .collect();
         let c_args: Vec<*const c_char> =
             _c_args.iter().map(|s| s.as_ptr()).collect();
@@ -1923,9 +1923,9 @@ pub(crate) struct UnsavedFile {
 
 impl UnsavedFile {
     /// Construct a new unsaved file with the given `name` and `contents`.
-    pub(crate) fn new(name: String, contents: String) -> UnsavedFile {
-        let name = CString::new(name).unwrap();
-        let contents = CString::new(contents).unwrap();
+    pub(crate) fn new(name: &str, contents: &str) -> UnsavedFile {
+        let name = CString::new(name.as_bytes()).unwrap();
+        let contents = CString::new(contents.as_bytes()).unwrap();
         let x = CXUnsavedFile {
             Filename: name.as_ptr(),
             Contents: contents.as_ptr(),
@@ -2297,6 +2297,15 @@ impl Drop for EvalResult {
         unsafe { clang_EvalResult_dispose(self.x) };
     }
 }
+/// ABI kinds as defined in
+/// <https://github.com/llvm/llvm-project/blob/ddf1de20a3f7db3bca1ef6ba7e6cbb90aac5fd2d/clang/include/clang/Basic/TargetCXXABI.def>
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+pub(crate) enum ABIKind {
+    /// All the regular targets like Linux, Mac, WASM, etc. implement the Itanium ABI
+    GenericItanium,
+    /// The ABI used when compiling for the MSVC target
+    Microsoft,
+}
 
 /// Target information obtained from libclang.
 #[derive(Debug)]
@@ -2305,6 +2314,8 @@ pub(crate) struct TargetInfo {
     pub(crate) triple: String,
     /// The width of the pointer _in bits_.
     pub(crate) pointer_width: usize,
+    /// The ABI of the target
+    pub(crate) abi: ABIKind,
 }
 
 impl TargetInfo {
@@ -2320,9 +2331,17 @@ impl TargetInfo {
         }
         assert!(pointer_width > 0);
         assert_eq!(pointer_width % 8, 0);
+
+        let abi = if triple.contains("msvc") {
+            ABIKind::Microsoft
+        } else {
+            ABIKind::GenericItanium
+        };
+
         TargetInfo {
             triple,
             pointer_width: pointer_width as usize,
+            abi,
         }
     }
 }

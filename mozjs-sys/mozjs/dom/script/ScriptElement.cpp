@@ -29,6 +29,19 @@ ScriptElement::ScriptAvailable(nsresult aResult, nsIScriptElement* aElement,
   if (!aIsInlineClassicScript && NS_FAILED(aResult)) {
     nsCOMPtr<nsIParser> parser = do_QueryReferent(mCreatorParser);
     if (parser) {
+      nsCOMPtr<nsIContentSink> sink = parser->GetContentSink();
+      if (sink) {
+        nsCOMPtr<Document> parserDoc = do_QueryInterface(sink->GetTarget());
+        if (GetAsContent()->OwnerDoc() != parserDoc) {
+          // Suppress errors when we've moved between docs.
+          // /html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-iframe-fetch-error-external-module.html
+          // See also https://bugzilla.mozilla.org/show_bug.cgi?id=1849107
+          return NS_OK;
+        }
+      }
+    }
+
+    if (parser) {
       parser->IncrementScriptNestingLevel();
     }
     nsresult rv = FireErrorEvent();
@@ -144,10 +157,25 @@ bool ScriptElement::MaybeProcessScript() {
   nsAutoString type;
   bool hasType = GetScriptType(type);
   if (!type.IsEmpty()) {
-    NS_ENSURE_TRUE(nsContentUtils::IsJavascriptMIMEType(type) ||
-                       type.LowerCaseEqualsASCII("module") ||
-                       type.LowerCaseEqualsASCII("importmap"),
-                   false);
+    if (!nsContentUtils::IsJavascriptMIMEType(type) &&
+        !type.LowerCaseEqualsASCII("module") &&
+        !type.LowerCaseEqualsASCII("importmap")) {
+#ifdef DEBUG
+      // There is a WebGL convention to store strings they need inside script
+      // tags with these specific unknown script types, so don't warn for them.
+      // "text/something-not-javascript" only seems to be used in the WebGL
+      // conformance tests, but it is also clearly deliberately invalid, so
+      // skip warning for it, too, to reduce warning spam.
+      if (!type.LowerCaseEqualsASCII("x-shader/x-vertex") &&
+          !type.LowerCaseEqualsASCII("x-shader/x-fragment") &&
+          !type.LowerCaseEqualsASCII("text/something-not-javascript")) {
+        NS_WARNING(nsPrintfCString("Unknown script type '%s'",
+                                   NS_ConvertUTF16toUTF8(type).get())
+                       .get());
+      }
+#endif  // #ifdef DEBUG
+      return false;
+    }
   } else if (!hasType) {
     // "language" is a deprecated attribute of HTML, so we check it only for
     // HTML script elements.
@@ -172,14 +200,14 @@ bool ScriptElement::MaybeProcessScript() {
     if (sink) {
       nsCOMPtr<Document> parserDoc = do_QueryInterface(sink->GetTarget());
       if (ownerDoc != parserDoc) {
-        // Willful violation of HTML5 as of 2010-12-01
+        // Refactor this: https://bugzilla.mozilla.org/show_bug.cgi?id=1849107
         return false;
       }
     }
   }
 
   RefPtr<ScriptLoader> loader = ownerDoc->ScriptLoader();
-  return loader->ProcessScriptElement(this, type);
+  return loader->ProcessScriptElement(this);
 }
 
 bool ScriptElement::GetScriptType(nsAString& aType) {

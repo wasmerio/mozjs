@@ -5,7 +5,6 @@
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
-import { PromiseUtils } from "resource://gre/modules/PromiseUtils.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
@@ -13,17 +12,20 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   Bookmarks: "resource://gre/modules/Bookmarks.sys.mjs",
   History: "resource://gre/modules/History.sys.mjs",
-  Log: "resource://gre/modules/Log.sys.mjs",
   PlacesSyncUtils: "resource://gre/modules/PlacesSyncUtils.sys.mjs",
   Sqlite: "resource://gre/modules/Sqlite.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "MOZ_ACTION_REGEX", () => {
+ChromeUtils.defineLazyGetter(lazy, "MOZ_ACTION_REGEX", () => {
   return /^moz-action:([^,]+),(.*)$/;
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "gCryptoHash", () => {
-  return Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
+ChromeUtils.defineLazyGetter(lazy, "CryptoHash", () => {
+  return Components.Constructor(
+    "@mozilla.org/security/hash;1",
+    "nsICryptoHash",
+    "initWithString"
+  );
 });
 
 // On Mac OSX, the transferable system converts "\r\n" to "\n\n", where
@@ -814,7 +816,7 @@ export var PlacesUtils = {
   },
 
   // nsIObserver
-  observe: function PU_observe(aSubject, aTopic, aData) {
+  observe: function PU_observe(aSubject, aTopic) {
     switch (aTopic) {
       case this.TOPIC_SHUTDOWN:
         Services.obs.removeObserver(this, this.TOPIC_SHUTDOWN);
@@ -1178,7 +1180,7 @@ export var PlacesUtils = {
       {
         url: { requiredIf: b => !b.guid },
         guid: { requiredIf: b => !b.url },
-        visits: { requiredIf: b => validateVisits },
+        visits: { requiredIf: () => validateVisits },
       }
     );
   },
@@ -1616,7 +1618,7 @@ export var PlacesUtils = {
       }
 
       switch (type) {
-        case PlacesUtils.bookmarks.TYPE_BOOKMARK:
+        case PlacesUtils.bookmarks.TYPE_BOOKMARK: {
           item.type = PlacesUtils.TYPE_X_MOZ_PLACE;
           // If this throws due to an invalid url, the item will be skipped.
           try {
@@ -1633,6 +1635,7 @@ export var PlacesUtils = {
             item.postData = entry.postData;
           }
           break;
+        }
         case PlacesUtils.bookmarks.TYPE_FOLDER:
           item.type = PlacesUtils.TYPE_X_MOZ_PLACE_CONTAINER;
           // Mark root folders.
@@ -1671,7 +1674,15 @@ export var PlacesUtils = {
                 descendants.guid, b2.position, b2.title, b2.dateAdded,
                 b2.lastModified
          FROM moz_bookmarks b2
-         JOIN descendants ON b2.parent = descendants.id AND b2.id <> :tags_folder)
+         JOIN descendants ON b2.parent = descendants.id AND b2.id <> :tags_folder),
+       tagged(place_id, tags) AS (
+         SELECT b.fk, group_concat(p.title ORDER BY p.title)
+         FROM moz_bookmarks b
+         JOIN moz_bookmarks p ON p.id = b.parent
+         JOIN moz_bookmarks g ON g.id = p.parent
+         WHERE g.guid = '${PlacesUtils.bookmarks.tagsGuid}'
+         GROUP BY b.fk
+       )
        SELECT d.level, d.id, d.guid, d.parent, d.parentGuid, d.type,
               d.position AS [index], IFNULL(d.title, '') AS title, d.dateAdded,
               d.lastModified, h.url, (SELECT icon_url FROM moz_icons i
@@ -1679,11 +1690,7 @@ export var PlacesUtils = {
                       JOIN moz_pages_w_icons pi ON page_id = pi.id
                       WHERE pi.page_url_hash = hash(h.url) AND pi.page_url = h.url
                       ORDER BY width DESC LIMIT 1) AS iconUri,
-              (SELECT GROUP_CONCAT(t.title, ',')
-               FROM moz_bookmarks b2
-               JOIN moz_bookmarks t ON t.id = +b2.parent AND t.parent = :tags_folder
-               WHERE b2.fk = h.id
-              ) AS tags,
+              (SELECT tags FROM tagged WHERE place_id = h.id) AS tags,
               (SELECT a.content FROM moz_annos a
                JOIN moz_anno_attributes n ON a.anno_attribute_id = n.id
                WHERE place_id = h.id AND n.name = :charset_anno
@@ -1823,27 +1830,63 @@ export var PlacesUtils = {
    * Run some text through md5 and return the hash.
    * @param {string} data The string to hash.
    * @param {string} [format] Which format of the hash to return:
-   *   - "ascii" for ascii format.
+   *   - "base64" for ascii format.
    *   - "hex" for hex format.
-   * @returns {string} md5 hash of the input string in the required format.
+   * @returns {string} hash of the input data in the required format.
+   * @deprecated use sha256 instead.
    */
-  md5(data, { format = "ascii" } = {}) {
-    lazy.gCryptoHash.init(lazy.gCryptoHash.MD5);
-
-    // Convert the data to a byte array for hashing
-    lazy.gCryptoHash.update(
-      data.split("").map(c => c.charCodeAt(0)),
-      data.length
-    );
+  md5(data, { format = "base64" } = {}) {
+    let hasher = new lazy.CryptoHash("md5");
+    // Convert the data to a byte array for hashing.
+    data = new TextEncoder().encode(data);
+    hasher.update(data, data.length);
     switch (format) {
-      case "hex":
-        let hash = lazy.gCryptoHash.finish(false);
+      case "hex": {
+        let hash = hasher.finish(false);
         return Array.from(hash, (c, i) =>
           hash.charCodeAt(i).toString(16).padStart(2, "0")
         ).join("");
-      case "ascii":
+      }
+      case "base64":
       default:
-        return lazy.gCryptoHash.finish(true);
+        return hasher.finish(true);
+    }
+  },
+
+  /**
+   * Run some text through SHA256 and return the hash.
+   * @param {string|nsIStringInputStream} data The data to hash.
+   * @param {string} [format] Which format of the hash to return:
+   *   - "base64" (default) for ascii format, not safe for URIs or file names.
+   *   - "hex" for hex format.
+   *   - "base64url" for ascii format safe to be used in file names (RFC 4648).
+   *       You should normally use the "hex" format for file names, but if the
+   *       user may manipulate the file, it would be annoying to have very long
+   *       and unreadable file names, thus this provides a shorter alternative.
+   *       Note padding "=" are untouched and may have to be encoded in URIs.
+   * @returns {string} hash of the input data in the required format.
+   */
+  sha256(data, { format = "base64" } = {}) {
+    let hasher = new lazy.CryptoHash("sha256");
+    if (data instanceof Ci.nsIStringInputStream) {
+      hasher.updateFromStream(data, -1);
+    } else {
+      // Convert the data string to a byte array for hashing.
+      data = new TextEncoder().encode(data);
+      hasher.update(data, data.length);
+    }
+    switch (format) {
+      case "hex": {
+        let hash = hasher.finish(false);
+        return Array.from(hash, (c, i) =>
+          hash.charCodeAt(i).toString(16).padStart(2, "0")
+        ).join("");
+      }
+      case "base64url":
+        return hasher.finish(true).replaceAll("+", "-").replaceAll("/", "_");
+      case "base64":
+      default:
+        return hasher.finish(true);
     }
   },
 
@@ -1876,7 +1919,6 @@ export var PlacesUtils = {
         frecency: url.protocol == "place:" ? 0 : -1,
       }
     );
-    await db.executeCached("DELETE FROM moz_updateoriginsinsert_temp");
   },
 
   /**
@@ -1906,7 +1948,6 @@ export var PlacesUtils = {
         maybeguid: this.history.makeGuid(),
       }))
     );
-    await db.executeCached("DELETE FROM moz_updateoriginsinsert_temp");
   },
 
   /**
@@ -1920,35 +1961,30 @@ export var PlacesUtils = {
   },
 
   /**
-   * Creates a logger.
-   * Logging level can be controlled through places.loglevel.
+   * Creates a console logger.
+   * Logging level can be controlled through the `places.loglevel` preference.
    *
-   * @param {string} [prefix] Prefix to use for the logged messages, "::" will
-   *                 be appended automatically to the prefix.
-   * @returns {object} The logger.
+   * @param {object} options
+   * @param {string} [options.prefix] Prefix to use for the logged messages.
+   * @returns {ConsoleInstance} The console logger.
    */
   getLogger({ prefix = "" } = {}) {
-    if (!this._logger) {
-      this._logger = lazy.Log.repository.getLogger("places");
-      this._logger.manageLevelFromPref("places.loglevel");
-      this._logger.addAppender(
-        new lazy.Log.ConsoleAppender(new lazy.Log.BasicFormatter())
-      );
+    if (!this._loggers) {
+      this._loggers = new Map();
     }
-    if (prefix) {
-      // This is not an early return because it is necessary to invoke getLogger
-      // at least once before getLoggerWithMessagePrefix; it replaces a
-      // method of the original logger, rather than using an actual Proxy.
-      return lazy.Log.repository.getLoggerWithMessagePrefix(
-        "places",
-        prefix + " :: "
-      );
+    let logger = this._loggers.get(prefix);
+    if (!logger) {
+      logger = console.createInstance({
+        prefix: `Places${prefix ? " - " + prefix : ""}`,
+        maxLogLevelPref: "places.loglevel",
+      });
+      this._loggers.set(prefix, logger);
     }
-    return this._logger;
+    return logger;
   },
 };
 
-XPCOMUtils.defineLazyGetter(PlacesUtils, "history", function () {
+ChromeUtils.defineLazyGetter(PlacesUtils, "history", function () {
   let hs = Cc["@mozilla.org/browser/nav-history-service;1"].getService(
     Ci.nsINavHistoryService
   );
@@ -1994,7 +2030,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "@mozilla.org/browser/nav-bookmarks-service;1",
   "nsINavBookmarksService"
 );
-XPCOMUtils.defineLazyGetter(PlacesUtils, "bookmarks", () => {
+ChromeUtils.defineLazyGetter(PlacesUtils, "bookmarks", () => {
   return Object.freeze(
     new Proxy(lazy.Bookmarks, {
       get: (target, name) =>
@@ -2012,13 +2048,13 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsITaggingService"
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "bundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "bundle", function () {
   const PLACES_STRING_BUNDLE_URI = "chrome://places/locale/places.properties";
   return Services.strings.createBundle(PLACES_STRING_BUNDLE_URI);
 });
 
 // This is just used as a reasonably-random value for copy & paste / drag operations.
-XPCOMUtils.defineLazyGetter(PlacesUtils, "instanceId", () => {
+ChromeUtils.defineLazyGetter(PlacesUtils, "instanceId", () => {
   return PlacesUtils.history.makeGuid();
 });
 
@@ -2079,7 +2115,7 @@ function setupDbForShutdown(conn, name) {
   }
 }
 
-XPCOMUtils.defineLazyGetter(lazy, "gAsyncDBConnPromised", () =>
+ChromeUtils.defineLazyGetter(lazy, "gAsyncDBConnPromised", () =>
   lazy.Sqlite.cloneStorageConnection({
     connection: PlacesUtils.history.DBConnection,
     readOnly: true,
@@ -2091,7 +2127,7 @@ XPCOMUtils.defineLazyGetter(lazy, "gAsyncDBConnPromised", () =>
     .catch(console.error)
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "gAsyncDBWrapperPromised", () =>
+ChromeUtils.defineLazyGetter(lazy, "gAsyncDBWrapperPromised", () =>
   lazy.Sqlite.wrapStorageConnection({
     connection: PlacesUtils.history.DBConnection,
   })
@@ -2102,8 +2138,8 @@ XPCOMUtils.defineLazyGetter(lazy, "gAsyncDBWrapperPromised", () =>
     .catch(console.error)
 );
 
-var gAsyncDBLargeCacheConnDeferred = PromiseUtils.defer();
-XPCOMUtils.defineLazyGetter(lazy, "gAsyncDBLargeCacheConnPromised", () =>
+var gAsyncDBLargeCacheConnDeferred = Promise.withResolvers();
+ChromeUtils.defineLazyGetter(lazy, "gAsyncDBLargeCacheConnPromised", () =>
   lazy.Sqlite.cloneStorageConnection({
     connection: PlacesUtils.history.DBConnection,
     readOnly: true,
@@ -2183,7 +2219,19 @@ PlacesUtils.metadata = {
    */
   set(key, value) {
     return PlacesUtils.withConnectionWrapper("PlacesUtils.metadata.set", db =>
-      this.setWithConnection(db, key, value)
+      this.setWithConnection(db, new Map([[key, value]]))
+    );
+  },
+
+  /**
+   * Sets the value for multiple keys.
+   *
+   * @param {Map} pairs
+   *        The metadata keys to update, with their value.
+   */
+  setMany(pairs) {
+    return PlacesUtils.withConnectionWrapper("PlacesUtils.metadata.set", db =>
+      this.setWithConnection(db, pairs)
     );
   },
 
@@ -2248,28 +2296,45 @@ PlacesUtils.metadata = {
     return value;
   },
 
-  async setWithConnection(db, key, value) {
-    if (value === null) {
-      await this.deleteWithConnection(db, key);
-      return;
+  async setWithConnection(db, pairs) {
+    let entriesToSet = [];
+    let keysToDelete = Array.from(pairs.entries())
+      .filter(([key, value]) => {
+        if (value !== null) {
+          entriesToSet.push({ key: this.canonicalizeKey(key), value });
+          return false;
+        }
+        return true;
+      })
+      .map(([key]) => key);
+    if (keysToDelete.length) {
+      await this.deleteWithConnection(db, ...keysToDelete);
+      if (keysToDelete.length == pairs.size) {
+        return;
+      }
     }
 
-    let cacheValue = value;
-    if (
-      typeof value == "object" &&
-      ChromeUtils.getClassName(value) != "Uint8Array"
-    ) {
-      value = this.jsonPrefix + this._base64Encode(JSON.stringify(value));
-    }
-
-    key = this.canonicalizeKey(key);
+    // Generate key{i}, value{i} pairs for the SQL bindings.
+    let params = entriesToSet.reduce((accumulator, { key, value }, i) => {
+      accumulator[`key${i}`] = key;
+      // Convert Objects to base64 JSON urls.
+      accumulator[`value${i}`] =
+        typeof value == "object" &&
+        ChromeUtils.getClassName(value) != "Uint8Array"
+          ? this.jsonPrefix + this._base64Encode(JSON.stringify(value))
+          : value;
+      return accumulator;
+    }, {});
     await db.executeCached(
-      `
-      REPLACE INTO moz_meta (key, value)
-      VALUES (:key, :value)`,
-      { key, value }
+      "REPLACE INTO moz_meta (key, value) VALUES " +
+        entriesToSet.map((e, i) => `(:key${i}, :value${i})`).join(),
+      params
     );
-    this.cache.set(key, cacheValue);
+
+    // Update the cache.
+    entriesToSet.forEach(({ key, value }) => {
+      this.cache.set(key, value);
+    });
   },
 
   async deleteWithConnection(db, ...keys) {
@@ -2792,7 +2857,26 @@ PlacesUtils.keywords = {
    */
   invalidateCachedKeywords() {
     gKeywordsCachePromise = gKeywordsCachePromise.then(_ => null);
+    this.ensureCacheInitialized();
     return gKeywordsCachePromise;
+  },
+
+  /**
+   * Ensures the keywords cache is initialized.
+   */
+  async ensureCacheInitialized() {
+    this._cache = await promiseKeywordsCache();
+  },
+
+  /**
+   * Checks from the cache if a given word is a bookmark keyword.
+   * We must make sure the cache is populated, and await ensureCacheInitialized()
+   * before calling this function.
+   *
+   * @return {Boolean} Whether the given word is a keyword.
+   */
+  isKeywordFromCache(keyword) {
+    return this._cache?.has(keyword);
   },
 };
 

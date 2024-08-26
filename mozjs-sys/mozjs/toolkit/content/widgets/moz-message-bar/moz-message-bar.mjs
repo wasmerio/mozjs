@@ -4,6 +4,10 @@
 
 import { html, ifDefined } from "../vendor/lit.all.mjs";
 import { MozLitElement } from "../lit-utils.mjs";
+// eslint-disable-next-line import/no-unassigned-import
+import "chrome://global/content/elements/moz-button.mjs";
+
+window.MozXULElement?.insertFTLIfNeeded("toolkit/global/mozMessageBar.ftl");
 
 const messageTypeToIconData = {
   info: {
@@ -15,10 +19,14 @@ const messageTypeToIconData = {
     l10nId: "moz-message-bar-icon-warning",
   },
   success: {
-    iconSrc: "chrome://global/skin/icons/check.svg",
+    iconSrc: "chrome://global/skin/icons/check-filled.svg",
     l10nId: "moz-message-bar-icon-success",
   },
   error: {
+    iconSrc: "chrome://global/skin/icons/error.svg",
+    l10nId: "moz-message-bar-icon-error",
+  },
+  critical: {
     iconSrc: "chrome://global/skin/icons/error.svg",
     l10nId: "moz-message-bar-icon-error",
   },
@@ -30,33 +38,57 @@ const messageTypeToIconData = {
  *
  * @tagname moz-message-bar
  * @property {string} type - The type of the displayed message.
+ * @property {string} heading - The heading of the message.
  * @property {string} message - The message text.
+ * @property {boolean} dismissable - Whether or not the element is dismissable.
+ * @property {string} messageL10nId - l10n ID for the message.
+ * @property {string} messageL10nArgs - Any args needed for the message l10n ID.
  * @fires message-bar:close
  *  Custom event indicating that message bar was closed.
- *  @fires message-bar:user-dismissed
+ * @fires message-bar:user-dismissed
  *  Custom event indicating that message bar was dismissed by the user.
  */
 
 export default class MozMessageBar extends MozLitElement {
-  static properties = {
-    type: { type: String },
-    message: { type: String },
+  static queries = {
+    actionsSlot: "slot[name=actions]",
+    actionsEl: ".actions",
+    closeButton: "moz-button.close",
+    supportLinkSlot: "slot[name=support-link]",
   };
 
-  // Use a relative URL in storybook to get faster reloads on style changes.
-  static stylesheetUrl = window.IS_STORYBOOK
-    ? "./moz-message-bar/moz-message-bar.css"
-    : "chrome://global/content/elements/moz-message-bar.css";
+  static properties = {
+    type: { type: String },
+    heading: { type: String },
+    message: { type: String },
+    dismissable: { type: Boolean },
+    messageL10nId: { type: String },
+    messageL10nArgs: { type: String },
+  };
 
   constructor() {
     super();
-    MozXULElement.insertFTLIfNeeded("toolkit/global/mozMessageBar.ftl");
     this.type = "info";
-    this.role = "status";
+    this.dismissable = false;
+  }
+
+  onSlotchange() {
+    let actions = this.actionsSlot.assignedNodes();
+    this.actionsEl.classList.toggle("active", actions.length);
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.setAttribute("role", "alert");
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     this.dispatchEvent(new CustomEvent("message-bar:close"));
+  }
+
+  get supportLinkEls() {
+    return this.supportLinkSlot.assignedElements();
   }
 
   iconTemplate() {
@@ -64,12 +96,36 @@ export default class MozMessageBar extends MozLitElement {
     if (iconData) {
       let { iconSrc, l10nId } = iconData;
       return html`
-        <img
-          class="icon"
-          src=${iconSrc}
-          data-l10n-id=${l10nId}
-          data-l10n-attrs="alt"
-        />
+        <div class="icon-container">
+          <img
+            class="icon"
+            src=${iconSrc}
+            data-l10n-id=${l10nId}
+            data-l10n-attrs="alt"
+          />
+        </div>
+      `;
+    }
+    return "";
+  }
+
+  headingTemplate() {
+    if (this.heading) {
+      return html`<strong class="heading">${this.heading}</strong>`;
+    }
+    return "";
+  }
+
+  closeButtonTemplate({ size } = {}) {
+    if (this.dismissable) {
+      return html`
+        <moz-button
+          type="icon ghost"
+          class="close"
+          size=${ifDefined(size)}
+          data-l10n-id="moz-message-bar-close-button"
+          @click=${this.dismiss}
+        ></moz-button>
       `;
     }
     return "";
@@ -79,22 +135,35 @@ export default class MozMessageBar extends MozLitElement {
     return html`
       <link
         rel="stylesheet"
-        href="chrome://global/skin/in-content/common.css"
+        href="chrome://global/content/elements/moz-message-bar.css"
       />
-      <link rel="stylesheet" href=${this.constructor.stylesheetUrl} />
       <div class="container">
-        ${this.iconTemplate()}
         <div class="content">
-          <span class="message">${ifDefined(this.message)}</span>
-          <slot name="link"></slot>
+          <div class="text-container">
+            ${this.iconTemplate()}
+            <div class="text-content">
+              ${this.headingTemplate()}
+              <div>
+                <span
+                  class="message"
+                  data-l10n-id=${ifDefined(this.messageL10nId)}
+                  data-l10n-args=${ifDefined(
+                    JSON.stringify(this.messageL10nArgs)
+                  )}
+                >
+                  ${this.message}
+                </span>
+                <span class="link">
+                  <slot name="support-link"></slot>
+                </span>
+              </div>
+            </div>
+          </div>
+          <span class="actions">
+            <slot name="actions" @slotchange=${this.onSlotchange}></slot>
+          </span>
         </div>
-        <slot name="actions"></slot>
-        <span class="spacer"></span>
-        <button
-          class="close ghost-button"
-          data-l10n-id="moz-message-bar-close-button"
-          @click=${this.dismiss}
-        ></button>
+        ${this.closeButtonTemplate()}
       </div>
     `;
   }

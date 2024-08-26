@@ -127,7 +127,17 @@ interface BrowsingContext {
    */
   [SetterThrows] attribute unsigned long sandboxFlags;
 
-  [SetterThrows] attribute boolean isActive;
+  /**
+   * Whether the BrowsingContext is active. That is, whether it's in a
+   * foreground tab, and not minimized or fully occluded otherwise.
+   */
+  readonly attribute boolean isActive;
+
+  /**
+   * When set to true all channels in this browsing context or its children will report navigator.onLine = false,
+   * and HTTP requests created from these browsing context will fail with NS_ERROR_OFFLINE.
+   */
+  [SetterThrows] attribute boolean forceOffline;
 
   /**
    * Sets whether this is an app tab. Non-same-origin link navigations from app
@@ -167,7 +177,7 @@ interface BrowsingContext {
 
   [SetterThrows] attribute boolean suspendMediaWhenInactive;
 
-  // Default value for nsIContentViewer::authorStyleDisabled in any new
+  // Default value for nsIDocumentViewer::authorStyleDisabled in any new
   // browsing contexts created as a descendant of this one.
   //
   // Valid only for top browsing contexts.
@@ -362,6 +372,9 @@ interface CanonicalBrowsingContext : BrowsingContext {
   // be active regardless of the window being minimized or fully occluded.
   [SetterThrows] attribute boolean forceAppWindowActive;
 
+  // @see BrowsingContext.isActive.
+  [SetterThrows] attribute boolean isActive;
+
   /**
    * This allows chrome to override the default choice of whether touch events
    * are available in a specific BrowsingContext and its descendents.
@@ -375,16 +388,14 @@ interface CanonicalBrowsingContext : BrowsingContext {
   [SetterThrows] inherit attribute boolean targetTopLevelLinkClicksToBlank;
 
   /**
-   * Set the cross-group opener of this BrowsingContext. This is used to
-   * retarget the download dialog to an opener window, and close this
-   * BrowsingContext, if the first load in a newly created BrowsingContext is a
-   * download.
+   * Set the cross-group opener of this BrowsingContext. This tracks the opener
+   * of a browsing context regardless if that context is opened using noopener.
    *
    * This value will be automatically set for documents created using
    * `window.open`.
    */
-  [Throws]
-  undefined setCrossGroupOpener(CanonicalBrowsingContext crossGroupOpener);
+  [SetterThrows]
+  attribute CanonicalBrowsingContext? crossGroupOpener;
 
   readonly attribute boolean isReplaced;
 

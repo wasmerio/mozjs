@@ -7,7 +7,6 @@ import {
   selectors,
   createStore,
   createSourceObject,
-  waitForState,
   makeSource,
   makeOriginalSource,
   makeFrame,
@@ -16,14 +15,8 @@ import {
 import { makeWhyNormal } from "../../../utils/test-mockup";
 import { createLocation } from "../../../utils/location";
 
-const { isStepping } = selectors;
-
-let stepInResolve = null;
 const mockCommandClient = {
-  stepIn: () =>
-    new Promise(_resolve => {
-      stepInResolve = _resolve;
-    }),
+  stepIn: () => new Promise(),
   stepOver: () => new Promise(_resolve => _resolve),
   evaluate: async () => {},
   evaluateExpressions: async () => [],
@@ -32,7 +25,7 @@ const mockCommandClient = {
   getFrames: async () => [],
   setBreakpoint: () => new Promise(_resolve => {}),
   sourceContents: ({ source }) => {
-    return new Promise((resolve, reject) => {
+    return new Promise(resolve => {
       switch (source) {
         case "foo1":
           return resolve({
@@ -113,40 +106,12 @@ function debuggerToSourceMapLocation(l) {
 
 describe("pause", () => {
   describe("stepping", () => {
-    it("should set and clear the command", async () => {
-      const { dispatch, getState } = createStore(mockCommandClient);
-      const mockPauseInfo = createPauseInfo();
-
-      await dispatch(actions.newGeneratedSource(makeSource("foo1")));
-      await dispatch(actions.paused(mockPauseInfo));
-      const cx = selectors.getThreadContext(getState());
-      const stepped = dispatch(actions.stepIn(cx));
-      expect(isStepping(getState(), "FakeThread")).toBeTruthy();
-      if (!stepInResolve) {
-        throw new Error("no stepInResolve");
-      }
-      await stepInResolve();
-      await stepped;
-      expect(isStepping(getState(), "FakeThread")).toBeFalsy();
-    });
-
     it("should only step when paused", async () => {
       const client = { stepIn: jest.fn() };
-      const { dispatch, cx } = createStore(client);
+      const { dispatch } = createStore(client);
 
-      dispatch(actions.stepIn(cx));
+      dispatch(actions.stepIn());
       expect(client.stepIn.mock.calls).toHaveLength(0);
-    });
-
-    it("should step when paused", async () => {
-      const { dispatch, getState } = createStore(mockCommandClient);
-      const mockPauseInfo = createPauseInfo();
-
-      await dispatch(actions.newGeneratedSource(makeSource("foo1")));
-      await dispatch(actions.paused(mockPauseInfo));
-      const cx = selectors.getThreadContext(getState());
-      dispatch(actions.stepIn(cx));
-      expect(isStepping(getState(), "FakeThread")).toBeTruthy();
     });
 
     it("getting frame scopes with bindings", async () => {
@@ -185,7 +150,6 @@ describe("pause", () => {
           id: mockFrameId,
           generatedLocation,
           location: generatedLocation,
-          originalDisplayName: "foo",
           library: null,
           scope: {
             bindings: {
@@ -220,7 +184,7 @@ describe("pause", () => {
 
     it("maps frame to original frames", async () => {
       const sourceMapLoaderMock = {
-        getOriginalStackFrames: loc => Promise.resolve(originStackFrames),
+        getOriginalStackFrames: () => Promise.resolve(originStackFrames),
         getOriginalLocation: () =>
           Promise.resolve(debuggerToSourceMapLocation(originalLocation)),
         getOriginalLocations: async items =>
@@ -299,11 +263,10 @@ describe("pause", () => {
           location: originalLocation,
           originalDisplayName: "fooBar",
           originalVariables: undefined,
-          scope: { bindings: { arguments: [], variables: {} } },
-          source: null,
           state: undefined,
           this: undefined,
           thread: "FakeThread",
+          type: undefined,
         },
         {
           asyncCause: undefined,
@@ -316,48 +279,12 @@ describe("pause", () => {
           location: originalLocation2,
           originalDisplayName: "barZoo",
           originalVariables: undefined,
-          scope: { bindings: { arguments: [], variables: {} } },
-          source: null,
           state: undefined,
           this: undefined,
           thread: "FakeThread",
+          type: undefined,
         },
       ]);
-    });
-  });
-
-  describe("resumed", () => {
-    it("should not evaluate expression while stepping", async () => {
-      const client = { ...mockCommandClient, evaluateExpressions: jest.fn() };
-      const { dispatch, getState } = createStore(client);
-      const mockPauseInfo = createPauseInfo();
-
-      await dispatch(actions.newGeneratedSource(makeSource("foo1")));
-      await dispatch(actions.paused(mockPauseInfo));
-
-      const cx = selectors.getThreadContext(getState());
-      dispatch(actions.stepIn(cx));
-      await dispatch(actions.resumed(mockCommandClient.actorID));
-      expect(client.evaluateExpressions.mock.calls).toHaveLength(1);
-    });
-
-    it("resuming - will re-evaluate watch expressions", async () => {
-      const client = { ...mockCommandClient, evaluateExpressions: jest.fn() };
-      const store = createStore(client);
-      const { dispatch, getState } = store;
-      const mockPauseInfo = createPauseInfo();
-
-      await dispatch(actions.newGeneratedSource(makeSource("foo1")));
-      await dispatch(actions.newGeneratedSource(makeSource("foo")));
-      await dispatch(actions.addExpression("foo"));
-      await waitForState(store, state => selectors.getExpression(state, "foo"));
-
-      client.evaluateExpressions.mockReturnValue(Promise.resolve(["YAY"]));
-      await dispatch(actions.paused(mockPauseInfo));
-
-      await dispatch(actions.resumed(mockCommandClient.actorID));
-      const expression = selectors.getExpression(getState(), "foo");
-      expect(expression && expression.value).toEqual("YAY");
     });
   });
 });

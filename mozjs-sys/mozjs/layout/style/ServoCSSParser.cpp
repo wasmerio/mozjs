@@ -8,6 +8,7 @@
 
 #include "ServoCSSParser.h"
 
+#include "mozilla/AnimatedPropertyID.h"
 #include "mozilla/ServoBindings.h"
 #include "mozilla/ServoStyleSet.h"
 #include "mozilla/dom/Document.h"
@@ -32,11 +33,31 @@ bool ServoCSSParser::ComputeColor(ServoStyleSet* aStyleSet,
 }
 
 /* static */
+bool ServoCSSParser::ColorTo(const nsACString& aFromColor,
+                             const nsACString& aToColorSpace,
+                             nsACString* aResultColor,
+                             nsTArray<float>* aResultComponents,
+                             bool* aResultAdjusted, css::Loader* aLoader) {
+  return Servo_ColorTo(&aFromColor, &aToColorSpace, aResultColor,
+                       aResultComponents, aResultAdjusted, aLoader);
+}
+
+/* static */
 already_AddRefed<StyleLockedDeclarationBlock> ServoCSSParser::ParseProperty(
     nsCSSPropertyID aProperty, const nsACString& aValue,
-    const ParsingEnvironment& aParsingEnvironment, ParsingMode aParsingMode) {
+    const ParsingEnvironment& aParsingEnvironment,
+    const StyleParsingMode& aParsingMode) {
+  AnimatedPropertyID property(aProperty);
+  return ParseProperty(property, aValue, aParsingEnvironment, aParsingMode);
+}
+
+/* static */
+already_AddRefed<StyleLockedDeclarationBlock> ServoCSSParser::ParseProperty(
+    const AnimatedPropertyID& aProperty, const nsACString& aValue,
+    const ParsingEnvironment& aParsingEnvironment,
+    const StyleParsingMode& aParsingMode) {
   return Servo_ParseProperty(
-             aProperty, &aValue, aParsingEnvironment.mUrlExtraData,
+             &aProperty, &aValue, aParsingEnvironment.mUrlExtraData,
              aParsingMode, aParsingEnvironment.mCompatMode,
              aParsingEnvironment.mLoader, aParsingEnvironment.mRuleType)
       .Consume();

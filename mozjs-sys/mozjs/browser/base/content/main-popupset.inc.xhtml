@@ -3,58 +3,43 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <popupset id="mainPopupSet">
+  <script src="chrome://browser/content/main-popupset.js" />
+
   <menupopup id="tabContextMenu"
              onpopupshowing="if (event.target == this) TabContextMenu.updateContextMenu(this);"
              onpopuphidden="if (event.target == this) TabContextMenu.contextTab = null;">
-    <menuitem id="context_openANewTab" data-lazy-l10n-id="tab-context-new-tab"
-              oncommand="gBrowser.addAdjacentNewTab(TabContextMenu.contextTab)"/>
+    <menuitem id="context_openANewTab" data-lazy-l10n-id="tab-context-new-tab"/>
     <menuseparator/>
-    <menuitem id="context_reloadTab" data-lazy-l10n-id="reload-tab"
-              oncommand="gBrowser.reloadTab(TabContextMenu.contextTab);"/>
-    <menuitem id="context_reloadSelectedTabs" data-lazy-l10n-id="reload-tabs" hidden="true"
-              oncommand="gBrowser.reloadMultiSelectedTabs();"/>
-    <menuitem id="context_playTab" data-lazy-l10n-id="tab-context-play-tab" hidden="true"
-              oncommand="TabContextMenu.contextTab.resumeDelayedMedia();"/>
-    <menuitem id="context_playSelectedTabs" data-lazy-l10n-id="tab-context-play-tabs" hidden="true"
-              oncommand="gBrowser.resumeDelayedMediaOnMultiSelectedTabs(TabContextMenu.contextTab);"/>
-    <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
-    <menuitem id="context_toggleMuteSelectedTabs" hidden="true"
-              oncommand="gBrowser.toggleMuteAudioOnMultiSelectedTabs(TabContextMenu.contextTab);"/>
-    <menuitem id="context_pinTab" data-lazy-l10n-id="pin-tab"
-              oncommand="gBrowser.pinTab(TabContextMenu.contextTab);"/>
-    <menuitem id="context_unpinTab" data-lazy-l10n-id="unpin-tab" hidden="true"
-              oncommand="gBrowser.unpinTab(TabContextMenu.contextTab);"/>
-    <menuitem id="context_pinSelectedTabs" data-lazy-l10n-id="pin-selected-tabs" hidden="true"
-              oncommand="gBrowser.pinMultiSelectedTabs();"/>
-    <menuitem id="context_unpinSelectedTabs" data-lazy-l10n-id="unpin-selected-tabs" hidden="true"
-              oncommand="gBrowser.unpinMultiSelectedTabs();"/>
-    <menuitem id="context_duplicateTab" data-lazy-l10n-id="duplicate-tab"
-              oncommand="duplicateTabIn(TabContextMenu.contextTab, 'tab');"/>
-    <menuitem id="context_duplicateTabs" data-lazy-l10n-id="duplicate-tabs"
-              oncommand="TabContextMenu.duplicateSelectedTabs();"/>
+    <menuitem id="context_reloadTab" data-lazy-l10n-id="reload-tab"/>
+    <menuitem id="context_reloadSelectedTabs" data-lazy-l10n-id="reload-tabs" hidden="true"/>
+    <menuitem id="context_playTab" data-lazy-l10n-id="tab-context-play-tab" hidden="true"/>
+    <menuitem id="context_playSelectedTabs" data-lazy-l10n-id="tab-context-play-tabs" hidden="true"/>
+    <menuitem id="context_toggleMuteTab" />
+    <menuitem id="context_toggleMuteSelectedTabs" hidden="true"/>
+    <menuitem id="context_pinTab" data-lazy-l10n-id="pin-tab"/>
+    <menuitem id="context_unpinTab" data-lazy-l10n-id="unpin-tab" hidden="true"/>
+    <menuitem id="context_pinSelectedTabs" data-lazy-l10n-id="pin-selected-tabs" hidden="true"/>
+    <menuitem id="context_unpinSelectedTabs" data-lazy-l10n-id="unpin-selected-tabs" hidden="true"/>
+    <menuitem id="context_duplicateTab" data-lazy-l10n-id="duplicate-tab"/>
+    <menuitem id="context_duplicateTabs" data-lazy-l10n-id="duplicate-tabs"/>
     <menuseparator/>
     <menuitem id="context_bookmarkSelectedTabs"
               hidden="true"
-              data-lazy-l10n-id="bookmark-selected-tabs"
-              oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueSelectedPages);"/>
+              data-lazy-l10n-id="bookmark-selected-tabs"/>
     <menuitem id="context_bookmarkTab"
-              data-lazy-l10n-id="tab-context-bookmark-tab"
-              oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.getUniquePages([TabContextMenu.contextTab]));"/>
+              data-lazy-l10n-id="tab-context-bookmark-tab"/>
     <menu id="context_moveTabOptions"
           data-lazy-l10n-id="tab-context-move-tabs"
           data-l10n-args='{"tabCount": 1}'>
       <menupopup id="moveTabOptionsMenu">
         <menuitem id="context_moveToStart"
                   data-lazy-l10n-id="move-to-start"
-                  tbattr="tabbrowser-multiple-visible"
-                  oncommand="gBrowser.moveTabsToStart(TabContextMenu.contextTab);"/>
+                  tbattr="tabbrowser-multiple-visible"/>
         <menuitem id="context_moveToEnd"
                   data-lazy-l10n-id="move-to-end"
-                  tbattr="tabbrowser-multiple-visible"
-                  oncommand="gBrowser.moveTabsToEnd(TabContextMenu.contextTab);"/>
+                  tbattr="tabbrowser-multiple-visible"/>
         <menuitem id="context_openTabInWindow" data-lazy-l10n-id="move-to-new-window"
-                  tbattr="tabbrowser-multiple-visible"
-                  oncommand="gBrowser.replaceTabsWithWindow(TabContextMenu.contextTab);"/>
+                  tbattr="tabbrowser-multiple-visible"/>
       </menupopup>
     </menu>
     <menu id="context_sendTabToDevice"
@@ -67,25 +52,22 @@
     <menu id="context_reopenInContainer"
           data-lazy-l10n-id="tab-context-open-in-new-container-tab"
           hidden="true">
-      <menupopup oncommand="TabContextMenu.reopenInContainer(event);"
+      <menupopup id="context_reopenInContainerPopupMenu"
                  onpopupshowing="TabContextMenu.createReopenInContainerMenu(event);"/>
     </menu>
-    <menuitem id="context_selectAllTabs" data-lazy-l10n-id="select-all-tabs"
-              oncommand="gBrowser.selectAllTabs();"/>
+    <menuitem id="context_selectAllTabs" data-lazy-l10n-id="select-all-tabs"/>
     <menuseparator/>
     <menuitem id="context_closeTab"
               data-lazy-l10n-id="tab-context-close-n-tabs"
-              data-l10n-args='{"tabCount": 1}'
-              oncommand="TabContextMenu.closeContextTabs();"/>
+              data-l10n-args='{"tabCount": 1}'/>
+    <menuitem id="context_closeDuplicateTabs"
+              data-lazy-l10n-id="tab-context-close-duplicate-tabs"/>
     <menu id="context_closeTabOptions"
           data-lazy-l10n-id="tab-context-close-multiple-tabs">
       <menupopup id="closeTabOptions">
-        <menuitem id="context_closeTabsToTheStart" data-lazy-l10n-id="close-tabs-to-the-start"
-                  oncommand="gBrowser.removeTabsToTheStartFrom(TabContextMenu.contextTab, {animate: true});"/>
-        <menuitem id="context_closeTabsToTheEnd" data-lazy-l10n-id="close-tabs-to-the-end"
-                  oncommand="gBrowser.removeTabsToTheEndFrom(TabContextMenu.contextTab, {animate: true});"/>
-        <menuitem id="context_closeOtherTabs" data-lazy-l10n-id="close-other-tabs"
-                  oncommand="gBrowser.removeAllTabsBut(TabContextMenu.contextTab);"/>
+        <menuitem id="context_closeTabsToTheStart" data-lazy-l10n-id="close-tabs-to-the-start"/>
+        <menuitem id="context_closeTabsToTheEnd" data-lazy-l10n-id="close-tabs-to-the-end"/>
+        <menuitem id="context_closeOtherTabs" data-lazy-l10n-id="close-other-tabs"/>
       </menupopup>
     </menu>
     <menuitem id="context_undoCloseTab"
@@ -93,23 +75,19 @@
               data-l10n-args='{"tabCount": 1}'
               observes="History:UndoCloseTab"/>
     <menuseparator contexttype="fullscreen"/>
-    <menuitem class="fullscreen-context-autohide"
+    <menuitem id="context_fullscreenAutohide"
+              class="fullscreen-context-autohide"
               contexttype="fullscreen"
               type="checkbox"
-              data-lazy-l10n-id="full-screen-autohide"
-              oncommand="FullScreen.setAutohide();"/>
-    <menuitem contexttype="fullscreen"
-              data-lazy-l10n-id="full-screen-exit"
-              oncommand="BrowserFullScreen();"/>
+              data-lazy-l10n-id="full-screen-autohide"/>
+    <menuitem id="context_fullscreenExit"
+              contexttype="fullscreen"
+              data-lazy-l10n-id="full-screen-exit"/>
   </menupopup>
 
-  <!-- bug 415444/582485: event.stopPropagation is here for the cloned version
-       of this menupopup, to prevent already-handled clicks on menu items from
-       propagating to the back or forward button.
-  -->
+  <!-- This node can be cloned by SetClickAndHoldHandlers. -->
   <menupopup id="backForwardMenu"
-             onpopupshowing="return FillHistoryMenu(event.target);"
-             oncommand="gotoHistoryIndex(event); event.stopPropagation();"/>
+             onpopupshowing="return FillHistoryMenu(event.target);"/>
   <tooltip id="aHTMLTooltip" page="true"/>
   <tooltip id="remoteBrowserTooltip"/>
 
@@ -136,25 +114,23 @@
          noautofocus="true"
          hidden="true" />
 
-  <html:template id="printPreviewStackTemplate">
-    <stack class="previewStack" rendering="true" flex="1" previewtype="primary">
-      <vbox class="previewRendering" flex="1">
-        <h1 class="print-pending-label" data-l10n-id="printui-loading"></h1>
-      </vbox>
-    </stack>
-  </html:template>
+  <panel id="searchmode-switcher-popup" noautofocus="true" orient="vertical" type="arrow">
+    <label data-l10n-id="urlbar-searchmode-popup-description" id="searchmode-switcher-popup-description" />
+    <toolbarseparator />
+    <vbox class="panel-subview-body"></vbox>
+    <toolbarseparator />
+    <toolbarbutton oncommand="window.openPreferences('paneSearch');"
+                   class="subviewbutton subviewbutton-iconic"
+                   id="searchmode-switcher-popup-search-settings-button">
+      <image id="searchmode-switcher-popup-search-settings-icon" />
+      <label data-l10n-id="urlbar-searchmode-popup-search-settings" />
+    </toolbarbutton>
+  </panel>
 
   <html:template id="screenshotsPagePanelTemplate">
-    <panel id="screenshotsPagePanel"
-           type="arrow"
-           orient="vertical"
-           norolluponanchor="true"
-           consumeoutsideclicks="never"
-           level="parent"
-           noautohide="true"
-           tabspecific="true">
-           <screenshots-buttons></screenshots-buttons>
-    </panel>
+    <box id="screenshotsPagePanel" hidden="true">
+      <screenshots-buttons></screenshots-buttons>
+    </box>
   </html:template>
 
   <html:template id="invalidFormTemplate">
@@ -184,33 +160,19 @@
         <vbox id="editBookmarkPanelBottomContent"
               flex="1">
           <checkbox id="editBookmarkPanel_showForNewBookmarks"
-                    data-l10n-id="bookmark-panel-show-editor-checkbox"
-                    oncommand="StarUI.onShowForNewBookmarksCheckboxCommand();"/>
+                    data-l10n-id="bookmark-panel-show-editor-checkbox"/>
         </vbox>
-        <hbox id="editBookmarkPanelBottomButtons"
+        <html:moz-button-group
               class="panel-footer"
               data-l10n-id="bookmark-panel"
               data-l10n-attrs="style">
-#ifndef XP_UNIX
           <button id="editBookmarkPanelDoneButton"
-                  class="editBookmarkPanelBottomButton"
+                  class="footer-button"
                   data-l10n-id="bookmark-panel-save-button"
-                  default="true"
-                  oncommand="StarUI.panel.hidePopup();"/>
+                  default="true"/>
           <button id="editBookmarkPanelRemoveButton"
-                  class="editBookmarkPanelBottomButton"
-                  oncommand="StarUI.removeBookmarkButtonCommand();"/>
-#else
-          <button id="editBookmarkPanelRemoveButton"
-                  class="editBookmarkPanelBottomButton"
-                  oncommand="StarUI.removeBookmarkButtonCommand();"/>
-          <button id="editBookmarkPanelDoneButton"
-                  class="editBookmarkPanelBottomButton"
-                  data-l10n-id="bookmark-panel-save-button"
-                  default="true"
-                  oncommand="StarUI.panel.hidePopup();"/>
-#endif
-        </hbox>
+                  class="footer-button"/>
+        </html:moz-button-group>
       </vbox>
     </panel>
   </html:template>
@@ -270,62 +232,68 @@
              position="bottomleft topleft">
     <menuitem id="sidebar-switcher-bookmarks"
               data-l10n-id="sidebar-menu-bookmarks"
-              key="viewBookmarksSidebarKb"
-              oncommand="SidebarUI.show('viewBookmarksSidebar');"/>
+              key="viewBookmarksSidebarKb"/>
     <menuitem id="sidebar-switcher-history"
               data-l10n-id="sidebar-menu-history"
-              key="key_gotoHistory"
-              oncommand="SidebarUI.show('viewHistorySidebar');"/>
+              key="key_gotoHistory"/>
     <menuitem id="sidebar-switcher-tabs"
               data-l10n-id="sidebar-menu-synced-tabs"
-              class="sync-ui-item"
-              oncommand="SidebarUI.show('viewTabsSidebar');"/>
+              class="sync-ui-item"/>
     <menuseparator/>
     <!-- Extension toolbarbuttons go here. -->
     <menuseparator id="sidebar-extensions-separator"/>
-    <menuitem id="sidebar-reverse-position"
-              oncommand="SidebarUI.reversePosition()"/>
+    <menuitem id="sidebar-reverse-position"/>
     <menuseparator/>
-    <menuitem data-l10n-id="sidebar-menu-close"
-              oncommand="SidebarUI.hide()"/>
+    <menuitem id="sidebar-menu-close"
+              data-l10n-id="sidebar-menu-close"/>
+  </menupopup>
+
+  <menupopup id="sidebar-context-menu">
+    <menuitem data-l10n-id="sidebar-context-menu-manage-extension"
+              id="sidebar-context-menu-manage-extension"
+              contexttype="extension-action"/>
+    <menuitem data-l10n-id="sidebar-context-menu-remove-extension"
+              id="sidebar-context-menu-remove-extension"
+              contexttype="extension-action"/>
+    <menuitem data-l10n-id="sidebar-context-menu-report-extension"
+              id="sidebar-context-menu-report-extension"
+              contexttype="extension-action"/>
   </menupopup>
 
   <menupopup id="toolbar-context-menu"
-             onpopupshowing="onViewToolbarsPopupShowing(event, document.getElementById('viewToolbarsMenuSeparator')); ToolbarContextMenu.updateDownloadsAutoHide(this); ToolbarContextMenu.updateDownloadsAlwaysOpenPanel(this); ToolbarContextMenu.updateExtension(this, event)">
-    <menuitem oncommand="ToolbarContextMenu.openAboutAddonsForContextAction(this.parentElement)"
+             onpopupshowing="if (event.target == this) { onViewToolbarsPopupShowing(event, document.getElementById('viewToolbarsMenuSeparator')) }; ToolbarContextMenu.updateDownloadsAutoHide(this); ToolbarContextMenu.updateDownloadsAlwaysOpenPanel(this); ToolbarContextMenu.updateExtension(this, event)">
+    <menuitem id="toolbar-context-manage-extension"
               data-lazy-l10n-id="toolbar-context-menu-manage-extension"
               contexttype="toolbaritem"
               class="customize-context-manageExtension"/>
-    <menuitem oncommand="ToolbarContextMenu.removeExtensionForContextAction(this.parentElement)"
+    <menuitem id="toolbar-context-remove-extension"
               data-lazy-l10n-id="toolbar-context-menu-remove-extension"
               contexttype="toolbaritem"
               class="customize-context-removeExtension"/>
-    <menuitem oncommand="ToolbarContextMenu.reportExtensionForContextAction(this.parentElement, 'toolbar_context_menu')"
+    <menuitem id="toolbar-context-report-extension"
               data-lazy-l10n-id="toolbar-context-menu-report-extension"
               contexttype="toolbaritem"
               class="customize-context-reportExtension"/>
     <menuseparator/>
-    <menuitem oncommand="gCustomizeMode.addToPanel(this.parentNode.triggerNode, 'toolbar-context-menu')"
+    <menuitem id="toolbar-context-move-to-panel"
               data-lazy-l10n-id="toolbar-context-menu-pin-to-overflow-menu"
               contexttype="toolbaritem"
               class="customize-context-moveToPanel"/>
     <menuitem id="toolbar-context-autohide-downloads-button"
-              oncommand="ToolbarContextMenu.onDownloadsAutoHideChange(event);"
               type="checkbox"
               data-lazy-l10n-id="toolbar-context-menu-auto-hide-downloads-button-2"
               contexttype="toolbaritem"/>
-    <menuitem oncommand="gCustomizeMode.removeFromArea(this.parentNode.triggerNode, 'toolbar-context-menu')"
+    <menuitem id="toolbar-context-remove-from-toolbar"
               data-lazy-l10n-id="toolbar-context-menu-remove-from-toolbar"
               contexttype="toolbaritem"
               class="customize-context-removeFromToolbar"/>
-    <menuitem oncommand="gUnifiedExtensions.onPinToToolbarChange(this.parentElement, event);"
+    <menuitem id="toolbar-context-pin-to-toolbar"
               data-lazy-l10n-id="toolbar-context-menu-pin-to-toolbar"
               type="checkbox"
               contexttype="toolbaritem"
               class="customize-context-pinToToolbar"/>
     <menuseparator id="toolbarDownloadsAnchorMenuSeparator"/>
     <menuitem id="toolbar-context-always-open-downloads-panel"
-              oncommand="ToolbarContextMenu.onDownloadsAlwaysOpenPanelChange(event);"
               type="checkbox"
               data-lazy-l10n-id="toolbar-context-menu-always-open-downloads-panel"
               contexttype="toolbaritem"/>
@@ -336,23 +304,18 @@
     <menuseparator id="toolbarNavigatorItemsMenuSeparator"/>
     <menuitem id="toolbar-context-reloadSelectedTab"
               contexttype="tabbar"
-              oncommand="gBrowser.reloadMultiSelectedTabs();"
               data-lazy-l10n-id="toolbar-context-menu-reload-selected-tab"/>
     <menuitem id="toolbar-context-reloadSelectedTabs"
               contexttype="tabbar"
-              oncommand="gBrowser.reloadMultiSelectedTabs();"
               data-lazy-l10n-id="toolbar-context-menu-reload-selected-tabs"/>
     <menuitem id="toolbar-context-bookmarkSelectedTab"
               contexttype="tabbar"
-              oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueSelectedPages);"
               data-lazy-l10n-id="toolbar-context-menu-bookmark-selected-tab"/>
     <menuitem id="toolbar-context-bookmarkSelectedTabs"
               contexttype="tabbar"
-              oncommand="PlacesUIUtils.showBookmarkPagesDialog(PlacesCommandHook.uniqueSelectedPages);"
               data-lazy-l10n-id="toolbar-context-menu-bookmark-selected-tabs"/>
     <menuitem id="toolbar-context-selectAllTabs"
               contexttype="tabbar"
-              oncommand="gBrowser.selectAllTabs();"
               data-lazy-l10n-id="toolbar-context-menu-select-all-tabs"/>
     <menuitem id="toolbar-context-undoCloseTab"
               contexttype="tabbar"
@@ -360,65 +323,44 @@
               observes="History:UndoCloseTab"/>
     <menuseparator id="toolbarItemsMenuSeparator"/>
     <menuseparator id="viewToolbarsMenuSeparator"/>
-    <!-- XXXgijs: we're using oncommand handler here to avoid the event being
-                  redirected to the command element, thus preventing
-                  listeners on the menupopup or further up the tree from
-                  seeing the command event pass by. The observes attribute is
-                  here so that the menuitem is still disabled and re-enabled
-                  correctly. -->
-    <menuitem oncommand="gCustomizeMode.enter()"
+    <menuitem id="toolbar-context-customize"
               observes="cmd_CustomizeToolbars"
               class="viewCustomizeToolbar"
               data-lazy-l10n-id="toolbar-context-menu-view-customize-toolbar-2"/>
     <menuseparator contexttype="fullscreen"/>
-    <menuitem class="fullscreen-context-autohide"
+    <menuitem id="toolbar-context-full-screen-autohide"
+              class="fullscreen-context-autohide"
               contexttype="fullscreen"
               type="checkbox"
-              data-lazy-l10n-id="full-screen-autohide"
-              oncommand="FullScreen.setAutohide();"/>
-    <menuitem contexttype="fullscreen"
-              data-lazy-l10n-id="full-screen-exit"
-              oncommand="BrowserFullScreen();"/>
+              data-lazy-l10n-id="full-screen-autohide"/>
+    <menuitem id="toolbar-context-full-screen-exit"
+              contexttype="fullscreen"
+              data-lazy-l10n-id="full-screen-exit"/>
   </menupopup>
 
   <menupopup id="blockedPopupOptions"
              onpopupshowing="gPopupBlockerObserver.fillPopupList(event);"
              onpopuphiding="gPopupBlockerObserver.onPopupHiding(event);">
-    <menuitem id="blockedPopupAllowSite"
-              oncommand="gPopupBlockerObserver.toggleAllowPopupsForSite(event);"/>
-    <menuitem
-              data-l10n-id="edit-popup-settings"
-              oncommand="gPopupBlockerObserver.editPopupSettings();"/>
+    <menuitem id="blockedPopupAllowSite"/>
+    <menuitem id="blockedPopupEdit"
+              data-l10n-id="edit-popup-settings"/>
     <menuitem id="blockedPopupDontShowMessage"
               data-l10n-id="popups-infobar-dont-show-message"
-              type="checkbox"
-              oncommand="gPopupBlockerObserver.dontShowMessage();"/>
+              type="checkbox"/>
     <menuseparator id="blockedPopupsSeparator"/>
   </menupopup>
 
   <menupopup id="contentAreaContextMenu"
-             onpopupshowing="if (event.target != this)
-                               return true;
-                             gContextMenu = new nsContextMenu(this, event.shiftKey);
-                             if (gContextMenu.shouldDisplay)
-                               updateEditUIVisibility();
-                             return gContextMenu.shouldDisplay;"
-             onpopuphiding="if (event.target != this)
-                              return;
-                            gContextMenu.hiding(this);
-                            gContextMenu = null;
-                            updateEditUIVisibility();">
+# read by macOS cocoa code to enable the "services" menu here:
+             showservicesmenu="true">
 #include browser-context.inc
   </menupopup>
 
   <menupopup id="pictureInPictureToggleContextMenu">
-    <menuitem
-              id="context_HidePictureInPictureToggle"
-              data-l10n-id="picture-in-picture-hide-toggle"
-              oncommand="PictureInPicture.hideToggle();" />
+    <menuitem id="context_HidePictureInPictureToggle"
+              data-l10n-id="picture-in-picture-hide-toggle"/>
     <menuitem id="context_MovePictureInPictureToggle"
-              data-l10n-id="picture-in-picture-move-toggle-left"
-              oncommand="PictureInPicture.moveToggle();" />
+              data-l10n-id="picture-in-picture-move-toggle-left"/>
   </menupopup>
 
 #include ../../components/places/content/placesContextMenu.inc.xhtml
@@ -426,6 +368,25 @@
   <panel id="ctrlTab-panel" hidden="true" norestorefocus="true" level="top" orient="vertical">
     <hbox id="ctrlTab-previews"/>
     <hbox id="ctrlTab-showAll-container" pack="center"/>
+  </panel>
+
+  <!-- TODO: create lazily? -->
+  <panel id="tab-preview-panel"
+         type="arrow"
+         orient="vertical"
+         noautofocus="true"
+         norolluponanchor="true"
+         rolluponmousewheel="true"
+         consumeoutsideclicks="false">
+    <html:div class="tab-preview-text-container">
+      <html:div class="tab-preview-title"></html:div>
+      <html:div class="tab-preview-uri"></html:div>
+      <html:div class="tab-preview-pid-activeness">
+        <html:div class="tab-preview-pid"></html:div>
+        <html:div class="tab-preview-activeness"></html:div>
+      </html:div>
+    </html:div>
+    <html:div class="tab-preview-thumbnail-container"></html:div>
   </panel>
 
   <html:template id="pageActionPanelTemplate">
@@ -470,11 +431,11 @@
 
   <menupopup id="pageActionContextMenu"
              onpopupshowing="BrowserPageActions.onContextMenuShowing(event, this);">
-    <menuitem class="pageActionContextMenuItem extensionPinned extensionUnpinned manageExtensionItem"
-              oncommand="BrowserPageActions.openAboutAddonsForContextAction();"
+    <menuitem id="pageActionContextMenuManageExtension"
+              class="pageActionContextMenuItem extensionPinned extensionUnpinned manageExtensionItem"
               data-l10n-id="page-action-manage-extension2"/>
-    <menuitem class="pageActionContextMenuItem extensionPinned extensionUnpinned removeExtensionItem"
-              oncommand="BrowserPageActions.removeExtensionForContextAction();"
+    <menuitem id="pageActionContextMenuRemoveExtension"
+              class="pageActionContextMenuItem extensionPinned extensionUnpinned removeExtensionItem"
               data-l10n-id="page-action-remove-extension2"/>
   </menupopup>
 
@@ -510,8 +471,9 @@
 #include ../../components/controlcenter/content/permissionPanel.inc.xhtml
 #include ../../components/controlcenter/content/protectionsPanel.inc.xhtml
 #include ../../components/downloads/content/downloadsPanel.inc.xhtml
-#include ../../components/translations/content/translationsPanel.inc.xhtml
-#include browser-allTabsMenu.inc.xhtml
+#include ../../components/translations/content/selectTranslationsPanel.inc.xhtml
+#include ../../components/translations/content/fullPageTranslationsPanel.inc.xhtml
+#include ../../components/tabbrowser/content/browser-allTabsMenu.inc.xhtml
 
   <tooltip id="dynamic-shortcut-tooltip"
            onpopupshowing="UpdateDynamicShortcutTooltipText(this);"/>
@@ -540,8 +502,7 @@
     <menuitem data-lazy-l10n-id="synced-tabs-context-open-all-in-tabs"
               id="syncedTabsOpenAllInTabs"/>
     <menuitem data-lazy-l10n-id="synced-tabs-context-manage-devices"
-              id="syncedTabsManageDevices"
-              oncommand="gSync.openDevicesManagementPage('syncedtabs-sidebar');"/>
+              id="syncedTabsManageDevices"/>
     <menuitem data-lazy-l10n-id="synced-tabs-context-sync-now"
               id="syncedTabsRefresh"/>
   </menupopup>
@@ -610,54 +571,73 @@
     </panel>
   </html:template>
 
-  #include ../../../toolkit/components/pictureinpicture/content/pictureInPicturePanel.xhtml
+  #include ../../../toolkit/components/pictureinpicture/content/pictureInPicturePanel.inc.xhtml
 
   <menupopup id="unified-extensions-context-menu"
-             onpopupshowing="gUnifiedExtensions.updateContextMenu(this, event)"
-             oncommand="gUnifiedExtensions.onContextMenuCommand(this, event)">
-    <menuitem oncommand="gUnifiedExtensions.onPinToToolbarChange(this.parentElement, event);"
+             onpopupshowing="gUnifiedExtensions.updateContextMenu(this, event)">
+    <menuitem id="unified-extensions-context-menu-pin-to-toolbar"
               data-lazy-l10n-id="unified-extensions-context-menu-pin-to-toolbar"
               type="checkbox"
               class="unified-extensions-context-menu-pin-to-toolbar"/>
-    <menuitem oncommand="gUnifiedExtensions.moveWidget(this.parentElement, 'up');"
+    <menuitem id="unified-extensions-context-menu-move-widget-up"
               data-lazy-l10n-id="unified-extensions-context-menu-move-widget-up"
               class="unified-extensions-context-menu-move-widget-up"/>
-    <menuitem oncommand="gUnifiedExtensions.moveWidget(this.parentElement, 'down');"
+    <menuitem id="unified-extensions-context-menu-move-widget-down"
               data-lazy-l10n-id="unified-extensions-context-menu-move-widget-down"
               class="unified-extensions-context-menu-move-widget-down"/>
     <menuseparator class="unified-extensions-context-menu-management-separator"/>
     <menuitem data-lazy-l10n-id="unified-extensions-context-menu-manage-extension"
               class="unified-extensions-context-menu-manage-extension"
-              oncommand="gUnifiedExtensions.manageExtension(this.parentElement)" />
+              id="unified-extensions-context-menu-manage-extension"/>
     <menuitem data-lazy-l10n-id="unified-extensions-context-menu-remove-extension"
               class="unified-extensions-context-menu-remove-extension"
-              oncommand="gUnifiedExtensions.removeExtension(this.parentElement)" />
+              id="unified-extensions-context-menu-remove-extension"/>
     <menuitem data-lazy-l10n-id="unified-extensions-context-menu-report-extension"
               class="unified-extensions-context-menu-report-extension"
-              oncommand="gUnifiedExtensions.reportExtension(this.parentElement)" />
+              id="unified-extensions-context-menu-report-extension"/>
   </menupopup>
 
-  <menupopup id="translations-panel-settings-menupopup">
+  <menupopup id="full-page-translations-panel-settings-menupopup"
+             onpopupshown="FullPageTranslationsPanel.handleSettingsPopupShownEvent()"
+             onpopuphidden="FullPageTranslationsPanel.handleSettingsPopupHiddenEvent()">
+    <menuitem class="always-offer-translations-menuitem"
+              data-l10n-id="translations-panel-settings-always-offer-translation"
+              type="checkbox"
+              checked="false"
+              autocheck="false"
+              id="translations-panel-settings-always-offer-translation"/>
     <menuitem class="always-translate-language-menuitem"
               data-l10n-id="translations-panel-settings-always-translate-unknown-language"
               type="checkbox"
               checked="false"
               autocheck="false"
-              oncommand="TranslationsPanel.onAlwaysTranslateLanguage()"/>
+              id="translations-panel-settings-always-translate"/>
     <menuitem class="never-translate-language-menuitem"
               data-l10n-id="translations-panel-settings-never-translate-unknown-language"
               type="checkbox"
               checked="false"
               autocheck="false"
-              oncommand="TranslationsPanel.onNeverTranslateLanguage()"/>
+              id="translations-panel-settings-never-translate"/>
+    <menuseparator/>
     <menuitem class="never-translate-site-menuitem"
               data-l10n-id="translations-panel-settings-never-translate-site"
               type="checkbox"
               checked="false"
               autocheck="false"
-              oncommand="TranslationsPanel.onNeverTranslateSite()"/>
+              id="translations-panel-settings-never-translate-site"/>
     <menuseparator/>
-    <menuitem data-l10n-id="translations-panel-settings-manage-languages"
-              oncommand="TranslationsPanel.openManageLanguages()"/>
+    <menuitem class="manage-languages-menuitem"
+              data-l10n-id="translations-panel-settings-manage-languages"
+              id="translations-panel-manage-languages"/>
+    <menuitem data-l10n-id="translations-panel-settings-about2"
+              id="translations-panel-about"/>
+  </menupopup>
+
+  <menupopup id="select-translations-panel-settings-menupopup">
+    <menuitem id="select-translations-panel-open-settings-page-menuitem"
+              class="manage-languages-menuitem"
+              data-l10n-id="select-translations-panel-open-translations-settings-menuitem"/>
+    <menuitem id="select-translations-panel-about-translations-menuitem"
+              data-l10n-id="translations-panel-settings-about2"/>
   </menupopup>
 </popupset>

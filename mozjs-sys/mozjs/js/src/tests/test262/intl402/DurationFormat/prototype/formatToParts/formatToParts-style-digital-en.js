@@ -5,6 +5,7 @@
 /*---
 esid: sec-Intl.DurationFormat.prototype.formatToParts
 description:  Checks basic handling of formatToParts, using long, short,narrow and digital styles.
+includes: [testIntl.js]
 features: [Intl.DurationFormat]
 ---*/
 
@@ -39,15 +40,11 @@ const duration = {
 };
 
 const style = "digital";
-const expected = [
-    { type: "integer", value: "7", unit: "hour" },
-    { type: "literal", value: ":"},
-    { type: "integer", value: "08", unit: "minute" },
-    { type: "literal", value: ":"},
-    { type: "integer", value: "09", unit: "second" },
-  ];
 
-let df = new Intl.DurationFormat('en', { style });
+const df = new Intl.DurationFormat('en', { style });
+
+const expected = partitionDurationFormatPattern(df, duration);
+
 compare(df.formatToParts(duration), expected, `Using style : ${style}`);
 
 reportCompare(0, 0);

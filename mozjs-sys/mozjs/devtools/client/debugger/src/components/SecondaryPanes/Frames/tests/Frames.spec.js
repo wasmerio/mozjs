@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React from "react";
+import React from "devtools/client/shared/vendor/react";
 import { mount, shallow } from "enzyme";
 import Frames from "../index.js";
 
@@ -18,9 +18,14 @@ function render(overrides = {}) {
   };
 
   const props = { ...defaultProps, ...overrides };
-  const component = shallow(<Frames.WrappedComponent {...props} />, {
-    context: { l10n: L10N },
-  });
+  const component = shallow(
+    React.createElement(Frames.WrappedComponent, props),
+    {
+      context: {
+        l10n: L10N,
+      },
+    }
+  );
 
   return component;
 }

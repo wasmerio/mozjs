@@ -7,7 +7,8 @@
 with Files("*"):
     BUG_COMPONENT = ("Core", "Audio/Video: Web Codecs")
 
-MOCHITEST_MANIFESTS += ["test/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["test/mochitest.toml"]
+CRASHTEST_MANIFESTS += ["crashtests/crashtests.list"]
 
 # For mozilla/layers/ImageBridgeChild.h
 LOCAL_INCLUDES += [
@@ -20,18 +21,36 @@ EXPORTS.mozilla += [
 ]
 
 EXPORTS.mozilla.dom += [
+    "AudioData.h",
+    "AudioDecoder.h",
+    "AudioEncoder.h",
+    "DecoderTemplate.h",
+    "DecoderTypes.h",
+    "EncodedAudioChunk.h",
     "EncodedVideoChunk.h",
+    "EncoderAgent.h",
+    "EncoderTemplate.h",
+    "EncoderTypes.h",
     "VideoColorSpace.h",
     "VideoDecoder.h",
+    "VideoEncoder.h",
     "VideoFrame.h",
     "WebCodecsUtils.h",
 ]
 
 UNIFIED_SOURCES += [
+    "AudioData.cpp",
+    "AudioDecoder.cpp",
+    "AudioEncoder.cpp",
     "DecoderAgent.cpp",
+    "DecoderTemplate.cpp",
+    "EncodedAudioChunk.cpp",
     "EncodedVideoChunk.cpp",
+    "EncoderAgent.cpp",
+    "EncoderTemplate.cpp",
     "VideoColorSpace.cpp",
     "VideoDecoder.cpp",
+    "VideoEncoder.cpp",
     "VideoFrame.cpp",
     "WebCodecsUtils.cpp",
 ]

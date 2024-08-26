@@ -4,7 +4,7 @@
 
 // Functional tests for inline autocomplete
 
-add_task(async function setup() {
+add_setup(async function () {
   registerCleanupFunction(async () => {
     Services.prefs.clearUserPref("browser.urlbar.suggest.searches");
     Services.prefs.clearUserPref("browser.urlbar.suggest.quickactions");
@@ -132,7 +132,7 @@ add_task(async function test_prefix_autofill() {
     matches: [
       makeVisitResult(context, {
         uri: "http://mozilla.org/",
-        fallbackTitle: "mozilla.org",
+        fallbackTitle: UrlbarTestUtils.trimURL("http://mozilla.org"),
         heuristic: true,
       }),
       makeVisitResult(context, {

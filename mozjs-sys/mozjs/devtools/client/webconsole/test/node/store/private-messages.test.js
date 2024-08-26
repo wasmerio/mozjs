@@ -18,6 +18,7 @@ const {
   getFirstMessage,
   getLastMessage,
   getPrivatePacket,
+  getWebConsoleUiMock,
   setupActions,
   setupStore,
 } = require("resource://devtools/client/webconsole/test/node/helpers.js");
@@ -202,7 +203,22 @@ describe("private messages", () => {
 
   it("releases private backend actors on PRIVATE_MESSAGES_CLEAR action", () => {
     const releasedActors = [];
-    const { dispatch, getState } = setupStore([]);
+    const { dispatch, getState } = setupStore([], {
+      webConsoleUI: getWebConsoleUiMock({
+        commands: {
+          client: {
+            mainRoot: {},
+          },
+          objectCommand: {
+            releaseObjects: async frontsToRelease => {
+              for (const front of frontsToRelease) {
+                releasedActors.push(front.actorID);
+              }
+            },
+          },
+        },
+      }),
+    });
     const mockFrontRelease = function () {
       releasedActors.push(this.actorID);
     };
@@ -212,8 +228,8 @@ describe("private messages", () => {
     );
     const privatePacket = getPrivatePacket("console.log('mymap')");
 
-    publicPacket.message.arguments[1].release = mockFrontRelease;
-    privatePacket.message.arguments[1].release = mockFrontRelease;
+    publicPacket.arguments[1].release = mockFrontRelease;
+    privatePacket.arguments[1].release = mockFrontRelease;
 
     // Add a log message.
     dispatch(actions.messagesAdd([publicPacket, privatePacket]));

@@ -2,13 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-<!--
-  GTK needs to draw behind the lightweight theme toolbox backgrounds, thus the extra box.
-  Also this box allows a negative margin-top to slide the toolbox off screen in
-  fullscreen layout.
--->
-<box id="navigator-toolbox-background">
-<toolbox id="navigator-toolbox" flex="1">
+<toolbox id="navigator-toolbox">
 
   <vbox id="titlebar">
     <!-- Menu -->
@@ -43,11 +37,11 @@
         <hbox id="TabsToolbar-customization-target" flex="1">
           <toolbarbutton id="firefox-view-button"
                          class="toolbarbutton-1 chromeclass-toolbar-additional"
-                         data-l10n-id="toolbar-button-firefox-view"
+                         data-l10n-id="toolbar-button-firefox-view-2"
                          role="button"
                          aria-pressed="false"
-                         oncommand="FirefoxViewHandler.openTab(event);"
-                         onmousedown="FirefoxViewHandler.openTab(event);"
+                         oncommand="FirefoxViewHandler.openTab();"
+                         onmousedown="FirefoxViewHandler.openToolbarMouseEvent(event);"
                          cui-areatype="toolbar"
                          removable="true"/>
 
@@ -63,7 +57,7 @@
 # DisplayPortUtils::MaybeCreateDisplayPortInFirstScrollFrameEncountered based
 # the current structure that we may want to revisit.
             <arrowscrollbox id="tabbrowser-arrowscrollbox" orient="horizontal" flex="1" style="min-width: 1px;" clicktoscroll="true" scrolledtostart="true" scrolledtoend="true">
-              <tab is="tabbrowser-tab" class="tabbrowser-tab" selected="true" visuallyselected="true" fadein="true"/>
+              <tab is="tabbrowser-tab" class="tabbrowser-tab" selected="true" visuallyselected="" fadein=""/>
               <hbox id="tabbrowser-arrowscrollbox-periphery">
                 <toolbartabstop/>
                 <toolbarbutton id="tabs-newtab-button"
@@ -102,11 +96,13 @@
 
       <hbox class="titlebar-spacer" type="post-tabs"/>
 
-      <hbox class="private-browsing-indicator"/>
       <hbox id="private-browsing-indicator-with-label">
         <image class="private-browsing-indicator-icon"/>
         <label data-l10n-id="private-browsing-indicator-label"></label>
       </hbox>
+      <toolbarbutton id="content-analysis-indicator"
+                     oncommand="ContentAnalysis.showPanel(this, PanelUI);"
+                     class="toolbarbutton-1 content-analysis-indicator-icon"/>
 
 #include titlebar-items.inc.xhtml
 
@@ -115,7 +111,7 @@
   </vbox>
 
   <toolbar id="nav-bar"
-           class="browser-toolbar"
+           class="browser-toolbar chromeclass-location"
            data-l10n-id="navbar-accessible"
            fullscreentoolbar="true" mode="icons" customizable="true"
            customizationtarget="nav-bar-customization-target"
@@ -170,14 +166,14 @@
       <toolbarspring cui-areatype="toolbar" class="chromeclass-toolbar-additional"/>
       <toolbaritem id="urlbar-container"
                    removable="false"
-                   class="chromeclass-location" overflows="false">
+                   overflows="false">
         <toolbartabstop/>
         <hbox id="urlbar" flex="1"
               context=""
               focused="true"
               pageproxystate="invalid">
           <hbox id="urlbar-background"/>
-          <hbox id="urlbar-input-container"
+          <hbox class="urlbar-input-container"
                 flex="1"
                 pageproxystate="invalid">
             <box id="remote-control-box"
@@ -204,6 +200,7 @@
               </tooltip>
             </box>
             <box id="identity-box"
+                 class="identity-box"
                  pageproxystate="invalid"
                  ondragstart="gIdentityHandler.onDragStart(event);">
               <box id="identity-icon-box"
@@ -214,7 +211,7 @@
                    onclick="gIdentityHandler.handleIdentityButtonEvent(event); PageProxyClickHandler(event);"
                    onkeypress="gIdentityHandler.handleIdentityButtonEvent(event);">
                 <image id="identity-icon"/>
-                <label id="identity-icon-label" class="plain" crop="center" flex="1"/>
+                <label id="identity-icon-label" crop="center" flex="1"/>
               </box>
               <box id="identity-permission-box"
                    data-l10n-id="urlbar-permissions-granted"
@@ -279,10 +276,6 @@
                        data-l10n-id="urlbar-indexed-db-notification-anchor"/>
                 <image id="password-notification-icon" class="notification-anchor-icon" role="button"
                        data-l10n-id="urlbar-password-notification-anchor"/>
-                <stack id="plugins-notification-icon" class="notification-anchor-icon" role="button" align="center" data-l10n-id="urlbar-plugins-notification-anchor">
-                  <image class="plugin-icon" />
-                  <image id="plugin-icon-badge" />
-                </stack>
                 <image id="web-notifications-notification-icon" class="notification-anchor-icon desktop-notification-icon" role="button"
                        data-l10n-id="urlbar-web-notification-anchor"/>
                 <image id="webRTC-shareDevices-notification-icon" class="notification-anchor-icon camera-icon" role="button"
@@ -309,6 +302,17 @@
                        data-l10n-id="urlbar-storage-access-anchor"/>
               </box>
             </box>
+            <toolbarbutton id="urlbar-searchmode-switcher"
+                           data-l10n-id="urlbar-searchmode-button"
+                           onmousedown="SearchModeSwitcher.openPanel(this, event)" onkeypress="SearchModeSwitcher.openPanel(this, event)"
+                           align="center" noautofocus="true" tooltip="dynamic-shortcut-tooltip" class="chromeclass-toolbar-additional">
+              <image id="searchmode-switcher-icon" />
+              <label id="searchmode-switcher-title" />
+              <image id="searchmode-switcher-dropmarker" data-l10n-id="urlbar-searchmode-dropmarker"
+                     class="toolbarbutton-icon toolbarbutton-combined-buttons-dropmarker" />
+              <toolbarbutton id="searchmode-switcher-close" noautofocus="true" class="toolbarbutton-icon close-button"
+                             onmousedown="SearchModeSwitcher.exitSearchMode(this, event)" />
+            </toolbarbutton>
             <box id="urlbar-label-box" align="center">
               <label id="urlbar-label-switchtab" class="urlbar-label" data-l10n-id="urlbar-switch-to-tab"/>
               <label id="urlbar-label-extension" class="urlbar-label" data-l10n-id="urlbar-extension"/>
@@ -318,7 +322,9 @@
               <html:span id="urlbar-search-mode-indicator-title"/>
               <html:div id="urlbar-search-mode-indicator-close"
                      class="close-button"
-                     role="button"/>
+                     role="button"
+                     aria-labelledby="urlbar-search-mode-indicator-close urlbar-search-mode-indicator-title"
+                     data-l10n-id="urlbar-search-mode-indicator-close"/>
             </html:div>
             <moz-input-box tooltip="aHTMLTooltip"
                            class="urlbar-input-box"
@@ -328,6 +334,7 @@
               <html:input id="urlbar-scheme"
                           required="required"/>
               <html:input id="urlbar-input"
+                          class="urlbar-input"
                           anonid="input"
                           aria-controls="urlbar-results"
                           aria-autocomplete="both"
@@ -335,8 +342,9 @@
                           data-l10n-id="urlbar-placeholder"
                           data-l10n-attrs="placeholder"/>
             </moz-input-box>
-            <image id="urlbar-go-button"
-                   class="urlbar-icon"
+            <image class="urlbar-icon urlbar-go-button"
+                   role="button"
+                   keyNav="false"
                    onclick="gURLBar.handleCommand(event);"
                    data-l10n-id="urlbar-go-button"/>
             <hbox id="page-action-buttons" context="pageActionContextMenu" align="center">
@@ -376,16 +384,25 @@
               <hbox id="translations-button"
                     class="urlbar-page-action"
                     role="button"
-                    data-l10n-id="urlbar-translations-button"
+                    data-l10n-id="urlbar-translations-button2"
                     hidden="true"
-                    onclick="TranslationsPanel.open(event);"
-                    onkeypress="TranslationsPanel.open(event);">
+                    onclick="FullPageTranslationsPanel.open(event);"
+                    onkeypress="FullPageTranslationsPanel.open(event);">
                 <image class="urlbar-icon" id="translations-button-icon" />
                 <image class="urlbar-icon" id="translations-button-circle-arrows" />
                 <html:span id="translations-button-locale" aria-hidden="true" />
               </hbox>
+              <hbox id="shopping-sidebar-button"
+                  class="urlbar-page-action"
+                  role="button"
+                  data-l10n-id="shopping-sidebar-open-button2"
+                  hidden="true"
+                  onclick="ShoppingSidebarParent.urlbarButtonClick(event);">
+                <image id="shopping-sidebar-button-icon"
+                       class="urlbar-icon"/>
+              </hbox>
               <toolbarbutton id="urlbar-zoom-button"
-                     onclick="FullZoom.reset(); FullZoom.resetScalingZoom();"
+                     onclick="FullZoom.resetFromURLBar(event);"
                      tooltip="dynamic-shortcut-tooltip"
                      hidden="true"/>
               <hbox id="pageActionButton"
@@ -450,7 +467,7 @@
                      onkeypress="gSync.toggleAccountPanel(this, event)"
                      consumeanchor="fxa-toolbar-menu-button"
                      closemenu="none"
-                     data-l10n-id="toolbar-button-fxaccount"
+                     data-l10n-id="toolbar-button-account"
                      cui-areatype="toolbar"
                      removable="true">
                      <vbox>
@@ -470,7 +487,7 @@
     </hbox>
 
     <toolbarbutton id="nav-bar-overflow-button"
-                   class="toolbarbutton-1 chromeclass-toolbar-additional overflow-button"
+                   class="toolbarbutton-1 chromeclass-toolbar-additional"
                    delegatesanchor="true"
                    skipintoolbarset="true"
                    data-l10n-id="navbar-overflow">
@@ -489,13 +506,6 @@
                      tooltiptext="Ion"
                      onmousedown="switchToTabHavingURI('about:ion', true);"
                      onkeypress="switchToTabHavingURI('about:ion', true);"/>
-      <toolbarbutton id="whats-new-menu-button"
-                     class="toolbarbutton-1"
-                     delegatesanchor="true"
-                     hidden="true"
-                     badged="true"
-                     onmousedown="PanelUI.showSubView('PanelUI-whatsNew', this, event);"
-                     onkeypress="PanelUI.showSubView('PanelUI-whatsNew', this, event);"/>
       <toolbarbutton id="PanelUI-menu-button"
                      class="toolbarbutton-1"
                      delegatesanchor="true"
@@ -514,12 +524,12 @@
            customizable="true">
     <toolbartabstop skipintoolbarset="true"/>
 
-    <hbox id="personal-toolbar-empty" skipintoolbarset="true" removable="false" hidden="true">
+    <hbox id="personal-toolbar-empty" skipintoolbarset="true" removable="false" hidden="true" role="alert">
       <description id="personal-toolbar-empty-description"
                    data-l10n-id="bookmarks-toolbar-empty-message"
                    onclick="BookmarkingUI.openLibraryIfLinkClicked(event);"
                    onkeydown="BookmarkingUI.openLibraryIfLinkClicked(event);">
-        <html:a data-l10n-name="manage-bookmarks" class="text-link" tabindex="0"/>
+        <html:a data-l10n-name="manage-bookmarks" class="text-link" tabindex="0" role="link"/>
       </description>
     </hbox>
 
@@ -608,7 +618,7 @@
                    oncommand="BookmarkingUI.onCommand(event);">
       <menupopup id="BMB_bookmarksPopup"
                  is="places-popup-arrow"
-                 class="toolbar-menupopup"
+                 class="toolbar-menupopup animatable-menupopup"
                  placespopup="true"
                  context="placesContext"
                  openInTabs="children"
@@ -623,7 +633,7 @@
         <menuitem id="BMB_viewBookmarksSidebar"
                   data-l10n-id="bookmarks-tools-sidebar-visibility"
                   data-l10n-args='{ "isVisible": false }'
-                  oncommand="SidebarUI.toggle('viewBookmarksSidebar');"
+                  oncommand="SidebarController.toggle('viewBookmarksSidebar');"
                   key="viewBookmarksSidebarKb"/>
         <menuitem id="BMB_searchBookmarks"
                   data-l10n-id="bookmarks-search"
@@ -678,6 +688,9 @@
 
         <menuseparator/>
         <!-- Bookmarks menu items will go here -->
+        <menuseparator class="hide-if-empty-places-result"
+                       afterplacescontent="true"/>
+
         <menuitem id="BMB_bookmarksShowAll"
                   data-l10n-id="bookmarks-manage-bookmarks"
                   afterplacescontent="true"
@@ -703,7 +716,7 @@
                    ondragenter="homeButtonObserver.onDragOver(event)"
                    ondrop="homeButtonObserver.onDrop(event)"
                    key="goHome"
-                   onclick="BrowserHome(event);"
+                   onclick="BrowserCommands.home(event);"
                    cui-areatype="toolbar"/>
 
     <toolbarbutton id="library-button" class="toolbarbutton-1 chromeclass-toolbar-additional subviewbutton-nav"
@@ -716,4 +729,3 @@
                    data-l10n-id="navbar-library"/>
   </html:template>
 </toolbox>
-</box>

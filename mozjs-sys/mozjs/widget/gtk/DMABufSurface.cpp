@@ -27,6 +27,9 @@
 #  include <sys/eventfd.h>
 #endif
 #include <poll.h>
+#ifdef HAVE_SYSIOCCOM_H
+#  include <sys/ioccom.h>
+#endif
 #include <sys/ioctl.h>
 
 #include "mozilla/widget/gbm.h"
@@ -468,8 +471,9 @@ bool DMABufSurfaceRGBA::Create(int aWidth, int aHeight,
   if (mBufferModifiers[0] != DRM_FORMAT_MOD_INVALID) {
     mBufferPlaneCount = GbmLib::GetPlaneCount(mGbmBufferObject[0]);
     if (mBufferPlaneCount > DMABUF_BUFFER_PLANES) {
-      LOGDMABUF(("    There's too many dmabuf planes!"));
-      ReleaseSurface();
+      LOGDMABUF(
+          ("    There's too many dmabuf planes! (%d)", mBufferPlaneCount));
+      mBufferPlaneCount = DMABUF_BUFFER_PLANES;
       return false;
     }
 
@@ -507,6 +511,7 @@ bool DMABufSurfaceRGBA::Create(mozilla::gl::GLContext* aGLContext,
   }
   if (mBufferPlaneCount > DMABUF_BUFFER_PLANES) {
     LOGDMABUF(("  wrong plane count %d, quit\n", mBufferPlaneCount));
+    mBufferPlaneCount = DMABUF_BUFFER_PLANES;
     return false;
   }
   if (!egl->fExportDMABUFImage(mEGLImage, mDmabufFds, mStrides, mOffsets)) {
@@ -669,6 +674,14 @@ bool DMABufSurfaceRGBA::CreateTexture(GLContext* aGLContext, int aPlane) {
   attribs.AppendElement(LOCAL_EGL_NONE);
 
   if (!aGLContext) return false;
+
+  if (!aGLContext->MakeCurrent()) {
+    LOGDMABUF(
+        ("DMABufSurfaceRGBA::CreateTexture(): failed to make GL context "
+         "current"));
+    return false;
+  }
+
   const auto& gle = gl::GLContextEGL::Cast(aGLContext);
   const auto& egl = gle->mEgl;
   mEGLImage =
@@ -682,12 +695,6 @@ bool DMABufSurfaceRGBA::CreateTexture(GLContext* aGLContext, int aPlane) {
     return false;
   }
 
-  if (!aGLContext->MakeCurrent()) {
-    LOGDMABUF(
-        ("DMABufSurfaceRGBA::CreateTexture(): failed to make GL context "
-         "current"));
-    return false;
-  }
   aGLContext->fGenTextures(1, &mTexture);
   const ScopedBindTexture savedTex(aGLContext, mTexture);
   aGLContext->fTexParameteri(LOCAL_GL_TEXTURE_2D, LOCAL_GL_TEXTURE_WRAP_S,
@@ -879,6 +886,12 @@ void DMABufSurface::Unmap(int aPlane) {
     mMappedRegionData[aPlane] = nullptr;
     mMappedRegionStride[aPlane] = 0;
   }
+}
+
+nsresult DMABufSurface::BuildSurfaceDescriptorBuffer(
+    SurfaceDescriptorBuffer& aSdBuffer, Image::BuildSdbFlags aFlags,
+    const std::function<MemoryOrShmem(uint32_t)>& aAllocate) {
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 #ifdef DEBUG
@@ -1476,11 +1489,11 @@ bool DMABufSurfaceYUV::CreateTexture(GLContext* aGLContext, int aPlane) {
   MOZ_ASSERT(!mTexture[aPlane], "Texture is already created!");
   MOZ_ASSERT(aGLContext, "Missing GLContext!");
 
-  if (!CreateEGLImage(aGLContext, aPlane)) {
-    return false;
-  }
   if (!aGLContext->MakeCurrent()) {
     LOGDMABUF(("  Failed to make GL context current."));
+    return false;
+  }
+  if (!CreateEGLImage(aGLContext, aPlane)) {
     return false;
   }
   aGLContext->fGenTextures(1, &mTexture[aPlane]);
@@ -1595,9 +1608,13 @@ void DMABufSurfaceYUV::ReleaseSurface() {
   ReleaseDMABuf();
 }
 
-already_AddRefed<gfx::DataSourceSurface>
-DMABufSurfaceYUV::GetAsSourceSurface() {
-  LOGDMABUF(("DMABufSurfaceYUV::GetAsSourceSurface UID %d", mUID));
+nsresult DMABufSurfaceYUV::ReadIntoBuffer(uint8_t* aData, int32_t aStride,
+                                          const gfx::IntSize& aSize,
+                                          gfx::SurfaceFormat aFormat) {
+  LOGDMABUF(("DMABufSurfaceYUV::ReadIntoBuffer UID %d", mUID));
+
+  MOZ_ASSERT(aSize.width == GetWidth());
+  MOZ_ASSERT(aSize.height == GetHeight());
 
   StaticMutexAutoLock lock(sSnapshotContextMutex);
   RefPtr<GLContext> context = ClaimSnapshotGLContext();
@@ -1608,45 +1625,85 @@ DMABufSurfaceYUV::GetAsSourceSurface() {
 
   for (int i = 0; i < GetTextureCount(); i++) {
     if (!GetTexture(i) && !CreateTexture(context, i)) {
-      LOGDMABUF(("GetAsSourceSurface: Failed to create DMABuf textures."));
-      return nullptr;
+      LOGDMABUF(("ReadIntoBuffer: Failed to create DMABuf textures."));
+      return NS_ERROR_FAILURE;
     }
   }
 
   ScopedTexture scopedTex(context);
   ScopedBindTexture boundTex(context, scopedTex.Texture());
 
-  gfx::IntSize size(GetWidth(), GetHeight());
-  context->fTexImage2D(LOCAL_GL_TEXTURE_2D, 0, LOCAL_GL_RGBA, size.width,
-                       size.height, 0, LOCAL_GL_RGBA, LOCAL_GL_UNSIGNED_BYTE,
+  context->fTexImage2D(LOCAL_GL_TEXTURE_2D, 0, LOCAL_GL_RGBA, aSize.width,
+                       aSize.height, 0, LOCAL_GL_RGBA, LOCAL_GL_UNSIGNED_BYTE,
                        nullptr);
 
   ScopedFramebufferForTexture autoFBForTex(context, scopedTex.Texture());
   if (!autoFBForTex.IsComplete()) {
-    LOGDMABUF(("GetAsSourceSurface: ScopedFramebufferForTexture failed."));
-    return nullptr;
+    LOGDMABUF(("ReadIntoBuffer: ScopedFramebufferForTexture failed."));
+    return NS_ERROR_FAILURE;
   }
 
   const gl::OriginPos destOrigin = gl::OriginPos::BottomLeft;
   {
     const ScopedBindFramebuffer bindFB(context, autoFBForTex.FB());
-    if (!context->BlitHelper()->Blit(this, size, destOrigin)) {
-      LOGDMABUF(("GetAsSourceSurface: Blit failed."));
-      return nullptr;
+    if (!context->BlitHelper()->Blit(this, aSize, destOrigin)) {
+      LOGDMABUF(("ReadIntoBuffer: Blit failed."));
+      return NS_ERROR_FAILURE;
     }
   }
 
+  ScopedBindFramebuffer bind(context, autoFBForTex.FB());
+  ReadPixelsIntoBuffer(context, aData, aStride, aSize, aFormat);
+  return NS_OK;
+}
+
+already_AddRefed<gfx::DataSourceSurface>
+DMABufSurfaceYUV::GetAsSourceSurface() {
+  LOGDMABUF(("DMABufSurfaceYUV::GetAsSourceSurface UID %d", mUID));
+
+  gfx::IntSize size(GetWidth(), GetHeight());
+  const auto format = gfx::SurfaceFormat::B8G8R8A8;
   RefPtr<gfx::DataSourceSurface> source =
-      gfx::Factory::CreateDataSourceSurface(size, gfx::SurfaceFormat::B8G8R8A8);
+      gfx::Factory::CreateDataSourceSurface(size, format);
   if (NS_WARN_IF(!source)) {
     LOGDMABUF(("GetAsSourceSurface: CreateDataSourceSurface failed."));
     return nullptr;
   }
 
-  ScopedBindFramebuffer bind(context, autoFBForTex.FB());
-  ReadPixelsIntoDataSurface(context, source);
+  gfx::DataSourceSurface::ScopedMap map(source,
+                                        gfx::DataSourceSurface::READ_WRITE);
+  if (NS_WARN_IF(!map.IsMapped())) {
+    LOGDMABUF(("GetAsSourceSurface: Mapping surface failed."));
+    return nullptr;
+  }
+
+  if (NS_WARN_IF(NS_FAILED(
+          ReadIntoBuffer(map.GetData(), map.GetStride(), size, format)))) {
+    LOGDMABUF(("GetAsSourceSurface: Reading into buffer failed."));
+    return nullptr;
+  }
 
   return source.forget();
+}
+
+nsresult DMABufSurfaceYUV::BuildSurfaceDescriptorBuffer(
+    SurfaceDescriptorBuffer& aSdBuffer, Image::BuildSdbFlags aFlags,
+    const std::function<MemoryOrShmem(uint32_t)>& aAllocate) {
+  LOGDMABUF(("DMABufSurfaceYUV::BuildSurfaceDescriptorBuffer UID %d", mUID));
+
+  gfx::IntSize size(GetWidth(), GetHeight());
+  const auto format = gfx::SurfaceFormat::B8G8R8A8;
+
+  uint8_t* buffer = nullptr;
+  int32_t stride = 0;
+  nsresult rv = Image::AllocateSurfaceDescriptorBufferRgb(
+      size, format, buffer, aSdBuffer, stride, aAllocate);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    LOGDMABUF(("BuildSurfaceDescriptorBuffer allocate descriptor failed"));
+    return rv;
+  }
+
+  return ReadIntoBuffer(buffer, stride, size, format);
 }
 
 #if 0

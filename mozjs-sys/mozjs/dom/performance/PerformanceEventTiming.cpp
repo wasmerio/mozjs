@@ -6,6 +6,7 @@
 
 #include "PerformanceEventTiming.h"
 #include "PerformanceMainThread.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/dom/PerformanceEventTimingBinding.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Performance.h"
@@ -73,8 +74,6 @@ PerformanceEventTiming::TryGenerateEventTiming(const EventTarget* aTarget,
   }
 
   switch (aEvent->mMessage) {
-    case eMouseAuxClick:
-    case eMouseClick:
     case eContextMenu:
     case eMouseDoubleClick:
     case eMouseDown:
@@ -83,6 +82,8 @@ PerformanceEventTiming::TryGenerateEventTiming(const EventTarget* aTarget,
     case eMouseOut:
     case eMouseOver:
     case eMouseUp:
+    case ePointerAuxClick:
+    case ePointerClick:
     case ePointerOver:
     case ePointerEnter:
     case ePointerDown:

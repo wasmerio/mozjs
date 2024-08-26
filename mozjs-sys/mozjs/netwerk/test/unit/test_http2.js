@@ -1,6 +1,8 @@
 /* import-globals-from http2_test_common.js */
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var concurrent_channels = [];
 var httpserv = null;
@@ -475,5 +477,14 @@ add_task(async function do_test_http2_push_userContext3() {
     loadGroup,
     serverPort
   );
+  Assert.equal(httpProxyConnectResponseCode, -1);
+});
+
+add_task(async function do_test_http2_continuations_over_max_response_limit() {
+  const { httpProxyConnectResponseCode } =
+    await test_http2_continuations_over_max_response_limit(
+      loadGroup,
+      serverPort
+    );
   Assert.equal(httpProxyConnectResponseCode, -1);
 });

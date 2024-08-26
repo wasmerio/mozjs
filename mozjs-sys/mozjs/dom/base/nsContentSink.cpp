@@ -275,8 +275,12 @@ void nsContentSink::DoProcessLinkHeader() {
   }
 
   nsAutoString value;
+
+  // Getting the header data and parsing the link header together roughly
+  // implement <https://httpwg.org/specs/rfc8288.html#parse-set>.
   mDocument->GetHeaderData(nsGkAtoms::link, value);
   auto linkHeaders = net::ParseLinkHeader(value);
+
   for (const auto& linkHeader : linkHeaders) {
     ProcessLinkFromHeader(linkHeader, 0);
   }
@@ -311,16 +315,17 @@ nsresult nsContentSink::ProcessLinkFromHeader(const net::LinkHeader& aHeader,
 
     if (linkTypes & LinkStyle::ePRELOAD) {
       PreloadHref(aHeader.mHref, aHeader.mAs, aHeader.mType, aHeader.mMedia,
-                  aHeader.mIntegrity, aHeader.mSrcset, aHeader.mSizes,
-                  aHeader.mCrossOrigin, aHeader.mReferrerPolicy,
-                  aEarlyHintPreloaderId);
+                  aHeader.mNonce, aHeader.mIntegrity, aHeader.mSrcset,
+                  aHeader.mSizes, aHeader.mCrossOrigin, aHeader.mReferrerPolicy,
+                  aEarlyHintPreloaderId, aHeader.mFetchPriority);
     }
 
     if ((linkTypes & LinkStyle::eMODULE_PRELOAD) &&
         mDocument->ScriptLoader()->GetModuleLoader()) {
-      PreloadModule(aHeader.mHref, aHeader.mAs, aHeader.mMedia,
+      PreloadModule(aHeader.mHref, aHeader.mAs, aHeader.mMedia, aHeader.mNonce,
                     aHeader.mIntegrity, aHeader.mCrossOrigin,
-                    aHeader.mReferrerPolicy, aEarlyHintPreloaderId);
+                    aHeader.mReferrerPolicy, aEarlyHintPreloaderId,
+                    aHeader.mFetchPriority);
     }
   }
 
@@ -332,13 +337,15 @@ nsresult nsContentSink::ProcessLinkFromHeader(const net::LinkHeader& aHeader,
   bool isAlternate = linkTypes & LinkStyle::eALTERNATE;
   return ProcessStyleLinkFromHeader(aHeader.mHref, isAlternate, aHeader.mTitle,
                                     aHeader.mIntegrity, aHeader.mType,
-                                    aHeader.mMedia, aHeader.mReferrerPolicy);
+                                    aHeader.mMedia, aHeader.mReferrerPolicy,
+                                    aHeader.mFetchPriority);
 }
 
 nsresult nsContentSink::ProcessStyleLinkFromHeader(
     const nsAString& aHref, bool aAlternate, const nsAString& aTitle,
     const nsAString& aIntegrity, const nsAString& aType,
-    const nsAString& aMedia, const nsAString& aReferrerPolicy) {
+    const nsAString& aMedia, const nsAString& aReferrerPolicy,
+    const nsAString& aFetchPriority) {
   if (aAlternate && aTitle.IsEmpty()) {
     // alternates must have title return without error, for now
     return NS_OK;
@@ -370,6 +377,9 @@ nsresult nsContentSink::ProcessStyleLinkFromHeader(
   nsCOMPtr<nsIReferrerInfo> referrerInfo =
       ReferrerInfo::CreateFromDocumentAndPolicyOverride(mDocument, policy);
 
+  const FetchPriority fetchPriority =
+      nsGenericHTMLElement::ToFetchPriority(aFetchPriority);
+
   Loader::SheetInfo info{
       *mDocument,
       nullptr,
@@ -384,6 +394,7 @@ nsresult nsContentSink::ProcessStyleLinkFromHeader(
       aAlternate ? Loader::HasAlternateRel::Yes : Loader::HasAlternateRel::No,
       Loader::IsInline::No,
       Loader::IsExplicitlyEnabled::No,
+      fetchPriority,
   };
 
   auto loadResultOrErr =
@@ -420,11 +431,13 @@ void nsContentSink::PrefetchHref(const nsAString& aHref, const nsAString& aAs,
 
 void nsContentSink::PreloadHref(const nsAString& aHref, const nsAString& aAs,
                                 const nsAString& aType, const nsAString& aMedia,
+                                const nsAString& aNonce,
                                 const nsAString& aIntegrity,
                                 const nsAString& aSrcset,
                                 const nsAString& aSizes, const nsAString& aCORS,
                                 const nsAString& aReferrerPolicy,
-                                uint64_t aEarlyHintPreloaderId) {
+                                uint64_t aEarlyHintPreloaderId,
+                                const nsAString& aFetchPriority) {
   auto encoding = mDocument->GetDocumentCharacterSet();
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), aHref, encoding, mDocument->GetDocBaseURI());
@@ -449,16 +462,15 @@ void nsContentSink::PreloadHref(const nsAString& aHref, const nsAString& aAs,
   }
 
   mDocument->Preloads().PreloadLinkHeader(
-      uri, aHref, policyType, aAs, aType, aIntegrity, aSrcset, aSizes, aCORS,
-      aReferrerPolicy, aEarlyHintPreloaderId);
+      uri, aHref, policyType, aAs, aType, aNonce, aIntegrity, aSrcset, aSizes,
+      aCORS, aReferrerPolicy, aEarlyHintPreloaderId, aFetchPriority);
 }
 
-void nsContentSink::PreloadModule(const nsAString& aHref, const nsAString& aAs,
-                                  const nsAString& aMedia,
-                                  const nsAString& aIntegrity,
-                                  const nsAString& aCORS,
-                                  const nsAString& aReferrerPolicy,
-                                  uint64_t aEarlyHintPreloaderId) {
+void nsContentSink::PreloadModule(
+    const nsAString& aHref, const nsAString& aAs, const nsAString& aMedia,
+    const nsAString& aNonce, const nsAString& aIntegrity,
+    const nsAString& aCORS, const nsAString& aReferrerPolicy,
+    uint64_t aEarlyHintPreloaderId, const nsAString& aFetchPriority) {
   ModuleLoader* moduleLoader = mDocument->ScriptLoader()->GetModuleLoader();
 
   if (!StaticPrefs::network_modulepreload()) {
@@ -493,8 +505,8 @@ void nsContentSink::PreloadModule(const nsAString& aHref, const nsAString& aAs,
 
   mDocument->Preloads().PreloadLinkHeader(
       uri, aHref, nsIContentPolicy::TYPE_SCRIPT, u"script"_ns, u"module"_ns,
-      aIntegrity, u""_ns, u""_ns, aCORS, aReferrerPolicy,
-      aEarlyHintPreloaderId);
+      aNonce, aIntegrity, u""_ns, u""_ns, aCORS, aReferrerPolicy,
+      aEarlyHintPreloaderId, aFetchPriority);
 }
 
 void nsContentSink::PrefetchDNS(const nsAString& aHref) {
@@ -813,7 +825,7 @@ void nsContentSink::EndUpdate(Document* aDocument) {
 }
 
 void nsContentSink::DidBuildModelImpl(bool aTerminated) {
-  MOZ_ASSERT(aTerminated ||
+  MOZ_ASSERT(aTerminated || (mParser && mParser->IsParserClosed()) ||
                  mDocument->GetReadyStateEnum() == Document::READYSTATE_LOADING,
              "Bad readyState");
   mDocument->SetReadyStateInternal(Document::READYSTATE_INTERACTIVE);
@@ -948,8 +960,7 @@ void nsContentSink::NotifyDocElementCreated(Document* aDoc) {
   observerService->NotifyObservers(ToSupports(aDoc),
                                    "document-element-inserted", u"");
 
-  nsContentUtils::DispatchChromeEvent(aDoc, ToSupports(aDoc),
-                                      u"DOMDocElementInserted"_ns,
+  nsContentUtils::DispatchChromeEvent(aDoc, aDoc, u"DOMDocElementInserted"_ns,
                                       CanBubble::eYes, Cancelable::eNo);
 }
 

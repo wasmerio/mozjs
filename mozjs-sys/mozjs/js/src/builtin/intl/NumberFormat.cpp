@@ -44,7 +44,6 @@
 #include "vm/JSContext.h"
 #include "vm/PlainObject.h"  // js::PlainObject
 #include "vm/StringType.h"
-#include "vm/WellKnownAtom.h"  // js_*_str
 
 #include "vm/GeckoProfiler-inl.h"
 #include "vm/JSObject-inl.h"
@@ -98,7 +97,7 @@ static const JSFunctionSpec numberFormat_methods[] = {
     JS_SELF_HOSTED_FN("formatRange", "Intl_NumberFormat_formatRange", 2, 0),
     JS_SELF_HOSTED_FN("formatRangeToParts",
                       "Intl_NumberFormat_formatRangeToParts", 2, 0),
-    JS_FN(js_toSource_str, numberFormat_toSource, 0, 0),
+    JS_FN("toSource", numberFormat_toSource, 0, 0),
     JS_FS_END,
 };
 
@@ -149,9 +148,8 @@ static bool NumberFormat(JSContext* cx, const CallArgs& args, bool construct) {
   HandleValue options = args.get(1);
 
   // Step 3.
-  return intl::LegacyInitializeObject(
-      cx, numberFormat, cx->names().InitializeNumberFormat, thisValue, locales,
-      options, DateTimeFormatOptions::Standard, args.rval());
+  return intl::InitializeNumberFormatObject(cx, numberFormat, thisValue,
+                                            locales, options, args.rval());
 }
 
 static bool NumberFormat(JSContext* cx, unsigned argc, Value* vp) {
@@ -953,7 +951,7 @@ static bool IsNonDecimalNumber(mozilla::Range<const CharT> chars) {
   return false;
 }
 
-static bool IsNonDecimalNumber(JSLinearString* str) {
+static bool IsNonDecimalNumber(const JSLinearString* str) {
   JS::AutoCheckCannotGC nogc;
   return str->hasLatin1Chars() ? IsNonDecimalNumber(str->latin1Range(nogc))
                                : IsNonDecimalNumber(str->twoByteRange(nogc));

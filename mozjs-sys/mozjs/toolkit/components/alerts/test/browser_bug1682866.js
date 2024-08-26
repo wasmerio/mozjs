@@ -1,6 +1,6 @@
 const baseURL = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
-  "http://example.com"
+  "https://example.com"
 );
 
 const alertURL = `${baseURL}file_bug1682866.html`;
@@ -45,7 +45,7 @@ add_task(async function testAlertForceClosed() {
     "DOMModalDialogClosed"
   );
 
-  BrowserTestUtils.loadURIString(tab.linkedBrowser, "about:newtab");
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, "about:newtab");
 
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
 

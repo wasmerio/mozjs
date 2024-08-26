@@ -431,7 +431,7 @@ static bool GCZeal(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  JS_SetGCZeal(cx, uint8_t(zeal), JS_DEFAULT_ZEAL_FREQ);
+  JS::SetGCZeal(cx, uint8_t(zeal), JS::ShellDefaultGCZealFrequency);
   args.rval().setUndefined();
   return true;
 }
@@ -468,12 +468,11 @@ static bool SendCommand(JSContext* cx, unsigned argc, Value* vp) {
 
 static bool Options(JSContext* cx, unsigned argc, Value* vp) {
   JS::CallArgs args = CallArgsFromVp(argc, vp);
-  ContextOptions oldContextOptions = ContextOptionsRef(cx);
 
   RootedString str(cx);
   JS::UniqueChars opt;
-  for (unsigned i = 0; i < args.length(); ++i) {
-    str = ToString(cx, args[i]);
+  if (args.length() > 0) {
+    str = ToString(cx, args[0]);
     if (!str) {
       return false;
     }
@@ -483,33 +482,11 @@ static bool Options(JSContext* cx, unsigned argc, Value* vp) {
       return false;
     }
 
-    if (strcmp(opt.get(), "strict_mode") == 0) {
-      ContextOptionsRef(cx).toggleStrictMode();
-    } else {
-      JS_ReportErrorUTF8(cx,
-                         "unknown option name '%s'. The valid name is "
-                         "strict_mode.",
-                         opt.get());
-      return false;
-    }
-  }
-
-  UniqueChars names;
-  if (names && oldContextOptions.strictMode()) {
-    names = JS_sprintf_append(std::move(names), "%s%s", names ? "," : "",
-                              "strict_mode");
-    if (!names) {
-      JS_ReportOutOfMemory(cx);
-      return false;
-    }
-  }
-
-  str = JS_NewStringCopyZ(cx, names.get());
-  if (!str) {
+    JS_ReportErrorUTF8(cx, "unknown option name '%s'.", opt.get());
     return false;
   }
 
-  args.rval().setString(str);
+  args.rval().setString(JS_GetEmptyString(cx));
   return true;
 }
 
@@ -1107,6 +1084,10 @@ int XRE_XPCShellMain(int argc, char** argv, char** envp,
   // stability, we should instantiate COM ASAP so that we can ensure that these
   // global settings are configured before anything can interfere.
   mscom::ProcessRuntime mscom;
+
+#  ifdef MOZ_SANDBOX
+  nsAutoString binDirPath;
+#  endif
 #endif
 
   // The provider needs to outlive the call to shutting down XPCOM.
@@ -1125,6 +1106,11 @@ int XRE_XPCShellMain(int argc, char** argv, char** envp,
       printf("Couldn't get application directory.\n");
       return 1;
     }
+
+#if defined(XP_WIN) && defined(MOZ_SANDBOX)
+    // We need the binary directory to initialize the windows sandbox.
+    MOZ_ALWAYS_SUCCEEDS(appDir->GetPath(binDirPath));
+#endif
 
     dirprovider.SetAppFile(appFile);
 
@@ -1324,7 +1310,7 @@ int XRE_XPCShellMain(int argc, char** argv, char** envp,
 #  if defined(MOZ_SANDBOX)
     // Required for sandboxed child processes.
     if (aShellData->sandboxBrokerServices) {
-      SandboxBroker::Initialize(aShellData->sandboxBrokerServices);
+      SandboxBroker::Initialize(aShellData->sandboxBrokerServices, binDirPath);
       SandboxBroker::GeckoDependentInitialize();
     } else {
       NS_WARNING(
@@ -1377,16 +1363,11 @@ int XRE_XPCShellMain(int argc, char** argv, char** envp,
       {
 #ifdef FUZZING_INTERFACES
         if (fuzzHaveModule) {
-#  ifdef LIBFUZZER
           // argv[0] was removed previously, but libFuzzer expects it
           argc++;
           argv--;
 
-          result = FuzzXPCRuntimeStart(&jsapi, &argc, &argv,
-                                       aShellData->fuzzerDriver);
-#  elif AFLFUZZ
-          MOZ_CRASH("AFL is unsupported for XPC runtime fuzzing integration");
-#  endif
+          result = FuzzXPCRuntimeStart(&jsapi, &argc, &argv, aShellData);
         } else {
 #endif
           // We are almost certainly going to run script here, so we need an

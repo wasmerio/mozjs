@@ -69,7 +69,7 @@ paths = shortestPaths([1234n]);
 dumpPaths(paths);
 
 // Error messages are more generic under PBL.
-if (!getBuildConfiguration()['pbl']) {
+if (!getBuildConfiguration('pbl')) {
     var exc;
 
     try { paths = shortestPaths(); } catch (exc) { e = ""+exc; };

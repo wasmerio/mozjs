@@ -39,6 +39,12 @@ add_task(async function () {
   await resourceCommand.watchResources([resourceCommand.TYPES.CSS_CHANGE], {
     onAvailable: resources => availableResources.push(...resources),
   });
+
+  // There is no guarantee that the CSS change will be already available when calling watchResources,
+  // so wait for it to be received.
+  info("Wait for CSS change to be received");
+  await waitFor(() => availableResources.length == 1);
+
   assertResource(
     availableResources[0],
     { index: 0, property: "color", value: "black" },
@@ -132,7 +138,7 @@ async function setProperty(rule, index, property, value) {
   await modifications.apply();
 }
 
-async function renameProperty(rule, index, oldName, newName, value) {
+async function renameProperty(rule, index, oldName, newName) {
   const modifications = rule.startModifyingProperties({ isKnown: true });
   modifications.renameProperty(index, oldName, newName);
   await modifications.apply();

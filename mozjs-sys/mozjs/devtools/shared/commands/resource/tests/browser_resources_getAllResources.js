@@ -83,7 +83,7 @@ add_task(async function () {
       `Didn't receive the expected number of resources. Got ${
         resources.length
       }, expected ${messages.length} - ${resources
-        .map(r => r.message.arguments.join(" | "))
+        .map(r => r.arguments.join(" | "))
         .join(" - ")}`
     );
   }
@@ -111,7 +111,11 @@ function assertResources(resources, expectedResources) {
   for (let i = 0; i < resources.length; i++) {
     const resource = resources[i];
     const expectedResource = expectedResources[i];
-    ok(resource === expectedResource, `The ${i}th resource is correct`);
+    Assert.strictEqual(
+      resource,
+      expectedResource,
+      `The ${i}th resource is correct`
+    );
   }
 }
 

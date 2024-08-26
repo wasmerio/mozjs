@@ -38,19 +38,21 @@ add_task(async function refresh() {
 add_task(async function clear() {
   // Pick the tip, which should open the refresh dialog.  Click its cancel
   // button.
+  let useOldClearHistoryDialog = Services.prefs.getBoolPref(
+    "privacy.sanitize.useOldClearHistoryDialog"
+  );
+  let dialogURL = useOldClearHistoryDialog
+    ? "chrome://browser/content/sanitize.xhtml"
+    : "chrome://browser/content/sanitize_v2.xhtml";
   await checkIntervention({
     searchString: SEARCH_STRINGS.CLEAR,
     tip: UrlbarProviderInterventions.TIP_TYPE.CLEAR,
     title: "Clear your cache, cookies, history and more.",
     button: "Choose What to Clear…",
     awaitCallback() {
-      return BrowserTestUtils.promiseAlertDialog(
-        "cancel",
-        "chrome://browser/content/sanitize.xhtml",
-        {
-          isSubDialog: true,
-        }
-      );
+      return BrowserTestUtils.promiseAlertDialog("cancel", dialogURL, {
+        isSubDialog: true,
+      });
     },
   });
 });
@@ -79,8 +81,8 @@ add_task(async function clear_private() {
   await BrowserTestUtils.closeWindow(win);
 });
 
-// Tests that if multiple interventions of the same type are seen in the same
-// engagement, only one instance is recorded in Telemetry.
+// Tests that only the intervention visible at the time of abandonment or
+// engagement is registered in Telemetry.
 add_task(async function multipleInterventionsInOneEngagement() {
   Services.telemetry.clearScalars();
   let result = (await awaitTip(SEARCH_STRINGS.REFRESH, window))[0];
@@ -111,11 +113,12 @@ add_task(async function multipleInterventionsInOneEngagement() {
     `${UrlbarProviderInterventions.TIP_TYPE.REFRESH}-shown`,
     1
   );
-  TelemetryTestUtils.assertKeyedScalar(
-    scalars,
-    "urlbar.tips",
-    `${UrlbarProviderInterventions.TIP_TYPE.CLEAR}-shown`,
-    1
+  Assert.ok(
+    !scalars["urlbar.tips"][
+      `${UrlbarProviderInterventions.TIP_TYPE.CLEAR}-shown`
+    ],
+    `${UrlbarProviderInterventions.TIP_TYPE.CLEAR}-shown is not recorded as an
+     impression`
   );
 });
 
@@ -203,13 +206,15 @@ add_task(async function tipsAreEnglishOnly() {
   Services.locale.availableLocales = ["en-US", "de"];
   Services.locale.requestedLocales = ["de"];
 
-  registerCleanupFunction(async () => {
-    let enginesReloaded2 =
+  let cleanup = async () => {
+    let reloadPromise =
       SearchTestUtils.promiseSearchNotification("engines-reloaded");
     Services.locale.requestedLocales = originalRequested;
     Services.locale.availableLocales = originalAvailable;
-    await enginesReloaded2;
-  });
+    await reloadPromise;
+    cleanup = null;
+  };
+  registerCleanupFunction(() => cleanup?.());
 
   let appLocales = Services.locale.appLocalesAsBCP47;
   Assert.equal(appLocales[0], "de");
@@ -219,82 +224,45 @@ add_task(async function tipsAreEnglishOnly() {
   // Interventions should no longer work in the new locale.
   await awaitNoTip(SEARCH_STRINGS.CLEAR, window);
   await UrlbarTestUtils.promisePopupClose(window, () => gURLBar.blur());
+
+  await cleanup();
 });
 
-/**
- * Picks the help button from an Intervention. We spoof the Intervention in this
- * test because our withDNSRedirect helper cannot handle the HTTPS SUMO links.
- */
-add_task(async function pickHelpButton() {
-  const helpUrl = "http://example.com/";
-  let results = [
-    new UrlbarResult(
-      UrlbarUtils.RESULT_TYPE.URL,
-      UrlbarUtils.RESULT_SOURCE.HISTORY,
-      { url: "http://mozilla.org/a" }
-    ),
-    new UrlbarResult(
-      UrlbarUtils.RESULT_TYPE.TIP,
-      UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
-      {
-        type: UrlbarProviderInterventions.TIP_TYPE.CLEAR,
-        titleL10n: { id: "intervention-clear-data" },
-        buttons: [
-          {
-            l10n: { id: "intervention-clear-data-confirm" },
-          },
-        ],
-        helpUrl,
-        helpL10n: {
-          id: UrlbarPrefs.get("resultMenu")
-            ? "urlbar-result-menu-tip-get-help"
-            : "urlbar-tip-help-icon",
-        },
-      }
-    ),
-  ];
-  let interventionProvider = new UrlbarTestUtils.TestProvider({
-    results,
-    priority: 2,
-  });
-  UrlbarProvidersManager.registerProvider(interventionProvider);
-
-  registerCleanupFunction(() => {
-    UrlbarProvidersManager.unregisterProvider(interventionProvider);
-  });
-
+// Tests the help command (using the clear intervention). It should open the
+// help page and it should not trigger the primary intervention behavior.
+add_task(async function pickHelp() {
   await BrowserTestUtils.withNewTab("about:blank", async () => {
-    let [result, element] = await awaitTip(SEARCH_STRINGS.CLEAR);
+    // Do a search that triggers the clear tip.
+    let [result] = await awaitTip(SEARCH_STRINGS.CLEAR);
     Assert.strictEqual(
       result.payload.type,
       UrlbarProviderInterventions.TIP_TYPE.CLEAR
     );
 
-    if (UrlbarPrefs.get("resultMenu")) {
-      let loadPromise = BrowserTestUtils.browserLoaded(
-        gBrowser.selectedBrowser,
-        false,
-        "http://example.com/"
-      );
-      await UrlbarTestUtils.openResultMenuAndPressAccesskey(window, "h", {
-        openByMouse: true,
-        resultIndex: 1,
-      });
-      info("Waiting for help URL to load in the current tab");
-      await loadPromise;
-    } else {
-      let helpButton = element._buttons.get("help");
-      Assert.ok(helpButton, "Help button exists");
-      Assert.ok(
-        BrowserTestUtils.is_visible(helpButton),
-        "Help button is visible"
-      );
-      EventUtils.synthesizeMouseAtCenter(helpButton, {});
+    // Click the help command and wait for the help page to load.
+    Assert.ok(
+      !!result.payload.helpUrl,
+      "The result's helpUrl should be defined and non-empty: " +
+        JSON.stringify(result.payload.helpUrl)
+    );
+    let loadPromise = BrowserTestUtils.browserLoaded(
+      gBrowser.selectedBrowser,
+      false,
+      result.payload.helpUrl
+    );
+    await UrlbarTestUtils.openResultMenuAndPressAccesskey(window, "h", {
+      openByMouse: true,
+      resultIndex: 1,
+    });
+    info("Waiting for help URL to load in the current tab");
+    await loadPromise;
 
-      BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, helpUrl);
-      await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
-    }
+    // Wait a bit and make sure the clear recent history dialog did not open.
+    // eslint-disable-next-line mozilla/no-arbitrary-setTimeout
+    await new Promise(r => setTimeout(r, 2000));
+    Assert.strictEqual(gDialogBox.isOpen, false, "No dialog should be open");
 
+    // Check telemetry.
     const scalars = TelemetryTestUtils.getProcessScalars("parent", true, true);
     TelemetryTestUtils.assertKeyedScalar(
       scalars,

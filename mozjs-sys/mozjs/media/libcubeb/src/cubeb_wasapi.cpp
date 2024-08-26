@@ -452,6 +452,9 @@ struct cubeb_stream {
    * called and the render loop thread has exited, destroy this stream object.
    */
   LONG ref_count = 0;
+
+  /* True if the stream is active, false if inactive. */
+  bool active = false;
 };
 
 class monitor_device_notifications {
@@ -1419,6 +1422,12 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
       continue;
     }
     case WAIT_OBJECT_0 + 1: { /* reconfigure */
+      auto_lock lock(stm->stream_reset_lock);
+      if (!stm->active) {
+        /* Avoid reconfiguring, stream start will handle it. */
+        LOG("Stream is not active, ignoring reconfigure.");
+        continue;
+      }
       XASSERT(stm->output_client || stm->input_client);
       LOG("Reconfiguring the stream");
       /* Close the stream */
@@ -1431,23 +1440,20 @@ static unsigned int __stdcall wasapi_stream_render_loop(LPVOID stream)
         was_running = stm->input_client->Stop() == S_OK;
         LOG("Input stopped.");
       }
-      {
-        auto_lock lock(stm->stream_reset_lock);
-        close_wasapi_stream(stm);
-        LOG("Stream closed.");
-        /* Reopen a stream and start it immediately. This will automatically
-           pick the new default device for this role. */
-        int r = setup_wasapi_stream(stm);
-        if (r != CUBEB_OK) {
-          LOG("Error setting up the stream during reconfigure.");
-          /* Don't destroy the stream here, since we expect the caller to do
-             so after the error has propagated via the state callback. */
-          is_playing = false;
-          hr = E_FAIL;
-          continue;
-        }
-        LOG("Stream setup successfuly.");
+      close_wasapi_stream(stm);
+      LOG("Stream closed.");
+      /* Reopen a stream and start it immediately. This will automatically
+          pick the new default device for this role. */
+      int r = setup_wasapi_stream(stm);
+      if (r != CUBEB_OK) {
+        LOG("Error setting up the stream during reconfigure.");
+        /* Don't destroy the stream here, since we expect the caller to do
+            so after the error has propagated via the state callback. */
+        is_playing = false;
+        hr = E_FAIL;
+        continue;
       }
+      LOG("Stream setup successfuly.");
       XASSERT(stm->output_client || stm->input_client);
       if (was_running && stm->output_client) {
         hr = stm->output_client->Start();
@@ -2987,6 +2993,8 @@ wasapi_stream_start(cubeb_stream * stm)
     }
   }
 
+  stm->active = true;
+
   stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_STARTED);
 
   return CUBEB_OK;
@@ -3016,6 +3024,8 @@ wasapi_stream_stop(cubeb_stream * stm)
         return CUBEB_ERROR;
       }
     }
+
+    stm->active = false;
 
     wasapi_state_callback(stm, stm->user_ptr, CUBEB_STATE_STOPPED);
   }
@@ -3551,6 +3561,7 @@ cubeb_ops const wasapi_ops = {
     /*.get_max_channel_count =*/wasapi_get_max_channel_count,
     /*.get_min_latency =*/wasapi_get_min_latency,
     /*.get_preferred_sample_rate =*/wasapi_get_preferred_sample_rate,
+    /*.get_supported_input_processing_params =*/NULL,
     /*.enumerate_devices =*/wasapi_enumerate_devices,
     /*.device_collection_destroy =*/wasapi_device_collection_destroy,
     /*.destroy =*/wasapi_destroy,
@@ -3564,6 +3575,8 @@ cubeb_ops const wasapi_ops = {
     /*.stream_set_volume =*/wasapi_stream_set_volume,
     /*.stream_set_name =*/NULL,
     /*.stream_get_current_device =*/NULL,
+    /*.stream_set_input_mute =*/NULL,
+    /*.stream_set_input_processing_params =*/NULL,
     /*.stream_device_destroy =*/NULL,
     /*.stream_register_device_changed_callback =*/NULL,
     /*.register_device_collection_changed =*/

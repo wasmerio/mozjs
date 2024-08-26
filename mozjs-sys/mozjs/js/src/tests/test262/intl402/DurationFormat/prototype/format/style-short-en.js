@@ -5,12 +5,12 @@
 /*---
 esid: sec-Intl.DurationFormat.prototype.format
 description: Test if format method formats duration correctly with different "style" arguments
-locale: [en-US]
+locale: [en]
+includes: [testIntl.js]
 features: [Intl.DurationFormat]
 ---*/
 
 const style = "short";
-const expected = "1 yr, 2 mths, 3 wks, 3 days, 4 hr, 5 min, 6 sec, 7 ms, 8 μs, 9 ns";
 
 const duration = {
   years: 1,
@@ -26,6 +26,9 @@ const duration = {
 };
 
 const df = new Intl.DurationFormat("en", {style});
+
+const expected = formatDurationFormatPattern(df, duration);
+
 assert.sameValue(df.format(duration), expected, `Assert DurationFormat format output using ${style} style option`);
 
 reportCompare(0, 0);

@@ -2828,3 +2828,57 @@ SHAKE_256_Hash(unsigned char *dest, PRUint32 dest_length, const char *src)
         return SECFailure;
     return (vector->p_SHAKE_256_Hash)(dest, dest_length, src);
 }
+
+/* ============== New for 3.0027 =============================== */
+
+SECStatus
+Kyber_NewKey(KyberParams params, const SECItem *seed, SECItem *privKey, SECItem *pubKey)
+{
+    if (!vector && PR_SUCCESS != freebl_RunLoaderOnce())
+        return SECFailure;
+    return (vector->p_Kyber_NewKey)(params, seed, privKey, pubKey);
+}
+
+SECStatus
+Kyber_Encapsulate(KyberParams params, const SECItem *seed, const SECItem *pubKey, SECItem *ciphertext, SECItem *secret)
+{
+    if (!vector && PR_SUCCESS != freebl_RunLoaderOnce())
+        return SECFailure;
+    return (vector->p_Kyber_Encapsulate)(params, seed, pubKey, ciphertext, secret);
+}
+
+SECStatus
+Kyber_Decapsulate(KyberParams params, const SECItem *privKey, const SECItem *ciphertext, SECItem *secret)
+{
+    if (!vector && PR_SUCCESS != freebl_RunLoaderOnce())
+        return SECFailure;
+    return (vector->p_Kyber_Decapsulate)(params, privKey, ciphertext, secret);
+}
+
+/* ============== New for 3.0028 =============================== */
+
+SECStatus
+ED_SignMessage(ECPrivateKey *key, SECItem *signature,
+               const SECItem *msg)
+{
+    if (!vector && PR_SUCCESS != freebl_RunLoaderOnce())
+        return SECFailure;
+    return (vector->p_ED_SignMessage)(key, signature, msg);
+}
+
+SECStatus
+ED_VerifyMessage(ECPublicKey *key, const SECItem *signature,
+                 const SECItem *msg)
+{
+    if (!vector && PR_SUCCESS != freebl_RunLoaderOnce())
+        return SECFailure;
+    return (vector->p_ED_VerifyMessage)(key, signature, msg);
+}
+
+SECStatus
+ED_DerivePublicKey(const SECItem *privateKey, SECItem *publicKey)
+{
+    if (!vector && PR_SUCCESS != freebl_RunLoaderOnce())
+        return SECFailure;
+    return (vector->p_ED_DerivePublicKey)(privateKey, publicKey);
+}

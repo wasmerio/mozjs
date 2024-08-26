@@ -96,7 +96,7 @@ class TeardownRunnableOnWorker final : public WorkerControlRunnable,
  public:
   TeardownRunnableOnWorker(WorkerPrivate* aWorkerPrivate,
                            BroadcastChannelChild* aActor)
-      : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerControlRunnable("TeardownRunnableOnWorker"),
         TeardownRunnable(aActor) {}
 
   bool WorkerRun(JSContext*, WorkerPrivate*) override {
@@ -255,10 +255,13 @@ already_AddRefed<BroadcastChannel> BroadcastChannel::Constructor(
 
   PBroadcastChannelChild* actor = actorChild->SendPBroadcastChannelConstructor(
       storagePrincipalInfo, origin, nsString(aChannel));
+  if (!actor) {
+    // The PBackground actor is shutting down, return a 'generic' error.
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
 
   bc->mActor = static_cast<BroadcastChannelChild*>(actor);
-  MOZ_ASSERT(bc->mActor);
-
   bc->mActor->SetParent(bc);
   bc->mOriginForEvents = std::move(originForEvents);
 
@@ -336,7 +339,7 @@ void BroadcastChannel::Shutdown() {
 
       RefPtr<TeardownRunnableOnWorker> runnable =
           new TeardownRunnableOnWorker(workerPrivate, mActor);
-      runnable->Dispatch();
+      runnable->Dispatch(workerPrivate);
     }
 
     mActor = nullptr;

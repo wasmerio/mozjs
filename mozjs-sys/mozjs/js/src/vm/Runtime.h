@@ -18,6 +18,7 @@
 #include "mozilla/XorShift128PlusRNG.h"
 
 #include <algorithm>
+#include <utility>
 
 #ifdef JS_HAS_INTL_API
 #  include "builtin/intl/SharedIntlData.h"
@@ -50,6 +51,7 @@
 #include "vm/Caches.h"  // js::RuntimeCaches
 #include "vm/CodeCoverage.h"
 #include "vm/GeckoProfiler.h"
+#include "vm/InvalidatingFuse.h"
 #include "vm/JSScript.h"
 #include "vm/OffThreadPromiseRuntimeState.h"  // js::OffThreadPromiseRuntimeState
 #include "vm/SharedScriptDataTableHolder.h"   // js::SharedScriptDataTableHolder
@@ -295,6 +297,17 @@ class Metrics {
 #undef DECLARE_METRIC_HELPER
 };
 
+class HasSeenObjectEmulateUndefinedFuse : public js::InvalidatingRuntimeFuse {
+  virtual const char* name() override {
+    return "HasSeenObjectEmulateUndefinedFuse";
+  }
+  virtual bool checkInvariant(JSContext* cx) override {
+    // Without traversing the GC heap I don't think it's possible to assert
+    // this invariant directly.
+    return true;
+  }
+};
+
 }  // namespace js
 
 struct JSRuntime {
@@ -315,7 +328,9 @@ struct JSRuntime {
  public:
   js::InterpreterStack& interpreterStack() { return interpreterStack_.ref(); }
 #ifdef ENABLE_PORTABLE_BASELINE_INTERP
-  js::PortableBaselineStack& portableBaselineStack() { return portableBaselineStack_.ref(); }
+  js::PortableBaselineStack& portableBaselineStack() {
+    return portableBaselineStack_.ref();
+  }
 #endif
 
   /*
@@ -512,9 +527,9 @@ struct JSRuntime {
   js::GeckoProfilerRuntime& geckoProfiler() { return geckoProfiler_.ref(); }
 
   // Heap GC roots for PersistentRooted pointers.
-  js::MainThreadData<
-      mozilla::EnumeratedArray<JS::RootKind, JS::RootKind::Limit,
-                               mozilla::LinkedList<js::PersistentRootedBase>>>
+  js::MainThreadData<mozilla::EnumeratedArray<
+      JS::RootKind, mozilla::LinkedList<js::PersistentRootedBase>,
+      size_t(JS::RootKind::Limit)>>
       heapRoots;
 
   void tracePersistentRoots(JSTracer* trc);
@@ -571,14 +586,13 @@ struct JSRuntime {
  private:
   // List of non-ephemeron weak containers to sweep during
   // beginSweepingSweepGroup.
-  js::MainThreadData<mozilla::LinkedList<JS::detail::WeakCacheBase>>
-      weakCaches_;
+  js::MainThreadData<mozilla::LinkedList<js::gc::WeakCacheBase>> weakCaches_;
 
  public:
-  mozilla::LinkedList<JS::detail::WeakCacheBase>& weakCaches() {
+  mozilla::LinkedList<js::gc::WeakCacheBase>& weakCaches() {
     return weakCaches_.ref();
   }
-  void registerWeakCache(JS::detail::WeakCacheBase* cachep) {
+  void registerWeakCache(js::gc::WeakCacheBase* cachep) {
     weakCaches().insertBack(cachep);
   }
 
@@ -689,8 +703,19 @@ struct JSRuntime {
   /* Code coverage output. */
   js::UnprotectedData<js::coverage::LCovRuntime> lcovOutput_;
 
+  /* Functions to call, together with data, when the runtime is being torn down.
+   */
+  js::MainThreadData<mozilla::Vector<std::pair<void (*)(void*), void*>, 4>>
+      cleanupClosures;
+
  public:
   js::coverage::LCovRuntime& lcovOutput() { return lcovOutput_.ref(); }
+
+  /* Register a cleanup function to be called during runtime shutdown. Do not
+   * depend on the ordering of cleanup calls. */
+  bool atExit(void (*function)(void*), void* data) {
+    return cleanupClosures.ref().append(std::pair(function, data));
+  }
 
  private:
   js::UnprotectedData<js::jit::JitRuntime*> jitRuntime_;
@@ -1017,7 +1042,7 @@ struct JSRuntime {
   // but Ion needs to be able to access addresses inside here, which should be
   // safe, as the actual cache lookups will be performed on the main thread
   // through jitted code.
-  js::MainThreadOrParseOrIonCompileData<js::RuntimeCaches> caches_;
+  js::MainThreadOrIonCompileData<js::RuntimeCaches> caches_;
 
  public:
   js::RuntimeCaches& caches() { return caches_.ref(); }
@@ -1047,11 +1072,6 @@ struct JSRuntime {
   // HostImportModuleDynamically. This is also used to enable/disable dynamic
   // module import and can accessed by off-thread parsing.
   mozilla::Atomic<JS::ModuleDynamicImportHook> moduleDynamicImportHook;
-
-  // The supported module import assertions.
-  // https://tc39.es/proposal-import-assertions/#sec-hostgetsupportedimportassertions
-  js::MainThreadOrParseData<JS::ImportAssertionVector>
-      supportedImportAssertions;
 
   // Hooks called when script private references are created and destroyed.
   js::MainThreadData<JS::ScriptPrivateReferenceHook> scriptPrivateAddRefHook;
@@ -1104,6 +1124,9 @@ struct JSRuntime {
 
   js::MainThreadData<JS::GlobalCreationCallback>
       shadowRealmGlobalCreationCallback;
+
+  js::MainThreadData<js::HasSeenObjectEmulateUndefinedFuse>
+      hasSeenObjectEmulateUndefinedFuse;
 };
 
 namespace js {

@@ -9,11 +9,13 @@
 
 "use strict";
 
-XPCOMUtils.defineLazyGetter(this, "URL", function () {
+ChromeUtils.defineLazyGetter(this, "URL", function () {
   return "http://localhost:" + httpserver.identity.primaryPort;
 });
 
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpserver = new HttpServer();
 
@@ -34,19 +36,11 @@ function inChildProcess() {
 var tests = [
   {
     cookieName: "LCC_App0_BrowF_PrivF",
-    originAttributes: new OriginAttributes(0, false, 0),
-  },
-  {
-    cookieName: "LCC_App0_BrowT_PrivF",
-    originAttributes: new OriginAttributes(0, true, 0),
+    originAttributes: new OriginAttributes(0),
   },
   {
     cookieName: "LCC_App1_BrowF_PrivF",
-    originAttributes: new OriginAttributes(1, false, 0),
-  },
-  {
-    cookieName: "LCC_App1_BrowT_PrivF",
-    originAttributes: new OriginAttributes(1, true, 0),
+    originAttributes: new OriginAttributes(1),
   },
 ];
 
@@ -60,6 +54,23 @@ function setupChannel(path) {
   });
   chan.loadInfo.originAttributes = tests[i].originAttributes;
   chan.QueryInterface(Ci.nsIHttpChannel);
+
+  let loadGroup = Cc["@mozilla.org/network/load-group;1"].createInstance(
+    Ci.nsILoadGroup
+  );
+
+  if (chan.loadInfo.originAttributes.privateBrowsingId == 0) {
+    loadGroup.notificationCallbacks = Cu.createLoadContext();
+    chan.loadGroup = loadGroup;
+
+    chan.notificationCallbacks = Cu.createLoadContext();
+  } else {
+    loadGroup.notificationCallbacks = Cu.createPrivateLoadContext();
+    chan.loadGroup = loadGroup;
+
+    chan.notificationCallbacks = Cu.createPrivateLoadContext();
+  }
+
   return chan;
 }
 
@@ -69,7 +80,7 @@ function setCookie() {
   channel.asyncOpen(new ChannelListener(setNextCookie, null));
 }
 
-function setNextCookie(request, data, context) {
+function setNextCookie() {
   if (++i == tests.length) {
     // all cookies set: switch to checking them
     i = 0;
@@ -87,7 +98,7 @@ function checkCookie() {
   channel.asyncOpen(new ChannelListener(completeCheckCookie, null));
 }
 
-function completeCheckCookie(request, data, context) {
+function completeCheckCookie(request) {
   // Look for all cookies in what the server saw: fail if we see any besides the
   // one expected cookie for each namespace;
   var expectedCookie = tests[i].cookieName;

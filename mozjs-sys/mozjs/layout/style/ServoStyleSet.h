@@ -216,26 +216,16 @@ class ServoStyleSet {
   // If IsProbe is No, then the style is guaranteed to be non-null.
   already_AddRefed<ComputedStyle> ResolvePseudoElementStyle(
       const dom::Element& aOriginatingElement, PseudoStyleType,
-      ComputedStyle* aParentStyle, IsProbe = IsProbe::No);
+      nsAtom* aFunctionalPseudoParameter, ComputedStyle* aParentStyle,
+      IsProbe = IsProbe::No);
 
   already_AddRefed<ComputedStyle> ProbePseudoElementStyle(
       const dom::Element& aOriginatingElement, PseudoStyleType aType,
-      ComputedStyle* aParentStyle) {
-    return ResolvePseudoElementStyle(aOriginatingElement, aType, aParentStyle,
+      nsAtom* aFunctionalPseudoParameter, ComputedStyle* aParentStyle) {
+    return ResolvePseudoElementStyle(aOriginatingElement, aType,
+                                     aFunctionalPseudoParameter, aParentStyle,
                                      IsProbe::Yes);
   }
-
-  /**
-   * @brief Get a style for a highlight pseudo element.
-   *
-   * The highlight is identified by its name `aHighlightName`.
-   *
-   * Returns null if there are no rules matching for the highlight pseudo
-   * element.
-   */
-  already_AddRefed<ComputedStyle> ProbeHighlightPseudoElementStyle(
-      const dom::Element& aOriginatingElement, const nsAtom* aHighlightName,
-      ComputedStyle* aParentStyle);
 
   // Resolves style for a (possibly-pseudo) Element without assuming that the
   // style has been resolved. If the element was unstyled and a new style
@@ -243,6 +233,7 @@ class ServoStyleSet {
   // unstyled.)
   already_AddRefed<ComputedStyle> ResolveStyleLazily(
       const dom::Element&, PseudoStyleType = PseudoStyleType::NotPseudo,
+      nsAtom* aFunctionalPseudoParameter = nullptr,
       StyleRuleInclusion = StyleRuleInclusion::All);
 
   // Get a ComputedStyle for an anonymous box. The pseudo type must be an
@@ -266,15 +257,19 @@ class ServoStyleSet {
       dom::Element* aParentElement, nsCSSAnonBoxPseudoStaticAtom* aPseudoTag,
       ComputedStyle* aParentStyle, const AtomArray& aInputWord);
 
+  // Try to resolve the staring style for a given element. Please call this
+  // function after checking if it may have rules inside @starting-style.
+  already_AddRefed<ComputedStyle> ResolveStartingStyle(dom::Element& aElement);
+
   size_t SheetCount(Origin) const;
   StyleSheet* SheetAt(Origin, size_t aIndex) const;
 
-  struct FirstPageSizeAndOrientation {
+  struct PageSizeAndOrientation {
     Maybe<StylePageSizeOrientation> orientation;
     Maybe<nsSize> size;
   };
-  // Gets the specified orientation and size used when the first page printed
-  // has the name |aFirstPageName|, based on the page-size property.
+  // Gets the default page size and orientation (the size/orientation specified
+  // by @page rules without a selector list), if any.
   //
   // If the specified size is just an orientation, then the size will be set to
   // nothing and the orientation will be set accordingly.
@@ -282,8 +277,7 @@ class ServoStyleSet {
   // to nothing.
   // Otherwise, the size will and orientation is determined by the specified
   // page size.
-  FirstPageSizeAndOrientation GetFirstPageSizeAndOrientation(
-      const nsAtom* aFirstPageName);
+  PageSizeAndOrientation GetDefaultPageSizeAndOrientation();
 
   void AppendAllNonDocumentAuthorSheets(nsTArray<StyleSheet*>& aArray) const;
 
@@ -408,21 +402,6 @@ class ServoStyleSet {
   already_AddRefed<ComputedStyle> GetBaseContextForElement(
       dom::Element* aElement, const ComputedStyle* aStyle);
 
-  // Get a ComputedStyle that represents |aStyle|, but as though it additionally
-  // matched the rules of the newly added |aAnimaitonaValue|.
-  //
-  // We use this function to temporarily generate a ComputedStyle for
-  // calculating the cumulative change hints.
-  //
-  // This must hold:
-  //   The additional rules must be appropriate for the transition
-  //   level of the cascade, which is the highest level of the cascade.
-  //   (This is the case for one current caller, the cover rule used
-  //   for CSS transitions.)
-  // Note: |aElement| should be the generated element if it is pseudo.
-  already_AddRefed<ComputedStyle> ResolveServoStyleByAddingAnimation(
-      dom::Element* aElement, const ComputedStyle* aStyle,
-      StyleAnimationValue* aAnimationValue);
   /**
    * Resolve style for a given declaration block with/without the parent style.
    * If the parent style is not specified, the document default computed values
@@ -487,6 +466,86 @@ class ServoStyleSet {
                                   nsAtom* aNewID) const;
 
   /**
+   * Maybe invalidate if a modification to an ID might require us to restyle
+   * the relative selector it refers to.
+   */
+  void MaybeInvalidateRelativeSelectorIDDependency(
+      const dom::Element&, nsAtom* aOldID, nsAtom* aNewID,
+      const ServoElementSnapshotTable& aSnapshots);
+
+  /**
+   * Maybe invalidate if a modification to an attribute with the specified local
+   * name might require us to restyle the relative selector it refers to.
+   */
+  void MaybeInvalidateRelativeSelectorClassDependency(
+      const dom::Element&, const ServoElementSnapshotTable& aSnapshots);
+
+  /**
+   * Maybe invalidate if a modification to a Custom State might require us to
+   * restyle the relative selector it refers to.
+   */
+  void MaybeInvalidateRelativeSelectorCustomStateDependency(
+      const dom::Element&, nsAtom* state,
+      const ServoElementSnapshotTable& aSnapshots);
+
+  /**
+   * Maybe invalidate if a modification to an ID might require us to restyle
+   * the relative selector it refers to.
+   */
+  void MaybeInvalidateRelativeSelectorAttributeDependency(
+      const dom::Element&, nsAtom* aAttribute,
+      const ServoElementSnapshotTable& aSnapshots);
+
+  /**
+   * Maybe invalidate if a change in event state on an element might require us
+   * to restyle the relative selector it refers to.
+   */
+  void MaybeInvalidateRelativeSelectorStateDependency(
+      const dom::Element&, dom::ElementState,
+      const ServoElementSnapshotTable& aSnapshots);
+
+  /**
+   * Maybe invalidate if a change on an element that might be selected by :empty
+   * that might require us to restyle the relative selector it refers to.
+   */
+  void MaybeInvalidateRelativeSelectorForEmptyDependency(const dom::Element&);
+
+  /**
+   * Maybe invalidate if a state change on an element that might be selected
+   * by a selector that can only selector first/last child, that
+   * might require us to restyle the relative selector it refers to.
+   */
+  void MaybeInvalidateRelativeSelectorForNthEdgeDependency(const dom::Element&);
+
+  /**
+   * Maybe invalidate if a state change on an element that might be selected by
+   * :nth-* (Or :nth-like) selectors that might require us to restyle the
+   * relative selector it refers to.
+   */
+  void MaybeInvalidateRelativeSelectorForNthDependencyFromSibling(
+      const dom::Element*, bool aForceRestyleSiblings);
+
+  /**
+   * Maybe invalidate if a DOM element insertion might require us to restyle
+   * the relative selector to ancestors/previous siblings.
+   */
+  void MaybeInvalidateForElementInsertion(const dom::Element&);
+
+  /**
+   * Maybe invalidate if a series of nodes is appended, among which may
+   * be element(s) that might require us to restyle the relative selector
+   * to ancestors/previous siblings.
+   */
+  void MaybeInvalidateForElementAppend(const nsIContent&);
+
+  /**
+   * Maybe invalidate if a DOM element removal might require us to restyle
+   * the relative selector to ancestors/previous siblings.
+   */
+  void MaybeInvalidateForElementRemove(const dom::Element& aElement,
+                                       const nsIContent* aFollowingSibling);
+
+  /**
    * Returns true if a change in event state on an element might require
    * us to restyle the element.
    *
@@ -501,6 +560,18 @@ class ServoStyleSet {
    * us to restyle the element's siblings.
    */
   bool HasNthOfStateDependency(const dom::Element&, dom::ElementState) const;
+
+  /**
+   * Returns true if a change in Custom State on an element might require
+   * us to restyle the element's siblings.
+   */
+  bool HasNthOfCustomStateDependency(const dom::Element&, nsAtom*) const;
+
+  /**
+   * Restyle this element's siblings in order to propagate any potential change
+   * in :nth-child(of) styling.
+   */
+  void RestyleSiblingsForNthOf(const dom::Element&, uint32_t) const;
 
   /**
    * Returns true if a change in document state might require us to restyle the
@@ -518,7 +589,6 @@ class ServoStyleSet {
    */
   already_AddRefed<ComputedStyle> ReparentComputedStyle(
       ComputedStyle* aComputedStyle, ComputedStyle* aNewParent,
-      ComputedStyle* aNewParentIgnoringFirstLine,
       ComputedStyle* aNewLayoutParent, dom::Element* aElement);
 
   /**
@@ -634,8 +704,8 @@ class ServoStyleSet {
 
   // Stores pointers to our cached ComputedStyles for non-inheriting anonymous
   // boxes.
-  EnumeratedArray<nsCSSAnonBoxes::NonInheriting,
-                  nsCSSAnonBoxes::NonInheriting::_Count, RefPtr<ComputedStyle>>
+  EnumeratedArray<nsCSSAnonBoxes::NonInheriting, RefPtr<ComputedStyle>,
+                  size_t(nsCSSAnonBoxes::NonInheriting::_Count)>
       mNonInheritingComputedStyles;
 
  public:

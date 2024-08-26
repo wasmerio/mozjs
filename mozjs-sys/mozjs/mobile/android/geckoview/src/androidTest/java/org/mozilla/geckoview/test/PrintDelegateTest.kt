@@ -95,7 +95,6 @@ class PrintDelegateTest : BaseSessionTest() {
     @NullDelegate(Autofill.Delegate::class)
     @Test
     fun windowDotPrintAvailableTest() {
-        sessionRule.setPrefsUntilTestEnd(mapOf("dom.enable_window_print" to true))
         activityRule.scenario.onActivity {
             mainSession.loadTestPath(COLOR_ORANGE_BACKGROUND_HTML_PATH)
             mainSession.waitForPageStop()
@@ -193,7 +192,6 @@ class PrintDelegateTest : BaseSessionTest() {
     @NullDelegate(Autofill.Delegate::class)
     @Test
     fun basicWindowDotPrintTest() {
-        sessionRule.setPrefsUntilTestEnd(mapOf("dom.enable_window_print" to true))
         activityRule.scenario.onActivity { activity ->
             // CSS rules render this blue on screen and orange on print
             mainSession.loadTestPath(PRINT_CONTENT_CHANGE)
@@ -213,7 +211,6 @@ class PrintDelegateTest : BaseSessionTest() {
     @NullDelegate(Autofill.Delegate::class)
     @Test
     fun statusWindowDotPrintTest() {
-        sessionRule.setPrefsUntilTestEnd(mapOf("dom.enable_window_print" to true))
         activityRule.scenario.onActivity { activity ->
             // CSS rules render this blue on screen and orange on print
             mainSession.loadTestPath(PRINT_CONTENT_CHANGE)
@@ -245,7 +242,6 @@ class PrintDelegateTest : BaseSessionTest() {
     @NullDelegate(Autofill.Delegate::class)
     @Test
     fun staticContextWindowDotPrintTest() {
-        sessionRule.setPrefsUntilTestEnd(mapOf("dom.enable_window_print" to true))
         activityRule.scenario.onActivity { activity ->
             // CSS rules render this blue on screen and orange on print
             // Print button removes content after printing to test if it froze a static page for printing
@@ -266,7 +262,6 @@ class PrintDelegateTest : BaseSessionTest() {
     @NullDelegate(Autofill.Delegate::class)
     @Test
     fun iframeWindowDotPrintTest() {
-        sessionRule.setPrefsUntilTestEnd(mapOf("dom.enable_window_print" to true))
         activityRule.scenario.onActivity { activity ->
             // Main frame CSS rules render red on screen and green on print
             // iframe CSS rules render blue on screen and orange on print
@@ -288,7 +283,6 @@ class PrintDelegateTest : BaseSessionTest() {
     @NullDelegate(Autofill.Delegate::class)
     @Test
     fun contentIframeWindowDotPrintTest() {
-        sessionRule.setPrefsUntilTestEnd(mapOf("dom.enable_window_print" to true))
         activityRule.scenario.onActivity { activity ->
             // Main frame CSS rules render red on screen and green on print
             // iframe CSS rules render blue on screen and orange on print
@@ -300,6 +294,45 @@ class PrintDelegateTest : BaseSessionTest() {
             mainSession.evaluateJS("document.getElementById('print-button-page').click();")
             val centerPixelContent = printCenterPixelColor()
             assertTrue("Printed the main content correctly.", sessionRule.waitForResult(centerPixelContent) == Color.GREEN)
+        }
+    }
+
+    @NullDelegate(Autofill.Delegate::class)
+    @Test
+    fun contentPDFWindowDotPrintTest() {
+        activityRule.scenario.onActivity { activity ->
+            // CSS rules render this blue on screen and orange on print
+            mainSession.loadTestPath(ORANGE_PDF_PATH)
+            mainSession.waitForPageStop()
+            // Setting to the default delegate (test rules changed it)
+            mainSession.printDelegate = activity.view.printDelegate
+            mainSession.printPageContent()
+            val centerPixel = printCenterPixelColor()
+            val orange = rgb(255, 113, 57)
+            assertTrue(
+                "Android print opened and rendered.",
+                sessionRule.waitForResult(centerPixel) == orange,
+            )
+        }
+    }
+
+    @NullDelegate(Autofill.Delegate::class)
+    @Test
+    fun availableCanonicalBrowsingContext() {
+        activityRule.scenario.onActivity { activity ->
+            // CSS rules render this blue on screen and orange on print
+            mainSession.loadTestPath(ORANGE_PDF_PATH)
+            mainSession.waitForPageStop()
+            // Setting to the default delegate (test rules changed it)
+            mainSession.printDelegate = activity.view.printDelegate
+            mainSession.setFocused(false)
+            mainSession.printPageContent()
+            val centerPixel = printCenterPixelColor()
+            val orange = rgb(255, 113, 57)
+            assertTrue(
+                "Android print opened and rendered.",
+                sessionRule.waitForResult(centerPixel) == orange,
+            )
         }
     }
 }

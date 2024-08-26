@@ -22,7 +22,7 @@ const NEW_TAB_CONFIRMED_TYPE = "newTabNotification";
 const NEW_TAB_PRIVATE_ALLOWED = "browser.newtab.privateAllowed";
 const NEW_TAB_EXTENSION_CONTROLLED = "browser.newtab.extensionControlled";
 
-XPCOMUtils.defineLazyGetter(this, "newTabPopup", () => {
+ChromeUtils.defineLazyGetter(this, "newTabPopup", () => {
   return new ExtensionControlledPopup({
     confirmedType: NEW_TAB_CONFIRMED_TYPE,
     observerTopic: "browser-open-newtab-start",
@@ -150,7 +150,7 @@ this.urlOverrides = class extends ExtensionAPI {
     }
   }
 
-  async onManifestEntry(entryName) {
+  async onManifestEntry() {
     let { extension } = this;
     let { manifest } = extension;
 

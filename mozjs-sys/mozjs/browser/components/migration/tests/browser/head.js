@@ -74,7 +74,7 @@ async function withMigrationWizardDialog(taskFn) {
     if (gBrowser.tabs.length > 1) {
       BrowserTestUtils.removeTab(gBrowser.getTabForBrowser(prefsBrowser));
     } else {
-      BrowserTestUtils.loadURIString(prefsBrowser, "about:blank");
+      BrowserTestUtils.startLoadingURIString(prefsBrowser, "about:blank");
       await BrowserTestUtils.browserLoaded(prefsBrowser);
     }
   }
@@ -332,15 +332,15 @@ async function selectResourceTypesAndStartMigration(
 
   // First, select the InternalTestingProfileMigrator browser.
   let selector = shadow.querySelector("#browser-profile-selector");
-  selector.click();
+  EventUtils.synthesizeMouseAtCenter(selector, {}, wizard.ownerGlobal);
 
   await new Promise(resolve => {
-    wizard
+    shadow
       .querySelector("panel-list")
       .addEventListener("shown", resolve, { once: true });
   });
 
-  let panelItem = wizard.querySelector(`panel-item[key="${migratorKey}"]`);
+  let panelItem = shadow.querySelector(`panel-item[key="${migratorKey}"]`);
   panelItem.click();
 
   // And then check the right checkboxes for the resource types.
@@ -368,8 +368,16 @@ async function selectResourceTypesAndStartMigration(
  * @param {string[]} expectedResourceTypes
  *   An array of resource type strings from
  *   MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.
+ * @param {string[]} [warningResourceTypes=[]]
+ *   An array of resource type strings from
+ *   MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES. These
+ *   are the resources that should be showing a warning message.
  */
-function assertQuantitiesShown(wizard, expectedResourceTypes) {
+function assertQuantitiesShown(
+  wizard,
+  expectedResourceTypes,
+  warningResourceTypes = []
+) {
   let shadow = wizard.openOrClosedShadowRoot;
 
   // Make sure that we're showing the progress page first.
@@ -378,6 +386,16 @@ function assertQuantitiesShown(wizard, expectedResourceTypes) {
     deck.selectedViewName,
     `page-${MigrationWizardConstants.PAGES.PROGRESS}`
   );
+
+  let headerL10nID = shadow.querySelector("#progress-header").dataset.l10nId;
+  if (warningResourceTypes.length) {
+    Assert.equal(
+      headerL10nID,
+      "migration-wizard-progress-done-with-warnings-header"
+    );
+  } else {
+    Assert.equal(headerL10nID, "migration-wizard-progress-done-header");
+  }
 
   // Go through each displayed resource and make sure that only the
   // ones that are expected are shown, and are showing the right
@@ -390,11 +408,19 @@ function assertQuantitiesShown(wizard, expectedResourceTypes) {
       let messageText =
         progressGroup.querySelector(".message-text").textContent;
 
-      Assert.notEqual(
-        progressIcon.getAttribute("state"),
-        "loading",
-        "Should no longer be in the loading state."
-      );
+      if (warningResourceTypes.includes(progressGroup.dataset.resourceType)) {
+        Assert.equal(
+          progressIcon.getAttribute("state"),
+          "warning",
+          "Should be showing the warning icon state."
+        );
+      } else {
+        Assert.equal(
+          progressIcon.getAttribute("state"),
+          "success",
+          "Should be showing the success icon state."
+        );
+      }
 
       if (
         RESOURCE_TYPES_WITH_QUANTITIES.includes(
@@ -452,10 +478,57 @@ function assertQuantitiesShown(wizard, expectedResourceTypes) {
       }
     } else {
       Assert.ok(
-        BrowserTestUtils.is_hidden(progressGroup),
+        BrowserTestUtils.isHidden(progressGroup),
         `Resource progress group for ${progressGroup.dataset.resourceType}` +
           ` should be hidden.`
       );
+    }
+  }
+}
+
+/**
+ * Translates an entrypoint string into the proper numeric value for the
+ * FX_MIGRATION_ENTRY_POINT_CATEGORICAL histogram.
+ *
+ * @param {string} entrypoint
+ *   The entrypoint to translate from MIGRATION_ENTRYPOINTS.
+ * @returns {number}
+ *   The numeric index value for the FX_MIGRATION_ENTRY_POINT_CATEGORICAL
+ *   histogram.
+ */
+function getEntrypointHistogramIndex(entrypoint) {
+  switch (entrypoint) {
+    case MigrationUtils.MIGRATION_ENTRYPOINTS.FIRSTRUN: {
+      return 1;
+    }
+    case MigrationUtils.MIGRATION_ENTRYPOINTS.FXREFRESH: {
+      return 2;
+    }
+    case MigrationUtils.MIGRATION_ENTRYPOINTS.PLACES: {
+      return 3;
+    }
+    case MigrationUtils.MIGRATION_ENTRYPOINTS.PASSWORDS: {
+      return 4;
+    }
+    case MigrationUtils.MIGRATION_ENTRYPOINTS.NEWTAB: {
+      return 5;
+    }
+    case MigrationUtils.MIGRATION_ENTRYPOINTS.FILE_MENU: {
+      return 6;
+    }
+    case MigrationUtils.MIGRATION_ENTRYPOINTS.HELP_MENU: {
+      return 7;
+    }
+    case MigrationUtils.MIGRATION_ENTRYPOINTS.BOOKMARKS_TOOLBAR: {
+      return 8;
+    }
+    case MigrationUtils.MIGRATION_ENTRYPOINTS.PREFERENCES: {
+      return 9;
+    }
+    case MigrationUtils.MIGRATION_ENTRYPOINTS.UNKNOWN:
+    // Intentional fall-through
+    default: {
+      return 0; // Unknown
     }
   }
 }

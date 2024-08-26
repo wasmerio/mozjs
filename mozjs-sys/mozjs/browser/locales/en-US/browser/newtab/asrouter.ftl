@@ -69,17 +69,11 @@ cfr-doorhanger-extension-total-users =
 ## Firefox Accounts Message
 
 cfr-doorhanger-bookmark-fxa-header = Sync your bookmarks everywhere.
-cfr-doorhanger-bookmark-fxa-body = Great find! Now don’t be left without this bookmark on your mobile devices. Get Started with a { -fxaccount-brand-name }.
+cfr-doorhanger-bookmark-fxa-body-2 = Great find! Now don’t be left without this bookmark on your mobile devices. Get started with an account.
 cfr-doorhanger-bookmark-fxa-link-text = Sync bookmarks now…
 cfr-doorhanger-bookmark-fxa-close-btn-tooltip =
   .aria-label = Close button
   .title = Close
-
-## Protections panel
-
-cfr-protections-panel-header = Browse without being followed
-cfr-protections-panel-body = Keep your data to yourself. { -brand-short-name } protects you from many of the most common trackers that follow what you do online.
-cfr-protections-panel-link-text = Learn more
 
 ## What's New toolbar button and panel
 
@@ -177,44 +171,11 @@ mr2022-background-update-toast-primary-button-label = Open { -brand-shorter-name
 # exceeding characters will be truncated.
 mr2022-background-update-toast-secondary-button-label = Remind Me Later
 
-## Firefox View CFR
-
-firefoxview-cfr-primarybutton = Try it
-  .accesskey = T
-firefoxview-cfr-secondarybutton = Not now
-  .accesskey = N
-firefoxview-cfr-header-v2 = Quickly pick up where you left off
-firefoxview-cfr-body-v2 = Get recently closed tabs back, plus seamlessly hop between devices with { -firefoxview-brand-name }.
-
-## Firefox View Spotlight
-
-firefoxview-spotlight-promo-title = Say hello to { -firefoxview-brand-name }
-
-# “Poof” refers to the expression to convey when something or someone suddenly disappears, or in this case, reappears. For example, “Poof, it’s gone.”
-firefoxview-spotlight-promo-subtitle = Want that open tab on your phone? Grab it. Need that site you just visited? Poof, it’s back with { -firefoxview-brand-name }.
-firefoxview-spotlight-promo-primarybutton = See how it works
-firefoxview-spotlight-promo-secondarybutton = Skip
-
-## Colorways expiry reminder CFR
-
-colorways-cfr-primarybutton = Choose colorway
-  .accesskey = C
-
-# "shades" refers to the different color options available to users in colorways.
-colorways-cfr-body = Color your browser with { -brand-short-name } exclusive shades inspired by voices that changed culture.
-colorways-cfr-header-28days = Independent Voices colorways expire January 16
-colorways-cfr-header-14days = Independent Voices colorways expire in two weeks
-colorways-cfr-header-7days =  Independent Voices colorways expire this week
-colorways-cfr-header-today = Independent Voices colorways expire today
-
 ## Cookie Banner Handling CFR
 
-cfr-cbh-header = Allow { -brand-short-name } to reject cookie banners?
-cfr-cbh-body = { -brand-short-name } can automatically reject many cookie banner requests.
-cfr-cbh-confirm-button = Reject cookie banners
-  .accesskey = R
-cfr-cbh-dismiss-button = Not now
-  .accesskey = N
+cookie-banner-blocker-onboarding-header = { -brand-short-name } just refused a cookie banner for you
+cookie-banner-blocker-onboarding-body = Less distractions, less cookies tracking you on this site.
+cookie-banner-blocker-onboarding-learn-more = Learn more
 
 ## These strings are used in the Fox doodle Pin/set default spotlights
 
@@ -245,7 +206,50 @@ fxa-sync-cfr-secondary = Remind me later
 
 ## Device Migration FxA Spotlight
 
-device-migration-fxa-spotlight-header = Using an older device?
-device-migration-fxa-spotlight-body = Back up your data to make sure you don’t lose important info like bookmarks and passwords — especially if you switch to a new device.
-device-migration-fxa-spotlight-primary-button = How to back up my data
-device-migration-fxa-spotlight-link = Remind me later
+device-migration-fxa-spotlight-heavy-user-header = Don’t forget to back up your data
+device-migration-fxa-spotlight-heavy-user-body = Make sure important info — like bookmarks and passwords — is updated and protected across all your devices.
+device-migration-fxa-spotlight-heavy-user-primary-button = Get started
+
+device-migration-fxa-spotlight-older-device-header = Peace of mind, from { -brand-product-name }
+device-migration-fxa-spotlight-older-device-body = An account keeps your important info updated and protected on any device you connect.
+device-migration-fxa-spotlight-older-device-primary-button = Create an account
+
+device-migration-fxa-spotlight-getting-new-device-header-2 = New device in your future?
+device-migration-fxa-spotlight-getting-new-device-body-2 = Follow a few simple steps to bring your bookmarks, history, and passwords with you when you get started on a new device.
+device-migration-fxa-spotlight-getting-new-device-primary-button = How to back up my data
+
+## Set as Default PDF Reader Infobar
+
+# The question portion of the following message should have the <strong> and </strong> tags surrounding it.
+pdf-default-notification-message = <strong>Make { -brand-short-name } your default PDF reader?</strong> Use { -brand-short-name } to read and edit PDFs saved to your computer.
+pdf-default-notification-set-default-button =
+    .label = Set as default
+pdf-default-notification-decline-button =
+    .label = Not now
+
+## Launch on login infobar notification
+
+launch-on-login-infobar-message = <strong>Open { -brand-short-name } every time you restart your computer?</strong> Now you can set { -brand-short-name } to open automatically when you restart your device.
+launch-on-login-learnmore = Learn more
+launch-on-login-infobar-confirm-button = Yes, open { -brand-short-name }
+  .accesskey = Y
+launch-on-login-infobar-reject-button = Not now
+  .accesskey = N
+
+## These string variants are used when the “launch on login” infobar
+## notification is displayed for a second time.
+
+launch-on-login-infobar-final-message = <strong>Open { -brand-short-name } every time you restart your computer?</strong> To manage your Startup preferences, search “startup” in settings.
+launch-on-login-infobar-final-reject-button = No thanks
+  .accesskey = N
+
+## Tail Fox Set Default Spotlight
+
+# This title is displayed together with the picture of a running fox with a long tail.
+# In English, this is a figure of speech meaning 'stop something from following you'.
+# If the localization of this message is challenging, consider using a simplified
+# alternative as a reference for translation: 'Keep unwanted trackers away'.
+tail-fox-spotlight-title = Keep pesky trackers off your tail
+tail-fox-spotlight-subtitle = Say goodbye to annoying ad trackers and settle into a safer, speedy internet experience.
+tail-fox-spotlight-primary-button = Open my links with { -brand-short-name }
+tail-fox-spotlight-secondary-button = Not now

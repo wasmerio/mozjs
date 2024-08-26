@@ -21,11 +21,11 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIStorageActivityService"
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "gClassifierFeature", () => {
+ChromeUtils.defineLazyGetter(lazy, "gClassifierFeature", () => {
   return lazy.gClassifier.getFeatureByName("tracking-annotation");
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () => {
+ChromeUtils.defineLazyGetter(lazy, "logger", () => {
   return console.createInstance({
     prefix: "*** PurgeTrackerService:",
     maxLogLevelPref: "privacy.purge_trackers.logging.level",
@@ -52,7 +52,7 @@ PurgeTrackerService.prototype = {
   // protection list, so we cache the result for faster future lookups.
   _trackingState: new Map(),
 
-  observe(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic) {
     switch (aTopic) {
       case "idle-daily":
         // only allow one idle-daily listener to trigger until the list has been fully parsed.
@@ -210,7 +210,8 @@ PurgeTrackerService.prototype = {
           Ci.nsIClearDataService.CLEAR_MEDIA_DEVICES |
           Ci.nsIClearDataService.CLEAR_STORAGE_ACCESS |
           Ci.nsIClearDataService.CLEAR_AUTH_TOKENS |
-          Ci.nsIClearDataService.CLEAR_AUTH_CACHE,
+          Ci.nsIClearDataService.CLEAR_AUTH_CACHE |
+          Ci.nsIClearDataService.CLEAR_COOKIE_BANNER_EXECUTED_RECORD,
         resolve
       );
     });

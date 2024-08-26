@@ -33,10 +33,10 @@ class RTC_EXPORT VideoFrame {
   static constexpr uint16_t kNotSetId = 0;
 
   struct RTC_EXPORT UpdateRect {
-    int offset_x;
-    int offset_y;
-    int width;
-    int height;
+    int offset_x = 0;
+    int offset_y = 0;
+    int width = 0;
+    int height = 0;
 
     // Makes this UpdateRect a bounding box of this and other rect.
     void Union(const UpdateRect& other);
@@ -109,6 +109,10 @@ class RTC_EXPORT VideoFrame {
     Builder& set_timestamp_us(int64_t timestamp_us);
     Builder& set_capture_time_identifier(
         const absl::optional<Timestamp>& capture_time_identifier);
+    Builder& set_reference_time(
+        const absl::optional<Timestamp>& reference_time);
+    Builder& set_rtp_timestamp(uint32_t rtp_timestamp);
+    // TODO(https://bugs.webrtc.org/13756): Deprecate and use set_rtp_timestamp.
     Builder& set_timestamp_rtp(uint32_t timestamp_rtp);
     Builder& set_ntp_time_ms(int64_t ntp_time_ms);
     Builder& set_rotation(VideoRotation rotation);
@@ -123,6 +127,7 @@ class RTC_EXPORT VideoFrame {
     rtc::scoped_refptr<webrtc::VideoFrameBuffer> video_frame_buffer_;
     int64_t timestamp_us_ = 0;
     absl::optional<Timestamp> capture_time_identifier_;
+    absl::optional<Timestamp> reference_time_;
     uint32_t timestamp_rtp_ = 0;
     int64_t ntp_time_ms_ = 0;
     VideoRotation rotation_ = kVideoRotation_0;
@@ -177,10 +182,23 @@ class RTC_EXPORT VideoFrame {
     capture_time_identifier_ = capture_time_identifier;
   }
 
+  const absl::optional<Timestamp>& reference_time() const {
+    return reference_time_;
+  }
+  void set_reference_time(const absl::optional<Timestamp>& reference_time) {
+    reference_time_ = reference_time;
+  }
+
   // Set frame timestamp (90kHz).
+  void set_rtp_timestamp(uint32_t rtp_timestamp) {
+    timestamp_rtp_ = rtp_timestamp;
+  }
+  // TODO(https://bugs.webrtc.org/13756): Deprecate and use set_rtp_timestamp.
   void set_timestamp(uint32_t timestamp) { timestamp_rtp_ = timestamp; }
 
   // Get frame timestamp (90kHz).
+  uint32_t rtp_timestamp() const { return timestamp_rtp_; }
+  // TODO(https://bugs.webrtc.org/13756): Deprecate and use rtp_timestamp.
   uint32_t timestamp() const { return timestamp_rtp_; }
 
   // Set capture ntp time in milliseconds.
@@ -274,6 +292,7 @@ class RTC_EXPORT VideoFrame {
              const rtc::scoped_refptr<VideoFrameBuffer>& buffer,
              int64_t timestamp_us,
              const absl::optional<Timestamp>& capture_time_identifier,
+             const absl::optional<Timestamp>& reference_time,
              uint32_t timestamp_rtp,
              int64_t ntp_time_ms,
              VideoRotation rotation,
@@ -289,6 +308,11 @@ class RTC_EXPORT VideoFrame {
   int64_t ntp_time_ms_;
   int64_t timestamp_us_;
   absl::optional<Timestamp> capture_time_identifier_;
+  // Contains a monotonically increasing clock time and represents the time
+  // when the frame was captured. Not all platforms provide the "true" sample
+  // capture time in |reference_time| but might instead use a somewhat delayed
+  // (by the time it took to capture the frame) version of it.
+  absl::optional<Timestamp> reference_time_;
   VideoRotation rotation_;
   absl::optional<ColorSpace> color_space_;
   // Contains parameters that affect have the frame should be rendered.

@@ -1,0 +1,1 @@
+Compare, 2, 2, 4, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(2) LASTUSED(2) , OP(GuardToBigInt) ID(0) OP(GuardToBigInt) ID(1) OP(CompareBigIntResult) JSOP(Ne) ID(0) ID(1) OP(ReturnFromIC)  

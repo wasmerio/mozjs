@@ -7,14 +7,11 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyServiceGetters(lazy, {
-  BrowserHandler: ["@mozilla.org/browser/clh;1", "nsIBrowserHandler"],
-});
-
-ChromeUtils.defineESModuleGetters(lazy, {
-  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
-});
-
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "trimHttps",
+  "browser.urlbar.trimHttps"
+);
 export var BrowserUIUtils = {
   /**
    * Check whether a page can be considered as 'empty', that its URI
@@ -151,84 +148,27 @@ export var BrowserUIUtils = {
     return aURL.replace(/^((?:http|https|ftp):\/\/[^/]+)\/$/, "$1");
   },
 
+  get trimURLProtocol() {
+    return lazy.trimHttps ? "https://" : "http://";
+  },
+
   /**
-   * Returns a URL which has been trimmed by removing 'http://' and any
-   * trailing slash (in http/https/ftp urls).
-   * Note that a trimmed url may not load the same page as the original url, so
-   * before loading it, it must be passed through URIFixup, to check trimming
-   * doesn't change its destination. We don't run the URIFixup check here,
-   * because trimURL is in the page load path (see onLocationChange), so it
-   * must be fast and simple.
+   * Returns a URL which has been trimmed by removing 'http://' or 'https://',
+   * when the pref 'trimHttps' is set to true, and any trailing slash
+   * (in http/https/ftp urls). Note that a trimmed url may not load the same
+   * page as the original url, so before loading it, it must be passed through
+   * URIFixup, to check trimming doesn't change its destination. We don't run
+   * the URIFixup check here, because trimURL is in the page load path
+   * (see onLocationChange), so it must be fast and simple.
    *
    * @param {string} aURL The URL to trim.
    * @returns {string} The trimmed string.
    */
-  get trimURLProtocol() {
-    return "http://";
-  },
   trimURL(aURL) {
     let url = this.removeSingleTrailingSlashFromURL(aURL);
-    // Remove "http://" prefix.
     return url.startsWith(this.trimURLProtocol)
       ? url.substring(this.trimURLProtocol.length)
       : url;
-  },
-
-  /**
-   * Open a new browser window without being dependent on other windows.
-   * @returns {ChromeWindow} A new browser window.
-   */
-  async openNewBrowserWindow() {
-    var telemetryObj = {};
-    TelemetryStopwatch.start("FX_NEW_WINDOW_MS", telemetryObj);
-
-    let defaultArgs = Cc["@mozilla.org/supports-string;1"].createInstance(
-      Ci.nsISupportsString
-    );
-    defaultArgs.data = lazy.BrowserHandler.defaultArgs;
-
-    let extraFeatures = "suppressanimation";
-
-    let win = lazy.BrowserWindowTracker.openWindow({
-      args: defaultArgs,
-      features: extraFeatures,
-    });
-
-    win.addEventListener(
-      "MozAfterPaint",
-      () => {
-        TelemetryStopwatch.finish("FX_NEW_WINDOW_MS", telemetryObj);
-      },
-      { once: true }
-    );
-
-    await this._topicObserved(
-      "browser-delayed-startup-finished",
-      subject => subject == win
-    );
-
-    win.focus();
-
-    return win;
-  },
-  _topicObserved(observeTopic, checkFn) {
-    return new Promise((resolve, reject) => {
-      function observer(subject, topic, data) {
-        try {
-          if (checkFn && !checkFn(subject, data)) {
-            return;
-          }
-          Services.obs.removeObserver(observer, topic);
-          checkFn = null;
-          resolve([subject, data]);
-        } catch (ex) {
-          Services.obs.removeObserver(observer, topic);
-          checkFn = null;
-          reject(ex);
-        }
-      }
-      Services.obs.addObserver(observer, observeTopic);
-    });
   },
 };
 

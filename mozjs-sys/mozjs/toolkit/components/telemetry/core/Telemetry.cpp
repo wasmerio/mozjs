@@ -16,9 +16,6 @@
 #endif
 #include "base/pickle.h"
 #include "base/process_util.h"
-#if defined(MOZ_TELEMETRY_GECKOVIEW)
-#  include "geckoview/TelemetryGeckoViewPersistence.h"
-#endif
 #include "ipc/TelemetryIPCAccumulator.h"
 #include "jsapi.h"
 #include "jsfriendapi.h"
@@ -1384,7 +1381,6 @@ static constexpr TrackedDBEntry kTrackedDBs[] = {
     TRACKEDDB_ENTRY("places.sqlite"),
     TRACKEDDB_ENTRY("reading-list.sqlite"),
     TRACKEDDB_ENTRY("search.sqlite"),
-    TRACKEDDB_ENTRY("signons.sqlite"),
     TRACKEDDB_ENTRY("urlclassifier3.sqlite"),
     TRACKEDDB_ENTRY("webappsstore.sqlite")};
 

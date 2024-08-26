@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "BaseVFS.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/SpinEventLoopUntil.h"
@@ -18,6 +19,8 @@
 #include "mozStoragePrivateHelpers.h"
 #include "nsIObserverService.h"
 #include "nsIPropertyBag2.h"
+#include "ObfuscatingVFS.h"
+#include "QuotaVFS.h"
 #include "mozilla/Services.h"
 #include "mozilla/LateWriteChecks.h"
 #include "mozIStorageCompletionCallback.h"
@@ -202,7 +205,6 @@ Service::AutoVFSRegistration::~AutoVFSRegistration() {
 Service::Service()
     : mMutex("Service::mMutex"),
       mRegistrationMutex("Service::mRegistrationMutex"),
-      mConnections(),
       mLastSensitivity(mozilla::intl::Collator::Sensitivity::Base) {}
 
 Service::~Service() {
@@ -306,14 +308,6 @@ void Service::minimizeMemory() {
   }
 }
 
-UniquePtr<sqlite3_vfs> ConstructBaseVFS(bool);
-const char* GetBaseVFSName(bool);
-
-UniquePtr<sqlite3_vfs> ConstructQuotaVFS(const char* aBaseVFSName);
-const char* GetQuotaVFSName();
-
-UniquePtr<sqlite3_vfs> ConstructObfuscatingVFS(const char* aBaseVFSName);
-
 UniquePtr<sqlite3_vfs> ConstructReadOnlyNoLockVFS();
 
 static const char* sObserverTopics[] = {"memory-pressure",
@@ -347,23 +341,24 @@ nsresult Service::initialize() {
    *                 unix-excl     win32  unix       win32
    */
 
-  rc = mBaseSqliteVFS.Init(ConstructBaseVFS(false));
+  rc = mBaseSqliteVFS.Init(basevfs::ConstructVFS(false));
   if (rc != SQLITE_OK) {
     return convertResultCode(rc);
   }
 
-  rc = mBaseExclSqliteVFS.Init(ConstructBaseVFS(true));
+  rc = mBaseExclSqliteVFS.Init(basevfs::ConstructVFS(true));
   if (rc != SQLITE_OK) {
     return convertResultCode(rc);
   }
 
-  rc = mQuotaSqliteVFS.Init(ConstructQuotaVFS(
-      GetBaseVFSName(StaticPrefs::storage_sqlite_exclusiveLock_enabled())));
+  rc = mQuotaSqliteVFS.Init(quotavfs::ConstructVFS(basevfs::GetVFSName(
+      StaticPrefs::storage_sqlite_exclusiveLock_enabled())));
   if (rc != SQLITE_OK) {
     return convertResultCode(rc);
   }
 
-  rc = mObfuscatingSqliteVFS.Init(ConstructObfuscatingVFS(GetQuotaVFSName()));
+  rc =
+      mObfuscatingSqliteVFS.Init(obfsvfs::ConstructVFS(quotavfs::GetVFSName()));
   if (rc != SQLITE_OK) {
     return convertResultCode(rc);
   }
@@ -552,6 +547,8 @@ Service::OpenAsyncDatabase(nsIVariant* aDatabaseStore, uint32_t aOpenFlags,
   // Specifying ignoreLockingMode will force use of the readOnly flag:
   const bool readOnly =
       ignoreLockingMode || (aOpenFlags & mozIStorageService::OPEN_READONLY);
+  const bool openNotExclusive =
+      aOpenFlags & mozIStorageService::OPEN_NOT_EXCLUSIVE;
   int flags = readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE;
 
   nsCOMPtr<nsIFile> storageFile;
@@ -596,9 +593,9 @@ Service::OpenAsyncDatabase(nsIVariant* aDatabaseStore, uint32_t aOpenFlags,
     rv = storageFile->GetNativeLeafName(telemetryFilename);
     NS_ENSURE_SUCCESS(rv, rv);
   }
-  RefPtr<Connection> msc =
-      new Connection(this, flags, Connection::ASYNCHRONOUS, telemetryFilename,
-                     /* interruptible */ true, ignoreLockingMode);
+  RefPtr<Connection> msc = new Connection(
+      this, flags, Connection::ASYNCHRONOUS, telemetryFilename,
+      /* interruptible */ true, ignoreLockingMode, openNotExclusive);
   nsCOMPtr<nsIEventTarget> target = msc->getAsyncExecutionTarget();
   MOZ_ASSERT(target,
              "Cannot initialize a connection that has been closed already");
@@ -690,40 +687,6 @@ Service::OpenDatabaseWithFileURL(nsIFileURL* aFileURL,
   return NS_OK;
 }
 
-NS_IMETHODIMP
-Service::BackupDatabaseFile(nsIFile* aDBFile, const nsAString& aBackupFileName,
-                            nsIFile* aBackupParentDirectory, nsIFile** backup) {
-  nsresult rv;
-  nsCOMPtr<nsIFile> parentDir = aBackupParentDirectory;
-  if (!parentDir) {
-    // This argument is optional, and defaults to the same parent directory
-    // as the current file.
-    rv = aDBFile->GetParent(getter_AddRefs(parentDir));
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
-
-  nsCOMPtr<nsIFile> backupDB;
-  rv = parentDir->Clone(getter_AddRefs(backupDB));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = backupDB->Append(aBackupFileName);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = backupDB->CreateUnique(nsIFile::NORMAL_FILE_TYPE, 0600);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsAutoString fileName;
-  rv = backupDB->GetLeafName(fileName);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = backupDB->Remove(false);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  backupDB.forget(backup);
-
-  return aDBFile->CopyTo(parentDir, fileName);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 //// nsIObserver
 
@@ -766,7 +729,7 @@ Service::Observe(nsISupports*, const char* aTopic, const char16_t*) {
       if (!connections[i]->isClosed()) {
         // getFilename is only the leaf name for the database file,
         // so it shouldn't contain privacy-sensitive information.
-        CrashReporter::AnnotateCrashReport(
+        CrashReporter::RecordAnnotationNSCString(
             CrashReporter::Annotation::StorageConnectionNotClosed,
             connections[i]->getFilename());
         printf_stderr("Storage connection not closed: %s",

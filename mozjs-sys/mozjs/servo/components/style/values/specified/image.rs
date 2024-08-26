@@ -8,13 +8,13 @@
 //! [image]: https://drafts.csswg.org/css-images/#image-values
 
 use crate::color::mix::ColorInterpolationMethod;
-use crate::custom_properties::SpecifiedValue;
 use crate::parser::{Parse, ParserContext};
 use crate::stylesheets::CorsMode;
-use crate::values::generics::image::PaintWorklet;
+use crate::values::generics::color::ColorMixFlags;
 use crate::values::generics::image::{
     self as generic, Circle, Ellipse, GradientCompatMode, ShapeExtent,
 };
+use crate::values::generics::image::{GradientFlags, PaintWorklet};
 use crate::values::generics::position::Position as GenericPosition;
 use crate::values::generics::NonNegative;
 use crate::values::specified::position::{HorizontalPositionKeyword, VerticalPositionKeyword};
@@ -28,8 +28,6 @@ use crate::values::specified::{Number, NumberOrPercentage, Percentage};
 use crate::Atom;
 use cssparser::{Delimiter, Parser, Token};
 use selectors::parser::SelectorParseErrorKind;
-#[cfg(feature = "servo")]
-use servo_url::ServoUrl;
 use std::cmp::Ordering;
 use std::fmt::{self, Write};
 use style_traits::{CssType, CssWriter, KeywordsCollectFn, ParseError};
@@ -42,8 +40,7 @@ fn gradient_color_interpolation_method_enabled() -> bool {
 
 /// Specified values for an image according to CSS-IMAGES.
 /// <https://drafts.csswg.org/css-images/#image-values>
-pub type Image =
-    generic::Image<Gradient, MozImageRect, SpecifiedImageUrl, Color, Percentage, Resolution>;
+pub type Image = generic::Image<Gradient, SpecifiedImageUrl, Color, Percentage, Resolution>;
 
 // Images should remain small, see https://github.com/servo/servo/pull/18430
 size_of_test!(Image, 16);
@@ -77,6 +74,41 @@ pub type ImageSet = generic::ImageSet<Image, Resolution>;
 pub type ImageSetItem = generic::ImageSetItem<Image, Resolution>;
 
 type LengthPercentageItemList = crate::OwnedSlice<generic::GradientItem<Color, LengthPercentage>>;
+
+impl Color {
+    fn has_modern_syntax(&self) -> bool {
+        match self {
+            Self::Absolute(absolute) => !absolute.color.is_legacy_syntax(),
+            Self::ColorMix(mix) => {
+                if mix.flags.contains(ColorMixFlags::RESULT_IN_MODERN_SYNTAX) {
+                    true
+                } else {
+                    mix.left.has_modern_syntax() || mix.right.has_modern_syntax()
+                }
+            },
+            Self::LightDark(ld) => ld.light.has_modern_syntax() || ld.dark.has_modern_syntax(),
+
+            // The default is that this color doesn't have any modern syntax.
+            _ => false,
+        }
+    }
+}
+
+fn default_color_interpolation_method<T>(
+    items: &[generic::GradientItem<Color, T>],
+) -> ColorInterpolationMethod {
+    let has_modern_syntax_item = items.iter().any(|item| match item {
+        generic::GenericGradientItem::SimpleColorStop(color) => color.has_modern_syntax(),
+        generic::GenericGradientItem::ComplexColorStop { color, .. } => color.has_modern_syntax(),
+        generic::GenericGradientItem::InterpolationHint(_) => false,
+    });
+
+    if has_modern_syntax_item {
+        ColorInterpolationMethod::oklab()
+    } else {
+        ColorInterpolationMethod::srgb()
+    }
+}
 
 #[cfg(feature = "gecko")]
 fn cross_fade_enabled() -> bool {
@@ -151,26 +183,6 @@ pub enum LineDirection {
 /// A specified ending shape.
 pub type EndingShape = generic::EndingShape<NonNegativeLength, NonNegativeLengthPercentage>;
 
-/// Specified values for `moz-image-rect`
-/// -moz-image-rect(<uri>, top, right, bottom, left);
-#[cfg(all(feature = "gecko", not(feature = "cbindgen")))]
-pub type MozImageRect = generic::GenericMozImageRect<NumberOrPercentage, SpecifiedImageUrl>;
-
-#[cfg(not(feature = "gecko"))]
-#[derive(
-    Clone,
-    Debug,
-    MallocSizeOf,
-    PartialEq,
-    SpecifiedValueInfo,
-    ToComputedValue,
-    ToCss,
-    ToResolvedValue,
-    ToShmem,
-)]
-/// Empty enum on non-Gecko
-pub enum MozImageRect {}
-
 bitflags! {
     #[derive(Clone, Copy)]
     struct ParseImageFlags: u8 {
@@ -224,30 +236,17 @@ impl Image {
             return Ok(generic::Image::Gradient(Box::new(gradient)));
         }
 
-        if cross_fade_enabled() {
-            if let Ok(cf) =
-                input.try_parse(|input| CrossFade::parse(context, input, cors_mode, flags))
-            {
-                return Ok(generic::Image::CrossFade(Box::new(cf)));
-            }
-        }
-        #[cfg(feature = "servo-layout-2013")]
-        {
-            if let Ok(paint_worklet) = input.try_parse(|i| PaintWorklet::parse(context, i)) {
-                return Ok(generic::Image::PaintWorklet(paint_worklet));
-            }
-        }
-        #[cfg(feature = "gecko")]
-        {
-            if let Ok(image_rect) =
-                input.try_parse(|input| MozImageRect::parse(context, input, cors_mode))
-            {
-                return Ok(generic::Image::Rect(Box::new(image_rect)));
-            }
-            Ok(generic::Image::Element(Image::parse_element(input)?))
-        }
-        #[cfg(not(feature = "gecko"))]
-        Err(input.new_error_for_next_token())
+        let function = input.expect_function()?.clone();
+        input.parse_nested_block(|input| {
+            Ok(match_ignore_ascii_case! { &function,
+                #[cfg(feature = "servo")]
+                "paint" => Self::PaintWorklet(PaintWorklet::parse_args(context, input)?),
+                "cross-fade" if cross_fade_enabled() => Self::CrossFade(Box::new(CrossFade::parse_args(context, input, cors_mode, flags)?)),
+                #[cfg(feature = "gecko")]
+                "-moz-element" => Self::Element(Self::parse_element(input)?),
+                _ => return Err(input.new_custom_error(StyleParseErrorKind::UnexpectedFunction(function))),
+            })
+        })
     }
 }
 
@@ -255,19 +254,18 @@ impl Image {
     /// Creates an already specified image value from an already resolved URL
     /// for insertion in the cascade.
     #[cfg(feature = "servo")]
-    pub fn for_cascade(url: ServoUrl) -> Self {
+    pub fn for_cascade(url: ::servo_arc::Arc<::url::Url>) -> Self {
         use crate::values::CssUrl;
         generic::Image::Url(CssUrl::for_cascade(url))
     }
 
     /// Parses a `-moz-element(# <element-id>)`.
     #[cfg(feature = "gecko")]
-    fn parse_element<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Atom, ParseError<'i>> {
-        input.try_parse(|i| i.expect_function_matching("-moz-element"))?;
+    fn parse_element<'i>(input: &mut Parser<'i, '_>) -> Result<Atom, ParseError<'i>> {
         let location = input.current_source_location();
-        input.parse_nested_block(|i| match *i.next()? {
-            Token::IDHash(ref id) => Ok(Atom::from(id.as_ref())),
-            ref t => Err(location.new_unexpected_token_error(t.clone())),
+        Ok(match *input.next()? {
+            Token::IDHash(ref id) => Atom::from(id.as_ref()),
+            ref t => return Err(location.new_unexpected_token_error(t.clone())),
         })
     }
 
@@ -309,19 +307,15 @@ impl Image {
 
 impl CrossFade {
     /// cross-fade() = cross-fade( <cf-image># )
-    fn parse<'i, 't>(
+    fn parse_args<'i, 't>(
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
         cors_mode: CorsMode,
         flags: ParseImageFlags,
     ) -> Result<Self, ParseError<'i>> {
-        input.expect_function_matching("cross-fade")?;
-        let elements = input.parse_nested_block(|input| {
-            input.parse_comma_separated(|input| {
-                CrossFadeElement::parse(context, input, cors_mode, flags)
-            })
-        })?;
-        let elements = crate::OwnedSlice::from(elements);
+        let elements = crate::OwnedSlice::from(input.parse_comma_separated(|input| {
+            CrossFadeElement::parse(context, input, cors_mode, flags)
+        })?);
         Ok(Self { elements })
     }
 }
@@ -559,36 +553,24 @@ impl Gradient {
             Side(S),
         }
 
-        impl LineDirection {
-            fn from_points(first: Point, second: Point) -> Self {
-                let h_ord = first.horizontal.partial_cmp(&second.horizontal);
-                let v_ord = first.vertical.partial_cmp(&second.vertical);
-                let (h, v) = match (h_ord, v_ord) {
-                    (Some(h), Some(v)) => (h, v),
-                    _ => return LineDirection::Vertical(Y::Bottom),
-                };
-                match (h, v) {
-                    (Ordering::Less, Ordering::Less) => LineDirection::Corner(X::Right, Y::Bottom),
-                    (Ordering::Less, Ordering::Equal) => LineDirection::Horizontal(X::Right),
-                    (Ordering::Less, Ordering::Greater) => LineDirection::Corner(X::Right, Y::Top),
-                    (Ordering::Equal, Ordering::Greater) => LineDirection::Vertical(Y::Top),
-                    (Ordering::Equal, Ordering::Equal) | (Ordering::Equal, Ordering::Less) => {
-                        LineDirection::Vertical(Y::Bottom)
-                    },
-                    (Ordering::Greater, Ordering::Less) => {
-                        LineDirection::Corner(X::Left, Y::Bottom)
-                    },
-                    (Ordering::Greater, Ordering::Equal) => LineDirection::Horizontal(X::Left),
-                    (Ordering::Greater, Ordering::Greater) => {
-                        LineDirection::Corner(X::Left, Y::Top)
-                    },
-                }
-            }
-        }
-
-        impl From<Point> for Position {
-            fn from(point: Point) -> Self {
-                Self::new(point.horizontal.into(), point.vertical.into())
+        fn line_direction_from_points(first: Point, second: Point) -> LineDirection {
+            let h_ord = first.horizontal.partial_cmp(&second.horizontal);
+            let v_ord = first.vertical.partial_cmp(&second.vertical);
+            let (h, v) = match (h_ord, v_ord) {
+                (Some(h), Some(v)) => (h, v),
+                _ => return LineDirection::Vertical(Y::Bottom),
+            };
+            match (h, v) {
+                (Ordering::Less, Ordering::Less) => LineDirection::Corner(X::Right, Y::Bottom),
+                (Ordering::Less, Ordering::Equal) => LineDirection::Horizontal(X::Right),
+                (Ordering::Less, Ordering::Greater) => LineDirection::Corner(X::Right, Y::Top),
+                (Ordering::Equal, Ordering::Greater) => LineDirection::Vertical(Y::Top),
+                (Ordering::Equal, Ordering::Equal) | (Ordering::Equal, Ordering::Less) => {
+                    LineDirection::Vertical(Y::Bottom)
+                },
+                (Ordering::Greater, Ordering::Less) => LineDirection::Corner(X::Left, Y::Bottom),
+                (Ordering::Greater, Ordering::Equal) => LineDirection::Horizontal(X::Left),
+                (Ordering::Greater, Ordering::Greater) => LineDirection::Corner(X::Left, Y::Top),
             }
         }
 
@@ -606,9 +588,9 @@ impl Gradient {
             }
         }
 
-        impl<S: Side> From<Component<S>> for NumberOrPercentage {
-            fn from(component: Component<S>) -> Self {
-                match component {
+        impl<S: Side> Into<NumberOrPercentage> for Component<S> {
+            fn into(self) -> NumberOrPercentage {
+                match self {
                     Component::Center => NumberOrPercentage::Percentage(Percentage::new(0.5)),
                     Component::Number(number) => number,
                     Component::Side(side) => {
@@ -623,9 +605,9 @@ impl Gradient {
             }
         }
 
-        impl<S: Side> From<Component<S>> for PositionComponent<S> {
-            fn from(component: Component<S>) -> Self {
-                match component {
+        impl<S: Side> Into<PositionComponent<S>> for Component<S> {
+            fn into(self) -> PositionComponent<S> {
+                match self {
                     Component::Center => PositionComponent::Center,
                     Component::Number(NumberOrPercentage::Number(number)) => {
                         PositionComponent::Length(Length::from_px(number.value).into())
@@ -640,10 +622,7 @@ impl Gradient {
 
         impl<S: Copy + Side> Component<S> {
             fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-                match (
-                    NumberOrPercentage::from(*self),
-                    NumberOrPercentage::from(*other),
-                ) {
+                match ((*self).into(), (*other).into()) {
                     (NumberOrPercentage::Percentage(a), NumberOrPercentage::Percentage(b)) => {
                         a.get().partial_cmp(&b.get())
                     },
@@ -664,14 +643,15 @@ impl Gradient {
                 input.expect_comma()?;
                 let second = Point::parse(context, input)?;
 
-                let direction = LineDirection::from_points(first, second);
+                let direction = line_direction_from_points(first, second);
                 let items = Gradient::parse_webkit_gradient_stops(context, input, false)?;
 
                 generic::Gradient::Linear {
                     direction,
                     color_interpolation_method: ColorInterpolationMethod::srgb(),
                     items,
-                    repeating: false,
+                    // Legacy gradients always use srgb as a default.
+                    flags: generic::GradientFlags::HAS_DEFAULT_COLOR_INTERPOLATION_METHOD,
                     compat_mode: GradientCompatMode::Modern,
                 }
             },
@@ -692,7 +672,7 @@ impl Gradient {
 
                 let rad = Circle::Radius(NonNegative(Length::from_px(radius.value)));
                 let shape = generic::EndingShape::Circle(rad);
-                let position: Position = point.into();
+                let position = Position::new(point.horizontal.into(), point.vertical.into());
                 let items = Gradient::parse_webkit_gradient_stops(context, input, reverse_stops)?;
 
                 generic::Gradient::Radial {
@@ -700,7 +680,8 @@ impl Gradient {
                     position,
                     color_interpolation_method: ColorInterpolationMethod::srgb(),
                     items,
-                    repeating: false,
+                    // Legacy gradients always use srgb as a default.
+                    flags: generic::GradientFlags::HAS_DEFAULT_COLOR_INTERPOLATION_METHOD,
                     compat_mode: GradientCompatMode::Modern,
                 }
             },
@@ -832,6 +813,9 @@ impl Gradient {
         repeating: bool,
         mut compat_mode: GradientCompatMode,
     ) -> Result<Self, ParseError<'i>> {
+        let mut flags = GradientFlags::empty();
+        flags.set(GradientFlags::REPEATING, repeating);
+
         let mut color_interpolation_method =
             Self::try_parse_color_interpolation_method(context, input);
 
@@ -850,12 +834,12 @@ impl Gradient {
 
         let items = Gradient::parse_stops(context, input)?;
 
-        let color_interpolation_method = color_interpolation_method.unwrap_or_else(|| {
-            // TODO(tlouw): Check whether any of the stops are in a non legacy syntax, in which
-            // case we should default to lab() and not srgb().
-            // See: https://bugzilla.mozilla.org/show_bug.cgi?id=1839837
-            ColorInterpolationMethod::srgb()
-        });
+        let default = default_color_interpolation_method(&items);
+        let color_interpolation_method = color_interpolation_method.unwrap_or(default);
+        flags.set(
+            GradientFlags::HAS_DEFAULT_COLOR_INTERPOLATION_METHOD,
+            default == color_interpolation_method,
+        );
 
         let direction = direction.unwrap_or(match compat_mode {
             GradientCompatMode::Modern => LineDirection::Vertical(VerticalPositionKeyword::Bottom),
@@ -866,7 +850,7 @@ impl Gradient {
             direction,
             color_interpolation_method,
             items,
-            repeating,
+            flags,
             compat_mode,
         })
     }
@@ -878,6 +862,9 @@ impl Gradient {
         repeating: bool,
         compat_mode: GradientCompatMode,
     ) -> Result<Self, ParseError<'i>> {
+        let mut flags = GradientFlags::empty();
+        flags.set(GradientFlags::REPEATING, repeating);
+
         let mut color_interpolation_method =
             Self::try_parse_color_interpolation_method(context, input);
 
@@ -919,19 +906,19 @@ impl Gradient {
 
         let items = Gradient::parse_stops(context, input)?;
 
-        let color_interpolation_method = color_interpolation_method.unwrap_or_else(|| {
-            // TODO(tlouw): Check whether any of the stops are in a non legacy syntax, in which
-            // case we should default to lab() and not srgb().
-            // See: https://bugzilla.mozilla.org/show_bug.cgi?id=1839837
-            ColorInterpolationMethod::srgb()
-        });
+        let default = default_color_interpolation_method(&items);
+        let color_interpolation_method = color_interpolation_method.unwrap_or(default);
+        flags.set(
+            GradientFlags::HAS_DEFAULT_COLOR_INTERPOLATION_METHOD,
+            default == color_interpolation_method,
+        );
 
         Ok(Gradient::Radial {
             shape,
             position,
             color_interpolation_method,
             items,
-            repeating,
+            flags,
             compat_mode,
         })
     }
@@ -942,6 +929,9 @@ impl Gradient {
         input: &mut Parser<'i, 't>,
         repeating: bool,
     ) -> Result<Self, ParseError<'i>> {
+        let mut flags = GradientFlags::empty();
+        flags.set(GradientFlags::REPEATING, repeating);
+
         let mut color_interpolation_method =
             Self::try_parse_color_interpolation_method(context, input);
 
@@ -979,19 +969,19 @@ impl Gradient {
             return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
 
-        let color_interpolation_method = color_interpolation_method.unwrap_or_else(|| {
-            // TODO(tlouw): Check whether any of the stops are in a non legacy syntax, in which
-            // case we should default to lab() and not srgb().
-            // See: https://bugzilla.mozilla.org/show_bug.cgi?id=1839837
-            ColorInterpolationMethod::srgb()
-        });
+        let default = default_color_interpolation_method(&items);
+        let color_interpolation_method = color_interpolation_method.unwrap_or(default);
+        flags.set(
+            GradientFlags::HAS_DEFAULT_COLOR_INTERPOLATION_METHOD,
+            default == color_interpolation_method,
+        );
 
         Ok(Gradient::Conic {
             angle,
             position,
             color_interpolation_method,
             items,
-            repeating,
+            flags,
         })
     }
 }
@@ -1281,56 +1271,18 @@ impl<T> generic::ColorStop<Color, T> {
     }
 }
 
-impl Parse for PaintWorklet {
-    fn parse<'i, 't>(
-        _context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
-        input.expect_function_matching("paint")?;
-        input.parse_nested_block(|input| {
-            let name = Atom::from(&**input.expect_ident()?);
-            let arguments = input
-                .try_parse(|input| {
-                    input.expect_comma()?;
-                    input.parse_comma_separated(|input| SpecifiedValue::parse(input))
-                })
-                .unwrap_or(vec![]);
-            Ok(PaintWorklet { name, arguments })
-        })
-    }
-}
-
-impl MozImageRect {
-    #[cfg(feature = "gecko")]
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-        cors_mode: CorsMode,
-    ) -> Result<Self, ParseError<'i>> {
-        input.try_parse(|i| i.expect_function_matching("-moz-image-rect"))?;
-        input.parse_nested_block(|i| {
-            let string = i.expect_url_or_string()?;
-            let url = SpecifiedImageUrl::parse_from_string(
-                string.as_ref().to_owned(),
-                context,
-                cors_mode,
-            );
-            i.expect_comma()?;
-            let top = NumberOrPercentage::parse_non_negative(context, i)?;
-            i.expect_comma()?;
-            let right = NumberOrPercentage::parse_non_negative(context, i)?;
-            i.expect_comma()?;
-            let bottom = NumberOrPercentage::parse_non_negative(context, i)?;
-            i.expect_comma()?;
-            let left = NumberOrPercentage::parse_non_negative(context, i)?;
-            Ok(MozImageRect {
-                url,
-                top,
-                right,
-                bottom,
-                left,
+impl PaintWorklet {
+    #[cfg(feature = "servo")]
+    fn parse_args<'i>(input: &mut Parser<'i, '_>) -> Result<Self, ParseError<'i>> {
+        use crate::custom_properties::SpecifiedValue;
+        let name = Atom::from(&**input.expect_ident()?);
+        let arguments = input
+            .try_parse(|input| {
+                input.expect_comma()?;
+                input.parse_comma_separated(SpecifiedValue::parse)
             })
-        })
+            .unwrap_or_default();
+        Ok(Self { name, arguments })
     }
 }
 

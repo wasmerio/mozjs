@@ -19,7 +19,7 @@ use super::module::{Module, ModuleKind};
 use super::template::{TemplateInstantiation, TemplateParameters};
 use super::traversal::{self, Edge, ItemTraversal};
 use super::ty::{FloatKind, Type, TypeKind};
-use crate::clang::{self, Cursor};
+use crate::clang::{self, ABIKind, Cursor};
 use crate::codegen::CodegenError;
 use crate::BindgenOptions;
 use crate::{Entry, HashMap, HashSet};
@@ -365,7 +365,7 @@ pub(crate) struct BindgenContext {
     includes: StdHashMap<String, (String, usize)>,
 
     /// A set of all the included filenames.
-    deps: BTreeSet<String>,
+    deps: BTreeSet<Box<str>>,
 
     /// The active replacements collected from replaces="xxx" annotations.
     replacements: HashMap<Vec<String>, ItemId>,
@@ -385,6 +385,9 @@ pub(crate) struct BindgenContext {
 
     /// Whether a bindgen complex was generated
     generated_bindgen_complex: Cell<bool>,
+
+    /// Whether a bindgen float16 was generated
+    generated_bindgen_float16: Cell<bool>,
 
     /// The set of `ItemId`s that are allowlisted. This the very first thing
     /// computed after parsing our IR, and before running any of our analyses.
@@ -585,6 +588,7 @@ If you encounter an error missing from this list, please file an issue or a PR!"
             target_info,
             options,
             generated_bindgen_complex: Cell::new(false),
+            generated_bindgen_float16: Cell::new(false),
             allowlisted: None,
             blocklisted_types_implement_traits: Default::default(),
             codegen_items: None,
@@ -620,6 +624,11 @@ If you encounter an error missing from this list, please file an issue or a PR!"
     /// translation.
     pub(crate) fn target_pointer_size(&self) -> usize {
         self.target_info.pointer_width / 8
+    }
+
+    /// Returns the ABI, which is mostly useful for determining the mangling kind.
+    pub(crate) fn abi_kind(&self) -> ABIKind {
+        self.target_info.abi
     }
 
     /// Get the stack of partially parsed types that we are in the middle of
@@ -664,12 +673,12 @@ If you encounter an error missing from this list, please file an issue or a PR!"
     }
 
     /// Add an included file.
-    pub(crate) fn add_dep(&mut self, dep: String) {
+    pub(crate) fn add_dep(&mut self, dep: Box<str>) {
         self.deps.insert(dep);
     }
 
     /// Get any included files.
-    pub(crate) fn deps(&self) -> &BTreeSet<String> {
+    pub(crate) fn deps(&self) -> &BTreeSet<Box<str>> {
         &self.deps
     }
 
@@ -2005,6 +2014,7 @@ If you encounter an error missing from this list, please file an issue or a PR!"
             CXType_ULongLong => TypeKind::Int(IntKind::ULongLong),
             CXType_Int128 => TypeKind::Int(IntKind::I128),
             CXType_UInt128 => TypeKind::Int(IntKind::U128),
+            CXType_Float16 | CXType_Half => TypeKind::Float(FloatKind::Float16),
             CXType_Float => TypeKind::Float(FloatKind::Float),
             CXType_Double => TypeKind::Float(FloatKind::Double),
             CXType_LongDouble => TypeKind::Float(FloatKind::LongDouble),
@@ -2013,6 +2023,7 @@ If you encounter an error missing from this list, please file an issue or a PR!"
                 let float_type =
                     ty.elem_type().expect("Not able to resolve complex type?");
                 let float_kind = match float_type.kind() {
+                    CXType_Float16 | CXType_Half => FloatKind::Float16,
                     CXType_Float => FloatKind::Float,
                     CXType_Double => FloatKind::Double,
                     CXType_LongDouble => FloatKind::LongDouble,
@@ -2343,7 +2354,8 @@ If you encounter an error missing from this list, please file an issue or a PR!"
                     if self.options().allowlisted_types.is_empty() &&
                         self.options().allowlisted_functions.is_empty() &&
                         self.options().allowlisted_vars.is_empty() &&
-                        self.options().allowlisted_files.is_empty()
+                        self.options().allowlisted_files.is_empty() &&
+                        self.options().allowlisted_items.is_empty()
                     {
                         return true;
                     }
@@ -2373,6 +2385,11 @@ If you encounter an error missing from this list, please file an issue or a PR!"
 
                     let name = item.path_for_allowlisting(self)[1..].join("::");
                     debug!("allowlisted_items: testing {:?}", name);
+
+                    if self.options().allowlisted_items.matches(&name) {
+                        return true;
+                    }
+
                     match *item.kind() {
                         ItemKind::Module(..) => true,
                         ItemKind::Function(_) => {
@@ -2496,6 +2513,10 @@ If you encounter an error missing from this list, please file an issue or a PR!"
         for item in self.options().allowlisted_types.unmatched_items() {
             unused_regex_diagnostic(item, "--allowlist-type", self);
         }
+
+        for item in self.options().allowlisted_items.unmatched_items() {
+            unused_regex_diagnostic(item, "--allowlist-items", self);
+        }
     }
 
     /// Convenient method for getting the prefix to use for most traits in
@@ -2516,6 +2537,16 @@ If you encounter an error missing from this list, please file an issue or a PR!"
     /// Whether we need to generate the bindgen complex type
     pub(crate) fn need_bindgen_complex_type(&self) -> bool {
         self.generated_bindgen_complex.get()
+    }
+
+    /// Call if a bindgen float16 is generated
+    pub(crate) fn generated_bindgen_float16(&self) {
+        self.generated_bindgen_float16.set(true)
+    }
+
+    /// Whether we need to generate the bindgen float16 type
+    pub(crate) fn need_bindgen_float16_type(&self) -> bool {
+        self.generated_bindgen_float16.get()
     }
 
     /// Compute which `enum`s have an associated `typedef` definition.

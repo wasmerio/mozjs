@@ -5,7 +5,9 @@
 const { NetUtil } = ChromeUtils.importESModule(
   "resource://gre/modules/NetUtil.sys.mjs"
 );
-const { HttpServer } = ChromeUtils.import("resource://testing-common/httpd.js");
+const { HttpServer } = ChromeUtils.importESModule(
+  "resource://testing-common/httpd.sys.mjs"
+);
 
 var httpServer = new HttpServer();
 httpServer.start(-1);
@@ -21,7 +23,7 @@ const REPORT_SERVER_URI = "http://localhost";
  * or fails a test based on what it gets.
  */
 function makeReportHandler(testpath, message, expectedJSON) {
-  return function (request, response) {
+  return function (request) {
     // we only like "POST" submissions for reports!
     if (request.method !== "POST") {
       do_throw("violation report should be a POST request");
@@ -138,8 +140,8 @@ function run_test() {
         null, // nsICSPEventListener
         "", // aContentOfPseudoScript
         0, // aLineNumber
-        0
-      ); // aColumnNumber
+        1 // aColumnNumber
+      );
 
       // this is not a report only policy, so it better block inline scripts
       Assert.ok(!inlineOK);
@@ -179,8 +181,8 @@ function run_test() {
           // note that JSON is UTF8 encoded.
           "\u00a3\u00a5\u00b5\u5317\ud841\udf79",
           1, // line number
-          2
-        ); // column number
+          2 // column number
+        );
       }
     }
   );
@@ -218,8 +220,8 @@ function run_test() {
         null, // nsICSPEventListener
         "", // aContentOfPseudoScript
         0, // aLineNumber
-        0
-      ); // aColumnNumber
+        1 // aColumnNumber
+      );
 
       // this is a report only policy, so it better allow inline scripts
       Assert.ok(inlineOK);
@@ -246,8 +248,8 @@ function run_test() {
         selfuri.asciiSpec,
         "script sample",
         4, // line number
-        5
-      ); // column number
+        5 // column number
+      );
     }
   });
 

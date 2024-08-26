@@ -20,11 +20,11 @@ origin:
 
   # Human-readable identifier for this version/release
   # Generally "version NNN", "tag SSS", "bookmark SSS"
-  release: 8b419c16bf1e37bc98044089da58f06824462cb9 (2023-06-02T00:00:12.000+02:00).
+  release: 92f592ed104ba92ad35c781ee93f354525eef503 (2024-06-05T23:22:36.000+02:00).
 
   # Revision to pull in
   # Must be a long or short commit SHA (long preferred)
-  revision: 8b419c16bf1e37bc98044089da58f06824462cb9
+  revision: 92f592ed104ba92ad35c781ee93f354525eef503
 
   # The package's license, where possible using the mnemonic from
   # https://spdx.org/licenses/
@@ -48,11 +48,11 @@ vendoring:
   vendor-directory: third_party/dav1d
 
   exclude:
-    - build/.gitattributes
-    - build/.gitignore
+    - "build/.git*"
     - doc
     - examples
     - package
+    - tests/checkasm
     - tools
 
   generated:

@@ -15,7 +15,6 @@
  */
 
 import { ExtensionCommon } from "resource://gre/modules/ExtensionCommon.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
@@ -30,7 +29,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 let { makeWidgetId } = ExtensionCommon;
 
-XPCOMUtils.defineLazyGetter(lazy, "strBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "strBundle", function () {
   return Services.strings.createBundle(
     "chrome://global/locale/extensions.properties"
   );
@@ -38,7 +37,7 @@ XPCOMUtils.defineLazyGetter(lazy, "strBundle", function () {
 
 const PREF_BRANCH_INSTALLED_ADDON = "extensions.installedDistroAddon.";
 
-XPCOMUtils.defineLazyGetter(lazy, "distributionAddonsList", function () {
+ChromeUtils.defineLazyGetter(lazy, "distributionAddonsList", function () {
   let addonList = Services.prefs
     .getChildList(PREF_BRANCH_INSTALLED_ADDON)
     .map(id => id.replace(PREF_BRANCH_INSTALLED_ADDON, ""));
@@ -156,7 +155,7 @@ export class ExtensionControlledPopup {
     );
   }
 
-  observe(subject, topic, data) {
+  observe(subject) {
     // Remove the observer here so we don't get multiple open() calls if we get
     // multiple observer events in quick succession.
     this.removeObserver();
@@ -235,8 +234,6 @@ export class ExtensionControlledPopup {
     } catch (ex) {
       return;
     }
-
-    win.ownerGlobal.ensureCustomElements("moz-support-link");
 
     // Find the elements we need.
     let doc = win.document;
@@ -385,7 +382,7 @@ export class ExtensionControlledPopup {
       // We may have focused a non-remote child window, find the browser window:
       let { rootTreeItem } = focusedWindow.docShell;
       rootTreeItem.QueryInterface(Ci.nsIDocShell);
-      focusedWindow = rootTreeItem.contentViewer.DOMDocument.defaultView;
+      focusedWindow = rootTreeItem.docViewer.DOMDocument.defaultView;
     }
     if (focusedWindow != win) {
       promiseEvent("focus");

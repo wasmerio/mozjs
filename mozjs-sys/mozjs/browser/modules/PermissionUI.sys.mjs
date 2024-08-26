@@ -19,8 +19,8 @@
  * const { Integration } = ChromeUtils.importESModule(
  *   "resource://gre/modules/Integration.sys.mjs"
  * );
- * const { PermissionUI } = ChromeUtils.import(
- *   "resource:///modules/PermissionUI.jsm"
+ * const { PermissionUI } = ChromeUtils.importESModule(
+ *   "resource:///modules/PermissionUI.sys.mjs"
  * );
  *
  * const SoundCardIntegration = base => {
@@ -86,7 +86,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "@mozilla.org/content-pref/service;1",
   "nsIContentPrefService2"
 );
-XPCOMUtils.defineLazyGetter(lazy, "gBrowserBundle", function () {
+ChromeUtils.defineLazyGetter(lazy, "gBrowserBundle", function () {
   return Services.strings.createBundle(
     "chrome://browser/locale/browser.properties"
   );
@@ -390,16 +390,6 @@ class PermissionPrompt {
       );
 
       if (state == lazy.SitePermissions.BLOCK) {
-        // If this block was done based on a global user setting, we want to show
-        // a post prompt to give the user some more granular control without
-        // annoying them too much.
-        if (
-          this.postPromptEnabled &&
-          lazy.SitePermissions.getDefault(this.permissionKey) ==
-            lazy.SitePermissions.BLOCK
-        ) {
-          this.postPrompt();
-        }
         this.cancel();
         return;
       }
@@ -540,7 +530,7 @@ class PermissionPrompt {
       let action = {
         label: promptAction.label,
         accessKey: promptAction.accessKey,
-        callback: state => {
+        callback: () => {
           if (promptAction.callback) {
             promptAction.callback();
           }
@@ -735,7 +725,7 @@ class SitePermsAddonInstallRequest extends PermissionPromptForRequest {
    * @param {Components.Exception} err
    * @returns {String} The error message
    */
-  getInstallErrorMessage(err) {
+  getInstallErrorMessage() {
     return null;
   }
 }
@@ -1407,7 +1397,7 @@ class StorageAccessPermissionPrompt extends PermissionPromptForRequest {
           "storageAccess1.Allow.accesskey"
         ),
         action: Ci.nsIPermissionManager.ALLOW_ACTION,
-        callback(state) {
+        callback() {
           self.allow({ "storage-access": "allow" });
         },
       },
@@ -1419,7 +1409,7 @@ class StorageAccessPermissionPrompt extends PermissionPromptForRequest {
           "storageAccess1.DontAllow.accesskey"
         ),
         action: Ci.nsIPermissionManager.DENY_ACTION,
-        callback(state) {
+        callback() {
           self.cancel();
         },
       },

@@ -1,0 +1,1 @@
+BindName, 1, 2, 3, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(0) LASTUSED(1) , OP(LoadEnclosingEnvironment) ID(0) ID(1) OP(LoadObjectResult) ID(1) OP(ReturnFromIC)  

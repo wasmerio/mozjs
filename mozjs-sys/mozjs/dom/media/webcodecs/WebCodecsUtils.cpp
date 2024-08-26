@@ -6,20 +6,37 @@
 
 #include "WebCodecsUtils.h"
 
+#include "DecoderTypes.h"
+#include "PlatformEncoderModule.h"
 #include "VideoUtils.h"
 #include "js/experimental/TypedData.h"
 #include "mozilla/Assertions.h"
-#include "mozilla/CheckedInt.h"
 #include "mozilla/dom/ImageBitmapBinding.h"
 #include "mozilla/dom/VideoColorSpaceBinding.h"
 #include "mozilla/dom/VideoFrameBinding.h"
 #include "mozilla/gfx/Types.h"
 #include "nsDebug.h"
 
+extern mozilla::LazyLogModule gWebCodecsLog;
+
+#ifdef LOG_INTERNAL
+#  undef LOG_INTERNAL
+#endif  // LOG_INTERNAL
+#define LOG_INTERNAL(level, msg, ...) \
+  MOZ_LOG(gWebCodecsLog, LogLevel::level, (msg, ##__VA_ARGS__))
+#ifdef LOG
+#  undef LOG
+#endif  // LOG
+#define LOG(msg, ...) LOG_INTERNAL(Debug, msg, ##__VA_ARGS__)
+
+namespace mozilla {
+std::atomic<WebCodecsId> sNextId = 0;
+};
+
 namespace mozilla::dom {
 
 /*
- * The followings are helpers for VideoDecoder methods
+ * The followings are helpers for AudioDecoder and VideoDecoder methods
  */
 
 nsTArray<nsCString> GuessContainers(const nsAString& aCodec) {
@@ -39,60 +56,62 @@ nsTArray<nsCString> GuessContainers(const nsAString& aCodec) {
     return {"mp4"_ns, "3gpp"_ns, "3gpp2"_ns, "3gp2"_ns};
   }
 
+  if (IsAACCodecString(aCodec)) {
+    return {"adts"_ns, "mp4"_ns};
+  }
+
+  if (aCodec.EqualsLiteral("vorbis") || aCodec.EqualsLiteral("opus")) {
+    return {"ogg"_ns};
+  }
+
+  if (aCodec.EqualsLiteral("flac")) {
+    return {"flac"_ns};
+  }
+
+  if (aCodec.EqualsLiteral("mp3")) {
+    return {"mp3"_ns};
+  }
+
+  if (aCodec.EqualsLiteral("ulaw") || aCodec.EqualsLiteral("alaw") ||
+      aCodec.EqualsLiteral("pcm-u8") || aCodec.EqualsLiteral("pcm-s16") ||
+      aCodec.EqualsLiteral("pcm-s24") || aCodec.EqualsLiteral("pcm-s32") ||
+      aCodec.EqualsLiteral("pcm-f32")) {
+    return {"x-wav"_ns};
+  }
+
   return {};
+}
+
+Maybe<nsString> ParseCodecString(const nsAString& aCodec) {
+  // Trim the spaces on each end.
+  nsString str(aCodec);
+  str.Trim(" ");
+  nsTArray<nsString> codecs;
+  if (!ParseCodecsString(str, codecs) || codecs.Length() != 1 ||
+      codecs[0] != str) {
+    return Nothing();
+  }
+  return Some(codecs[0]);
 }
 
 /*
  * The below are helpers to operate ArrayBuffer or ArrayBufferView.
  */
-template <class T>
-Result<Span<uint8_t>, nsresult> GetArrayBufferData(const T& aBuffer) {
-  // Get buffer's data and length before using it.
-  aBuffer.ComputeState();
-
-  CheckedInt<size_t> byteLength(sizeof(typename T::element_type));
-  byteLength *= aBuffer.Length();
-  if (NS_WARN_IF(!byteLength.isValid())) {
-    return Err(NS_ERROR_INVALID_ARG);
-  }
-
-  return Span<uint8_t>(aBuffer.Data(), byteLength.value());
-}
-
-Result<Span<uint8_t>, nsresult> GetSharedArrayBufferData(
-    const MaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aBuffer) {
-  if (aBuffer.IsArrayBufferView()) {
-    return GetArrayBufferData(aBuffer.GetAsArrayBufferView());
-  }
-
-  MOZ_ASSERT(aBuffer.IsArrayBuffer());
-  return GetArrayBufferData(aBuffer.GetAsArrayBuffer());
-}
-
-Result<Span<uint8_t>, nsresult> GetSharedArrayBufferData(
-    const OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aBuffer) {
-  if (aBuffer.IsArrayBufferView()) {
-    return GetArrayBufferData(aBuffer.GetAsArrayBufferView());
-  }
-
-  MOZ_ASSERT(aBuffer.IsArrayBuffer());
-  return GetArrayBufferData(aBuffer.GetAsArrayBuffer());
-}
 
 static std::tuple<JS::ArrayBufferOrView, size_t, size_t> GetArrayBufferInfo(
     JSContext* aCx,
     const OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aBuffer) {
   if (aBuffer.IsArrayBuffer()) {
     const ArrayBuffer& buffer = aBuffer.GetAsArrayBuffer();
-    buffer.ComputeState();
-    CheckedInt<size_t> byteLength(buffer.Length());
-    byteLength *= sizeof(JS::ArrayBuffer::DataType);
-    return byteLength.isValid()
-               ? std::make_tuple(
-                     JS::ArrayBufferOrView::fromObject(buffer.Obj()), (size_t)0,
-                     byteLength.value())
-               : std::make_tuple(JS::ArrayBufferOrView::fromObject(nullptr),
-                                 (size_t)0, (size_t)0);
+    size_t length;
+    {
+      bool isShared;
+      uint8_t* data;
+      JS::GetArrayBufferMaybeSharedLengthAndData(buffer.Obj(), &length,
+                                                 &isShared, &data);
+    }
+    return std::make_tuple(JS::ArrayBufferOrView::fromObject(buffer.Obj()),
+                           (size_t)0, length);
   }
 
   MOZ_ASSERT(aBuffer.IsArrayBufferView());
@@ -102,13 +121,15 @@ static std::tuple<JS::ArrayBufferOrView, size_t, size_t> GetArrayBufferInfo(
   return std::make_tuple(
       JS::ArrayBufferOrView::fromObject(
           JS_GetArrayBufferViewBuffer(aCx, obj, &isSharedMemory)),
-      JS_GetTypedArrayByteOffset(obj), JS_GetTypedArrayByteLength(obj));
+      JS_GetArrayBufferViewByteOffset(obj),
+      JS_GetArrayBufferViewByteLength(obj));
 }
 
 Result<Ok, nsresult> CloneBuffer(
     JSContext* aCx,
     OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aDest,
-    const OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aSrc) {
+    const OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aSrc,
+    ErrorResult& aRv) {
   std::tuple<JS::ArrayBufferOrView, size_t, size_t> info =
       GetArrayBufferInfo(aCx, aSrc);
   JS::Rooted<JS::ArrayBufferOrView> abov(aCx);
@@ -123,6 +144,8 @@ Result<Ok, nsresult> CloneBuffer(
   JS::Rooted<JSObject*> cloned(aCx,
                                JS::ArrayBufferClone(aCx, obj, offset, len));
   if (NS_WARN_IF(!cloned)) {
+    aRv.MightThrowJSException();
+    aRv.StealExceptionFromJSContext(aCx);
     return Err(NS_ERROR_OUT_OF_MEMORY);
   }
 
@@ -133,10 +156,38 @@ Result<Ok, nsresult> CloneBuffer(
   return Ok();
 }
 
+Result<RefPtr<MediaByteBuffer>, nsresult> GetExtraDataFromArrayBuffer(
+    const OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aBuffer) {
+  RefPtr<MediaByteBuffer> data = MakeRefPtr<MediaByteBuffer>();
+  if (!AppendTypedArrayDataTo(aBuffer, *data)) {
+    return Err(NS_ERROR_OUT_OF_MEMORY);
+  }
+  return data->Length() > 0 ? data : nullptr;
+}
+
+bool CopyExtradataToDescription(
+    JSContext* aCx, Span<const uint8_t>& aSrc,
+    OwningMaybeSharedArrayBufferViewOrMaybeSharedArrayBuffer& aDest) {
+  MOZ_ASSERT(!aSrc.IsEmpty());
+
+  MOZ_ASSERT(aCx);
+
+  size_t lengthBytes = aSrc.Length();
+  UniquePtr<uint8_t[], JS::FreePolicy> extradata(new uint8_t[lengthBytes]);
+
+  PodCopy(extradata.get(), aSrc.Elements(), lengthBytes);
+
+  JS::Rooted<JSObject*> data(aCx, JS::NewArrayBufferWithContents(
+                                      aCx, lengthBytes, std::move(extradata)));
+  JS::Rooted<JS::Value> value(aCx, JS::ObjectValue(*data));
+  return aDest.Init(aCx, value);
+}
+
 /*
  * The following are utilities to convert between VideoColorSpace values to
  * gfx's values.
  */
+
 gfx::ColorRange ToColorRange(bool aIsFullRange) {
   return aIsFullRange ? gfx::ColorRange::FULL : gfx::ColorRange::LIMITED;
 }
@@ -152,8 +203,6 @@ gfx::YUVColorSpace ToColorSpace(VideoMatrixCoefficients aMatrix) {
       return gfx::YUVColorSpace::BT601;
     case VideoMatrixCoefficients::Bt2020_ncl:
       return gfx::YUVColorSpace::BT2020;
-    case VideoMatrixCoefficients::EndGuard_:
-      break;
   }
   MOZ_ASSERT_UNREACHABLE("unsupported VideoMatrixCoefficients");
   return gfx::YUVColorSpace::Default;
@@ -172,8 +221,7 @@ gfx::TransferFunction ToTransferFunction(
     case VideoTransferCharacteristics::Hlg:
       return gfx::TransferFunction::HLG;
     case VideoTransferCharacteristics::Linear:
-    case VideoTransferCharacteristics::EndGuard_:
-      break;
+      return gfx::TransferFunction::Default;
   }
   MOZ_ASSERT_UNREACHABLE("unsupported VideoTransferCharacteristics");
   return gfx::TransferFunction::Default;
@@ -191,8 +239,6 @@ gfx::ColorSpace2 ToPrimaries(VideoColorPrimaries aPrimaries) {
       return gfx::ColorSpace2::BT2020;
     case VideoColorPrimaries::Smpte432:
       return gfx::ColorSpace2::DISPLAY_P3;
-    case VideoColorPrimaries::EndGuard_:
-      break;
   }
   MOZ_ASSERT_UNREACHABLE("unsupported VideoTransferCharacteristics");
   return gfx::ColorSpace2::UNKNOWN;
@@ -237,12 +283,12 @@ Maybe<VideoTransferCharacteristics> ToTransferCharacteristics(
 Maybe<VideoColorPrimaries> ToPrimaries(const gfx::ColorSpace2& aColorSpace) {
   switch (aColorSpace) {
     case gfx::ColorSpace2::UNKNOWN:
-    case gfx::ColorSpace2::SRGB:
       return Nothing();
     case gfx::ColorSpace2::DISPLAY_P3:
       return Some(VideoColorPrimaries::Smpte432);
     case gfx::ColorSpace2::BT601_525:
       return Some(VideoColorPrimaries::Smpte170m);
+    case gfx::ColorSpace2::SRGB:
     case gfx::ColorSpace2::BT709:
       return Some(VideoColorPrimaries::Bt709);
     case gfx::ColorSpace2::BT2020:
@@ -299,6 +345,330 @@ Maybe<VideoPixelFormat> ImageBitmapFormatToVideoPixelFormat(
       break;
   }
   return Nothing();
+}
+
+bool IsOnAndroid() {
+#if defined(ANDROID)
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsOnMacOS() {
+#if defined(XP_MACOSX)
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsOnLinux() {
+#if defined(XP_LINUX)
+  return true;
+#else
+  return false;
+#endif
+}
+
+template <typename T>
+nsCString MaybeToString(const Maybe<T>& aMaybe) {
+  return nsPrintfCString(
+      "%s", aMaybe.isSome() ? ToString(aMaybe.value()).c_str() : "nothing");
+}
+
+struct ConfigurationChangeToString {
+  nsCString operator()(const CodecChange& aCodecChange) {
+    return nsPrintfCString("Codec: %s",
+                           NS_ConvertUTF16toUTF8(aCodecChange.get()).get());
+  }
+  nsCString operator()(const DimensionsChange& aDimensionChange) {
+    return nsPrintfCString("Dimensions: %dx%d", aDimensionChange.get().width,
+                           aDimensionChange.get().height);
+  }
+  nsCString operator()(const DisplayDimensionsChange& aDisplayDimensionChange) {
+    if (aDisplayDimensionChange.get().isNothing()) {
+      return nsPrintfCString("Display dimensions: nothing");
+    }
+    gfx::IntSize displayDimensions = aDisplayDimensionChange.get().value();
+    return nsPrintfCString("Dimensions: %dx%d", displayDimensions.width,
+                           displayDimensions.height);
+  }
+  nsCString operator()(const BitrateChange& aBitrateChange) {
+    return nsPrintfCString("Bitrate: %skbps",
+                           MaybeToString(aBitrateChange.get()).get());
+  }
+  nsCString operator()(const FramerateChange& aFramerateChange) {
+    return nsPrintfCString("Framerate: %sHz",
+                           MaybeToString(aFramerateChange.get()).get());
+  }
+  nsCString operator()(
+      const HardwareAccelerationChange& aHardwareAccelerationChange) {
+    return nsPrintfCString(
+        "HW acceleration: %s",
+        dom::GetEnumString(aHardwareAccelerationChange.get()).get());
+  }
+  nsCString operator()(const AlphaChange& aAlphaChange) {
+    return nsPrintfCString("Alpha: %s",
+                           dom::GetEnumString(aAlphaChange.get()).get());
+  }
+  nsCString operator()(const ScalabilityModeChange& aScalabilityModeChange) {
+    if (aScalabilityModeChange.get().isNothing()) {
+      return nsCString("Scalability mode: nothing");
+    }
+    return nsPrintfCString(
+        "Scalability mode: %s",
+        NS_ConvertUTF16toUTF8(aScalabilityModeChange.get().value()).get());
+  }
+  nsCString operator()(const BitrateModeChange& aBitrateModeChange) {
+    return nsPrintfCString("Bitrate mode: %s",
+                           dom::GetEnumString(aBitrateModeChange.get()).get());
+  }
+  nsCString operator()(const LatencyModeChange& aLatencyModeChange) {
+    return nsPrintfCString("Latency mode: %s",
+                           dom::GetEnumString(aLatencyModeChange.get()).get());
+  }
+  nsCString operator()(const ContentHintChange& aContentHintChange) {
+    return nsPrintfCString("Content hint: %s",
+                           MaybeToString(aContentHintChange.get()).get());
+  }
+  template <typename T>
+  nsCString operator()(const T& aNewBitrate) {
+    return nsPrintfCString("Not implemented");
+  }
+};
+
+nsCString WebCodecsConfigurationChangeList::ToString() const {
+  nsCString rv;
+  for (const WebCodecsEncoderConfigurationItem& change : mChanges) {
+    nsCString str = change.match(ConfigurationChangeToString());
+    rv.AppendPrintf("- %s\n", str.get());
+  }
+  return rv;
+}
+
+using CodecChange = StrongTypedef<nsString, struct CodecChangeTypeWebCodecs>;
+using DimensionsChange =
+    StrongTypedef<gfx::IntSize, struct DimensionsChangeTypeWebCodecs>;
+using DisplayDimensionsChange =
+    StrongTypedef<Maybe<gfx::IntSize>,
+                  struct DisplayDimensionsChangeTypeWebCodecs>;
+using BitrateChange =
+    StrongTypedef<Maybe<uint32_t>, struct BitrateChangeTypeWebCodecs>;
+using FramerateChange =
+    StrongTypedef<Maybe<double>, struct FramerateChangeTypeWebCodecs>;
+using HardwareAccelerationChange =
+    StrongTypedef<dom::HardwareAcceleration,
+                  struct HardwareAccelerationChangeTypeWebCodecs>;
+using AlphaChange =
+    StrongTypedef<dom::AlphaOption, struct AlphaChangeTypeWebCodecs>;
+using ScalabilityModeChange =
+    StrongTypedef<Maybe<nsString>, struct ScalabilityModeChangeTypeWebCodecs>;
+using BitrateModeChange = StrongTypedef<dom::VideoEncoderBitrateMode,
+                                        struct BitrateModeChangeTypeWebCodecs>;
+using LatencyModeChange =
+    StrongTypedef<dom::LatencyMode, struct LatencyModeTypeChangeTypeWebCodecs>;
+using ContentHintChange =
+    StrongTypedef<Maybe<nsString>, struct ContentHintTypeTypeWebCodecs>;
+
+bool WebCodecsConfigurationChangeList::CanAttemptReconfigure() const {
+  for (const auto& change : mChanges) {
+    if (change.is<CodecChange>() || change.is<HardwareAccelerationChange>() ||
+        change.is<AlphaChange>() || change.is<ScalabilityModeChange>()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+RefPtr<EncoderConfigurationChangeList>
+WebCodecsConfigurationChangeList::ToPEMChangeList() const {
+  auto rv = MakeRefPtr<EncoderConfigurationChangeList>();
+  MOZ_ASSERT(CanAttemptReconfigure());
+  for (const auto& change : mChanges) {
+    if (change.is<dom::DimensionsChange>()) {
+      rv->Push(mozilla::DimensionsChange(change.as<DimensionsChange>().get()));
+    } else if (change.is<dom::DisplayDimensionsChange>()) {
+      rv->Push(mozilla::DisplayDimensionsChange(
+          change.as<DisplayDimensionsChange>().get()));
+    } else if (change.is<dom::BitrateChange>()) {
+      rv->Push(mozilla::BitrateChange(change.as<BitrateChange>().get()));
+    } else if (change.is<FramerateChange>()) {
+      rv->Push(mozilla::FramerateChange(change.as<FramerateChange>().get()));
+    } else if (change.is<dom::BitrateModeChange>()) {
+      mozilla::BitrateMode mode;
+      if (change.as<dom::BitrateModeChange>().get() ==
+          dom::VideoEncoderBitrateMode::Constant) {
+        mode = mozilla::BitrateMode::Constant;
+      } else if (change.as<BitrateModeChange>().get() ==
+                 dom::VideoEncoderBitrateMode::Variable) {
+        mode = mozilla::BitrateMode::Variable;
+      } else {
+        // Quantizer, not underlying support yet.
+        mode = mozilla::BitrateMode::Variable;
+      }
+      rv->Push(mozilla::BitrateModeChange(mode));
+    } else if (change.is<LatencyModeChange>()) {
+      Usage usage;
+      if (change.as<LatencyModeChange>().get() == dom::LatencyMode::Quality) {
+        usage = Usage::Record;
+      } else {
+        usage = Usage::Realtime;
+      }
+      rv->Push(UsageChange(usage));
+    } else if (change.is<ContentHintChange>()) {
+      rv->Push(
+          mozilla::ContentHintChange(change.as<ContentHintChange>().get()));
+    }
+  }
+  return rv.forget();
+}
+
+nsCString ColorSpaceInitToString(
+    const dom::VideoColorSpaceInit& aColorSpaceInit) {
+  nsCString rv("VideoColorSpace");
+
+  if (!aColorSpaceInit.mFullRange.IsNull()) {
+    rv.AppendPrintf(" range: %s",
+                    aColorSpaceInit.mFullRange.Value() ? "true" : "false");
+  }
+  if (!aColorSpaceInit.mMatrix.IsNull()) {
+    rv.AppendPrintf(" matrix: %s",
+                    GetEnumString(aColorSpaceInit.mMatrix.Value()).get());
+  }
+  if (!aColorSpaceInit.mTransfer.IsNull()) {
+    rv.AppendPrintf(" transfer: %s",
+                    GetEnumString(aColorSpaceInit.mTransfer.Value()).get());
+  }
+  if (!aColorSpaceInit.mPrimaries.IsNull()) {
+    rv.AppendPrintf(" primaries: %s",
+                    GetEnumString(aColorSpaceInit.mPrimaries.Value()).get());
+  }
+
+  return rv;
+}
+
+RefPtr<TaskQueue> GetWebCodecsEncoderTaskQueue() {
+  return TaskQueue::Create(
+      GetMediaThreadPool(MediaThreadType::PLATFORM_ENCODER),
+      "WebCodecs encoding", false);
+}
+
+VideoColorSpaceInit FallbackColorSpaceForVideoContent() {
+  // If we're unable to determine the color space, but we think this is video
+  // content (e.g. because it's in YUV or NV12 or something like that,
+  // consider it's in BT709).
+  // This is step 3 of
+  // https://w3c.github.io/webcodecs/#videoframe-pick-color-space
+  VideoColorSpaceInit colorSpace;
+  colorSpace.mFullRange = false;
+  colorSpace.mMatrix = VideoMatrixCoefficients::Bt709;
+  colorSpace.mTransfer = VideoTransferCharacteristics::Bt709;
+  colorSpace.mPrimaries = VideoColorPrimaries::Bt709;
+  return colorSpace;
+}
+VideoColorSpaceInit FallbackColorSpaceForWebContent() {
+  // If we're unable to determine the color space, but we think this is from
+  // Web content (canvas, image, svg, etc.), consider it's in sRGB.
+  // This is step 2 of
+  // https://w3c.github.io/webcodecs/#videoframe-pick-color-space
+  VideoColorSpaceInit colorSpace;
+  colorSpace.mFullRange = true;
+  colorSpace.mMatrix = VideoMatrixCoefficients::Rgb;
+  colorSpace.mTransfer = VideoTransferCharacteristics::Iec61966_2_1;
+  colorSpace.mPrimaries = VideoColorPrimaries::Bt709;
+  return colorSpace;
+}
+
+Maybe<CodecType> CodecStringToCodecType(const nsAString& aCodecString) {
+  if (StringBeginsWith(aCodecString, u"av01"_ns)) {
+    return Some(CodecType::AV1);
+  }
+  if (StringBeginsWith(aCodecString, u"vp8"_ns)) {
+    return Some(CodecType::VP8);
+  }
+  if (StringBeginsWith(aCodecString, u"vp09"_ns)) {
+    return Some(CodecType::VP9);
+  }
+  if (StringBeginsWith(aCodecString, u"avc1"_ns)) {
+    return Some(CodecType::H264);
+  }
+  return Nothing();
+}
+
+nsCString ConfigToString(const VideoDecoderConfig& aConfig) {
+  nsString rv;
+
+  auto internal = VideoDecoderConfigInternal::Create(aConfig);
+
+  return internal->ToString();
+}
+
+bool IsSupportedVideoCodec(const nsAString& aCodec) {
+  LOG("IsSupportedVideoCodec: %s", NS_ConvertUTF16toUTF8(aCodec).get());
+  // The only codec string accepted for vp8 is "vp8"
+  if (!IsVP9CodecString(aCodec) && !IsH264CodecString(aCodec) &&
+      !IsAV1CodecString(aCodec) && !aCodec.EqualsLiteral("vp8")) {
+    return false;
+  }
+
+  // Gecko allows codec string starts with vp9 or av1 but Webcodecs requires to
+  // starts with av01 and vp09.
+  // https://w3c.github.io/webcodecs/codec_registry.html.
+  if (StringBeginsWith(aCodec, u"vp9"_ns) ||
+      StringBeginsWith(aCodec, u"av1"_ns)) {
+    return false;
+  }
+
+  return true;
+}
+
+nsCString ConvertCodecName(const nsCString& aContainer,
+                           const nsCString& aCodec) {
+  if (!aContainer.EqualsLiteral("x-wav")) {
+    return aCodec;
+  }
+
+  // https://www.rfc-editor.org/rfc/rfc2361.txt
+  if (aCodec.EqualsLiteral("ulaw")) {
+    return nsCString("7");
+  }
+  if (aCodec.EqualsLiteral("alaw")) {
+    return nsCString("6");
+  }
+  if (aCodec.Find("f32")) {
+    return nsCString("3");
+  }
+  // Linear PCM
+  return nsCString("1");
+}
+
+bool IsSupportedAudioCodec(const nsAString& aCodec) {
+  LOG("IsSupportedAudioCodec: %s", NS_ConvertUTF16toUTF8(aCodec).get());
+  return aCodec.EqualsLiteral("flac") || aCodec.EqualsLiteral("mp3") ||
+         IsAACCodecString(aCodec) || aCodec.EqualsLiteral("opus") ||
+         aCodec.EqualsLiteral("ulaw") || aCodec.EqualsLiteral("alaw") ||
+         aCodec.EqualsLiteral("pcm-u8") || aCodec.EqualsLiteral("pcm-s16") ||
+         aCodec.EqualsLiteral("pcm-s24") || aCodec.EqualsLiteral("pcm-s32") ||
+         aCodec.EqualsLiteral("pcm-f32");
+}
+
+uint32_t BytesPerSamples(const mozilla::dom::AudioSampleFormat& aFormat) {
+  switch (aFormat) {
+    case AudioSampleFormat::U8:
+    case AudioSampleFormat::U8_planar:
+      return sizeof(uint8_t);
+    case AudioSampleFormat::S16:
+    case AudioSampleFormat::S16_planar:
+      return sizeof(int16_t);
+    case AudioSampleFormat::S32:
+    case AudioSampleFormat::F32:
+    case AudioSampleFormat::S32_planar:
+    case AudioSampleFormat::F32_planar:
+      return sizeof(float);
+  }
+  MOZ_ASSERT_UNREACHABLE("Invalid enum value");
+  return 0;
 }
 
 }  // namespace mozilla::dom

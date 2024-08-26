@@ -36,16 +36,12 @@ class nsMathMLmtableWrapperFrame final : public nsTableWrapperFrame,
 
   // overloaded nsTableWrapperFrame methods
 
-  virtual void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
-                      const ReflowInput& aReflowInput,
-                      nsReflowStatus& aStatus) override;
+  void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
+              const ReflowInput& aReflowInput,
+              nsReflowStatus& aStatus) override;
 
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
-                                    int32_t aModType) override;
-
-  virtual bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsTableWrapperFrame::IsFrameOfType(aFlags & ~(nsIFrame::eMathML));
-  }
+  nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                            int32_t aModType) override;
 
  protected:
   explicit nsMathMLmtableWrapperFrame(ComputedStyle* aStyle,
@@ -88,13 +84,10 @@ class nsMathMLmtableFrame final : public nsTableFrame {
     RestyleTable();
   }
 
-  virtual void RemoveFrame(ChildListID aListID, nsIFrame* aOldFrame) override {
-    nsTableFrame::RemoveFrame(aListID, aOldFrame);
+  void RemoveFrame(DestroyContext& aContext, ChildListID aListID,
+                   nsIFrame* aOldFrame) override {
+    nsTableFrame::RemoveFrame(aContext, aListID, aOldFrame);
     RestyleTable();
-  }
-
-  virtual bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsTableFrame::IsFrameOfType(aFlags & ~(nsIFrame::eMathML));
   }
 
   // helper to restyle and reflow the table when a row is changed -- since
@@ -184,19 +177,16 @@ class nsMathMLmtrFrame final : public nsTableRowFrame {
     RestyleTable();
   }
 
-  virtual void RemoveFrame(ChildListID aListID, nsIFrame* aOldFrame) override {
-    nsTableRowFrame::RemoveFrame(aListID, aOldFrame);
+  void RemoveFrame(DestroyContext& aContext, ChildListID aListID,
+                   nsIFrame* aOldFrame) override {
+    nsTableRowFrame::RemoveFrame(aContext, aListID, aOldFrame);
     RestyleTable();
-  }
-
-  virtual bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsTableRowFrame::IsFrameOfType(aFlags & ~(nsIFrame::eMathML));
   }
 
   // helper to restyle and reflow the table -- @see nsMathMLmtableFrame.
   void RestyleTable() {
     nsTableFrame* tableFrame = GetTableFrame();
-    if (tableFrame && tableFrame->IsFrameOfType(nsIFrame::eMathML)) {
+    if (tableFrame && tableFrame->IsMathMLFrame()) {
       // relayout the table
       ((nsMathMLmtableFrame*)tableFrame)->RestyleTable();
     }
@@ -221,24 +211,21 @@ class nsMathMLmtdFrame final : public nsTableCellFrame {
 
   // overloaded nsTableCellFrame methods
 
-  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
-                    nsIFrame* aPrevInFlow) override;
+  void Init(nsIContent* aContent, nsContainerFrame* aParent,
+            nsIFrame* aPrevInFlow) override;
 
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
-                                    int32_t aModType) override;
+  nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                            int32_t aModType) override;
 
-  virtual mozilla::StyleVerticalAlignKeyword GetVerticalAlign() const override;
-  virtual nsresult ProcessBorders(
-      nsTableFrame* aFrame, mozilla::nsDisplayListBuilder* aBuilder,
-      const mozilla::nsDisplayListSet& aLists) override;
+  mozilla::StyleVerticalAlignKeyword GetVerticalAlign() const override;
+  void ProcessBorders(nsTableFrame* aFrame,
+                      mozilla::nsDisplayListBuilder* aBuilder,
+                      const mozilla::nsDisplayListSet& aLists) override;
 
-  virtual bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsTableCellFrame::IsFrameOfType(aFlags & ~(nsIFrame::eMathML));
-  }
+  mozilla::LogicalMargin GetBorderWidth(
+      mozilla::WritingMode aWM) const override;
 
-  virtual LogicalMargin GetBorderWidth(WritingMode aWM) const override;
-
-  virtual nsMargin GetBorderOverflow() override;
+  nsMargin GetBorderOverflow() override;
 
  protected:
   nsMathMLmtdFrame(ComputedStyle* aStyle, nsTableFrame* aTableFrame)
@@ -268,16 +255,12 @@ class nsMathMLmtdInnerFrame final : public nsBlockFrame, public nsMathMLFrame {
     return NS_OK;
   }
 
-  virtual void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
-                      const ReflowInput& aReflowInput,
-                      nsReflowStatus& aStatus) override;
+  void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
+              const ReflowInput& aReflowInput,
+              nsReflowStatus& aStatus) override;
 
-  virtual bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsBlockFrame::IsFrameOfType(aFlags & ~nsIFrame::eMathML);
-  }
-
-  virtual const nsStyleText* StyleTextForLineLayout() override;
-  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
+  const nsStyleText* StyleTextForLineLayout() override;
+  void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   bool IsMrowLike() override {
     return mFrames.FirstChild() != mFrames.LastChild() || !mFrames.FirstChild();

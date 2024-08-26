@@ -9,10 +9,11 @@ with Files("*"):
 
 TEST_DIRS += ["test"]
 
-DIRS += ["featurepolicy", "sanitizer"]
+DIRS += ["featurepolicy", "sanitizer", "trusted-types"]
 
 EXPORTS.mozilla.dom += [
     "CSPEvalChecker.h",
+    "CSPViolationData.h",
     "DOMSecurityMonitor.h",
     "FramingChecker.h",
     "nsContentSecurityManager.h",
@@ -40,6 +41,7 @@ EXPORTS += [
 
 UNIFIED_SOURCES += [
     "CSPEvalChecker.cpp",
+    "CSPViolationData.cpp",
     "DOMSecurityMonitor.cpp",
     "FramingChecker.cpp",
     "nsContentSecurityManager.cpp",

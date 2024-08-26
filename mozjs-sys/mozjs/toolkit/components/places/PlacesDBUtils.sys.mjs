@@ -41,7 +41,6 @@ export var PlacesDBUtils = {
       this.checkIntegrity,
       this.checkCoherence,
       this._refreshUI,
-      this.originFrecencyStats,
       this.incrementalVacuum,
       this.removeOldCorruptDBs,
       this.deleteOrphanPreviews,
@@ -77,7 +76,6 @@ export var PlacesDBUtils = {
       this.checkIntegrity,
       this.checkCoherence,
       this.expire,
-      this.originFrecencyStats,
       this.vacuum,
       this.stats,
       this._refreshUI,
@@ -876,7 +874,7 @@ export var PlacesDBUtils = {
     );
 
     let returnPromise = new Promise(res => {
-      let observer = (subject, topic, data) => {
+      let observer = (subject, topic) => {
         Services.obs.removeObserver(observer, topic);
         logs.push("Database cleaned up");
         res(logs);
@@ -979,19 +977,6 @@ export var PlacesDBUtils = {
     }
 
     return logs;
-  },
-
-  /**
-   * Recalculates statistical data on the origin frecencies in the database.
-   *
-   * @return {Promise} resolves when statistics are collected.
-   */
-  originFrecencyStats() {
-    return new Promise(resolve => {
-      lazy.PlacesUtils.history.recalculateOriginFrecencyStats(() =>
-        resolve(["Recalculated origin frecency stats"])
-      );
-    });
   },
 
   /**
@@ -1392,9 +1377,9 @@ async function integrity(dbName) {
 export function PlacesDBUtilsIdleMaintenance() {}
 
 PlacesDBUtilsIdleMaintenance.prototype = {
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     switch (topic) {
-      case "idle-daily":
+      case "idle-daily": {
         // Once a week run places.sqlite maintenance tasks.
         let lastMaintenance = Services.prefs.getIntPref(
           "places.database.lastMaintenance",
@@ -1405,6 +1390,7 @@ PlacesDBUtilsIdleMaintenance.prototype = {
           PlacesDBUtils.maintenanceOnIdle();
         }
         break;
+      }
       default:
         throw new Error("Trying to handle an unknown category.");
     }

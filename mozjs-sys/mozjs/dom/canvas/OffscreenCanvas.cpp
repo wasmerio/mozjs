@@ -27,6 +27,7 @@
 #include "ImageBitmap.h"
 #include "ImageBitmapRenderingContext.h"
 #include "nsContentUtils.h"
+#include "nsProxyRelease.h"
 #include "WebGLChild.h"
 
 namespace mozilla::dom {
@@ -34,32 +35,47 @@ namespace mozilla::dom {
 OffscreenCanvasCloneData::OffscreenCanvasCloneData(
     OffscreenCanvasDisplayHelper* aDisplay, uint32_t aWidth, uint32_t aHeight,
     layers::LayersBackend aCompositorBackend, layers::TextureType aTextureType,
-    bool aNeutered, bool aIsWriteOnly)
+    bool aNeutered, bool aIsWriteOnly, nsIPrincipal* aExpandedReader)
     : mDisplay(aDisplay),
       mWidth(aWidth),
       mHeight(aHeight),
       mCompositorBackendType(aCompositorBackend),
       mTextureType(aTextureType),
       mNeutered(aNeutered),
-      mIsWriteOnly(aIsWriteOnly) {}
+      mIsWriteOnly(aIsWriteOnly),
+      mExpandedReader(aExpandedReader) {}
 
-OffscreenCanvasCloneData::~OffscreenCanvasCloneData() = default;
+OffscreenCanvasCloneData::~OffscreenCanvasCloneData() {
+  NS_ReleaseOnMainThread("OffscreenCanvasCloneData::mExpandedReader",
+                         mExpandedReader.forget());
+}
 
 OffscreenCanvas::OffscreenCanvas(nsIGlobalObject* aGlobal, uint32_t aWidth,
-                                 uint32_t aHeight,
-                                 layers::LayersBackend aCompositorBackend,
-                                 layers::TextureType aTextureType,
-                                 OffscreenCanvasDisplayHelper* aDisplay)
+                                 uint32_t aHeight)
+    : DOMEventTargetHelper(aGlobal), mWidth(aWidth), mHeight(aHeight) {}
+
+OffscreenCanvas::OffscreenCanvas(
+    nsIGlobalObject* aGlobal, uint32_t aWidth, uint32_t aHeight,
+    layers::LayersBackend aCompositorBackend, layers::TextureType aTextureType,
+    already_AddRefed<OffscreenCanvasDisplayHelper> aDisplay)
     : DOMEventTargetHelper(aGlobal),
-      mNeutered(false),
-      mIsWriteOnly(false),
       mWidth(aWidth),
       mHeight(aHeight),
       mCompositorBackendType(aCompositorBackend),
       mTextureType(aTextureType),
       mDisplay(aDisplay) {}
 
-OffscreenCanvas::~OffscreenCanvas() = default;
+OffscreenCanvas::~OffscreenCanvas() {
+  Destroy();
+  NS_ReleaseOnMainThread("OffscreenCanvas::mExpandedReader",
+                         mExpandedReader.forget());
+}
+
+void OffscreenCanvas::Destroy() {
+  if (mDisplay) {
+    mDisplay->DestroyCanvas();
+  }
+}
 
 JSObject* OffscreenCanvas::WrapObject(JSContext* aCx,
                                       JS::Handle<JSObject*> aGivenProto) {
@@ -88,16 +104,14 @@ already_AddRefed<OffscreenCanvas> OffscreenCanvas::Constructor(
   }
 
   nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
-  RefPtr<OffscreenCanvas> offscreenCanvas = new OffscreenCanvas(
-      global, aWidth, aHeight, layers::LayersBackend::LAYERS_NONE,
-      layers::TextureType::Unknown, nullptr);
+  RefPtr<OffscreenCanvas> offscreenCanvas =
+      new OffscreenCanvas(global, aWidth, aHeight);
   return offscreenCanvas.forget();
 }
 
 void OffscreenCanvas::SetWidth(uint32_t aWidth, ErrorResult& aRv) {
   if (mNeutered) {
-    aRv.ThrowInvalidStateError(
-        "Cannot set width of placeholder canvas transferred to worker.");
+    aRv.ThrowInvalidStateError("Cannot set width of detached OffscreenCanvas.");
     return;
   }
 
@@ -118,7 +132,7 @@ void OffscreenCanvas::SetWidth(uint32_t aWidth, ErrorResult& aRv) {
 void OffscreenCanvas::SetHeight(uint32_t aHeight, ErrorResult& aRv) {
   if (mNeutered) {
     aRv.ThrowInvalidStateError(
-        "Cannot set height of placeholder canvas transferred to worker.");
+        "Cannot set height of detached OffscreenCanvas.");
     return;
   }
 
@@ -136,6 +150,23 @@ void OffscreenCanvas::SetHeight(uint32_t aHeight, ErrorResult& aRv) {
   CanvasAttrChanged();
 }
 
+void OffscreenCanvas::SetSize(const nsIntSize& aSize, ErrorResult& aRv) {
+  if (mNeutered) {
+    aRv.ThrowInvalidStateError(
+        "Cannot set dimensions of detached OffscreenCanvas.");
+    return;
+  }
+
+  if (NS_WARN_IF(aSize.IsEmpty())) {
+    aRv.ThrowRangeError("OffscreenCanvas size is empty, must be non-empty.");
+    return;
+  }
+
+  mWidth = aSize.width;
+  mHeight = aSize.height;
+  CanvasAttrChanged();
+}
+
 void OffscreenCanvas::GetContext(
     JSContext* aCx, const OffscreenRenderingContextId& aContextId,
     JS::Handle<JS::Value> aContextOptions,
@@ -143,7 +174,7 @@ void OffscreenCanvas::GetContext(
   if (mNeutered) {
     aResult.SetNull();
     aRv.ThrowInvalidStateError(
-        "Cannot create context for placeholder canvas transferred to worker.");
+        "Cannot create context for detached OffscreenCanvas.");
     return;
   }
 
@@ -169,6 +200,27 @@ void OffscreenCanvas::GetContext(
       aResult.SetNull();
       aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);
       return;
+  }
+
+  // If we are on a worker, we need to give our OffscreenCanvasDisplayHelper
+  // object access to a worker ref so we can dispatch properly during painting
+  // if we need to flush our contents to its ImageContainer for display.
+  RefPtr<ThreadSafeWorkerRef> workerRef;
+  if (mDisplay) {
+    if (WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate()) {
+      RefPtr<StrongWorkerRef> strongRef = StrongWorkerRef::Create(
+          workerPrivate, "OffscreenCanvas::GetContext",
+          [display = mDisplay]() { display->DestroyCanvas(); });
+      if (NS_WARN_IF(!strongRef)) {
+        aResult.SetNull();
+        aRv.ThrowUnknownError("Worker shutting down");
+        return;
+      }
+
+      workerRef = new ThreadSafeWorkerRef(strongRef);
+    } else {
+      MOZ_ASSERT(NS_IsMainThread());
+    }
   }
 
   RefPtr<nsISupports> result = CanvasRenderingContextHelper::GetOrCreateContext(
@@ -212,7 +264,8 @@ void OffscreenCanvas::GetContext(
   }
 
   if (mDisplay) {
-    mDisplay->UpdateContext(mCurrentContextType, childId);
+    mDisplay->UpdateContext(this, std::move(workerRef), mCurrentContextType,
+                            childId);
   }
 }
 
@@ -220,9 +273,25 @@ already_AddRefed<nsICanvasRenderingContextInternal>
 OffscreenCanvas::CreateContext(CanvasContextType aContextType) {
   RefPtr<nsICanvasRenderingContextInternal> ret =
       CanvasRenderingContextHelper::CreateContext(aContextType);
+  if (NS_WARN_IF(!ret)) {
+    return nullptr;
+  }
 
   ret->SetOffscreenCanvas(this);
   return ret.forget();
+}
+
+Maybe<uint64_t> OffscreenCanvas::GetWindowID() {
+  if (NS_IsMainThread()) {
+    if (nsIGlobalObject* global = GetOwnerGlobal()) {
+      if (auto* window = global->GetAsInnerWindow()) {
+        return Some(window->WindowID());
+      }
+    }
+  } else if (auto* workerPrivate = GetCurrentThreadWorkerPrivate()) {
+    return Some(workerPrivate->WindowID());
+  }
+  return Nothing();
 }
 
 void OffscreenCanvas::UpdateDisplayData(
@@ -272,17 +341,50 @@ void OffscreenCanvas::CommitFrameToCompositor() {
   mDisplay->CommitFrameToCompositor(mCurrentContext, mTextureType, update);
 }
 
-OffscreenCanvasCloneData* OffscreenCanvas::ToCloneData() {
-  return new OffscreenCanvasCloneData(mDisplay, mWidth, mHeight,
-                                      mCompositorBackendType, mTextureType,
-                                      mNeutered, mIsWriteOnly);
+UniquePtr<OffscreenCanvasCloneData> OffscreenCanvas::ToCloneData(
+    JSContext* aCx) {
+  if (NS_WARN_IF(mNeutered)) {
+    ErrorResult rv;
+    rv.ThrowDataCloneError(
+        "Cannot clone OffscreenCanvas that is already transferred.");
+    MOZ_ALWAYS_TRUE(rv.MaybeSetPendingException(aCx));
+    return nullptr;
+  }
+
+  if (NS_WARN_IF(mCurrentContext)) {
+    ErrorResult rv;
+    rv.ThrowInvalidStateError("Cannot clone canvas with context.");
+    MOZ_ALWAYS_TRUE(rv.MaybeSetPendingException(aCx));
+    return nullptr;
+  }
+
+  // Check if we are using HTMLCanvasElement::captureStream. This is not
+  // defined by the spec yet, so it is better to fail now than implement
+  // something not compliant:
+  // https://github.com/w3c/mediacapture-fromelement/issues/65
+  // https://github.com/w3c/mediacapture-extensions/pull/26
+  // https://github.com/web-platform-tests/wpt/issues/21102
+  if (mDisplay && NS_WARN_IF(mDisplay->UsingElementCaptureStream())) {
+    ErrorResult rv;
+    rv.ThrowNotSupportedError(
+        "Cannot transfer OffscreenCanvas bound to element using "
+        "captureStream.");
+    MOZ_ALWAYS_TRUE(rv.MaybeSetPendingException(aCx));
+    return nullptr;
+  }
+
+  auto cloneData = MakeUnique<OffscreenCanvasCloneData>(
+      mDisplay, mWidth, mHeight, mCompositorBackendType, mTextureType,
+      mNeutered, mIsWriteOnly, mExpandedReader);
+  SetNeutered();
+  return cloneData;
 }
 
 already_AddRefed<ImageBitmap> OffscreenCanvas::TransferToImageBitmap(
     ErrorResult& aRv) {
   if (mNeutered) {
     aRv.ThrowInvalidStateError(
-        "Cannot get bitmap from placeholder canvas transferred to worker.");
+        "Cannot get bitmap from detached OffscreenCanvas.");
     return nullptr;
   }
 
@@ -374,7 +476,7 @@ already_AddRefed<Promise> OffscreenCanvas::ConvertToBlob(
 
   if (mNeutered) {
     aRv.ThrowInvalidStateError(
-        "Cannot get blob from placeholder canvas transferred to worker.");
+        "Cannot get blob from detached OffscreenCanvas.");
     return nullptr;
   }
 
@@ -428,7 +530,7 @@ already_AddRefed<Promise> OffscreenCanvas::ToBlob(JSContext* aCx,
 
   if (mNeutered) {
     aRv.ThrowInvalidStateError(
-        "Cannot get blob from placeholder canvas transferred to worker.");
+        "Cannot get blob from detached OffscreenCanvas.");
     return nullptr;
   }
 
@@ -463,6 +565,29 @@ already_AddRefed<gfx::SourceSurface> OffscreenCanvas::GetSurfaceSnapshot(
   return mCurrentContext->GetSurfaceSnapshot(aOutAlphaType);
 }
 
+void OffscreenCanvas::SetWriteOnly(RefPtr<nsIPrincipal>&& aExpandedReader) {
+  NS_ReleaseOnMainThread("OffscreenCanvas::mExpandedReader",
+                         mExpandedReader.forget());
+  mExpandedReader = std::move(aExpandedReader);
+  mIsWriteOnly = true;
+}
+
+bool OffscreenCanvas::CallerCanRead(nsIPrincipal& aPrincipal) const {
+  if (!mIsWriteOnly) {
+    return true;
+  }
+
+  // If mExpandedReader is set, this canvas was tainted only by
+  // mExpandedReader's resources. So allow reading if the subject
+  // principal subsumes mExpandedReader.
+  if (mExpandedReader && aPrincipal.Subsumes(mExpandedReader)) {
+    return true;
+  }
+
+  return nsContentUtils::PrincipalHasPermission(aPrincipal,
+                                                nsGkAtoms::all_urlsPermission);
+}
+
 bool OffscreenCanvas::ShouldResistFingerprinting(RFPTarget aTarget) const {
   return nsContentUtils::ShouldResistFingerprinting(GetOwnerGlobal(), aTarget);
 }
@@ -473,9 +598,12 @@ already_AddRefed<OffscreenCanvas> OffscreenCanvas::CreateFromCloneData(
   MOZ_ASSERT(aData);
   RefPtr<OffscreenCanvas> wc = new OffscreenCanvas(
       aGlobal, aData->mWidth, aData->mHeight, aData->mCompositorBackendType,
-      aData->mTextureType, aData->mDisplay);
+      aData->mTextureType, aData->mDisplay.forget());
   if (aData->mNeutered) {
     wc->SetNeutered();
+  }
+  if (aData->mIsWriteOnly) {
+    wc->SetWriteOnly(std::move(aData->mExpandedReader));
   }
   return wc.forget();
 }
@@ -493,7 +621,7 @@ NS_IMPL_ADDREF_INHERITED(OffscreenCanvas, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(OffscreenCanvas, DOMEventTargetHelper)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(OffscreenCanvas)
-  NS_INTERFACE_MAP_ENTRY(nsISupports)
+  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, EventTarget)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 }  // namespace mozilla::dom

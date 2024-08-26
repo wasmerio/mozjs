@@ -76,6 +76,41 @@ bool ContentCache::IsValid() const {
   return true;
 }
 
+void ContentCache::AssertIfInvalid() const {
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  if (IsValid()) {
+    return;
+  }
+
+  // This text will appear in the crash reports without any permissions.
+  // Do not use `ToString` here to avoid to expose unexpected data with
+  // changing the type or `operator<<()`.
+  nsPrintfCString info(
+      "ContentCache={ mText=%s, mSelection=%s, mCaret=%s, mTextRectArray=%s, "
+      "mCompositionStart=%s }\n",
+      // Don't expose mText.ref() value for protecting the user's privacy.
+      mText.isNothing()
+          ? "Nothing"
+          : nsPrintfCString("{ Length()=%zu }", mText->Length()).get(),
+      mSelection.isNothing()
+          ? "Nothing"
+          : nsPrintfCString("{ mAnchor=%u, mFocus=%u }", mSelection->mAnchor,
+                            mSelection->mFocus)
+                .get(),
+      mCaret.isNothing()
+          ? "Nothing"
+          : nsPrintfCString("{ mOffset=%u }", mCaret->mOffset).get(),
+      mTextRectArray.isNothing()
+          ? "Nothing"
+          : nsPrintfCString("{ Length()=%u }", mTextRectArray->Length()).get(),
+      mCompositionStart.isNothing()
+          ? "Nothing"
+          : nsPrintfCString("%u", mCompositionStart.value()).get());
+  CrashReporter::AppendAppNotesToCrashReport(info);
+  MOZ_DIAGNOSTIC_ASSERT(false, "Invalid ContentCache data");
+#endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
+}
+
 /*****************************************************************************
  * mozilla::ContentCacheInChild
  *****************************************************************************/
@@ -148,8 +183,8 @@ bool ContentCacheInChild::CacheAll(nsIWidget* aWidget,
 
   const bool textCached = CacheText(aWidget, aNotification);
   const bool editorRectCached = CacheEditorRect(aWidget, aNotification);
-  MOZ_DIAGNOSTIC_ASSERT(IsValid());
-  return textCached || editorRectCached;
+  AssertIfInvalid();
+  return (textCached || editorRectCached) && IsValid();
 }
 
 bool ContentCacheInChild::CacheSelection(nsIWidget* aWidget,
@@ -190,14 +225,15 @@ bool ContentCacheInChild::CacheSelection(nsIWidget* aWidget,
             ("0x%p CacheSelection(), FAILED, editable content had already been "
              "blurred",
              this));
-    MOZ_DIAGNOSTIC_ASSERT(IsValid());
+    AssertIfInvalid();
     return false;
   } else {
     mSelection.emplace(querySelectedTextEvent);
   }
 
-  return CacheCaretAndTextRects(aWidget, aNotification) ||
-         querySelectedTextEvent.Succeeded();
+  return (CacheCaretAndTextRects(aWidget, aNotification) ||
+          querySelectedTextEvent.Succeeded()) &&
+         IsValid();
 }
 
 bool ContentCacheInChild::CacheCaret(nsIWidget* aWidget,
@@ -232,8 +268,8 @@ bool ContentCacheInChild::CacheCaret(nsIWidget* aWidget,
   MOZ_LOG(sContentCacheLog, LogLevel::Info,
           ("0x%p   CacheCaret(), Succeeded, mSelection=%s, mCaret=%s", this,
            ToString(mSelection).c_str(), ToString(mCaret).c_str()));
-  MOZ_DIAGNOSTIC_ASSERT(IsValid());
-  return true;
+  AssertIfInvalid();
+  return IsValid();
 }
 
 bool ContentCacheInChild::CacheEditorRect(
@@ -277,8 +313,8 @@ bool ContentCacheInChild::CacheCaretAndTextRects(
 
   const bool caretCached = CacheCaret(aWidget, aNotification);
   const bool textRectsCached = CacheTextRects(aWidget, aNotification);
-  MOZ_DIAGNOSTIC_ASSERT(IsValid());
-  return caretCached || textRectsCached;
+  AssertIfInvalid();
+  return (caretCached || textRectsCached) && IsValid();
 }
 
 bool ContentCacheInChild::CacheText(nsIWidget* aWidget,
@@ -339,7 +375,7 @@ bool ContentCacheInChild::CacheText(nsIWidget* aWidget,
     mSelection.reset();
     mCaret.reset();
     mTextRectArray.reset();
-    MOZ_DIAGNOSTIC_ASSERT(IsValid());
+    AssertIfInvalid();
     return false;
   }
 
@@ -614,8 +650,8 @@ bool ContentCacheInChild::CacheTextRects(nsIWidget* aWidget,
        ToString(mTextRectArray).c_str(), ToString(mSelection).c_str(),
        ToString(mFirstCharRect).c_str(),
        ToString(mLastCommitStringTextRectArray).c_str()));
-  MOZ_DIAGNOSTIC_ASSERT(IsValid());
-  return true;
+  AssertIfInvalid();
+  return IsValid();
 }
 
 bool ContentCacheInChild::SetSelection(
@@ -650,7 +686,7 @@ bool ContentCacheInChild::SetSelection(
   CacheCaret(aWidget);
   CacheTextRects(aWidget);
 
-  return mSelection.isSome();
+  return mSelection.isSome() && IsValid();
 }
 
 /*****************************************************************************
@@ -658,8 +694,7 @@ bool ContentCacheInChild::SetSelection(
  *****************************************************************************/
 
 ContentCacheInParent::ContentCacheInParent(BrowserParent& aBrowserParent)
-    : ContentCache(),
-      mBrowserParent(aBrowserParent),
+    : mBrowserParent(aBrowserParent),
       mCommitStringByRequest(nullptr),
       mPendingCommitLength(0),
       mIsChildIgnoringCompositionEvents(false) {}

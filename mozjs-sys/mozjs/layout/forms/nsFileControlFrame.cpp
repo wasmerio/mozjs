@@ -48,9 +48,7 @@ NS_IMPL_FRAMEARENA_HELPERS(nsFileControlFrame)
 
 nsFileControlFrame::nsFileControlFrame(ComputedStyle* aStyle,
                                        nsPresContext* aPresContext)
-    : nsBlockFrame(aStyle, aPresContext, kClassID) {
-  AddStateBits(NS_BLOCK_FLOAT_MGR);
-}
+    : nsBlockFrame(aStyle, aPresContext, kClassID) {}
 
 void nsFileControlFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
                               nsIFrame* aPrevInFlow) {
@@ -59,8 +57,18 @@ void nsFileControlFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
   mMouseListener = new DnDListener(this);
 }
 
-void nsFileControlFrame::DestroyFrom(nsIFrame* aDestructRoot,
-                                     PostDestroyData& aPostDestroyData) {
+void nsFileControlFrame::Reflow(nsPresContext* aPresContext,
+                                ReflowOutput& aReflowOutput,
+                                const ReflowInput& aReflowInput,
+                                nsReflowStatus& aStatus) {
+  nsBlockFrame::Reflow(aPresContext, aReflowOutput, aReflowInput, aStatus);
+
+  // Form control frame should be monolithic, and cannot be split, so our reflow
+  // status should be fully-complete.
+  aStatus.Reset();
+}
+
+void nsFileControlFrame::Destroy(DestroyContext& aContext) {
   NS_ENSURE_TRUE_VOID(mContent);
 
   // Remove the events.
@@ -69,11 +77,11 @@ void nsFileControlFrame::DestroyFrom(nsIFrame* aDestructRoot,
     mContent->RemoveSystemEventListener(u"dragover"_ns, mMouseListener, false);
   }
 
-  aPostDestroyData.AddAnonymousContent(mTextContent.forget());
-  aPostDestroyData.AddAnonymousContent(mBrowseFilesOrDirs.forget());
+  aContext.AddAnonymousContent(mTextContent.forget());
+  aContext.AddAnonymousContent(mBrowseFilesOrDirs.forget());
 
   mMouseListener->ForgetFrame();
-  nsBlockFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
+  nsBlockFrame::Destroy(aContext);
 }
 
 static already_AddRefed<Element> MakeAnonButton(
@@ -283,9 +291,9 @@ nsFileControlFrame::DnDListener::HandleEvent(Event* aEvent) {
           nsContentUtils::DispatchInputEvent(inputElement);
       NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
                            "Failed to dispatch input event");
-      nsContentUtils::DispatchTrustedEvent(
-          inputElement->OwnerDoc(), static_cast<nsINode*>(inputElement),
-          u"change"_ns, CanBubble::eYes, Cancelable::eNo);
+      nsContentUtils::DispatchTrustedEvent(inputElement->OwnerDoc(),
+                                           inputElement, u"change"_ns,
+                                           CanBubble::eYes, Cancelable::eNo);
     }
   }
 

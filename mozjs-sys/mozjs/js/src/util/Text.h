@@ -305,8 +305,8 @@ inline void CopyAndInflateChars(char16_t* dst, const JS::Latin1Char* src,
 extern uint32_t OneUcs4ToUtf8Char(uint8_t* utf8Buffer, char32_t ucs4Char);
 
 extern size_t PutEscapedStringImpl(char* buffer, size_t size,
-                                   GenericPrinter* out, JSLinearString* str,
-                                   uint32_t quote);
+                                   GenericPrinter* out,
+                                   const JSLinearString* str, uint32_t quote);
 
 template <typename CharT>
 extern size_t PutEscapedStringImpl(char* buffer, size_t bufferSize,
@@ -322,8 +322,8 @@ extern size_t PutEscapedStringImpl(char* buffer, size_t bufferSize,
  * is null, just returns the length of the output. If quote is not 0, it must
  * be a single or double quote character that will quote the output.
  */
-inline size_t PutEscapedString(char* buffer, size_t size, JSLinearString* str,
-                               uint32_t quote) {
+inline size_t PutEscapedString(char* buffer, size_t size,
+                               const JSLinearString* str, uint32_t quote) {
   size_t n = PutEscapedStringImpl(buffer, size, nullptr, str, quote);
 
   /* PutEscapedStringImpl can only fail with a file. */
@@ -343,7 +343,7 @@ inline size_t PutEscapedString(char* buffer, size_t bufferSize,
   return n;
 }
 
-inline bool EscapedStringPrinter(GenericPrinter& out, JSLinearString* str,
+inline bool EscapedStringPrinter(GenericPrinter& out, const JSLinearString* str,
                                  uint32_t quote) {
   return PutEscapedStringImpl(nullptr, 0, &out, str, quote) != size_t(-1);
 }
@@ -355,18 +355,20 @@ bool ContainsFlag(const char* str, const char* flag);
 
 namespace unicode {
 
-/** Compute the number of code points in the valid UTF-8 range [begin, end). */
-extern size_t CountCodePoints(const mozilla::Utf8Unit* begin,
-                              const mozilla::Utf8Unit* end);
+/**
+ * Compute the number of UTF-16 code units in the valid UTF-8 range
+ * [begin, end).
+ */
+extern size_t CountUTF16CodeUnits(const mozilla::Utf8Unit* begin,
+                                  const mozilla::Utf8Unit* end);
 
 /**
- * Count the number of code points in [begin, end).
- *
- * Unlike the UTF-8 case above, consistent with legacy ECMAScript practice,
- * every sequence of 16-bit units is considered valid.  Lone surrogates are
- * treated as if they represented a code point of the same value.
+ * Count the number of UTF-16 code units in [begin, end).
  */
-extern size_t CountCodePoints(const char16_t* begin, const char16_t* end);
+inline size_t CountUTF16CodeUnits(const char16_t* begin, const char16_t* end) {
+  MOZ_ASSERT(begin <= end);
+  return end - begin;
+}
 
 }  // namespace unicode
 

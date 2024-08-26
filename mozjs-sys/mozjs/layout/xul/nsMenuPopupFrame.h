@@ -16,7 +16,6 @@
 #include "mozilla/StaticPrefs_ui.h"
 #include "mozilla/TimeStamp.h"
 #include "nsAtom.h"
-#include "nsGkAtoms.h"
 #include "nsCOMPtr.h"
 #include "nsIDOMEventListener.h"
 #include "nsXULPopupManager.h"
@@ -29,6 +28,7 @@ class nsIWidget;
 
 namespace mozilla {
 class PresShell;
+enum class WindowShadow : uint8_t;
 namespace dom {
 class KeyboardEvent;
 class XULButtonElement;
@@ -195,8 +195,7 @@ class nsMenuPopupFrame final : public nsBlockFrame {
                             int32_t aModType) override;
 
   // FIXME: This shouldn't run script (this can end up calling HidePopup).
-  MOZ_CAN_RUN_SCRIPT_BOUNDARY void DestroyFrom(
-      nsIFrame* aDestructRoot, PostDestroyData& aPostDestroyData) override;
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY void Destroy(DestroyContext&) override;
 
   bool HasRemoteContent() const;
 
@@ -220,7 +219,7 @@ class nsMenuPopupFrame final : public nsBlockFrame {
   MOZ_CAN_RUN_SCRIPT void EnsureActiveMenuListItemIsVisible();
 
   nsresult CreateWidgetForView(nsView* aView);
-  mozilla::StyleWindowShadow GetShadowStyle() const;
+  mozilla::WindowShadow GetShadowStyle() const;
 
   void DidSetComputedStyle(ComputedStyle* aOldStyle) override;
 
@@ -339,11 +338,13 @@ class nsMenuPopupFrame final : public nsBlockFrame {
   void MoveToAnchor(nsIContent* aAnchorContent, const nsAString& aPosition,
                     int32_t aXPos, int32_t aYPos, bool aAttributesOverride);
 
-  nsIScrollableFrame* GetScrollFrame() const;
+  mozilla::ScrollContainerFrame* GetScrollContainerFrame() const;
 
   void SetOverrideConstraintRect(const mozilla::CSSIntRect& aRect) {
     mOverrideConstraintRect = mozilla::CSSIntRect::ToAppUnits(aRect);
   }
+
+  bool IsConstrainedByLayout() const { return mConstrainedByLayout; }
 
   struct Rects {
     // For anchored popups, the anchor rectangle. For non-anchored popups, the
@@ -360,6 +361,7 @@ class nsMenuPopupFrame final : public nsBlockFrame {
     nscoord mAlignmentOffset = 0;
     bool mHFlip = false;
     bool mVFlip = false;
+    bool mConstrainedByLayout = false;
     // The client offset of our widget.
     mozilla::LayoutDeviceIntPoint mClientOffset;
     nsPoint mViewPoint;
@@ -536,7 +538,6 @@ class nsMenuPopupFrame final : public nsBlockFrame {
   int GetPopupAlignment() const { return mPopupAlignment; }
   int GetPopupAnchor() const { return mPopupAnchor; }
   FlipType GetFlipType() const { return mFlip; }
-  bool IsFlippedByLayout() const { return mHFlip || mVFlip; }
 
   void WidgetPositionOrSizeDidChange();
 
@@ -611,6 +612,8 @@ class nsMenuPopupFrame final : public nsBlockFrame {
   // The flip modes that were used when the popup was opened
   bool mHFlip = false;
   bool mVFlip = false;
+  // Whether layout has constrained this popup in some way.
+  bool mConstrainedByLayout = false;
 
   // Whether the most recent initialization of this menupopup happened via
   // InitializePopupAsNativeContextMenu.

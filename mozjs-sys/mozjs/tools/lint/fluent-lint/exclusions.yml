@@ -39,7 +39,6 @@ ID01:
         - update-checkForUpdatesButton
         - update-updateButton
         - update-checkingForUpdates
-        - update-adminDisabled
         - update-noUpdatesFound
         - update-otherInstanceHandlingUpdates
         - warningDesc-version
@@ -106,9 +105,6 @@ ID02:
         - find
         - new-tab
         - share
-        # toolkit/locales/en-US/toolkit/about/aboutPlugins.ftl
-        - file-dd
-        - path-dd
         # toolkit/locales/en-US/toolkit/about/aboutServiceWorkers.ftl
         - scope
         - waiting
@@ -145,13 +141,12 @@ CO01:
         # browser/locales/en-US/browser/browser.ftl
         - identity-custom-root
         - identity-description-custom-root2
-        # browser/locales/en-US/browser/migration.ftl
-        - import-from-firefox
         # browser/locales/en-US/browser/migrationWizard.ftl
         - migration-wizard-migrator-display-name-firefox
         # browser/locales/en-US/browser/newtab/onboarding.ftl
         - mr1-onboarding-welcome-image-caption
         - mr2022-onboarding-gratitude-subtitle
+        - onboarding-gratitude-security-and-privacy-subtitle
         # browser/locales/en-US/browser/policies/policies-descriptions.ftl
         - policy-DisableFirefoxScreenshots
         # browser/locales/en-US/browser/preferences/preferences.ftl
@@ -163,13 +158,14 @@ CO01:
         - about-debugging-browser-version-too-recent
         # devtools/client/locales/en-US/application.ftl
         - manifest-loaded-devtools-error
+        # devtools/shared/locales/en-US/webconsole-commands.ftl
+        - webconsole-commands-usage-block
         # toolkit/locales/en-US/toolkit/about/aboutAddons.ftl
         - addon-badge-line3
         - recommended-theme-1
+        - plugins-openh264-description
         # toolkit/locales/en-US/toolkit/about/aboutGlean.ftl
         - about-glean-description
-        # toolkit/locales/en-US/toolkit/about/aboutPlugins.ftl
-        - plugins-openh264-description
         # toolkit/locales/en-US/toolkit/about/aboutRights.ftl
         - rights-intro-point-1
         - rights-intro-point-2

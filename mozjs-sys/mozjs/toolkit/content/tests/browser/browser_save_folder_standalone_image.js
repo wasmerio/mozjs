@@ -43,13 +43,13 @@ async function clearHistoryAndWait() {
  */
 
 let MockFilePicker = SpecialPowers.MockFilePicker;
-MockFilePicker.init(window);
+MockFilePicker.init(window.browsingContext);
 
 add_task(async function () {
   const IMAGE_URL =
     "http://mochi.test:8888/browser/toolkit/content/tests/browser/doggy.png";
 
-  await BrowserTestUtils.withNewTab(IMAGE_URL, async function (browser) {
+  await BrowserTestUtils.withNewTab(IMAGE_URL, async function () {
     let tmpDir = FileUtils.getDir("TmpD", []);
     let dir = newDirectory();
     let downloadLastDir = new DownloadLastDir(null);

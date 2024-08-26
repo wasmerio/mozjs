@@ -8,6 +8,17 @@ Releases
    :glob:
    :hidden:
 
+   nss_3_101.rst
+   nss_3_100.rst
+   nss_3_99.rst
+   nss_3_98.rst
+   nss_3_97.rst
+   nss_3_96_1.rst
+   nss_3_96.rst
+   nss_3_95.rst
+   nss_3_94.rst
+   nss_3_93.rst
+   nss_3_92.rst
    nss_3_91_0.rst
    nss_3_90_0.rst
    nss_3_89_1.rst
@@ -55,27 +66,42 @@ Releases
 
 .. note::
 
-   **NSS 3.91.0** is the latest version of NSS.
-   Complete release notes are available here: :ref:`mozilla_projects_nss_nss_3_91_0_release_notes`
+   **NSS 3.101** is the latest version of NSS.
+   Complete release notes are available here: :ref:`mozilla_projects_nss_nss_3_101_release_notes`
 
-   **NSS 3.90.0 (ESR)** is the latest version of NSS.
-   Complete release notes are available here: :ref:`mozilla_projects_nss_nss_3_90_0_release_notes`
+   **NSS 3.90.2 (ESR)** is the latest version of NSS.
+   Complete release notes are available here: :ref:`mozilla_projects_nss_nss_3_90_2_release_notes`
 
 .. container::
 
-   Changes in 3.91 included in this release:
+   Changes in 3.101 included in this release:
 
- - Bug 1837431 - Implementation of the HW support check for ADX instruction
- - Bug 1836925 - Removing the support of Curve25519
- - Bug 1839795 - Fix comment about the addition of ticketSupportsEarlyData.
- - Bug 1839327 - Adding args to enable-legacy-db build
- - Bug 1835357 dbtests.sh failure in "certutil dump keys with explicit default trust flags"
- - Bug 1837617: Initialize flags in slot structures
- - Bug 1835425: Improve the length check of RSA input to avoid heap overflow
- - Bug 1829112 - Followup Fixes
- - Bug 1784253: avoid processing unexpected inputs by checking for m_exptmod base sign
- - Bug 1826652: add a limit check on order_k to avoid infinite loop
- - Bug 1834851 - Update HACL* to commit 5f6051d2.
- - Bug 1753026 - add SHA3 to cryptohi and softoken.
- - Bug 1753026: HACL SHA3
- - Bug 1836781 - Disabling ASM C25519 for A but X86_64
+   - Bug 1900413 - add diagnostic assertions for SFTKObject refcount. 
+   - Bug 1899759 - freeing the slot in DeleteCertAndKey if authentication failed
+   - Bug 1899883 - fix formatting issues. 
+   - Bug 1889671 - Add Firmaprofesional CA Root-A Web to NSS.
+   - Bug 1899593 - remove invalid acvp fuzz test vectors. 
+   - Bug 1898830 - pad short P-384 and P-521 signatures gtests.
+   - Bug 1898627 - remove unused FreeBL ECC code. r=rrelyea
+   - Bug 1898830 - pad short P-384 and P-521 signatures. 
+   - Bug 1898825 - be less strict about ECDSA private key length. 
+   - Bug 1854439 - Integrate HACL* P-521. 
+   - Bug 1854438 - Integrate HACL* P-384. 
+   - Bug 1898074 - memory leak in create_objects_from_handles. 
+   - Bug 1898858 - ensure all input is consumed in a few places in mozilla::pkix 
+   - Bug 1884444 - SMIME/CMS and PKCS #12 do not integrate with modern NSS policy 
+   - Bug 1748105 - clean up escape handling 
+   - Bug 1896353 - Use lib::pkix as default validator instead of the old-one 
+   - Bug 1827444 - Need to add high level support for PQ signing.
+   - Bug 1548723 - Certificate Compression: changing the allocation/freeing of buffer + Improving the documentation 
+   - Bug 1884444 - SMIME/CMS and PKCS #12 do not integrate with modern NSS policy
+   - Bug 1893404 - Allow for non-full length ecdsa signature when using softoken
+   - Bug 1830415 - Modification of .taskcluster.yml due to mozlint indent defects
+   - Bug 1793811 - Implement support for PBMAC1 in PKCS#12 
+   - Bug 1897487 - disable VLA warnings for fuzz builds.
+   - Bug 1895032 - remove redundant AllocItem implementation. 
+   - Bug 1893334 - add PK11_ReadDistrustAfterAttribute. 
+   - Bug 215997  - Clang-formatting of SEC_GetMgfTypeByOidTag update
+   - Bug 1895012 - Set SEC_ERROR_LIBRARY_FAILURE on self-test failure
+   - Bug 1894572 - sftk_getParameters(): Fix fallback to default variable after error with configfile. 
+   - Bug 1830415 - Switch to the mozillareleases/image_builder image

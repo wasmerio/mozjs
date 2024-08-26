@@ -13,7 +13,9 @@
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
 
+#include "modules/portal/pipewire_utils.h"
 #include "modules/portal/xdg_desktop_portal_utils.h"
+#include "rtc_base/synchronization/mutex.h"
 
 namespace webrtc {
 
@@ -31,7 +33,8 @@ class CameraPortalPrivate {
   void Start();
 
  private:
-  void OnPortalDone(xdg_portal::RequestResponse result, int fd = -1);
+  void OnPortalDone(xdg_portal::RequestResponse result,
+                    int fd = kInvalidPipeWireFd);
 
   static void OnProxyRequested(GObject* object,
                                GAsyncResult* result,
@@ -52,7 +55,9 @@ class CameraPortalPrivate {
                              GAsyncResult* result,
                              gpointer user_data);
 
-  CameraPortal::PortalNotifier* notifier_ = nullptr;
+  webrtc::Mutex notifier_lock_;
+  CameraPortal::PortalNotifier* notifier_ RTC_GUARDED_BY(&notifier_lock_) =
+      nullptr;
 
   GDBusConnection* connection_ = nullptr;
   GDBusProxy* proxy_ = nullptr;
@@ -64,6 +69,11 @@ CameraPortalPrivate::CameraPortalPrivate(CameraPortal::PortalNotifier* notifier)
     : notifier_(notifier) {}
 
 CameraPortalPrivate::~CameraPortalPrivate() {
+  {
+    webrtc::MutexLock lock(&notifier_lock_);
+    notifier_ = nullptr;
+  }
+
   if (access_request_signal_id_) {
     g_dbus_connection_signal_unsubscribe(connection_,
                                          access_request_signal_id_);
@@ -216,7 +226,7 @@ void CameraPortalPrivate::OnOpenResponse(GDBusProxy* proxy,
 
   int fd = g_unix_fd_list_get(outlist.get(), index, error.receive());
 
-  if (fd == -1) {
+  if (fd == kInvalidPipeWireFd) {
     RTC_LOG(LS_ERROR) << "Failed to get file descriptor from the list: "
                       << error->message;
     that->OnPortalDone(RequestResponse::kError);
@@ -227,7 +237,11 @@ void CameraPortalPrivate::OnOpenResponse(GDBusProxy* proxy,
 }
 
 void CameraPortalPrivate::OnPortalDone(RequestResponse result, int fd) {
-  notifier_->OnCameraRequestResult(result, fd);
+  webrtc::MutexLock lock(&notifier_lock_);
+  if (notifier_) {
+    notifier_->OnCameraRequestResult(result, fd);
+    notifier_ = nullptr;
+  }
 }
 
 CameraPortal::CameraPortal(PortalNotifier* notifier)

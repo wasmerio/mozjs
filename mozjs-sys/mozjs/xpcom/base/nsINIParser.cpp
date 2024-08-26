@@ -10,6 +10,7 @@
 #include "nsIFile.h"
 #include "nsINIParser.h"
 #include "mozilla/ResultExtensions.h"
+#include "mozilla/Try.h"
 #include "mozilla/URLPreloader.h"
 
 using namespace mozilla;
@@ -242,7 +243,6 @@ nsresult nsINIParser::DeleteString(const char* aSection, const char* aKey) {
       mSections.Remove(aSection);
     } else {
       mSections.InsertOrUpdate(aSection, std::move(val->next));
-      delete val;
     }
     return NS_OK;
   }

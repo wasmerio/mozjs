@@ -13,11 +13,33 @@
 
 .highlight-icon {
   content: url("chrome://global/skin/icons/defaultFavicon.svg");
+  color: var(--icon-color);
   fill: currentColor;
   -moz-context-properties: fill;
   grid-row-start: 1;
   grid-column-start: 1;
+
+  &.price {
+    content: url("chrome://browser/content/shopping/assets/price.svg");
+  }
+
+  &.quality {
+    content: url("chrome://browser/content/shopping/assets/quality.svg");
+  }
+
+  &.shipping {
+    content: url("chrome://browser/content/shopping/assets/shipping.svg");
+  }
+
+  &.competitiveness {
+    content: url("chrome://browser/content/shopping/assets/competitiveness.svg");
+  }
+
+  &.packaging\/appearance {
+    content: url("chrome://browser/content/shopping/assets/packaging.svg");
+  }
 }
+
 .highlight-label {
   font-weight: 590;
   grid-column-start: 2;
@@ -38,5 +60,7 @@
 }
 
 .highlight-details-list > li {
+  /* Render LTR since English review snippets are only supported at this time. */
+  direction: ltr;
   margin: 1em 0;
 }

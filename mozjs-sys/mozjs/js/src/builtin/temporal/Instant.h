@@ -69,15 +69,12 @@ bool IsValidEpochNanoseconds(const JS::BigInt* epochNanoseconds);
  */
 bool IsValidEpochInstant(const Instant& instant);
 
+#ifdef DEBUG
 /**
  * Return true if the input is within the valid instant span limits.
  */
 bool IsValidInstantSpan(const InstantSpan& span);
-
-/**
- * Return true if the input is within the valid instant span limits.
- */
-bool IsValidInstantSpan(const JS::BigInt* nanoseconds);
+#endif
 
 /**
  * Convert a BigInt to an instant. The input must be a valid epoch nanoseconds
@@ -86,20 +83,9 @@ bool IsValidInstantSpan(const JS::BigInt* nanoseconds);
 Instant ToInstant(const JS::BigInt* epochNanoseconds);
 
 /**
- * Convert a BigInt to an instant span. The input must be a valid epoch
- * nanoseconds span value.
- */
-InstantSpan ToInstantSpan(const JS::BigInt* nanoseconds);
-
-/**
  * Convert an instant to a BigInt. The input must be a valid epoch instant.
  */
 JS::BigInt* ToEpochNanoseconds(JSContext* cx, const Instant& instant);
-
-/**
- * Convert an instant span to a BigInt. The input must be a valid instant span.
- */
-JS::BigInt* ToEpochNanoseconds(JSContext* cx, const InstantSpan& instant);
 
 /**
  * ToTemporalInstant ( item )
@@ -110,8 +96,8 @@ Wrapped<InstantObject*> ToTemporalInstant(JSContext* cx,
 /**
  * ToTemporalInstant ( item )
  */
-bool ToTemporalInstantEpochInstant(JSContext* cx, JS::Handle<JS::Value> item,
-                                   Instant* result);
+bool ToTemporalInstant(JSContext* cx, JS::Handle<JS::Value> item,
+                       Instant* result);
 
 /**
  * CreateTemporalInstant ( epochNanoseconds [ , newTarget ] )
@@ -120,32 +106,37 @@ InstantObject* CreateTemporalInstant(JSContext* cx, const Instant& instant);
 
 /**
  * GetUTCEpochNanoseconds ( year, month, day, hour, minute, second, millisecond,
- * microsecond, nanosecond )
+ * microsecond, nanosecond [ , offsetNanoseconds ] )
  */
 Instant GetUTCEpochNanoseconds(const PlainDateTime& dateTime);
 
 /**
+ * GetUTCEpochNanoseconds ( year, month, day, hour, minute, second, millisecond,
+ * microsecond, nanosecond [ , offsetNanoseconds ] )
+ */
+Instant GetUTCEpochNanoseconds(const PlainDateTime& dateTime,
+                               const InstantSpan& offsetNanoseconds);
+
+/**
  * RoundTemporalInstant ( ns, increment, unit, roundingMode )
  */
-bool RoundTemporalInstant(JSContext* cx, const Instant& ns, Increment increment,
-                          TemporalUnit unit, TemporalRoundingMode roundingMode,
-                          Instant* result);
+Instant RoundTemporalInstant(const Instant& ns, Increment increment,
+                             TemporalUnit unit,
+                             TemporalRoundingMode roundingMode);
 
 /**
- * AddInstant ( epochNanoseconds, hours, minutes, seconds, milliseconds,
- * microseconds, nanoseconds )
+ * AddInstant ( epochNanoseconds, norm )
  */
-bool AddInstant(JSContext* cx, const Instant& instant, const Duration& duration,
-                Instant* result);
+bool AddInstant(JSContext* cx, const Instant& instant,
+                const NormalizedTimeDuration& duration, Instant* result);
 
 /**
- * DifferenceInstant ( ns1, ns2, roundingIncrement, smallestUnit, largestUnit,
- * roundingMode )
+ * DifferenceInstant ( ns1, ns2, roundingIncrement, smallestUnit, roundingMode )
  */
-bool DifferenceInstant(JSContext* cx, const Instant& ns1, const Instant& ns2,
-                       Increment roundingIncrement, TemporalUnit smallestUnit,
-                       TemporalUnit largestUnit,
-                       TemporalRoundingMode roundingMode, Duration* result);
+NormalizedTimeDuration DifferenceInstant(const Instant& ns1, const Instant& ns2,
+                                         Increment roundingIncrement,
+                                         TemporalUnit smallestUnit,
+                                         TemporalRoundingMode roundingMode);
 
 } /* namespace js::temporal */
 

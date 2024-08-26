@@ -58,7 +58,7 @@ void TestGC::Run(int aNumSlices) {
   for (int slice = 0; slice < aNumSlices; slice++) {
     EXPECT_TRUE(mScheduler.InIncrementalGC());
     TimeStamp idleDeadline = Now() + kTenthSecond;
-    js::SliceBudget budget =
+    JS::SliceBudget budget =
         mScheduler.ComputeInterSliceGCBudget(idleDeadline, Now());
     TimeDuration budgetDuration =
         TimeDuration::FromMilliseconds(budget.timeBudget());
@@ -154,7 +154,7 @@ void TestCC::TimerFires(int aNumSlices) {
 void TestCC::ForgetSkippable() {
   uint32_t suspectedBefore = sSuspected;
   // ...ForgetSkippable would happen here...
-  js::SliceBudget budget =
+  JS::SliceBudget budget =
       mScheduler.ComputeForgetSkippableBudget(Now(), Now() + kTenthSecond);
   EXPECT_NEAR(budget.timeBudget(), kTenthSecond.ToMilliseconds(), 1);
   AdvanceTime(kTenthSecond);
@@ -213,7 +213,7 @@ void TestIdleCC::RunSlice(TimeStamp aCCStartTime, TimeStamp aPrevSliceEnd,
 
   EXPECT_FALSE(mScheduler.InIncrementalGC());
   bool preferShorter;
-  js::SliceBudget budget = mScheduler.ComputeCCSliceBudget(
+  JS::SliceBudget budget = mScheduler.ComputeCCSliceBudget(
       idleDeadline, aCCStartTime, aPrevSliceEnd, Now(), &preferShorter);
   // The scheduler will set the budget to our deadline (0.1sec in the future).
   EXPECT_NEAR(budget.timeBudget(), kTenthSecond.ToMilliseconds(), 1);
@@ -252,7 +252,7 @@ void TestNonIdleCC::RunSlice(TimeStamp aCCStartTime, TimeStamp aPrevSliceEnd,
   EXPECT_FALSE(mScheduler.InIncrementalGC());
 
   bool preferShorter;
-  js::SliceBudget budget = mScheduler.ComputeCCSliceBudget(
+  JS::SliceBudget budget = mScheduler.ComputeCCSliceBudget(
       nullDeadline, aCCStartTime, aPrevSliceEnd, Now(), &preferShorter);
   if (aSliceNum == 0) {
     // First slice of the CC, so always use the baseBudget which is
@@ -265,9 +265,9 @@ void TestNonIdleCC::RunSlice(TimeStamp aCCStartTime, TimeStamp aPrevSliceEnd,
   } else if (aSliceNum == 2) {
     // We're not overrunning kMaxICCDuration, so we don't go unlimited.
     EXPECT_FALSE(budget.isUnlimited());
-    // This slice is delayed by twice the allowed amount. Slice time should be
-    // doubled.
-    EXPECT_NEAR(budget.timeBudget(), kICCSliceBudget.ToMilliseconds() * 2, 0.1);
+    // This slice is delayed, slice time should be increased.
+    EXPECT_NEAR(budget.timeBudget(),
+                MainThreadIdlePeriod::GetLongIdlePeriod() / 2, 0.1);
   } else {
     // We're not overrunning kMaxICCDuration, so we don't go unlimited.
     EXPECT_FALSE(budget.isUnlimited());

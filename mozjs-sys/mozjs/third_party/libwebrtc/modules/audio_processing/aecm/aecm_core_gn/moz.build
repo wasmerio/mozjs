@@ -18,7 +18,7 @@ DEFINES["WEBRTC_MOZILLA_BUILD"] = True
 DEFINES["WEBRTC_NON_STATIC_TRACE_EVENT_HANDLERS"] = "0"
 DEFINES["WEBRTC_STRICT_FIELD_TRIALS"] = "0"
 
-FINAL_LIBRARY = "webrtc"
+FINAL_LIBRARY = "xul"
 
 
 LOCAL_INCLUDES += [
@@ -32,7 +32,6 @@ LOCAL_INCLUDES += [
 
 SOURCES += [
     "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core.cc",
-    "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc",
     "/third_party/libwebrtc/modules/audio_processing/aecm/echo_control_mobile.cc"
 ]
 
@@ -53,7 +52,7 @@ if CONFIG["OS_TARGET"] == "Android":
     DEFINES["HAVE_SYS_UIO_H"] = True
     DEFINES["WEBRTC_ANDROID"] = True
     DEFINES["WEBRTC_ANDROID_OPENSLES"] = True
-    DEFINES["WEBRTC_ENABLE_AVX2"] = True
+    DEFINES["WEBRTC_ENABLE_LIBEVENT"] = True
     DEFINES["WEBRTC_LINUX"] = True
     DEFINES["WEBRTC_POSIX"] = True
     DEFINES["_GNU_SOURCE"] = True
@@ -64,15 +63,22 @@ if CONFIG["OS_TARGET"] == "Android":
         "log"
     ]
 
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc"
+    ]
+
 if CONFIG["OS_TARGET"] == "Darwin":
 
-    DEFINES["WEBRTC_ENABLE_AVX2"] = True
     DEFINES["WEBRTC_MAC"] = True
     DEFINES["WEBRTC_POSIX"] = True
     DEFINES["_LIBCPP_HAS_NO_ALIGNED_ALLOCATION"] = True
     DEFINES["__ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES"] = "0"
     DEFINES["__STDC_CONSTANT_MACROS"] = True
     DEFINES["__STDC_FORMAT_MACROS"] = True
+
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc"
+    ]
 
 if CONFIG["OS_TARGET"] == "Linux":
 
@@ -81,6 +87,7 @@ if CONFIG["OS_TARGET"] == "Linux":
     DEFINES["USE_NSS_CERTS"] = "1"
     DEFINES["USE_OZONE"] = "1"
     DEFINES["USE_UDEV"] = True
+    DEFINES["WEBRTC_ENABLE_LIBEVENT"] = True
     DEFINES["WEBRTC_LINUX"] = True
     DEFINES["WEBRTC_POSIX"] = True
     DEFINES["_FILE_OFFSET_BITS"] = "64"
@@ -99,7 +106,7 @@ if CONFIG["OS_TARGET"] == "OpenBSD":
     DEFINES["USE_OZONE"] = "1"
     DEFINES["USE_X11"] = "1"
     DEFINES["WEBRTC_BSD"] = True
-    DEFINES["WEBRTC_ENABLE_AVX2"] = True
+    DEFINES["WEBRTC_ENABLE_LIBEVENT"] = True
     DEFINES["WEBRTC_POSIX"] = True
     DEFINES["_FILE_OFFSET_BITS"] = "64"
     DEFINES["_LARGEFILE64_SOURCE"] = True
@@ -107,15 +114,19 @@ if CONFIG["OS_TARGET"] == "OpenBSD":
     DEFINES["__STDC_CONSTANT_MACROS"] = True
     DEFINES["__STDC_FORMAT_MACROS"] = True
 
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc"
+    ]
+
 if CONFIG["OS_TARGET"] == "WINNT":
 
     DEFINES["CERT_CHAIN_PARA_HAS_EXTRA_FIELDS"] = True
     DEFINES["NOMINMAX"] = True
     DEFINES["NTDDI_VERSION"] = "0x0A000000"
     DEFINES["PSAPI_VERSION"] = "2"
+    DEFINES["RTC_ENABLE_WIN_WGC"] = True
     DEFINES["UNICODE"] = True
     DEFINES["USE_AURA"] = "1"
-    DEFINES["WEBRTC_ENABLE_AVX2"] = True
     DEFINES["WEBRTC_WIN"] = True
     DEFINES["WIN32"] = True
     DEFINES["WIN32_LEAN_AND_MEAN"] = True
@@ -141,7 +152,11 @@ if CONFIG["OS_TARGET"] == "WINNT":
         "winmm"
     ]
 
-if CONFIG["CPU_ARCH"] == "aarch64":
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc"
+    ]
+
+if CONFIG["TARGET_CPU"] == "aarch64":
 
     DEFINES["WEBRTC_ARCH_ARM64"] = True
     DEFINES["WEBRTC_HAS_NEON"] = True
@@ -150,7 +165,7 @@ if CONFIG["CPU_ARCH"] == "aarch64":
         "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_neon.cc"
     ]
 
-if CONFIG["CPU_ARCH"] == "arm":
+if CONFIG["TARGET_CPU"] == "arm":
 
     CXXFLAGS += [
         "-mfpu=neon"
@@ -163,6 +178,38 @@ if CONFIG["CPU_ARCH"] == "arm":
     SOURCES += [
         "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_neon.cc"
     ]
+
+if CONFIG["TARGET_CPU"] == "mips32":
+
+    DEFINES["MIPS32_LE"] = True
+    DEFINES["MIPS_FPU_LE"] = True
+    DEFINES["_GNU_SOURCE"] = True
+
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_mips.cc"
+    ]
+
+if CONFIG["TARGET_CPU"] == "mips64":
+
+    DEFINES["_GNU_SOURCE"] = True
+
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc"
+    ]
+
+if CONFIG["TARGET_CPU"] == "ppc64":
+
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc"
+    ]
+
+if CONFIG["TARGET_CPU"] == "x86":
+
+    DEFINES["WEBRTC_ENABLE_AVX2"] = True
+
+if CONFIG["TARGET_CPU"] == "x86_64":
+
+    DEFINES["WEBRTC_ENABLE_AVX2"] = True
 
 if CONFIG["MOZ_DEBUG"] == "1" and CONFIG["OS_TARGET"] == "Android":
 
@@ -188,45 +235,58 @@ if CONFIG["MOZ_X11"] == "1" and CONFIG["OS_TARGET"] == "Linux":
 
     DEFINES["USE_X11"] = "1"
 
-if CONFIG["CPU_ARCH"] == "arm" and CONFIG["OS_TARGET"] == "Android":
+if CONFIG["OS_TARGET"] == "Android" and CONFIG["TARGET_CPU"] == "arm":
 
     OS_LIBS += [
-        "android_support",
         "unwind"
     ]
 
-if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "Android":
+if CONFIG["OS_TARGET"] == "Android" and CONFIG["TARGET_CPU"] == "x86":
 
     CXXFLAGS += [
         "-msse2"
     ]
 
-    OS_LIBS += [
-        "android_support"
+if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "aarch64":
+
+    DEFINES["_GNU_SOURCE"] = True
+
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc"
     ]
 
-if CONFIG["CPU_ARCH"] == "aarch64" and CONFIG["OS_TARGET"] == "Linux":
+if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "arm":
 
-    DEFINES["WEBRTC_ENABLE_AVX2"] = True
     DEFINES["_GNU_SOURCE"] = True
 
-if CONFIG["CPU_ARCH"] == "arm" and CONFIG["OS_TARGET"] == "Linux":
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc"
+    ]
 
-    DEFINES["WEBRTC_ENABLE_AVX2"] = True
-    DEFINES["_GNU_SOURCE"] = True
+if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "riscv64":
 
-if CONFIG["CPU_ARCH"] == "x86" and CONFIG["OS_TARGET"] == "Linux":
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc"
+    ]
+
+if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "x86":
 
     CXXFLAGS += [
         "-msse2"
     ]
 
-    DEFINES["WEBRTC_ENABLE_AVX2"] = True
     DEFINES["_GNU_SOURCE"] = True
 
-if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "Linux":
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc"
+    ]
 
-    DEFINES["WEBRTC_ENABLE_AVX2"] = True
+if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "x86_64":
+
     DEFINES["_GNU_SOURCE"] = True
+
+    SOURCES += [
+        "/third_party/libwebrtc/modules/audio_processing/aecm/aecm_core_c.cc"
+    ]
 
 Library("aecm_core_gn")

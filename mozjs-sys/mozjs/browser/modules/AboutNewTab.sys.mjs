@@ -7,9 +7,9 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  ActivityStream: "resource://activity-stream/lib/ActivityStream.jsm",
-  ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
+ChromeUtils.defineESModuleGetters(lazy, {
+  ActivityStream: "resource://activity-stream/lib/ActivityStream.sys.mjs",
+  ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
 });
 
 const ABOUT_URL = "about:newtab";
@@ -227,7 +227,7 @@ export const AboutNewTab = {
 
   // nsIObserver implementation
 
-  observe(subject, topic, data) {
+  observe(subject, topic) {
     switch (topic) {
       case TOPIC_APP_QUIT: {
         // We defer to this to the next tick of the event loop since the

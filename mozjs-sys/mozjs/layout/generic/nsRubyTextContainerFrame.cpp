@@ -47,15 +47,6 @@ nsresult nsRubyTextContainerFrame::GetFrameName(nsAString& aResult) const {
 #endif
 
 /* virtual */
-bool nsRubyTextContainerFrame::IsFrameOfType(uint32_t aFlags) const {
-  if (aFlags & (eSupportsCSSTransforms | eSupportsContainLayoutAndPaint |
-                eSupportsAspectRatio)) {
-    return false;
-  }
-  return nsContainerFrame::IsFrameOfType(aFlags);
-}
-
-/* virtual */
 void nsRubyTextContainerFrame::SetInitialChildList(ChildListID aListID,
                                                    nsFrameList&& aChildList) {
   nsContainerFrame::SetInitialChildList(aListID, std::move(aChildList));
@@ -81,9 +72,10 @@ void nsRubyTextContainerFrame::InsertFrames(
 }
 
 /* virtual */
-void nsRubyTextContainerFrame::RemoveFrame(ChildListID aListID,
+void nsRubyTextContainerFrame::RemoveFrame(DestroyContext& aContext,
+                                           ChildListID aListID,
                                            nsIFrame* aOldFrame) {
-  nsContainerFrame::RemoveFrame(aListID, aOldFrame);
+  nsContainerFrame::RemoveFrame(aContext, aListID, aOldFrame);
   UpdateSpanFlag();
 }
 
@@ -113,7 +105,6 @@ void nsRubyTextContainerFrame::Reflow(nsPresContext* aPresContext,
                                       nsReflowStatus& aStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsRubyTextContainerFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   // Although a ruby text container may have continuations, returning

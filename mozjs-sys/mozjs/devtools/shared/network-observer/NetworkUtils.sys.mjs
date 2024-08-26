@@ -2,16 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
-ChromeUtils.defineESModuleGetters(lazy, {
-  NetworkHelper:
-    "resource://devtools/shared/network-observer/NetworkHelper.sys.mjs",
-});
+ChromeUtils.defineESModuleGetters(
+  lazy,
+  {
+    NetworkHelper:
+      "resource://devtools/shared/network-observer/NetworkHelper.sys.mjs",
+  },
+  { global: "contextual" }
+);
 
-XPCOMUtils.defineLazyGetter(lazy, "tpFlagsMask", () => {
+ChromeUtils.defineLazyGetter(lazy, "tpFlagsMask", () => {
   const trackingProtectionLevel2Enabled = Services.prefs
     .getStringPref("urlclassifier.trackingTable")
     .includes("content-track-digest256");
@@ -88,10 +90,10 @@ function isChannelFromSystemPrincipal(channel) {
   // WindowGlobal which is available on the BrowsingContext
   if (!principal) {
     principal = CanonicalBrowsingContext.isInstance(browsingContext)
-      ? browsingContext.currentWindowGlobal.documentPrincipal
+      ? browsingContext.currentWindowGlobal?.documentPrincipal
       : browsingContext.window.document.nodePrincipal;
   }
-  return principal.isSystemPrincipal;
+  return principal?.isSystemPrincipal;
 }
 
 /**
@@ -101,6 +103,13 @@ function isChannelFromSystemPrincipal(channel) {
  * @returns {number}
  */
 function getChannelBrowsingContextID(channel) {
+  // `frameBrowsingContextID` is non-0 if the channel is loading an iframe.
+  // If available, use it instead of `browsingContextID` which is exceptionally
+  // set to the parent's BrowsingContext id for such channels.
+  if (channel.loadInfo.frameBrowsingContextID) {
+    return channel.loadInfo.frameBrowsingContextID;
+  }
+
   if (channel.loadInfo.browsingContextID) {
     return channel.loadInfo.browsingContextID;
   }
@@ -209,6 +218,10 @@ function getChannelPriority(channel) {
  * @returns {string}
  */
 function getHttpVersion(channel) {
+  if (!(channel instanceof Ci.nsIHttpChannelInternal)) {
+    return null;
+  }
+
   // Determine the HTTP version.
   const httpVersionMaj = {};
   const httpVersionMin = {};
@@ -461,7 +474,7 @@ function fetchResponseHeadersAndCookies(channel) {
  * Check if a given network request should be logged by a network monitor
  * based on the specified filters.
  *
- * @param nsIHttpChannel channel
+ * @param {(nsIHttpChannel|nsIFileChannel)} channel
  *        Request to check.
  * @param filters
  *        NetworkObserver filters to match against. An object with one of the following attributes:
@@ -492,6 +505,13 @@ function matchRequest(channel, filters) {
         Services.scriptSecurityManager.getSystemPrincipal() ||
         channel.loadInfo.isInDevToolsContext)
     ) {
+      return false;
+    }
+
+    // When a page fails loading in top level or in iframe, an error page is shown
+    // which will trigger a request to about:neterror (which is translated into a file:// URI request).
+    // Ignore this request in regular toolbox (but not in the browser toolbox).
+    if (channel.loadInfo?.loadErrorPage) {
       return false;
     }
 
@@ -657,6 +677,11 @@ function getBlockedReason(channel, fromCache = false) {
   return { blockingExtension, blockedReason };
 }
 
+function getCharset(channel) {
+  const win = lazy.NetworkHelper.getWindowForRequest(channel);
+  return win ? win.document.characterSet : null;
+}
+
 export const NetworkUtils = {
   causeTypeToString,
   fetchRequestHeadersAndCookies,
@@ -679,4 +704,5 @@ export const NetworkUtils = {
   matchRequest,
   stringToCauseType,
   getBlockedReason,
+  getCharset,
 };

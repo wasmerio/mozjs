@@ -1,144 +1,209 @@
-From: Andreas Pehrson <apehrson@mozilla.com>
-Date: Tue, 23 May 2023 06:14:00 +0000
-Subject: Bug 1832751 - cherry-pick upstream libwebrtc commit 3da04a93cd.
- r=webrtc-reviewers,mjf
+From: Jan Grulich <jgrulich@redhat.com>
+Date: Tue, 21 May 2024 06:27:00 +0000
+Subject: Bug 1896575 - WebRTC backport: Video capture PipeWire: drop corrupted
+ PipeWire buffers r=pehrsons,webrtc-reviewers
 
-Upstream commit: https://webrtc.googlesource.com/src/+/3da04a93cd18dc7b65c6756910cc8a9cbf20fb8c
-    Allow SequenceChecker to be initialized detached.
+This is a simple backport of an WebRTC upstream change.
 
-    The motivation for this is to not have to implement this pattern:
+Upstream commit: cfbd6b0884db2eab893831e7bde5cfe640fe52db
 
-    foo.h:
-
-    class Foo {
-     public:
-      Foo();
-     private:
-      SequenceChecker checker_;
-    };
-
-    foo.cc:
-
-    Foo::Foo() {
-      checker_.Detach();
-    }
-
-    And instead be able to do this inline in the .h file:
-
-    class Foo {
-     public:
-      Foo();
-     private:
-      SequenceChecker checker_{SequenceChecker::kDetached};
-    };
-
-    Bug: none
-    Change-Id: Idd7ca82d15c2f77f3aaccf26f1943a49f4b40661
-    Reviewed-on: https://webrtc-review.googlesource.com/c/src/+/298445
-    Reviewed-by: Danil Chapovalov <danilchap@webrtc.org>
-    Commit-Queue: Tomas Gunnarsson <tommi@webrtc.org>
-    Cr-Commit-Position: refs/heads/main@{#39616}
-
-Differential Revision: https://phabricator.services.mozilla.com/D177874
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/757b62d9ee50da83b1e460dcb356a099efc9e335
+Differential Revision: https://phabricator.services.mozilla.com/D210268
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/4efa281b9b917b3b4790ef9ab8bff24fe2f1fd7b
 ---
- api/sequence_checker.h                        |  5 +++++
- api/sequence_checker_unittest.cc              | 21 +++++++++++++++++--
- .../sequence_checker_internal.cc              |  4 ++--
- .../sequence_checker_internal.h               |  3 ++-
- 4 files changed, 28 insertions(+), 5 deletions(-)
+ .../linux/wayland/shared_screencast_stream.cc | 28 ++++++++++++++-
+ .../linux/wayland/shared_screencast_stream.h  |  3 ++
+ .../shared_screencast_stream_unittest.cc      | 34 ++++++++++++++++++-
+ .../test/test_screencast_stream_provider.cc   | 29 ++++++++++++----
+ .../test/test_screencast_stream_provider.h    |  4 ++-
+ 5 files changed, 88 insertions(+), 10 deletions(-)
 
-diff --git a/api/sequence_checker.h b/api/sequence_checker.h
-index a79d04f61f..33e0f3c074 100644
---- a/api/sequence_checker.h
-+++ b/api/sequence_checker.h
-@@ -44,6 +44,11 @@ class RTC_LOCKABLE SequenceChecker
-   using Impl = webrtc_sequence_checker_internal::SequenceCheckerDoNothing;
- #endif
-  public:
-+  enum InitialState : bool { kDetached = false, kAttached = true };
-+
-+  explicit SequenceChecker(InitialState initial_state = kAttached)
-+      : Impl(initial_state) {}
-+
-   // Returns true if sequence checker is attached to the current sequence.
-   bool IsCurrent() const { return Impl::IsCurrent(); }
-   // Detaches checker from sequence to which it is attached. Next attempt
-diff --git a/api/sequence_checker_unittest.cc b/api/sequence_checker_unittest.cc
-index a929c59655..3efb5c78ee 100644
---- a/api/sequence_checker_unittest.cc
-+++ b/api/sequence_checker_unittest.cc
-@@ -122,8 +122,7 @@ TEST(SequenceCheckerTest, DetachFromTaskQueueInDebug) {
- TEST(SequenceCheckerTest, ExpectationToString) {
-   TaskQueueForTest queue1;
+diff --git a/modules/desktop_capture/linux/wayland/shared_screencast_stream.cc b/modules/desktop_capture/linux/wayland/shared_screencast_stream.cc
+index 473f913466..dbd0f83e64 100644
+--- a/modules/desktop_capture/linux/wayland/shared_screencast_stream.cc
++++ b/modules/desktop_capture/linux/wayland/shared_screencast_stream.cc
+@@ -330,6 +330,19 @@ void SharedScreenCastStreamPrivate::OnStreamProcess(void* data) {
+     return;
+   }
  
--  SequenceChecker sequence_checker;
--  sequence_checker.Detach();
-+  SequenceChecker sequence_checker(SequenceChecker::kDetached);
- 
-   rtc::Event blocker;
-   queue1.PostTask([&blocker, &sequence_checker]() {
-@@ -149,6 +148,24 @@ TEST(SequenceCheckerTest, ExpectationToString) {
- #endif
- }
- 
-+TEST(SequenceCheckerTest, InitiallyDetached) {
-+  TaskQueueForTest queue1;
++  struct spa_meta_header* header =
++      static_cast<spa_meta_header*>(spa_buffer_find_meta_data(
++          buffer->buffer, SPA_META_Header, sizeof(*header)));
++  if (header && (header->flags & SPA_META_HEADER_FLAG_CORRUPTED)) {
++    RTC_LOG(LS_INFO) << "Dropping corrupted buffer";
++    if (that->observer_) {
++      that->observer_->OnBufferCorruptedMetadata();
++    }
++    // Queue buffer for reuse; it will not be processed further.
++    pw_stream_queue_buffer(that->pw_stream_, buffer);
++    return;
++  }
 +
-+  SequenceChecker sequence_checker(SequenceChecker::kDetached);
+   that->ProcessBuffer(buffer);
+ 
+   pw_stream_queue_buffer(that->pw_stream_, buffer);
+@@ -719,7 +732,20 @@ void SharedScreenCastStreamPrivate::ProcessBuffer(pw_buffer* buffer) {
+     }
+   }
+ 
+-  if (spa_buffer->datas[0].chunk->size == 0) {
++  if (spa_buffer->datas[0].chunk->flags & SPA_CHUNK_FLAG_CORRUPTED) {
++    RTC_LOG(LS_INFO) << "Dropping buffer with corrupted or missing data";
++    if (observer_) {
++      observer_->OnBufferCorruptedData();
++    }
++    return;
++  }
 +
-+  rtc::Event blocker;
-+  queue1.PostTask([&blocker, &sequence_checker]() {
-+    EXPECT_TRUE(sequence_checker.IsCurrent());
-+    blocker.Set();
++  if (spa_buffer->datas[0].type == SPA_DATA_MemFd &&
++      spa_buffer->datas[0].chunk->size == 0) {
++    RTC_LOG(LS_INFO) << "Dropping buffer with empty data";
++    if (observer_) {
++      observer_->OnEmptyBuffer();
++    }
+     return;
+   }
+ 
+diff --git a/modules/desktop_capture/linux/wayland/shared_screencast_stream.h b/modules/desktop_capture/linux/wayland/shared_screencast_stream.h
+index f57e22cb69..1b00e27476 100644
+--- a/modules/desktop_capture/linux/wayland/shared_screencast_stream.h
++++ b/modules/desktop_capture/linux/wayland/shared_screencast_stream.h
+@@ -35,6 +35,9 @@ class RTC_EXPORT SharedScreenCastStream
+     virtual void OnCursorShapeChanged() = 0;
+     virtual void OnDesktopFrameChanged() = 0;
+     virtual void OnFailedToProcessBuffer() = 0;
++    virtual void OnBufferCorruptedMetadata() = 0;
++    virtual void OnBufferCorruptedData() = 0;
++    virtual void OnEmptyBuffer() = 0;
+     virtual void OnStreamConfigured() = 0;
+     virtual void OnFrameRateChanged(uint32_t frame_rate) = 0;
+ 
+diff --git a/modules/desktop_capture/linux/wayland/shared_screencast_stream_unittest.cc b/modules/desktop_capture/linux/wayland/shared_screencast_stream_unittest.cc
+index 6a72edd025..72ce01eb26 100644
+--- a/modules/desktop_capture/linux/wayland/shared_screencast_stream_unittest.cc
++++ b/modules/desktop_capture/linux/wayland/shared_screencast_stream_unittest.cc
+@@ -55,6 +55,9 @@ class PipeWireStreamTest : public ::testing::Test,
+   MOCK_METHOD(void, OnCursorShapeChanged, (), (override));
+   MOCK_METHOD(void, OnDesktopFrameChanged, (), (override));
+   MOCK_METHOD(void, OnFailedToProcessBuffer, (), (override));
++  MOCK_METHOD(void, OnBufferCorruptedMetadata, (), (override));
++  MOCK_METHOD(void, OnBufferCorruptedData, (), (override));
++  MOCK_METHOD(void, OnEmptyBuffer, (), (override));
+   MOCK_METHOD(void, OnStreamConfigured, (), (override));
+   MOCK_METHOD(void, OnFrameRateChanged, (uint32_t), (override));
+ 
+@@ -103,8 +106,9 @@ TEST_F(PipeWireStreamTest, TestPipeWire) {
+   waitStartStreamingEvent.Wait(kShortWait);
+ 
+   rtc::Event frameRetrievedEvent;
+-  EXPECT_CALL(*this, OnFrameRecorded).Times(3);
++  EXPECT_CALL(*this, OnFrameRecorded).Times(6);
+   EXPECT_CALL(*this, OnDesktopFrameChanged)
++      .Times(3)
+       .WillRepeatedly([&frameRetrievedEvent] { frameRetrievedEvent.Set(); });
+ 
+   // Record a frame in FakePipeWireStream
+@@ -156,6 +160,34 @@ TEST_F(PipeWireStreamTest, TestPipeWire) {
+   frameRetrievedEvent.Wait(kShortWait);
+   EXPECT_EQ(RgbaColor(frame->data()), blue_color);
+ 
++  // Check we don't process faulty buffers
++  rtc::Event corruptedMetadataFrameEvent;
++  EXPECT_CALL(*this, OnBufferCorruptedMetadata)
++      .WillOnce([&corruptedMetadataFrameEvent] {
++        corruptedMetadataFrameEvent.Set();
++      });
++
++  test_screencast_stream_provider_->RecordFrame(
++      blue_color, TestScreenCastStreamProvider::CorruptedMetadata);
++  corruptedMetadataFrameEvent.Wait(kShortWait);
++
++  rtc::Event corruptedDataFrameEvent;
++  EXPECT_CALL(*this, OnBufferCorruptedData)
++      .WillOnce([&corruptedDataFrameEvent] { corruptedDataFrameEvent.Set(); });
++
++  test_screencast_stream_provider_->RecordFrame(
++      blue_color, TestScreenCastStreamProvider::CorruptedData);
++  corruptedDataFrameEvent.Wait(kShortWait);
++
++  rtc::Event emptyFrameEvent;
++  EXPECT_CALL(*this, OnEmptyBuffer).WillOnce([&emptyFrameEvent] {
++    emptyFrameEvent.Set();
 +  });
 +
-+  blocker.Wait(rtc::Event::kForever);
++  test_screencast_stream_provider_->RecordFrame(
++      blue_color, TestScreenCastStreamProvider::EmptyData);
++  emptyFrameEvent.Wait(kShortWait);
 +
-+#if RTC_DCHECK_IS_ON
-+  EXPECT_FALSE(sequence_checker.IsCurrent());
-+#endif
-+}
+   // Update stream parameters.
+   EXPECT_CALL(*this, OnFrameRateChanged(0))
+       .Times(1)
+diff --git a/modules/desktop_capture/linux/wayland/test/test_screencast_stream_provider.cc b/modules/desktop_capture/linux/wayland/test/test_screencast_stream_provider.cc
+index ee5c17e7d7..10551047a9 100644
+--- a/modules/desktop_capture/linux/wayland/test/test_screencast_stream_provider.cc
++++ b/modules/desktop_capture/linux/wayland/test/test_screencast_stream_provider.cc
+@@ -131,7 +131,8 @@ TestScreenCastStreamProvider::~TestScreenCastStreamProvider() {
+   }
+ }
+ 
+-void TestScreenCastStreamProvider::RecordFrame(RgbaColor rgba_color) {
++void TestScreenCastStreamProvider::RecordFrame(RgbaColor rgba_color,
++                                               FrameDefect frame_defect) {
+   const char* error;
+   if (pw_stream_get_state(pw_stream_, &error) != PW_STREAM_STATE_STREAMING) {
+     if (error) {
+@@ -163,13 +164,27 @@ void TestScreenCastStreamProvider::RecordFrame(RgbaColor rgba_color) {
+   spa_data->chunk->size = height_ * stride;
+   spa_data->chunk->stride = stride;
+ 
+-  uint32_t color = rgba_color.ToUInt32();
+-  for (uint32_t i = 0; i < height_; i++) {
+-    uint32_t* column = reinterpret_cast<uint32_t*>(data);
+-    for (uint32_t j = 0; j < width_; j++) {
+-      column[j] = color;
++  // Produce a frame with given defect
++  if (frame_defect == EmptyData) {
++    spa_data->chunk->size = 0;
++  } else if (frame_defect == CorruptedData) {
++    spa_data->chunk->flags = SPA_CHUNK_FLAG_CORRUPTED;
++  } else if (frame_defect == CorruptedMetadata) {
++    struct spa_meta_header* spa_header =
++        static_cast<spa_meta_header*>(spa_buffer_find_meta_data(
++            spa_buffer, SPA_META_Header, sizeof(spa_meta_header)));
++    if (spa_header) {
++      spa_header->flags = SPA_META_HEADER_FLAG_CORRUPTED;
++    }
++  } else {
++    uint32_t color = rgba_color.ToUInt32();
++    for (uint32_t i = 0; i < height_; i++) {
++      uint32_t* column = reinterpret_cast<uint32_t*>(data);
++      for (uint32_t j = 0; j < width_; j++) {
++        column[j] = color;
++      }
++      data += stride;
+     }
+-    data += stride;
+   }
+ 
+   pw_stream_queue_buffer(pw_stream_, buffer);
+diff --git a/modules/desktop_capture/linux/wayland/test/test_screencast_stream_provider.h b/modules/desktop_capture/linux/wayland/test/test_screencast_stream_provider.h
+index d893aa63ab..f63a2e647c 100644
+--- a/modules/desktop_capture/linux/wayland/test/test_screencast_stream_provider.h
++++ b/modules/desktop_capture/linux/wayland/test/test_screencast_stream_provider.h
+@@ -35,6 +35,8 @@ class TestScreenCastStreamProvider {
+     virtual ~Observer() = default;
+   };
+ 
++  enum FrameDefect { None, EmptyData, CorruptedData, CorruptedMetadata };
 +
- class TestAnnotations {
-  public:
-   TestAnnotations() : test_var_(false) {}
-diff --git a/rtc_base/synchronization/sequence_checker_internal.cc b/rtc_base/synchronization/sequence_checker_internal.cc
-index 2612e9ee84..9831f07d7d 100644
---- a/rtc_base/synchronization/sequence_checker_internal.cc
-+++ b/rtc_base/synchronization/sequence_checker_internal.cc
-@@ -33,8 +33,8 @@ const void* GetSystemQueueRef() {
+   explicit TestScreenCastStreamProvider(Observer* observer,
+                                         uint32_t width,
+                                         uint32_t height);
+@@ -42,7 +44,7 @@ class TestScreenCastStreamProvider {
  
- }  // namespace
+   uint32_t PipeWireNodeId();
  
--SequenceCheckerImpl::SequenceCheckerImpl()
--    : attached_(true),
-+SequenceCheckerImpl::SequenceCheckerImpl(bool attach_to_current_thread)
-+    : attached_(attach_to_current_thread),
-       valid_thread_(rtc::CurrentThreadRef()),
-       valid_queue_(TaskQueueBase::Current()),
-       valid_system_queue_(GetSystemQueueRef()) {}
-diff --git a/rtc_base/synchronization/sequence_checker_internal.h b/rtc_base/synchronization/sequence_checker_internal.h
-index a20fbb0a54..a66e9ee8ec 100644
---- a/rtc_base/synchronization/sequence_checker_internal.h
-+++ b/rtc_base/synchronization/sequence_checker_internal.h
-@@ -30,7 +30,7 @@ namespace webrtc_sequence_checker_internal {
- // right version for your build configuration.
- class RTC_EXPORT SequenceCheckerImpl {
-  public:
--  SequenceCheckerImpl();
-+  explicit SequenceCheckerImpl(bool attach_to_current_thread);
-   ~SequenceCheckerImpl() = default;
+-  void RecordFrame(RgbaColor rgba_color);
++  void RecordFrame(RgbaColor rgba_color, FrameDefect frame_defect = None);
+   void StartStreaming();
+   void StopStreaming();
  
-   bool IsCurrent() const;
-@@ -59,6 +59,7 @@ class RTC_EXPORT SequenceCheckerImpl {
- // right version for your build configuration.
- class SequenceCheckerDoNothing {
-  public:
-+  explicit SequenceCheckerDoNothing(bool attach_to_current_thread) {}
-   bool IsCurrent() const { return true; }
-   void Detach() {}
- };
--- 
-2.34.1
-

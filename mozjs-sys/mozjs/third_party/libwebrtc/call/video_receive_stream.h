@@ -89,7 +89,7 @@ class VideoReceiveStreamInterface : public MediaReceiveStreamInterface {
     uint32_t frames_rendered = 0;
 
     // Decoder stats.
-    std::string decoder_implementation_name = "unknown";
+    absl::optional<std::string> decoder_implementation_name;
     absl::optional<bool> power_efficient_decoder;
     FrameCounts frame_counts;
     int decode_ms = 0;
@@ -97,10 +97,14 @@ class VideoReceiveStreamInterface : public MediaReceiveStreamInterface {
     int current_delay_ms = 0;
     int target_delay_ms = 0;
     int jitter_buffer_ms = 0;
-    // https://w3c.github.io/webrtc-stats/#dom-rtcvideoreceiverstats-jitterbufferdelay
-    double jitter_buffer_delay_seconds = 0;
-    // https://w3c.github.io/webrtc-stats/#dom-rtcvideoreceiverstats-jitterbufferemittedcount
+    // https://w3c.github.io/webrtc-stats/#dom-rtcinboundrtpstreamstats-jitterbufferdelay
+    TimeDelta jitter_buffer_delay = TimeDelta::Zero();
+    // https://w3c.github.io/webrtc-stats/#dom-rtcinboundrtpstreamstats-jitterbuffertargetdelay
+    TimeDelta jitter_buffer_target_delay = TimeDelta::Zero();
+    // https://w3c.github.io/webrtc-stats/#dom-rtcinboundrtpstreamstats-jitterbufferemittedcount
     uint64_t jitter_buffer_emitted_count = 0;
+    // https://w3c.github.io/webrtc-stats/#dom-rtcinboundrtpstreamstats-jitterbufferminimumdelay
+    TimeDelta jitter_buffer_minimum_delay = TimeDelta::Zero();
     int min_playout_delay_ms = 0;
     int render_delay_ms = 10;
     int64_t interframe_delay_max_ms = -1;
@@ -114,9 +118,11 @@ class VideoReceiveStreamInterface : public MediaReceiveStreamInterface {
     TimeDelta total_decode_time = TimeDelta::Zero();
     // https://w3c.github.io/webrtc-stats/#dom-rtcinboundrtpstreamstats-totalprocessingdelay
     TimeDelta total_processing_delay = TimeDelta::Zero();
-    // TODO(bugs.webrtc.org/13986): standardize
+
+    // https://w3c.github.io/webrtc-stats/#dom-rtcinboundrtpstreamstats-totalassemblytime
     TimeDelta total_assembly_time = TimeDelta::Zero();
     uint32_t frames_assembled_from_multiple_packets = 0;
+
     // Total inter frame delay in seconds.
     // https://w3c.github.io/webrtc-stats/#dom-rtcinboundrtpstreamstats-totalinterframedelay
     double total_inter_frame_delay = 0;
@@ -148,6 +154,7 @@ class VideoReceiveStreamInterface : public MediaReceiveStreamInterface {
     std::string c_name;
     RtpReceiveStats rtp_stats;
     RtcpPacketTypeCounter rtcp_packet_type_counts;
+    absl::optional<RtpReceiveStats> rtx_rtp_stats;
 
     // Mozilla modification: Init these.
     uint32_t rtcp_sender_packets_sent = 0;
@@ -158,6 +165,14 @@ class VideoReceiveStreamInterface : public MediaReceiveStreamInterface {
     // Timing frame info: all important timestamps for a full lifetime of a
     // single 'timing frame'.
     absl::optional<webrtc::TimingFrameInfo> timing_frame_info;
+
+    // Remote outbound stats derived by the received RTCP sender reports.
+    // https://w3c.github.io/webrtc-stats/#remoteoutboundrtpstats-dict*
+    absl::optional<int64_t> last_sender_report_timestamp_ms;
+    absl::optional<int64_t> last_sender_report_remote_timestamp_ms;
+    uint32_t sender_reports_packets_sent = 0;
+    uint64_t sender_reports_bytes_sent = 0;
+    uint64_t sender_reports_reports_count = 0;
   };
 
   struct Config {

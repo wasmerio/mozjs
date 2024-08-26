@@ -71,6 +71,10 @@ add_task(async function test_discovered_migrators_keyed_scalar() {
     { id: "chrome-test-2", name: "Chrome test profile 2" },
   ]);
 
+  sandbox
+    .stub(ChromeProfileMigrator.prototype, "hasPermissions")
+    .resolves(true);
+
   // We also need to ensure that the ChromeProfileMigrator actually has
   // some resources to migrate, otherwise it won't get listed.
   sandbox
@@ -155,10 +159,6 @@ add_task(async function test_fx_migration_errors() {
       "MigrationWizard:DoneMigration"
     );
 
-    // The Migration Wizard _shouldn't_ display anything except BOOKMARKS,
-    // since that's the only resource type that the selected migrator is
-    // supposed to currently support, but we'll check the other checkboxes
-    // even though they're hidden just to see what happens.
     selectResourceTypesAndStartMigration(wizard, [
       MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.BOOKMARKS,
       MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS,
@@ -166,9 +166,13 @@ add_task(async function test_fx_migration_errors() {
     await migration;
     await wizardDone;
 
-    assertQuantitiesShown(wizard, [
-      MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.BOOKMARKS,
-      MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS,
-    ]);
+    assertQuantitiesShown(
+      wizard,
+      [
+        MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.BOOKMARKS,
+        MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS,
+      ],
+      [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS]
+    );
   });
 });

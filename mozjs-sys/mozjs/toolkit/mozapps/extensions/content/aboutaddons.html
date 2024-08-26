@@ -13,9 +13,6 @@
       content="default-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome: file: jar: https: http:; connect-src chrome: data: https: http:; object-src 'none'"
     />
     <meta name="color-scheme" content="light dark" />
-    <link rel="stylesheet" href="chrome://global/content/tabprompts.css" />
-    <link rel="stylesheet" href="chrome://global/skin/tabprompts.css" />
-
     <link rel="stylesheet" href="chrome://global/skin/in-content/common.css" />
     <link
       rel="stylesheet"
@@ -33,7 +30,6 @@
 
     <link rel="localization" href="branding/brand.ftl" />
     <link rel="localization" href="toolkit/about/aboutAddons.ftl" />
-    <link rel="localization" href="toolkit/about/abuseReports.ftl" />
 
     <!-- Defer scripts so all the templates are loaded by the time they run. -->
     <script
@@ -59,6 +55,10 @@
     <script
       defer
       src="chrome://mozapps/content/extensions/aboutaddons.js"
+    ></script>
+    <script
+      type="module"
+      src="chrome://global/content/elements/moz-message-bar.mjs"
     ></script>
     <script
       type="module"
@@ -161,13 +161,6 @@
           page-options-id="page-options"
         ></addon-page-header>
         <addon-page-options id="page-options"></addon-page-options>
-
-        <message-bar-stack
-          id="abuse-reports-messages"
-          reverse
-          max-message-bar-count="3"
-        >
-        </message-bar-stack>
 
         <div id="main"></div>
       </div>
@@ -415,20 +408,22 @@
             <span class="addon-description" tabindex="-1"></span>
           </div>
         </div>
-        <message-bar class="update-postponed-bar" align="center" hidden>
-          <span
-            class="description"
-            data-l10n-id="install-postponed-message"
-          ></span>
+        <moz-message-bar
+          class="update-postponed-bar"
+          data-l10n-id="install-postponed-message2"
+          data-l10n-attrs="message"
+          align="center"
+          hidden
+        >
           <button
+            slot="actions"
             action="install-postponed"
             data-l10n-id="install-postponed-button"
           ></button>
-        </message-bar>
-        <message-bar class="addon-card-message" align="center" hidden>
-          <span></span>
+        </moz-message-bar>
+        <moz-message-bar class="addon-card-message" align="center" hidden>
           <button action="link"></button>
-        </message-bar>
+        </moz-message-bar>
       </div>
     </template>
 
@@ -669,17 +664,20 @@
     </template>
 
     <template name="taar-notice">
-      <message-bar class="discopane-notice" dismissable>
-        <div class="discopane-notice-content">
-          <span data-l10n-id="discopane-notice-recommendations"></span>
-          <a
-            is="moz-support-link"
-            support-page="personalized-addons"
-            data-l10n-id="discopane-notice-learn-more"
-            action="notice-learn-more"
-          ></a>
-        </div>
-      </message-bar>
+      <moz-message-bar
+        class="discopane-notice"
+        data-l10n-id="discopane-notice-recommendations2"
+        data-l10n-attrs="message"
+        dismissable
+      >
+        <a
+          is="moz-support-link"
+          support-page="personalized-addons"
+          data-l10n-id="discopane-notice-learn-more"
+          action="notice-learn-more"
+          slot="support-link"
+        ></a>
+      </moz-message-bar>
     </template>
 
     <template name="recommended-footer">
@@ -790,7 +788,11 @@
           type="text"
           readonly
         />
-        <button class="shortcut-remove-button ghost-button"></button>
+        <button
+          class="shortcut-remove-button ghost-button"
+          data-l10n-id="shortcuts-remove-button"
+          data-l10n-attrs="aria-label"
+        ></button>
       </div>
     </template>
 

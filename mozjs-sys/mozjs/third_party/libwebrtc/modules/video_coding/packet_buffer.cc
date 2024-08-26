@@ -77,6 +77,13 @@ PacketBuffer::InsertResult PacketBuffer::InsertPacket(
       return result;
     }
 
+    if (ForwardDiff<uint16_t>(first_seq_num_, seq_num) >= max_size_) {
+      // Large negative jump in rtp sequence number: clear the buffer and treat
+      // latest packet as the new first packet.
+      Clear();
+      first_packet_received_ = true;
+    }
+
     first_seq_num_ = seq_num;
   }
 
@@ -325,7 +332,7 @@ std::vector<std::unique_ptr<PacketBuffer::Packet>> PacketBuffer::FindFrames(
         // See: https://bugs.chromium.org/p/webrtc/issues/detail?id=7106
         if (is_h264_descriptor &&
             (buffer_[start_index] == nullptr ||
-                        buffer_[start_index]->timestamp != frame_timestamp)) {
+             buffer_[start_index]->timestamp != frame_timestamp)) {
           break;
         }
 

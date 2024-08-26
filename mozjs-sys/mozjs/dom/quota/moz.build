@@ -18,6 +18,10 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = "dom_quota"
 
+EXPORTS.mozilla += [
+    "StorageOriginAttributes.h",
+]
+
 EXPORTS.mozilla.dom += [
     "QMResult.h",
     "StorageManager.h",
@@ -29,6 +33,7 @@ EXPORTS.mozilla.dom.quota += [
     "AssertionsImpl.h",
     "CachingDatabaseConnection.h",
     "CheckedUnsafePtr.h",
+    "CipherKeyManager.h",
     "CipherStrategy.h",
     "Client.h",
     "ClientImpl.h",
@@ -39,10 +44,13 @@ EXPORTS.mozilla.dom.quota += [
     "DecryptingInputStream.h",
     "DecryptingInputStream_impl.h",
     "DirectoryLock.h",
+    "DirectoryLockCategory.h",
+    "DirectoryLockInlines.h",
     "DummyCipherStrategy.h",
     "EncryptedBlock.h",
     "EncryptingOutputStream.h",
     "EncryptingOutputStream_impl.h",
+    "ErrorHandling.h",
     "FileStreams.h",
     "FileUtils.h",
     "FirstInitializationAttempts.h",
@@ -53,11 +61,13 @@ EXPORTS.mozilla.dom.quota += [
     "NSSCipherStrategy.h",
     "OriginScope.h",
     "PersistenceType.h",
+    "PromiseUtils.h",
     "QuotaCommon.h",
     "QuotaManager.h",
     "QuotaManagerImpl.h",
     "QuotaManagerService.h",
     "QuotaObject.h",
+    "QuotaParent.h",
     "RemoteQuotaObjectChild.h",
     "RemoteQuotaObjectParent.h",
     "RemoteQuotaObjectParentTracker.h",
@@ -67,6 +77,8 @@ EXPORTS.mozilla.dom.quota += [
     "SerializationHelpers.h",
     "StorageHelpers.h",
     "StreamUtils.h",
+    "StringifyUtils.h",
+    "ThreadUtils.h",
     "UsageInfo.h",
 ]
 
@@ -95,13 +107,19 @@ UNIFIED_SOURCES += [
     "NSSCipherStrategy.cpp",
     "OriginInfo.cpp",
     "OriginOperationBase.cpp",
+    "OriginOperations.cpp",
+    "OriginParser.cpp",
     "PersistenceType.cpp",
+    "PromiseUtils.cpp",
     "QMResult.cpp",
     "QuotaCommon.cpp",
     "QuotaManagerService.cpp",
     "QuotaObject.cpp",
+    "QuotaParent.cpp",
+    "QuotaRequestBase.cpp",
     "QuotaRequests.cpp",
     "QuotaResults.cpp",
+    "QuotaUsageRequestBase.cpp",
     "RemoteQuotaObject.cpp",
     "RemoteQuotaObjectChild.cpp",
     "RemoteQuotaObjectParent.cpp",
@@ -109,7 +127,10 @@ UNIFIED_SOURCES += [
     "ScopedLogExtraInfo.cpp",
     "StorageHelpers.cpp",
     "StorageManager.cpp",
+    "StorageOriginAttributes.cpp",
     "StreamUtils.cpp",
+    "StringifyUtils.cpp",
+    "ThreadUtils.cpp",
 ]
 
 IPDL_SOURCES += [

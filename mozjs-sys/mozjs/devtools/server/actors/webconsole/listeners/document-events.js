@@ -90,13 +90,7 @@ DocumentEventsListener.prototype = {
     });
   },
 
-  onWillNavigate({
-    window,
-    isTopLevel,
-    newURI,
-    navigationStart,
-    isFrameSwitching,
-  }) {
+  onWillNavigate({ isTopLevel, newURI, navigationStart, isFrameSwitching }) {
     // Ignore iframes
     if (!isTopLevel) {
       return;
@@ -121,6 +115,16 @@ DocumentEventsListener.prototype = {
       time,
       isFrameSwitching,
     });
+
+    // Error pages, like the Offline page, i.e. about:neterror?...
+    // are special and the WebProgress listener doesn't trigger any notification for them.
+    // Also they are stuck on "interactive" state and never reach the "complete" state.
+    // So fake the two missing events.
+    if (window.docShell.currentDocumentChannel?.loadInfo.loadErrorPage) {
+      this.onContentLoaded({ target: window.document }, isFrameSwitching);
+      this.onLoad({ target: window.document }, isFrameSwitching);
+      return;
+    }
 
     const { readyState } = window.document;
     if (readyState != "interactive" && readyState != "complete") {
@@ -177,7 +181,7 @@ DocumentEventsListener.prototype = {
     });
   },
 
-  onStateChange(progress, request, flag, status) {
+  onStateChange(progress, request, flag) {
     progress.QueryInterface(Ci.nsIDocShell);
     // Ignore destroyed, or progress for same-process iframes
     if (progress.isBeingDestroyed() || progress != this.webProgress) {

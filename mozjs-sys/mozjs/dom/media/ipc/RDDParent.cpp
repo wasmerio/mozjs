@@ -32,6 +32,7 @@
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
 #  include "mozilla/Sandbox.h"
+#  include "mozilla/SandboxProfilerObserver.h"
 #endif
 
 #include "ChildProfilerController.h"
@@ -44,11 +45,16 @@
 
 #include "mozilla/ipc/ProcessUtils.h"
 #include "nsDebugImpl.h"
+#include "nsIObserverService.h"
 #include "nsIXULRuntime.h"
 #include "nsThreadManager.h"
 
 #if defined(MOZ_SANDBOX) && defined(MOZ_DEBUG) && defined(ENABLE_TESTS)
 #  include "mozilla/SandboxTestingChild.h"
+#endif
+
+#if defined(XP_MACOSX) || defined(XP_LINUX)
+#  include "VideoUtils.h"
 #endif
 
 namespace mozilla {
@@ -144,6 +150,7 @@ mozilla::ipc::IPCResult RDDParent::RecvInit(
   if (aBrokerFd.isSome()) {
     fd = aBrokerFd.value().ClonePlatformHandle().release();
   }
+  RegisterProfilerObserversForSandboxProfiler();
   SetRemoteDataDecoderSandbox(fd);
 #  endif  // XP_MACOSX/XP_LINUX
 #endif    // MOZ_SANDBOX
@@ -158,18 +165,6 @@ mozilla::ipc::IPCResult RDDParent::RecvInit(
 }
 
 IPCResult RDDParent::RecvUpdateVar(const GfxVarUpdate& aUpdate) {
-#if defined(XP_WIN)
-  auto scopeExit = MakeScopeExit(
-      [couldUseHWDecoder = gfx::gfxVars::CanUseHardwareVideoDecoding()] {
-        if (couldUseHWDecoder != gfx::gfxVars::CanUseHardwareVideoDecoding()) {
-          // The capabilities of the system may have changed, force a refresh by
-          // re-initializing the WMF PDM.
-          WMFDecoderModule::Init();
-          Unused << RDDParent::GetSingleton()->SendUpdateMediaCodecsSupported(
-              PDMFactory::Supported(true /* force refresh */));
-        }
-      });
-#endif
   gfxVars::ApplyUpdate(aUpdate);
   return IPC_OK();
 }
@@ -181,8 +176,10 @@ mozilla::ipc::IPCResult RDDParent::RecvInitProfiler(
 }
 
 mozilla::ipc::IPCResult RDDParent::RecvNewContentRemoteDecoderManager(
-    Endpoint<PRemoteDecoderManagerParent>&& aEndpoint) {
-  if (!RemoteDecoderManagerParent::CreateForContent(std::move(aEndpoint))) {
+    Endpoint<PRemoteDecoderManagerParent>&& aEndpoint,
+    const ContentParentId& aParentId) {
+  if (!RemoteDecoderManagerParent::CreateForContent(std::move(aEndpoint),
+                                                    aParentId)) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();
@@ -293,6 +290,10 @@ mozilla::ipc::IPCResult RDDParent::RecvTestTelemetryProbes() {
 }
 
 void RDDParent::ActorDestroy(ActorDestroyReason aWhy) {
+#if defined(XP_LINUX) && defined(MOZ_SANDBOX)
+  DestroySandboxProfiler();
+#endif
+
   if (AbnormalShutdown == aWhy) {
     NS_WARNING("Shutting down RDD process early due to a crash!");
     Telemetry::Accumulate(Telemetry::SUBPROCESS_ABNORMAL_ABORT, "rdd"_ns, 1);

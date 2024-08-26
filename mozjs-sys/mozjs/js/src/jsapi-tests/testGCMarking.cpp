@@ -108,7 +108,7 @@ BEGIN_TEST(testTracingIncomingCCWs) {
 #ifdef JS_GC_ZEAL
   // Disable zeal modes because this test needs to control exactly when the GC
   // happens.
-  JS_SetGCZeal(cx, 0, 100);
+  JS::SetGCZeal(cx, 0, 100);
 #endif
   JS_GC(cx);
 
@@ -152,7 +152,7 @@ BEGIN_TEST(testDeadNurseryCCW) {
 #ifdef JS_GC_ZEAL
   // Disable zeal modes because this test needs to control exactly when the GC
   // happens.
-  JS_SetGCZeal(cx, 0, 100);
+  JS::SetGCZeal(cx, 0, 100);
 #endif
   JS_GC(cx);
 
@@ -184,7 +184,7 @@ BEGIN_TEST(testLiveNurseryCCW) {
 #ifdef JS_GC_ZEAL
   // Disable zeal modes because this test needs to control exactly when the GC
   // happens.
-  JS_SetGCZeal(cx, 0, 100);
+  JS::SetGCZeal(cx, 0, 100);
 #endif
   JS_GC(cx);
 
@@ -216,7 +216,7 @@ BEGIN_TEST(testLiveNurseryWrapperCCW) {
 #ifdef JS_GC_ZEAL
   // Disable zeal modes because this test needs to control exactly when the GC
   // happens.
-  JS_SetGCZeal(cx, 0, 100);
+  JS::SetGCZeal(cx, 0, 100);
 #endif
   JS_GC(cx);
 
@@ -253,7 +253,7 @@ BEGIN_TEST(testLiveNurseryWrappeeCCW) {
 #ifdef JS_GC_ZEAL
   // Disable zeal modes because this test needs to control exactly when the GC
   // happens.
-  JS_SetGCZeal(cx, 0, 100);
+  JS::SetGCZeal(cx, 0, 100);
 #endif
   JS_GC(cx);
 
@@ -290,7 +290,7 @@ BEGIN_TEST(testIncrementalRoots) {
 #ifdef JS_GC_ZEAL
   // Disable zeal modes because this test needs to control exactly when the GC
   // happens.
-  JS_SetGCZeal(cx, 0, 100);
+  JS::SetGCZeal(cx, 0, 100);
 #endif
 
   // Construct a big object graph to mark. In JS, the resulting object graph
@@ -344,6 +344,7 @@ BEGIN_TEST(testIncrementalRoots) {
 
   // Tenure everything so intentionally unrooted objects don't move before we
   // can use them.
+  AutoGCParameter disableSemispace(cx, JSGC_SEMISPACE_NURSERY_ENABLED, 0);
   cx->runtime()->gc.minorGC(JS::GCReason::API);
 
   // Release all roots except for the RootedObjectVector.
@@ -374,7 +375,7 @@ BEGIN_TEST(testIncrementalRoots) {
   // Do the root marking slice. This should mark 'root' and a bunch of its
   // descendants. It shouldn't make it all the way through (it gets a budget
   // of 1000, and the graph is about 3000 objects deep).
-  js::SliceBudget budget(js::WorkBudget(1000));
+  JS::SliceBudget budget(JS::WorkBudget(1000));
   AutoGCParameter param(cx, JSGC_INCREMENTAL_GC_ENABLED, true);
   rt->gc.startDebugGC(JS::GCOptions::Normal, budget);
   while (rt->gc.state() != gc::State::Mark) {
@@ -435,7 +436,7 @@ BEGIN_TEST(testIncrementalRoots) {
   }
 
   // Finish the GC using an unlimited budget.
-  auto unlimited = js::SliceBudget::unlimited();
+  auto unlimited = JS::SliceBudget::unlimited();
   rt->gc.debugGCSlice(unlimited);
 
   // Access the leaf object to try to trigger a crash if it is dead.

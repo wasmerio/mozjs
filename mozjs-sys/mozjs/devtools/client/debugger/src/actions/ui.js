@@ -11,16 +11,11 @@ import {
   getIgnoreListSourceUrls,
   getSourceByURL,
   getBreakpointsForSource,
-  getContext,
-} from "../selectors";
+} from "../selectors/index";
 import { selectSource } from "../actions/sources/select";
-import {
-  getEditor,
-  getLocationsInViewport,
-  updateDocuments,
-} from "../utils/editor";
+import { getEditor, updateEditorLineWrapping } from "../utils/editor/index";
 import { blackboxSourceActorsForSource } from "./sources/blackbox";
-import { toggleBreakpoints } from "./breakpoints";
+import { toggleBreakpoints } from "./breakpoints/index";
 import { copyToTheClipboard } from "../utils/clipboard";
 import { isFulfilled } from "../utils/async-value";
 import { primaryPaneTabs } from "../constants";
@@ -67,7 +62,7 @@ export function setActiveSearch(activeSearch) {
 }
 
 export function toggleFrameworkGrouping(toggleValue) {
-  return ({ dispatch, getState }) => {
+  return ({ dispatch }) => {
     dispatch({
       type: "TOGGLE_FRAMEWORK_GROUPING",
       value: toggleValue,
@@ -76,7 +71,7 @@ export function toggleFrameworkGrouping(toggleValue) {
 }
 
 export function toggleInlinePreview(toggleValue) {
-  return ({ dispatch, getState }) => {
+  return ({ dispatch }) => {
     dispatch({
       type: "TOGGLE_INLINE_PREVIEW",
       value: toggleValue,
@@ -85,8 +80,8 @@ export function toggleInlinePreview(toggleValue) {
 }
 
 export function toggleEditorWrapping(toggleValue) {
-  return ({ dispatch, getState }) => {
-    updateDocuments(doc => doc.cm.setOption("lineWrapping", toggleValue));
+  return ({ dispatch }) => {
+    updateEditorLineWrapping(toggleValue);
 
     dispatch({
       type: "TOGGLE_EDITOR_WRAPPING",
@@ -96,7 +91,7 @@ export function toggleEditorWrapping(toggleValue) {
 }
 
 export function toggleSourceMapsEnabled(toggleValue) {
-  return ({ dispatch, getState }) => {
+  return ({ dispatch }) => {
     dispatch({
       type: "TOGGLE_SOURCE_MAPS_ENABLED",
       value: toggleValue,
@@ -104,7 +99,7 @@ export function toggleSourceMapsEnabled(toggleValue) {
   };
 }
 
-export function showSource(cx, sourceId) {
+export function showSource(sourceId) {
   return ({ dispatch, getState }) => {
     const source = getSource(getState(), sourceId);
     if (!source) {
@@ -121,7 +116,7 @@ export function showSource(cx, sourceId) {
 
     dispatch(setPrimaryPaneTab("sources"));
 
-    dispatch(selectSource(cx, source));
+    dispatch(selectSource(source));
   };
 }
 
@@ -199,9 +194,10 @@ export function closeConditionalPanel() {
 }
 
 export function updateViewport() {
+  const editor = getEditor();
   return {
     type: "SET_VIEWPORT",
-    viewport: getLocationsInViewport(getEditor()),
+    viewport: editor.getLocationsInViewport(),
   };
 }
 
@@ -218,7 +214,7 @@ export function setSearchOptions(searchKey, searchOptions) {
 }
 
 export function copyToClipboard(location) {
-  return ({ dispatch, getState }) => {
+  return ({ getState }) => {
     const content = getSourceTextContent(getState(), location);
     if (content && isFulfilled(content) && content.value.type === "text") {
       copyToTheClipboard(content.value.value);
@@ -227,16 +223,38 @@ export function copyToClipboard(location) {
 }
 
 export function setJavascriptTracingLogMethod(value) {
-  return ({ dispatch, getState }) => {
-    dispatch({
-      type: "SET_JAVASCRIPT_TRACING_LOG_METHOD",
-      value,
-    });
+  return {
+    type: "SET_JAVASCRIPT_TRACING_LOG_METHOD",
+    value,
+  };
+}
+
+export function toggleJavascriptTracingValues() {
+  return {
+    type: "TOGGLE_JAVASCRIPT_TRACING_VALUES",
+  };
+}
+
+export function toggleJavascriptTracingOnNextInteraction() {
+  return {
+    type: "TOGGLE_JAVASCRIPT_TRACING_ON_NEXT_INTERACTION",
+  };
+}
+
+export function toggleJavascriptTracingFunctionReturn() {
+  return {
+    type: "TOGGLE_JAVASCRIPT_TRACING_FUNCTION_RETURN",
+  };
+}
+
+export function toggleJavascriptTracingOnNextLoad() {
+  return {
+    type: "TOGGLE_JAVASCRIPT_TRACING_ON_NEXT_LOAD",
   };
 }
 
 export function setHideOrShowIgnoredSources(shouldHide) {
-  return ({ dispatch, getState }) => {
+  return ({ dispatch }) => {
     dispatch({ type: "HIDE_IGNORED_SOURCES", shouldHide });
   };
 }
@@ -244,15 +262,14 @@ export function setHideOrShowIgnoredSources(shouldHide) {
 export function toggleSourceMapIgnoreList(shouldEnable) {
   return async thunkArgs => {
     const { dispatch, getState } = thunkArgs;
-    const cx = getContext(getState());
     const ignoreListSourceUrls = getIgnoreListSourceUrls(getState());
     // Blackbox the source actors on the server
     for (const url of ignoreListSourceUrls) {
       const source = getSourceByURL(getState(), url);
       await blackboxSourceActorsForSource(thunkArgs, source, shouldEnable);
       // Disable breakpoints in sources on the ignore list
-      const breakpoints = getBreakpointsForSource(getState(), source.id);
-      await dispatch(toggleBreakpoints(cx, shouldEnable, breakpoints));
+      const breakpoints = getBreakpointsForSource(getState(), source);
+      await dispatch(toggleBreakpoints(shouldEnable, breakpoints));
     }
     await dispatch({
       type: "ENABLE_SOURCEMAP_IGNORELIST",

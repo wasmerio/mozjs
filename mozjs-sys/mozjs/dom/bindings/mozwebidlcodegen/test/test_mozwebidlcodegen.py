@@ -2,7 +2,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-import imp
 import io
 import json
 import os
@@ -12,7 +11,7 @@ import tempfile
 import unittest
 
 import mozpack.path as mozpath
-from mozfile import NamedTemporaryFile
+from mozfile import NamedTemporaryFile, load_source
 from mozunit import MockedOpen, main
 from mozwebidlcodegen import WebIDLCodegenManager, WebIDLCodegenManagerState
 
@@ -40,7 +39,7 @@ class TestWebIDLCodegenManager(unittest.TestCase):
 
     @property
     def _config_path(self):
-        config = mozpath.join(TOPSRCDIR, "dom", "bindings", "Bindings.conf")
+        config = mozpath.join(OUR_DIR, "TestBindings.conf")
         self.assertTrue(os.path.exists(config))
 
         return config
@@ -242,24 +241,27 @@ class TestWebIDLCodegenManager(unittest.TestCase):
         with NamedTemporaryFile("wt") as fh:
             fh.write("# Original content")
             fh.flush()
-            mod = imp.load_source("mozwebidlcodegen.fakemodule", fh.name)
+            mod = load_source("mozwebidlcodegen.fakemodule", fh.name)
             mod.__file__ = fake_path
 
             args = self._get_manager_args()
             m1 = WebIDLCodegenManager(**args)
             with MockedOpen({fake_path: "# Original content"}):
+                # MockedOpen is not compatible with distributed filesystem
+                # access, so force the number of processes used to generate
+                # files to 1.
                 try:
-                    result = m1.generate_build_files()
+                    result = m1.generate_build_files(processes=1)
                     l = len(result.inputs)
 
                     with io.open(fake_path, "wt", newline="\n") as fh:
                         fh.write("# Modified content")
 
                     m2 = WebIDLCodegenManager(**args)
-                    result = m2.generate_build_files()
+                    result = m2.generate_build_files(processes=1)
                     self.assertEqual(len(result.inputs), l)
 
-                    result = m2.generate_build_files()
+                    result = m2.generate_build_files(processes=1)
                     self.assertEqual(len(result.inputs), 0)
                 finally:
                     del sys.modules["mozwebidlcodegen.fakemodule"]

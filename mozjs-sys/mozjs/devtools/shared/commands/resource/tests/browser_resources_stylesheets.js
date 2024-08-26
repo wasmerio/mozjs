@@ -80,7 +80,6 @@ const ADDITIONAL_INLINE_RESOURCE = {
     {
       type: "media",
       conditionText: "all",
-      mediaText: "all",
       matches: true,
       line: 1,
       column: 1,
@@ -88,7 +87,6 @@ const ADDITIONAL_INLINE_RESOURCE = {
     {
       type: "media",
       conditionText: "print",
-      mediaText: "print",
       matches: false,
       line: 1,
       column: 37,
@@ -120,12 +118,26 @@ const ADDITIONAL_FROM_ACTOR_RESOURCE = {
 };
 
 add_task(async function () {
-  await testResourceAvailableFeature();
+  // Enable @property
+  await pushPref("layout.css.properties-and-values.enabled", true);
+  await testResourceAvailableDestroyedFeature();
   await testResourceUpdateFeature();
   await testNestedResourceUpdateFeature();
 });
 
-async function testResourceAvailableFeature() {
+function pushAvailableResource(availableResources) {
+  // TODO(bug 1826538): Find a better way of dealing with these.
+  return function (resources) {
+    for (const resource of resources) {
+      if (resource.href?.startsWith("resource://")) {
+        continue;
+      }
+      availableResources.push(resource);
+    }
+  };
+}
+
+async function testResourceAvailableDestroyedFeature() {
   info("Check resource available feature of the ResourceCommand");
 
   const tab = await addTab(STYLE_TEST_URL);
@@ -142,8 +154,10 @@ async function testResourceAvailableFeature() {
 
   info("Check whether ResourceCommand gets existing stylesheet");
   const availableResources = [];
+  const destroyedResources = [];
   await resourceCommand.watchResources([resourceCommand.TYPES.STYLESHEET], {
-    onAvailable: resources => availableResources.push(...resources),
+    onAvailable: pushAvailableResource(availableResources),
+    onDestroyed: resources => destroyedResources.push(...resources),
   });
 
   is(
@@ -174,6 +188,7 @@ async function testResourceAvailableFeature() {
     text => {
       const document = content.document;
       const stylesheet = document.createElement("style");
+      stylesheet.id = "inline-from-test";
       stylesheet.textContent = text;
       document.body.appendChild(stylesheet);
     }
@@ -221,6 +236,72 @@ async function testResourceAvailableFeature() {
     ADDITIONAL_FROM_ACTOR_RESOURCE
   );
 
+  info("Check resource destroyed feature of the ResourceCommand");
+  is(destroyedResources.length, 0, "There was no removed stylesheets yet");
+
+  info("Remove inline stylesheet added in the test");
+  await ContentTask.spawn(tab.linkedBrowser, null, () => {
+    content.document.querySelector("#inline-from-test").remove();
+  });
+  await waitUntil(() => destroyedResources.length === 1);
+  assertDestroyed(destroyedResources[0], {
+    resourceId: availableResources.at(-3).resourceId,
+  });
+
+  info("Remove existing top-level inline stylesheet");
+  await ContentTask.spawn(tab.linkedBrowser, null, () => {
+    content.document.querySelector("style").remove();
+  });
+  await waitUntil(() => destroyedResources.length === 2);
+  assertDestroyed(destroyedResources[1], {
+    resourceId: availableResources.find(
+      resource =>
+        findMatchingExpectedResource(resource) === EXISTING_RESOURCES[0]
+    ).resourceId,
+  });
+
+  info("Remove existing top-level <link> stylesheet");
+  await ContentTask.spawn(tab.linkedBrowser, null, () => {
+    content.document.querySelector("link").remove();
+  });
+  await waitUntil(() => destroyedResources.length === 3);
+  assertDestroyed(destroyedResources[2], {
+    resourceId: availableResources.find(
+      resource =>
+        findMatchingExpectedResource(resource) === EXISTING_RESOURCES[1]
+    ).resourceId,
+  });
+
+  info("Remove existing iframe inline stylesheet");
+  const iframeBrowsingContext = await SpecialPowers.spawn(
+    tab.linkedBrowser,
+    [],
+    () => content.document.querySelector("iframe").browsingContext
+  );
+
+  await SpecialPowers.spawn(iframeBrowsingContext, [], () => {
+    content.document.querySelector("style").remove();
+  });
+  await waitUntil(() => destroyedResources.length === 4);
+  assertDestroyed(destroyedResources[3], {
+    resourceId: availableResources.find(
+      resource =>
+        findMatchingExpectedResource(resource) === EXISTING_RESOURCES[3]
+    ).resourceId,
+  });
+
+  info("Remove existing iframe <link> stylesheet");
+  await SpecialPowers.spawn(iframeBrowsingContext, [], () => {
+    content.document.querySelector("link").remove();
+  });
+  await waitUntil(() => destroyedResources.length === 5);
+  assertDestroyed(destroyedResources[4], {
+    resourceId: availableResources.find(
+      resource =>
+        findMatchingExpectedResource(resource) === EXISTING_RESOURCES[4]
+    ).resourceId,
+  });
+
   targetCommand.destroy();
   await client.close();
 }
@@ -238,7 +319,7 @@ async function testResourceUpdateFeature() {
   const availableResources = [];
   const updates = [];
   await resourceCommand.watchResources([resourceCommand.TYPES.STYLESHEET], {
-    onAvailable: resources => availableResources.push(...resources),
+    onAvailable: pushAvailableResource(availableResources),
     onUpdated: newUpdates => updates.push(...newUpdates),
   });
   is(
@@ -292,13 +373,11 @@ async function testResourceUpdateFeature() {
     {
       type: "media",
       conditionText: "screen",
-      mediaText: "screen",
       matches: true,
     },
     {
       type: "media",
       conditionText: "print",
-      mediaText: "print",
       matches: false,
     },
   ];
@@ -376,7 +455,7 @@ async function testNestedResourceUpdateFeature() {
   const availableResources = [];
   const updates = [];
   await resourceCommand.watchResources([resourceCommand.TYPES.STYLESHEET], {
-    onAvailable: resources => availableResources.push(...resources),
+    onAvailable: pushAvailableResource(availableResources),
     onUpdated: newUpdates => updates.push(...newUpdates),
   });
   is(
@@ -419,13 +498,18 @@ async function testNestedResourceUpdateFeature() {
           }
         }
       }
+    }
+    @property --my-property {
+      syntax: "<color>";
+      inherits: true;
+      initial-value: #f06;
     }`,
     false
   );
   await waitUntil(() => updates.length === 3);
   is(
     updates.at(-1).resource.ruleCount,
-    7,
+    8,
     "Resource in update has expected ruleCount"
   );
 
@@ -441,7 +525,11 @@ async function testNestedResourceUpdateFeature() {
     resourceId: resource.resourceId,
     updateType: "matches-change",
   });
-  ok(resource === targetUpdate.resource, "Update object has the same resource");
+  Assert.strictEqual(
+    resource,
+    targetUpdate.resource,
+    "Update object has the same resource"
+  );
 
   is(
     JSON.stringify(targetUpdate.update.nestedResourceUpdates[0].path),
@@ -459,7 +547,6 @@ async function testNestedResourceUpdateFeature() {
     {
       type: "media",
       conditionText: "(min-height: 400px)",
-      mediaText: "(min-height: 400px)",
       matches: true,
     },
     {
@@ -474,6 +561,10 @@ async function testNestedResourceUpdateFeature() {
       type: "container",
       conditionText: "root (width > 10px)",
     },
+    {
+      type: "property",
+      propertyName: "--my-property",
+    },
   ];
 
   assertAtRules(targetUpdate.resource.atRules, expectedAtRules);
@@ -482,7 +573,7 @@ async function testNestedResourceUpdateFeature() {
   const styleSheetResult = await getStyleSheetResult(tab);
   is(
     styleSheetResult.ruleCount,
-    7,
+    8,
     "ruleCount of actual stylesheet is updated correctly"
   );
   assertAtRules(styleSheetResult.atRules, expectedAtRules);
@@ -525,7 +616,6 @@ async function getStyleSheetResult(tab) {
 
           atRules.push({
             type: "media",
-            mediaText: rule.media.mediaText,
             conditionText: rule.conditionText,
             matches,
           });
@@ -540,6 +630,11 @@ async function getStyleSheetResult(tab) {
           atRules.push({
             type: "support",
             conditionText: rule.conditionText,
+          });
+        } else if (rule instanceof content.CSSPropertyRule) {
+          atRules.push({
+            type: "property",
+            propertyName: rule.name,
           });
         }
 
@@ -573,10 +668,11 @@ function assertAtRules(atRules, expectedAtRules) {
       "conditionText is correct"
     );
     if (expected.type === "media") {
-      is(atRule.mediaText, expected.mediaText, "mediaText is correct");
       is(atRule.matches, expected.matches, "matches is correct");
     } else if (expected.type === "layer") {
       is(atRule.layerName, expected.layerName, "layerName is correct");
+    } else if (expected.type === "property") {
+      is(atRule.propertyName, expected.propertyName, "propertyName is correct");
     }
 
     if (expected.line !== undefined) {
@@ -595,10 +691,7 @@ async function assertResource(resource, expected) {
     ResourceCommand.TYPES.STYLESHEET,
     "Resource type is correct"
   );
-  const styleSheetsFront = await resource.targetFront.getFront("stylesheets");
-  const styleText = (
-    await styleSheetsFront.getText(resource.resourceId)
-  ).str.trim();
+  const styleText = (await getStyleSheetResourceText(resource)).trim();
   is(styleText, expected.styleText, "Style text is correct");
   is(resource.href, expected.href, "href is correct");
   is(resource.nodeHref, expected.nodeHref, "nodeHref is correct");
@@ -620,6 +713,15 @@ function assertUpdate(update, expected) {
   if (expected.event?.cause) {
     is(update.event?.cause, expected.event.cause, "cause is correct");
   }
+}
+
+function assertDestroyed(resource, expected) {
+  is(
+    resource.resourceType,
+    ResourceCommand.TYPES.STYLESHEET,
+    "Resource type is correct"
+  );
+  is(resource.resourceId, expected.resourceId, "resourceId is correct");
 }
 
 function getResourceTimingCount(tab) {

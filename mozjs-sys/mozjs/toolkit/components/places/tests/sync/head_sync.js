@@ -54,7 +54,7 @@ var {
   HTTP_505,
   HttpError,
   HttpServer,
-} = ChromeUtils.import("resource://testing-common/httpd.js");
+} = ChromeUtils.importESModule("resource://testing-common/httpd.sys.mjs");
 
 // These titles are defined in Database::CreateBookmarkRoots
 const BookmarksMenuTitle = "menu";
@@ -116,7 +116,7 @@ function makeRecord(cleartext) {
   return new Proxy(
     { cleartext },
     {
-      get(target, property, receiver) {
+      get(target, property) {
         if (property == "cleartext") {
           return target.cleartext;
         }
@@ -125,7 +125,7 @@ function makeRecord(cleartext) {
         }
         return target.cleartext[property];
       },
-      set(target, property, value, receiver) {
+      set(target, property, value) {
         if (property == "cleartext") {
           target.cleartext = value;
         } else if (property != "cleartextToString") {
@@ -135,7 +135,7 @@ function makeRecord(cleartext) {
       has(target, property) {
         return property == "cleartext" || property in target.cleartext;
       },
-      deleteProperty(target, property) {},
+      deleteProperty() {},
       ownKeys(target) {
         return ["cleartext", ...Reflect.ownKeys(target)];
       },
@@ -366,6 +366,7 @@ BookmarkObserver.prototype = {
             frecency: event.frecency,
             hidden: event.hidden,
             visitCount: event.visitCount,
+            dateAdded: event.dateAdded,
             lastVisitDate: event.lastVisitDate,
           };
           this.notifications.push({ name: "bookmark-moved", params });

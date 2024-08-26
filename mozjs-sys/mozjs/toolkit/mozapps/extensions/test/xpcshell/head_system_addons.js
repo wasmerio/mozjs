@@ -13,7 +13,7 @@ function root(server) {
   return `${primaryScheme}://${primaryHost}:${primaryPort}/data`;
 }
 
-XPCOMUtils.defineLazyGetter(this, "testserver", () => {
+ChromeUtils.defineLazyGetter(this, "testserver", () => {
   let server = new HttpServer();
   server.start();
   Services.prefs.setCharPref(
@@ -43,11 +43,11 @@ async function installSystemAddons(xml, waitIDs = []) {
   await serveSystemUpdate(
     xml,
     async function () {
-      let { XPIProvider } = ChromeUtils.import(
-        "resource://gre/modules/addons/XPIProvider.jsm"
+      let { XPIExports } = ChromeUtils.importESModule(
+        "resource://gre/modules/addons/XPIExports.sys.mjs"
       );
       await Promise.all([
-        XPIProvider.updateSystemAddons(),
+        XPIExports.XPIProvider.updateSystemAddons(),
         ...waitIDs.map(id => promiseWebExtensionStartup(id)),
       ]);
     },

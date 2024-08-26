@@ -3,6 +3,7 @@ import sys
 import threading
 import traceback
 from unittest import mock
+from unittest.mock import patch
 
 import mozunit
 import pytest
@@ -41,16 +42,18 @@ class TestBrowserThread(threading.Thread):
 
 
 # Perftest tests
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 @pytest.mark.parametrize(
     "perftest_class, app_name",
     [
         [BrowsertimeDesktop, "firefox"],
-        [BrowsertimeDesktop, "chrome"],
-        [BrowsertimeDesktop, "chromium"],
         [BrowsertimeAndroid, "geckoview"],
     ],
 )
-def test_build_profile(options, perftest_class, app_name, get_prefs):
+def test_build_profile(
+    mock_info, mock_critical, options, perftest_class, app_name, get_prefs
+):
     options["app"] = app_name
 
     # We need to do the mock ourselves because of how the perftest_class
@@ -84,7 +87,11 @@ def test_build_profile(options, perftest_class, app_name, get_prefs):
         assert raptor_pref in prefs
 
 
-def test_perftest_host_ip(ConcretePerftest, options, get_prefs):
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+def test_perftest_host_ip(
+    mock_info, mock_critical, ConcretePerftest, options, get_prefs
+):
     os.environ["HOST_IP"] = "some_dummy_host_ip"
     options["host"] = "HOST_IP"
 
@@ -93,21 +100,31 @@ def test_perftest_host_ip(ConcretePerftest, options, get_prefs):
     assert perftest.config["host"] == os.environ["HOST_IP"]
 
 
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 @pytest.mark.parametrize(
     "app_name, expected_e10s_flag",
     [["firefox", True], ["geckoview", True]],
 )
-def test_e10s_enabling(ConcretePerftest, options, app_name, expected_e10s_flag):
+def test_e10s_enabling(
+    mock_info, mock_critical, ConcretePerftest, options, app_name, expected_e10s_flag
+):
     options["app"] = app_name
     perftest = ConcretePerftest(profile_class="firefox", **options)
     assert perftest.config["e10s"] == expected_e10s_flag
 
 
-def test_profile_was_provided_locally(ConcretePerftest, options):
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+def test_profile_was_provided_locally(
+    mock_info, mock_critical, ConcretePerftest, options
+):
     perftest = ConcretePerftest(**options)
     assert os.path.isdir(perftest.config["local_profile_dir"])
 
 
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 @pytest.mark.parametrize(
     "profile_class, app, expected_profile",
     [
@@ -117,59 +134,92 @@ def test_profile_was_provided_locally(ConcretePerftest, options):
     ],
 )
 def test_profile_class_assignation(
-    ConcretePerftest, options, profile_class, app, expected_profile
+    mock_info,
+    mock_critical,
+    ConcretePerftest,
+    options,
+    profile_class,
+    app,
+    expected_profile,
 ):
     options["app"] = app
     perftest = ConcretePerftest(profile_class=profile_class, **options)
     assert perftest.profile_class == expected_profile
 
 
-def test_raptor_venv(ConcretePerftest, options):
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+def test_raptor_venv(mock_info, mock_critical, ConcretePerftest, options):
     perftest = ConcretePerftest(**options)
     assert perftest.raptor_venv.endswith("raptor-venv")
 
 
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+@mock.patch("perftest.Perftest.build_browser_profile", new=mock.MagicMock())
 @pytest.mark.parametrize(
+    "app,"
     "run_local,"
     "debug_mode,"
+    "conditioned_profile,"
     "post_startup_delay,"
     "expected_post_startup_delay,"
     "expected_debug_mode",
     [
-        [True, True, 1234, 1234, True],
-        [True, True, 12345, 3000, True],
-        [False, False, 1234, 1234, False],
-        [False, False, 12345, 12345, False],
-        [True, False, 1234, 1234, False],
-        [True, False, 12345, 12345, False],
-        [False, True, 1234, 1234, False],
-        [False, True, 12345, 12345, False],
+        ["firefox", True, True, None, 1234, 1234, True],
+        ["firefox", True, True, None, None, 3000, True],
+        ["firefox", True, False, None, None, 30000, False],
+        ["firefox", True, False, "settled", None, 1000, False],
+        ["fenix", True, False, None, None, 20000, False],
+        ["fenix", True, False, "settled", None, 1000, False],
+        ["firefox", False, False, None, 1234, 1234, False],
+        ["firefox", False, False, None, 12345, 12345, False],
+        ["firefox", True, False, None, 1234, 1234, False],
+        ["firefox", True, False, None, 12345, 12345, False],
+        ["firefox", False, True, None, 1234, 1234, False],
+        ["firefox", False, True, None, 12345, 12345, False],
     ],
 )
 def test_post_startup_delay(
+    mock_info,
+    mock_critical,
     ConcretePerftest,
     options,
+    app,
     run_local,
     debug_mode,
+    conditioned_profile,
     post_startup_delay,
     expected_post_startup_delay,
     expected_debug_mode,
 ):
+    options["app"] = app
+
     perftest = ConcretePerftest(
         run_local=run_local,
         debug_mode=debug_mode,
         post_startup_delay=post_startup_delay,
+        conditioned_profile=conditioned_profile,
         **options
     )
+
     assert perftest.post_startup_delay == expected_post_startup_delay
     assert perftest.debug_mode == expected_debug_mode
 
 
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 @pytest.mark.parametrize(
     "alert, expected_alert", [["test_to_alert_on", "test_to_alert_on"], [None, None]]
 )
 def test_perftest_run_test_setup(
-    ConcretePerftest, options, mock_test, alert, expected_alert
+    mock_info,
+    mock_critical,
+    ConcretePerftest,
+    options,
+    mock_test,
+    alert,
+    expected_alert,
 ):
     perftest = ConcretePerftest(**options)
     mock_test["alert_on"] = alert
@@ -180,7 +230,11 @@ def test_perftest_run_test_setup(
 
 
 # Browsertime tests
-def test_cmd_arguments(ConcreteBrowsertime, browsertime_options, mock_test):
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
+def test_cmd_arguments(
+    mock_info, mock_critical, ConcreteBrowsertime, browsertime_options, mock_test
+):
     expected_cmd = {
         browsertime_options["browsertime_node"],
         browsertime_options["browsertime_browsertimejs"],
@@ -242,7 +296,11 @@ def extract_arg_value(cmd, arg):
         ["--browsertime.page_cycles", "123", {"page_cycles": 123}, {}],
     ],
 )
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 def test_browsertime_arguments(
+    mock_info,
+    mock_critical,
     ConcreteBrowsertime,
     browsertime_options,
     mock_test,
@@ -271,7 +329,11 @@ def test_browsertime_arguments(
         [1000, 381, {}, {"gecko_profile": True}],
     ],
 )
+@patch("logger.logger.RaptorLogger.info")
+@patch("logger.logger.RaptorLogger.critical")
 def test_compute_process_timeout(
+    mock_info,
+    mock_critical,
     ConcreteBrowsertime,
     browsertime_options,
     mock_test,

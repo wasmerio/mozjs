@@ -14,8 +14,8 @@
 #include <stdint.h>
 
 #include "api/array_view.h"
+#include "api/ref_count.h"
 #include "api/scoped_refptr.h"
-#include "rtc_base/ref_count.h"
 #include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
@@ -44,7 +44,7 @@ class NV12BufferInterface;
 // performance by providing an optimized path without intermediate conversions.
 // Frame metadata such as rotation and timestamp are stored in
 // webrtc::VideoFrame, and not here.
-class RTC_EXPORT VideoFrameBuffer : public rtc::RefCountInterface {
+class RTC_EXPORT VideoFrameBuffer : public webrtc::RefCountInterface {
  public:
   // New frame buffer types will be added conservatively when there is an
   // opportunity to optimize the path between some pair of video source and
@@ -224,8 +224,8 @@ class I444BufferInterface : public PlanarYuv8Buffer {
   ~I444BufferInterface() override {}
 };
 
-// This interface represents 8-bit to 16-bit color depth formats: Type::kI010 or
-// Type::kI210 .
+// This interface represents 8-bit to 16-bit color depth formats: Type::kI010,
+// Type::kI210, or Type::kI410.
 class PlanarYuv16BBuffer : public PlanarYuvBuffer {
  public:
   // Returns pointer to the pixel data for a given plane. The memory is owned by

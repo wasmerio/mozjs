@@ -3,7 +3,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 //
-// This file conatins the C API of the encoder part of the libjpegli library,
+// This file contains the C API of the encoder part of the libjpegli library,
 // which is based on the C API of libjpeg, with the function names changed from
 // jpeg_* to jpegli_*, while compressor object definitions are included directly
 // from jpeglib.h
@@ -20,14 +20,10 @@
 #ifndef LIB_JPEGLI_ENCODE_H_
 #define LIB_JPEGLI_ENCODE_H_
 
-/* clang-format off */
-#include <stdio.h>
-#include <jpeglib.h>
-/* clang-format on */
-
 #include "lib/jpegli/common.h"
+#include "lib/jpegli/types.h"
 
-#if defined(__cplusplus) || defined(c_plusplus)
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -40,7 +36,7 @@ void jpegli_CreateCompress(j_compress_ptr cinfo, int version,
 void jpegli_stdio_dest(j_compress_ptr cinfo, FILE* outfile);
 
 void jpegli_mem_dest(j_compress_ptr cinfo, unsigned char** outbuffer,
-                     unsigned long* outsize);
+                     unsigned long* outsize /* NOLINT */);
 
 void jpegli_set_defaults(j_compress_ptr cinfo);
 
@@ -140,7 +136,7 @@ void jpegli_set_cicp_transfer_function(j_compress_ptr cinfo, int code);
 void jpegli_set_input_format(j_compress_ptr cinfo, JpegliDataType data_type,
                              JpegliEndianness endianness);
 
-// Sets whether or not the encoder uses adaptive quantization for createing more
+// Sets whether or not the encoder uses adaptive quantization for creating more
 // zero coefficients based on the local properties of the image.
 // Enabled by default.
 void jpegli_enable_adaptive_quantization(j_compress_ptr cinfo, boolean value);
@@ -156,7 +152,7 @@ void jpegli_set_progressive_level(j_compress_ptr cinfo, int level);
 // AC coefficients. Must be called before jpegli_set_defaults().
 void jpegli_use_standard_quant_tables(j_compress_ptr cinfo);
 
-#if defined(__cplusplus) || defined(c_plusplus)
+#ifdef __cplusplus
 }  // extern "C"
 #endif
 

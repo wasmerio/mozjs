@@ -47,8 +47,6 @@ const TEST_URI = `
 `;
 
 add_task(async function () {
-  await pushPref("layout.css.nesting.enabled", true);
-
   await addTab(
     "https://example.com/document-builder.sjs?html=" +
       encodeURIComponent(TEST_URI)
@@ -60,7 +58,11 @@ add_task(async function () {
     { selector: "element", ancestorRulesData: null, declarations: [] },
     {
       selector: `&`,
-      ancestorRulesData: [`body`, `@media screen`],
+      // prettier-ignore
+      ancestorRulesData: [
+        `body {`,
+        `  @media screen {`
+      ],
       declarations: [{ name: "container-name", value: "main" }],
     },
     {
@@ -78,7 +80,11 @@ add_task(async function () {
     { selector: "element", ancestorRulesData: null, declarations: [] },
     {
       selector: `& h1`,
-      ancestorRulesData: [`body`, `@media screen`],
+      // prettier-ignore
+      ancestorRulesData: [
+        `body {`,
+        `  @media screen {`
+      ],
       declarations: [{ name: "border-color", value: "gold" }],
     },
   ]);
@@ -87,8 +93,13 @@ add_task(async function () {
   checkRuleViewContent(view, [
     { selector: "element", ancestorRulesData: null, declarations: [] },
     {
-      selector: `.foo`,
-      ancestorRulesData: [`body`, `@media screen`, `& h1`],
+      selector: `& .foo`,
+      // prettier-ignore
+      ancestorRulesData: [
+        `body {`,
+        `  @media screen {`,
+        `    & h1 {`
+      ],
       declarations: [{ name: "color", value: "white" }],
     },
   ]);
@@ -97,8 +108,13 @@ add_task(async function () {
   checkRuleViewContent(view, [
     { selector: "element", ancestorRulesData: null, declarations: [] },
     {
-      selector: `#bar`,
-      ancestorRulesData: [`body`, `@media screen`, `& h1`],
+      selector: `& #bar`,
+      // prettier-ignore
+      ancestorRulesData: [
+        `body {`,
+        `  @media screen {`,
+        `    & h1 {`
+      ],
       declarations: [{ name: "text-decoration", value: "underline" }],
     },
   ]);
@@ -109,10 +125,10 @@ add_task(async function () {
     {
       selector: `& + nav`,
       ancestorRulesData: [
-        `body`,
-        `@media screen`,
-        `& h1`,
-        `@container main (width > 10px)`,
+        `body {`,
+        `  @media screen {`,
+        `    & h1 {`,
+        `      @container main (width > 10px) {`,
       ],
       declarations: [{ name: "border", value: "1px solid" }],
     },
@@ -122,13 +138,13 @@ add_task(async function () {
   checkRuleViewContent(view, [
     { selector: "element", ancestorRulesData: null, declarations: [] },
     {
-      selector: `[href]`,
+      selector: `& [href]`,
       ancestorRulesData: [
-        `body`,
-        `@media screen`,
-        `& h1`,
-        `@container main (width > 10px)`,
-        `& + nav`,
+        `body {`,
+        `  @media screen {`,
+        `    & h1 {`,
+        `      @container main (width > 10px) {`,
+        `        & + nav {`,
       ],
       declarations: [{ name: "background-color", value: "lightgreen" }],
     },
@@ -149,7 +165,7 @@ function checkRuleViewContent(view, expectedRules) {
 
     const ruleInView = rulesInView[i];
     const selector = ruleInView.querySelector(
-      ".ruleview-selectorcontainer"
+      ".ruleview-selectors-container"
     ).innerText;
     is(selector, expectedRule.selector, `Expected selector for ${selector}`);
 

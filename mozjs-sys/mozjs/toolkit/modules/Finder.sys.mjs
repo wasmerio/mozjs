@@ -100,7 +100,7 @@ Finder.prototype = {
     this._listeners = this._listeners.filter(l => l != aListener);
   },
 
-  _setResults(options, mode) {
+  _setResults(options) {
     if (typeof options.storeResult != "boolean") {
       options.storeResult = true;
     }
@@ -526,8 +526,13 @@ Finder.prototype = {
       case aEvent.DOM_VK_RETURN:
         if (this._fastFind.foundLink) {
           let view = this._fastFind.foundLink.ownerGlobal;
+          const ClickEventConstructor = Services.prefs.getBoolPref(
+            "dom.w3c_pointer_events.dispatch_click_as_pointer_event"
+          )
+            ? view.PointerEvent
+            : view.MouseEvent;
           this._fastFind.foundLink.dispatchEvent(
-            new view.MouseEvent("click", {
+            new ClickEventConstructor("click", {
               view,
               cancelable: true,
               bubbles: true,

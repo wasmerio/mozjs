@@ -7,6 +7,7 @@
 use app_units::Au;
 use cssparser::ToCss as CssparserToCss;
 use cssparser::{serialize_string, ParseError, Parser, Token, UnicodeRange};
+use nsstring::nsCString;
 use servo_arc::Arc;
 use std::fmt::{self, Write};
 
@@ -44,7 +45,7 @@ use std::fmt::{self, Write};
 /// * `#[css(represents_keyword)]` can be used on bool fields in order to
 ///   serialize the field name if the field is true, or nothing otherwise.  It
 ///   also collects those keywords for `SpecifiedValueInfo`.
-/// * `#[css(bitflags(single="", mixed="", validate="", overlapping_bits)]` can
+/// * `#[css(bitflags(single="", mixed="", validate_mixed="", overlapping_bits)]` can
 ///   be used to derive parse / serialize / etc on bitflags. The rules for parsing
 ///   bitflags are the following:
 ///
@@ -66,8 +67,10 @@ use std::fmt::{self, Write};
 ///
 ///       But `bar baz` will be valid, as they don't share bits, and so would
 ///       `foo` with any other flag, or `bazz` on its own.
-///    * `overlapping_bits` enables some tracking during serialization of mixed
-///       flags to avoid serializing variants that can subsume other variants.
+///    * `validate_mixed` can be used to reject invalid mixed combinations, and also to simplify
+///      the type or add default ones if needed.
+///    * `overlapping_bits` enables some tracking during serialization of mixed flags to avoid
+///       serializing variants that can subsume other variants.
 ///       In the example above, you could do:
 ///         mixed="foo,bazz,bar,baz", overlapping_bits
 ///       to ensure that if bazz is serialized, bar and baz aren't, even though
@@ -88,6 +91,16 @@ pub trait ToCss {
     #[inline]
     fn to_css_string(&self) -> String {
         let mut s = String::new();
+        self.to_css(&mut CssWriter::new(&mut s)).unwrap();
+        s
+    }
+
+    /// Serialize `self` in CSS syntax and return a nsCString.
+    ///
+    /// (This is a convenience wrapper for `to_css` and probably should not be overridden.)
+    #[inline]
+    fn to_css_nscstring(&self) -> nsCString {
+        let mut s = nsCString::new();
         self.to_css(&mut CssWriter::new(&mut s)).unwrap();
         s
     }
@@ -232,8 +245,9 @@ where
         Self { inner, separator }
     }
 
+    /// Serialize the CSS Value with the specific serialization function.
     #[inline]
-    fn write_item<F>(&mut self, f: F) -> fmt::Result
+    pub fn write_item<F>(&mut self, f: F) -> fmt::Result
     where
         F: FnOnce(&mut CssWriter<'b, W>) -> fmt::Result,
     {
@@ -497,6 +511,7 @@ macro_rules! impl_to_css_for_predefined_type {
 impl_to_css_for_predefined_type!(f32);
 impl_to_css_for_predefined_type!(i8);
 impl_to_css_for_predefined_type!(i32);
+impl_to_css_for_predefined_type!(u8);
 impl_to_css_for_predefined_type!(u16);
 impl_to_css_for_predefined_type!(u32);
 impl_to_css_for_predefined_type!(::cssparser::Token<'a>);

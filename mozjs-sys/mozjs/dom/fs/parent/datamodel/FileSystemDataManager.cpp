@@ -26,6 +26,7 @@
 #include "mozilla/dom/QMResult.h"
 #include "mozilla/dom/quota/ClientImpl.h"
 #include "mozilla/dom/quota/DirectoryLock.h"
+#include "mozilla/dom/quota/DirectoryLockInlines.h"
 #include "mozilla/dom/quota/QuotaCommon.h"
 #include "mozilla/dom/quota/QuotaManager.h"
 #include "mozilla/dom/quota/ResultExtensions.h"
@@ -114,10 +115,12 @@ void RemoveFileSystemDataManager(const Origin& aOrigin) {
   }
 }
 
+}  // namespace
+
 Result<ResultConnection, QMResult> GetStorageConnection(
     const quota::OriginMetadata& aOriginMetadata,
     const int64_t aDirectoryLockId) {
-  MOZ_ASSERT(aDirectoryLockId >= 0);
+  MOZ_ASSERT(aDirectoryLockId >= -1);
 
   // Ensure that storage is initialized and file system folder exists!
   QM_TRY_INSPECT(const auto& dbFileUrl,
@@ -139,8 +142,6 @@ Result<ResultConnection, QMResult> GetStorageConnection(
 
   return result;
 }
-
-}  // namespace
 
 Result<EntryId, QMResult> GetRootHandle(const Origin& origin) {
   MOZ_ASSERT(!origin.IsEmpty());
@@ -320,6 +321,10 @@ void FileSystemDataManager::RegisterActor(
   MOZ_ASSERT(!mBackgroundThreadAccessible.Access()->mActors.Contains(aActor));
 
   mBackgroundThreadAccessible.Access()->mActors.Insert(aActor);
+
+#ifdef DEBUG
+  aActor->SetRegistered(true);
+#endif
 }
 
 void FileSystemDataManager::UnregisterActor(
@@ -327,6 +332,10 @@ void FileSystemDataManager::UnregisterActor(
   MOZ_ASSERT(mBackgroundThreadAccessible.Access()->mActors.Contains(aActor));
 
   mBackgroundThreadAccessible.Access()->mActors.Remove(aActor);
+
+#ifdef DEBUG
+  aActor->SetRegistered(false);
+#endif
 
   if (IsInactive()) {
     BeginClose();
@@ -517,26 +526,22 @@ RefPtr<BoolPromise> FileSystemDataManager::BeginOpen() {
 
   mState = State::Opening;
 
-  RefPtr<quota::ClientDirectoryLock> directoryLock =
-      mQuotaManager->CreateDirectoryLock(
-          quota::PERSISTENCE_TYPE_DEFAULT, mOriginMetadata,
-          mozilla::dom::quota::Client::FILESYSTEM,
-          /* aExclusive */ false);
+  mQuotaManager
+      ->OpenClientDirectory(
+          {mOriginMetadata, mozilla::dom::quota::Client::FILESYSTEM})
+      ->Then(
+          GetCurrentSerialEventTarget(), __func__,
+          [self = RefPtr<FileSystemDataManager>(this)](
+              quota::ClientDirectoryLockPromise::ResolveOrRejectValue&& value) {
+            if (value.IsReject()) {
+              return BoolPromise::CreateAndReject(value.RejectValue(),
+                                                  __func__);
+            }
 
-  directoryLock->Acquire()
-      ->Then(GetCurrentSerialEventTarget(), __func__,
-             [self = RefPtr<FileSystemDataManager>(this),
-              directoryLock = directoryLock](
-                 const BoolPromise::ResolveOrRejectValue& value) mutable {
-               if (value.IsReject()) {
-                 return BoolPromise::CreateAndReject(value.RejectValue(),
-                                                     __func__);
-               }
+            self->mDirectoryLock = std::move(value.ResolveValue());
 
-               self->mDirectoryLock = std::move(directoryLock);
-
-               return BoolPromise::CreateAndResolve(true, __func__);
-             })
+            return BoolPromise::CreateAndResolve(true, __func__);
+          })
       ->Then(mQuotaManager->IOThread(), __func__,
              [self = RefPtr<FileSystemDataManager>(this)](
                  const BoolPromise::ResolveOrRejectValue& value) {
@@ -560,18 +565,22 @@ RefPtr<BoolPromise> FileSystemDataManager::BeginOpen() {
                                                   __func__);
             }
 
-            QM_TRY_UNWRAP(
-                auto connection,
-                fs::data::GetStorageConnection(self->mOriginMetadata,
+            QM_TRY_UNWRAP(auto connection,
+                          GetStorageConnection(self->mOriginMetadata,
                                                self->mDirectoryLock->Id()),
-                CreateAndRejectBoolPromiseFromQMResult);
+                          CreateAndRejectBoolPromiseFromQMResult);
+
+            QM_TRY_UNWRAP(UniquePtr<FileSystemFileManager> fmPtr,
+                          FileSystemFileManager::CreateFileSystemFileManager(
+                              self->mOriginMetadata),
+                          CreateAndRejectBoolPromiseFromQMResult);
 
             QM_TRY_UNWRAP(
                 self->mVersion,
                 QM_OR_ELSE_WARN_IF(
                     // Expression.
                     SchemaVersion002::InitializeConnection(
-                        connection, self->mOriginMetadata.mOrigin),
+                        connection, *fmPtr, self->mOriginMetadata.mOrigin),
                     // Predicate.
                     ([](const auto&) { return true; }),
                     // Fallback.
@@ -580,11 +589,6 @@ RefPtr<BoolPromise> FileSystemDataManager::BeginOpen() {
                           connection, self->mOriginMetadata.mOrigin));
                     })),
                 CreateAndRejectBoolPromiseFromQMResult);
-
-            QM_TRY_UNWRAP(UniquePtr<FileSystemFileManager> fmPtr,
-                          FileSystemFileManager::CreateFileSystemFileManager(
-                              self->mOriginMetadata),
-                          CreateAndRejectBoolPromiseFromQMResult);
 
             QM_TRY_UNWRAP(
                 EntryId rootId,
@@ -654,7 +658,7 @@ RefPtr<BoolPromise> FileSystemDataManager::BeginClose() {
       ->Then(MutableBackgroundTargetPtr(), __func__,
              [self = RefPtr<FileSystemDataManager>(this)](
                  const ShutdownPromise::ResolveOrRejectValue&) {
-               self->mDirectoryLock = nullptr;
+               SafeDropDirectoryLock(self->mDirectoryLock);
 
                RemoveFileSystemDataManager(self->mOriginMetadata.mOrigin);
 

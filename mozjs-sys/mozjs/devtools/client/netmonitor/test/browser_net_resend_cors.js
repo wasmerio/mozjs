@@ -25,7 +25,7 @@ add_task(async function () {
   const requestUrl = "https://test1.example.com" + CORS_SJS_PATH;
 
   info("Waiting for OPTIONS, then POST");
-  const wait = waitForNetworkEvents(monitor, 2);
+  const onEvents = waitForNetworkEvents(monitor, 2);
   await SpecialPowers.spawn(
     tab.linkedBrowser,
     [requestUrl],
@@ -37,25 +37,36 @@ add_task(async function () {
       );
     }
   );
-  await wait;
-
-  const METHODS = ["OPTIONS", "POST"];
-  const ITEMS = METHODS.map((val, i) => getSortedRequests(store.getState())[i]);
+  await onEvents;
 
   // Check the requests that were sent
-  ITEMS.forEach((item, i) => {
-    is(
-      item.method,
-      METHODS[i],
-      `The ${item.method} request has the right method`
-    );
-    is(item.url, requestUrl, `The ${item.method} request has the right URL`);
-  });
+  let sortedRequests = getSortedRequests(store.getState());
+
+  // If the NetworkObserver is configured to use early events, we should detect
+  // the flight request (POST) before the preflight request (OPTIONS).
+  // Bug 1901504 will remove the earlyEvents=false option.
+  // Note that this test is still intermittently detecting the preflight request
+  // before the flight request, event with early events enabled, so we should
+  // keep the logic here to assign optRequest and postRequest accordingly.
+  let optRequest, postRequest;
+  if (sortedRequests[0].method === "POST") {
+    optRequest = sortedRequests[1];
+    postRequest = sortedRequests[0];
+  } else {
+    optRequest = sortedRequests[0];
+    postRequest = sortedRequests[1];
+  }
+
+  is(optRequest.method, "OPTIONS", `The OPTIONS request has the right method`);
+  is(optRequest.url, requestUrl, `The OPTIONS request has the right URL`);
+
+  is(postRequest.method, "POST", `The POST request has the right method`);
+  is(postRequest.url, requestUrl, `The POST request has the right URL`);
 
   // Resend both requests without modification. Wait for resent OPTIONS, then POST.
   // POST is supposed to have no preflight OPTIONS request this time (CORS is disabled)
-  const onRequests = waitForNetworkEvents(monitor, 1);
-  for (let item of ITEMS) {
+  for (let item of [optRequest, postRequest]) {
+    const onRequest = waitForNetworkEvents(monitor, 1);
     info(`Selecting the ${item.method} request`);
     store.dispatch(Actions.selectRequest(item.id));
 
@@ -66,66 +77,101 @@ add_task(async function () {
       return item.requestHeaders && item.responseHeaders;
     });
 
-    const { length } = getSortedRequests(store.getState());
-
     info(`Cloning the ${item.method} request into a custom clone`);
     store.dispatch(Actions.cloneRequest(item.id));
 
     info("Sending the cloned request (without change)");
     store.dispatch(Actions.sendCustomRequest(item.id));
 
-    await waitUntil(
-      () => getSortedRequests(store.getState()).length === length + 1
-    );
+    info("Waiting for the resent request");
+    await onRequest;
   }
 
-  info("Waiting for both resent requests");
-  await onRequests;
+  // Retrieve the new list of sorted requests, which should include 2 resent
+  // requests.
+  sortedRequests = getSortedRequests(store.getState());
+  is(sortedRequests.length, 4, "There are 4 requests in total");
 
-  // Check the resent requests
-  for (let i = 0; i < ITEMS.length; i++) {
-    let item = ITEMS[i];
-    is(
-      item.method,
-      METHODS[i],
-      `The ${item.method} request has the right method`
-    );
-    is(item.url, requestUrl, `The ${item.method} request has the right URL`);
-    is(item.status, "200", `The ${item.method} response has the right status`);
-
-    if (item.method === "POST") {
-      is(
-        item.method,
-        "POST",
-        `The ${item.method} request has the right method`
-      );
-
-      // Trigger responseContent update requires to wait until
-      // responseContentAvailable set true
-      await waitUntil(() => {
-        item = getRequestById(store.getState(), item.id);
-        return item.responseContentAvailable;
-      });
-      await connector.requestData(item.id, "responseContent");
-
-      // Wait for both requestPostData & responseContent payloads arrived.
-      await waitUntil(() => {
-        item = getRequestById(store.getState(), item.id);
-        return item.responseContent && item.requestPostData;
-      });
-
-      is(
-        item.requestPostData.postData.text,
-        "post-data",
-        "The POST request has the right POST data"
-      );
-      is(
-        item.responseContent.content.text,
-        "Access-Control-Allow-Origin: *",
-        "The POST response has the right content"
-      );
-    }
+  // If the NetworkObserver is configured to use early events, we should detect
+  // the flight request (POST) before the preflight request (OPTIONS).
+  // Bug 1901504 will remove the earlyEvents=false option.
+  // Note that this test is still intermittently detecting the preflight request
+  // before the flight request, event with early events enabled, so we should
+  // keep the logic here to assign resentOptRequest and resentPostRequest
+  // accordingly.
+  let resentOptRequest, resentPostRequest;
+  if (sortedRequests[2].method === "POST") {
+    resentOptRequest = sortedRequests[3];
+    resentPostRequest = sortedRequests[2];
+  } else {
+    resentOptRequest = sortedRequests[2];
+    resentPostRequest = sortedRequests[3];
   }
+  is(
+    resentOptRequest.method,
+    "OPTIONS",
+    `The resent OPTIONS request has the right method`
+  );
+  is(
+    resentOptRequest.url,
+    requestUrl,
+    `The resent OPTIONS request has the right URL`
+  );
+  is(
+    resentOptRequest.status,
+    "200",
+    `The resent OPTIONS response has the right status`
+  );
+  is(
+    resentOptRequest.blockedReason,
+    0,
+    `The resent OPTIONS request was not blocked`
+  );
+
+  is(
+    resentPostRequest.method,
+    "POST",
+    `The resent POST request has the right method`
+  );
+  is(
+    resentPostRequest.url,
+    requestUrl,
+    `The resent POST request has the right URL`
+  );
+  is(
+    resentPostRequest.status,
+    "200",
+    `The resent POST response has the right status`
+  );
+  is(
+    resentPostRequest.blockedReason,
+    0,
+    `The resent POST request was not blocked`
+  );
+
+  await Promise.all([
+    connector.requestData(resentPostRequest.id, "requestPostData"),
+    connector.requestData(resentPostRequest.id, "responseContent"),
+  ]);
+
+  // Wait until responseContent and requestPostData are available.
+  await waitUntil(() => {
+    resentPostRequest = getRequestById(store.getState(), resentPostRequest.id);
+    return (
+      resentPostRequest.responseContent && resentPostRequest.requestPostData
+    );
+  });
+
+  is(
+    resentPostRequest.requestPostData.postData.text,
+    "post-data",
+    "The resent POST request has the right POST data"
+  );
+  is(
+    resentPostRequest.responseContent.content.text,
+    "Access-Control-Allow-Origin: *",
+    "The resent POST response has the right content"
+  );
 
   info("Finishing the test");
   return teardown(monitor);

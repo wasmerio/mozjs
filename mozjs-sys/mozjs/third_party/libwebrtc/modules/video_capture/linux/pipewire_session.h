@@ -20,9 +20,11 @@
 
 #include "api/ref_counted_base.h"
 #include "api/scoped_refptr.h"
+#include "modules/portal/pipewire_utils.h"
 #include "modules/video_capture/linux/camera_portal.h"
 #include "modules/video_capture/video_capture.h"
 #include "modules/video_capture/video_capture_options.h"
+#include "rtc_base/synchronization/mutex.h"
 
 namespace webrtc {
 namespace videocapturemodule {
@@ -83,7 +85,8 @@ class PipeWireSession : public rtc::RefCountedNonVirtual<PipeWireSession> {
   PipeWireSession();
   ~PipeWireSession();
 
-  void Init(VideoCaptureOptions::Callback* callback, int fd = -1);
+  void Init(VideoCaptureOptions::Callback* callback,
+            int fd = kInvalidPipeWireFd);
 
   const std::deque<PipeWireNode>& nodes() const { return nodes_; }
 
@@ -115,7 +118,11 @@ class PipeWireSession : public rtc::RefCountedNonVirtual<PipeWireSession> {
   void Finish(VideoCaptureOptions::Status status);
   void Cleanup();
 
-  VideoCaptureOptions::Callback* callback_ = nullptr;
+  webrtc::Mutex callback_lock_;
+  VideoCaptureOptions::Callback* callback_ RTC_GUARDED_BY(&callback_lock_) =
+      nullptr;
+
+  VideoCaptureOptions::Status status_;
 
   struct pw_thread_loop* pw_main_loop_ = nullptr;
   struct pw_context* pw_context_ = nullptr;

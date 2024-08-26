@@ -88,11 +88,12 @@ promise_test(async t => {
   div.style.animationPlayState = 'paused';
 
   await animation.ready;
+  await waitForPaints();
 
   assert_animation_is_not_running_on_compositor(animation,
      'Animation reports that it is NOT running on the compositor'
      + ' when paused');
-}, '');
+}, 'Basic test');
 
 promise_test(async t => {
   var div = addDiv(t, { style: 'animation: z-index 100s' });
@@ -126,6 +127,8 @@ promise_test(async t => {
 
   animation.pause();
   await animation.ready;
+
+  await waitForPaints();
 
   assert_animation_is_not_running_on_compositor(animation,
      'Animation reports that it is NOT running on the compositor'
@@ -1246,6 +1249,32 @@ promise_test(async t => {
   assert_animation_is_running_on_compositor(animation,
     'offset-path:content-box animation should be running on the compositor');
 }, 'offset-path:content-box animation runs on the compositor');
+
+promise_test(async t => {
+  const div = addDiv(t);
+  const animation = div.animate({ offsetPath: ['xywh(0% 0% 10px 10px)',
+                                               'xywh(10% 10% 20px 20px)'] },
+                                100 * MS_PER_SEC);
+
+  await waitForAnimationReadyToRestyle(animation);
+  await waitForPaints();
+
+  assert_animation_is_running_on_compositor(animation,
+    'offset-path:xywh() animation should be running on the compositor');
+}, 'offset-path:xywh() animation runs on the compositor');
+
+promise_test(async t => {
+  const div = addDiv(t);
+  const animation = div.animate({ offsetPath: ['rect(0% 0% 10px 10px)',
+                                               'rect(10% 10% 20px 20px)'] },
+                                100 * MS_PER_SEC);
+
+  await waitForAnimationReadyToRestyle(animation);
+  await waitForPaints();
+
+  assert_animation_is_running_on_compositor(animation,
+    'offset-path:rect() animation should be running on the compositor');
+}, 'offset-path:rect() animation runs on the compositor');
 
 promise_test(async t => {
   const div = addDiv(t);

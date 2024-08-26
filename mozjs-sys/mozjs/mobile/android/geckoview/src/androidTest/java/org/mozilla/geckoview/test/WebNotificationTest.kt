@@ -7,6 +7,7 @@ import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.geckoview.GeckoResult
@@ -30,8 +31,7 @@ class WebNotificationTest : BaseSessionTest() {
 
         // Grant "desktop notification" permission
         mainSession.delegateUntilTestEnd(object : PermissionDelegate {
-            override fun onContentPermissionRequest(session: GeckoSession, perm: PermissionDelegate.ContentPermission):
-                GeckoResult<Int>? {
+            override fun onContentPermissionRequest(session: GeckoSession, perm: PermissionDelegate.ContentPermission): GeckoResult<Int>? {
                 assertThat("Should grant DESKTOP_NOTIFICATIONS permission", perm.permission, equalTo(PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION))
                 return GeckoResult.fromValue(PermissionDelegate.ContentPermission.VALUE_ALLOW)
             }
@@ -92,6 +92,7 @@ class WebNotificationTest : BaseSessionTest() {
             value = "true",
         ),
     )
+    @Ignore // Bug 1843046 - Disabled because private notifications are temporarily disabled.
     @Test
     fun onShowNotification() {
         sessionRule.setPrefsUntilTestEnd(mapOf("dom.webnotifications.vibrate.enabled" to true))
@@ -195,6 +196,7 @@ class WebNotificationTest : BaseSessionTest() {
             value = "true",
         ),
     )
+    @Ignore // Bug 1843046 - Disabled because private notifications are temporarily disabled.
     @Test
     fun clickPrivateNotificationParceled() {
         sessionRule.setPrefsUntilTestEnd(mapOf("dom.webnotifications.vibrate.enabled" to true))
@@ -333,7 +335,11 @@ class WebNotificationTest : BaseSessionTest() {
 
         // Test that we can serialize a notification
         val parcel = Parcel.obtain()
-        notification.writeToParcel(parcel, /* ignored */ -1)
+        notification.writeToParcel(
+            parcel,
+            /* ignored */
+            -1,
+        )
 
         assertThat("Promise should have been resolved.", promiseResult.value as Double, equalTo(1.0))
     }
@@ -372,7 +378,11 @@ class WebNotificationTest : BaseSessionTest() {
 
         // Test that we can serialize a notification with an imageUrl.length >= 150
         val parcel = Parcel.obtain()
-        notification.writeToParcel(parcel, /* ignored */ -1)
+        notification.writeToParcel(
+            parcel,
+            /* ignored */
+            -1,
+        )
         parcel.setDataPosition(0)
 
         val serializedNotification = WebNotification.CREATOR.createFromParcel(parcel)

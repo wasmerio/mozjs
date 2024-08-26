@@ -14,6 +14,7 @@
 #include "Quaternion.h"
 #include "UserData.h"
 #include "FontVariation.h"
+#include <functional>
 #include <vector>
 
 // GenericRefCountedBase allows us to hold on to refcounted objects of any type
@@ -84,8 +85,12 @@ namespace mozilla {
 class Mutex;
 
 namespace layers {
+class Image;
+class MemoryOrShmem;
+class SurfaceDescriptor;
+class SurfaceDescriptorBuffer;
 class TextureData;
-}
+}  // namespace layers
 
 namespace wr {
 struct FontInstanceOptions;
@@ -1007,7 +1012,7 @@ class Path : public external::AtomicRefCounted<Path> {
 
   virtual Point ComputePointAtLength(Float aLength, Point* aTangent = nullptr);
 
-  virtual bool IsEmpty() const { return false; }
+  virtual bool IsEmpty() const = 0;
 
  protected:
   Path();
@@ -1028,6 +1033,8 @@ class PathBuilder : public PathSink {
   virtual already_AddRefed<Path> Finish() = 0;
 
   virtual BackendType GetBackendType() const = 0;
+
+  virtual bool IsActive() const = 0;
 };
 
 struct Glyph {
@@ -1349,7 +1356,8 @@ class DrawTarget : public external::AtomicRefCounted<DrawTarget> {
   /**
    * Method to generate hyperlink in PDF output (with appropriate backend).
    */
-  virtual void Link(const char* aDestination, const Rect& aRect) {}
+  virtual void Link(const char* aLocalDest, const char* aURI,
+                    const Rect& aRect) {}
   virtual void Destination(const char* aDestination, const Point& aPoint) {}
 
   /**
@@ -1410,6 +1418,15 @@ class DrawTarget : public external::AtomicRefCounted<DrawTarget> {
       SourceSurface* aSurface, const Rect& aDest, const Rect& aSource,
       const DrawSurfaceOptions& aSurfOptions = DrawSurfaceOptions(),
       const DrawOptions& aOptions = DrawOptions()) = 0;
+
+  virtual void DrawSurfaceDescriptor(
+      const layers::SurfaceDescriptor& aDesc,
+      const RefPtr<layers::Image>& aImageOfSurfaceDescriptor, const Rect& aDest,
+      const Rect& aSource,
+      const DrawSurfaceOptions& aSurfOptions = DrawSurfaceOptions(),
+      const DrawOptions& aOptions = DrawOptions()) {
+    MOZ_CRASH("GFX: DrawSurfaceDescriptor");
+  }
 
   /**
    * Draw a surface to the draw target, when the surface will be available
@@ -1976,15 +1993,16 @@ class DrawTarget : public external::AtomicRefCounted<DrawTarget> {
   UserData mUserData;
   Matrix mTransform;
   IntRect mOpaqueRect;
-  bool mTransformDirty : 1;
+  mutable bool mTransformDirty : 1;
   bool mPermitSubpixelAA : 1;
 
   SurfaceFormat mFormat;
 };
 
-class DrawEventRecorder : public RefCounted<DrawEventRecorder> {
+class DrawEventRecorder : public external::AtomicRefCounted<DrawEventRecorder> {
  public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DrawEventRecorder)
+  virtual RecorderType GetRecorderType() const { return RecorderType::UNKNOWN; }
   // returns true if there were any items in the recording
   virtual bool Finish() = 0;
   virtual ~DrawEventRecorder() = default;
@@ -2076,7 +2094,6 @@ class GFX2D_API Factory {
 #ifdef XP_DARWIN
   static already_AddRefed<ScaledFont> CreateScaledFontForMacFont(
       CGFontRef aCGFont, const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize,
-      const DeviceColor& aFontSmoothingBackgroundColor,
       bool aUseFontSmoothing = true, bool aApplySyntheticBold = false,
       bool aHasColorGlyphs = false);
 #endif
@@ -2154,6 +2171,9 @@ class GFX2D_API Factory {
       uint8_t* aData, int32_t aStride, const IntSize& aSize,
       SurfaceFormat aFormat, SourceSurfaceDeallocator aDeallocator = nullptr,
       void* aClosure = nullptr);
+
+  static already_AddRefed<DataSourceSurface> CopyDataSourceSurface(
+      DataSourceSurface* aSource);
 
   static void CopyDataSourceSurface(DataSourceSurface* aSource,
                                     DataSourceSurface* aDest);
@@ -2253,6 +2273,11 @@ class GFX2D_API Factory {
   static already_AddRefed<DataSourceSurface>
   CreateBGRA8DataSourceSurfaceForD3D11Texture(ID3D11Texture2D* aSrcTexture,
                                               uint32_t aArrayIndex = 0);
+
+  static nsresult CreateSdbForD3D11Texture(
+      ID3D11Texture2D* aSrcTexture, const IntSize& aSrcSize,
+      layers::SurfaceDescriptorBuffer& aSdBuffer,
+      const std::function<layers::MemoryOrShmem(uint32_t)>& aAllocate);
 
   static bool ReadbackTexture(layers::TextureData* aDestCpuTexture,
                               ID3D11Texture2D* aSrcTexture);

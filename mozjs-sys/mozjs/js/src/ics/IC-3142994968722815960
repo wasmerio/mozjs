@@ -1,0 +1,1 @@
+GetElem, 2, 4, 5, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(2) LASTUSED(1) LASTUSED(3) LASTUSED(3) , OP(GuardToString) ID(0) OP(GuardToInt32Index) ID(1) ID(2) OP(LinearizeForCharAccess) ID(0) ID(2) ID(3) OP(LoadStringCharResult) ID(3) ID(2) BOOL(0) OP(ReturnFromIC)  

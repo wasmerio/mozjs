@@ -23,12 +23,15 @@ export class MigrationWizard extends HTMLElement {
   #importButton = null;
   #importFromFileButton = null;
   #chooseImportFromFile = null;
+  #getPermissionsButton = null;
   #safariPermissionButton = null;
   #safariPasswordImportSkipButton = null;
   #safariPasswordImportSelectButton = null;
   #selectAllCheckbox = null;
   #resourceSummary = null;
   #expandedDetails = false;
+  #extensionsSuccessLink = null;
+  #supportTextLinks = null;
 
   static get markup() {
     return `
@@ -36,7 +39,7 @@ export class MigrationWizard extends HTMLElement {
         <link rel="stylesheet" href="chrome://browser/skin/migration/migration-wizard.css">
         <named-deck id="wizard-deck" selected-view="page-loading" aria-busy="true" part="deck">
           <div name="page-loading">
-            <h1 data-l10n-id="migration-wizard-selection-header" part="header"></h1>
+            <h1 class="migration-wizard-header" data-l10n-id="migration-wizard-selection-header" part="header"></h1>
             <div class="loading-block large"></div>
             <div class="loading-block small"></div>
             <div class="loading-block small"></div>
@@ -44,12 +47,13 @@ export class MigrationWizard extends HTMLElement {
               <!-- If possible, use the same button labels as the SELECTION page with the same strings.
                    That'll prevent flicker when the load state exits if we then enter the SELECTION page. -->
               <button class="cancel-close" data-l10n-id="migration-cancel-button-label" disabled></button>
-              <button data-l10n-id="migration-import-button-label" disabled></button>
+              <button class="migration-import-button" data-l10n-id="migration-import-button-label" disabled></button>
             </moz-button-group>
           </div>
 
           <div name="page-selection">
-            <h1 data-l10n-id="migration-wizard-selection-header" part="header"></h1>
+            <h1 class="migration-wizard-header" data-l10n-id="migration-wizard-selection-header" part="header"></h1>
+            <p class="migration-wizard-subheader" part="subheader" hidden=""></p>
             <button id="browser-profile-selector" aria-haspopup="menu" aria-labelledby="migrator-name profile-name">
               <span class="migrator-icon" role="img"></span>
               <div class="migrator-description" role="presentation">
@@ -62,8 +66,22 @@ export class MigrationWizard extends HTMLElement {
               <span class="error-icon" role="img"></span>
               <div data-l10n-id="migration-wizard-import-browser-no-resources"></div>
             </div>
-            <div data-l10n-id="migration-wizard-selection-list" class="resource-selection-preamble deemphasized-text hide-on-no-resources-error"></div>
-            <details class="resource-selection-details hide-on-no-resources-error">
+
+            <div class="no-permissions-message">
+              <p data-l10n-id="migration-no-permissions-message">
+              </p>
+              <p data-l10n-id="migration-no-permissions-instructions">
+              </p>
+              <ol>
+                <li data-l10n-id="migration-no-permissions-instructions-step1"></li>
+                <li class="migration-no-permissions-instructions-step2" data-l10n-id="migration-no-permissions-instructions-step2" data-l10n-args='{"permissionsPath": "" }'>
+                  <code></code>
+                </li>
+              </ol>
+            </div>
+
+            <div data-l10n-id="migration-wizard-selection-list" class="resource-selection-preamble deemphasized-text hide-on-error"></div>
+            <details class="resource-selection-details hide-on-error">
               <summary id="resource-selection-summary">
                 <div class="selected-data-header" data-l10n-id="migration-all-available-data-label"></div>
                 <div class="selected-data deemphasized-text">&nbsp;</div>
@@ -73,22 +91,22 @@ export class MigrationWizard extends HTMLElement {
                 <label id="select-all">
                   <input type="checkbox" class="select-all-checkbox"/><span data-l10n-id="migration-select-all-option-label"></span>
                 </label>
-                <label id="bookmarks" data-resource-type="BOOKMARKS"/>
+                <label id="bookmarks" class="resource-type-label" data-resource-type="BOOKMARKS"/>
                   <input type="checkbox"/><span default-data-l10n-id="migration-bookmarks-option-label" ie-edge-data-l10n-id="migration-favorites-option-label"></span>
                 </label>
-                <label id="logins-and-passwords" data-resource-type="PASSWORDS">
-                  <input type="checkbox"/><span data-l10n-id="migration-logins-and-passwords-option-label"></span>
+                <label id="logins-and-passwords" class="resource-type-label" data-resource-type="PASSWORDS">
+                  <input type="checkbox"/><span data-l10n-id="migration-passwords-option-label"></span>
                 </label>
-                <label id="history" data-resource-type="HISTORY">
+                <label id="history" class="resource-type-label" data-resource-type="HISTORY">
                   <input type="checkbox"/><span data-l10n-id="migration-history-option-label"></span>
                 </label>
-                <label id="extensions" data-resource-type="EXTENSIONS">
+                <label id="extensions" class="resource-type-label" data-resource-type="EXTENSIONS">
                   <input type="checkbox"/><span data-l10n-id="migration-extensions-option-label"></span>
                 </label>
-                <label id="form-autofill" data-resource-type="FORMDATA">
+                <label id="form-autofill" class="resource-type-label" data-resource-type="FORMDATA">
                   <input type="checkbox"/><span data-l10n-id="migration-form-autofill-option-label"></span>
                 </label>
-                <label id="payment-methods" data-resource-type="PAYMENT_METHODS">
+                <label id="payment-methods" class="resource-type-label" data-resource-type="PAYMENT_METHODS">
                   <input type="checkbox"/><span data-l10n-id="migration-payment-methods-option-label"></span>
                 </label>
               </fieldset>
@@ -102,7 +120,8 @@ export class MigrationWizard extends HTMLElement {
             <moz-button-group class="buttons" part="buttons">
               <button class="cancel-close" data-l10n-id="migration-cancel-button-label"></button>
               <button id="import-from-file" class="primary" data-l10n-id="migration-import-from-file-button-label"></button>
-              <button id="import" class="primary" data-l10n-id="migration-import-button-label"></button>
+              <button id="import" class="primary migration-import-button" data-l10n-id="migration-import-button-label"></button>
+              <button id="get-permissions" class="primary" data-l10n-id="migration-continue-button-label"></button>
             </moz-button-group>
           </div>
 
@@ -118,7 +137,7 @@ export class MigrationWizard extends HTMLElement {
 
               <div data-resource-type="PASSWORDS" class="resource-progress-group">
                 <span class="progress-icon-parent"><span class="progress-icon" role="img"></span></span>
-                <span data-l10n-id="migration-logins-and-passwords-option-label"></span>
+                <span data-l10n-id="migration-passwords-option-label"></span>
                 <span class="message-text deemphasized-text">&nbsp;</span>
                 <a class="support-text deemphasized-text"></a>
               </div>
@@ -133,7 +152,7 @@ export class MigrationWizard extends HTMLElement {
               <div data-resource-type="EXTENSIONS" class="resource-progress-group">
                 <span class="progress-icon-parent"><span class="progress-icon" role="img"></span></span>
                 <span data-l10n-id="migration-extensions-option-label"></span>
-                <a class="message-text deemphasized-text"></a>
+                <a id="extensions-success-link" href="about:addons" class="message-text deemphasized-text"></a>
                 <span class="message-text deemphasized-text"></span>
                 <a class="support-text deemphasized-text"></a>
               </div>
@@ -271,19 +290,12 @@ export class MigrationWizard extends HTMLElement {
         true
       );
     }
-    let fragment = MigrationWizard.#template.content.cloneNode(true);
-    if (window.IS_STORYBOOK) {
-      // If we're using Storybook, load the CSS from the static local file
-      // system rather than chrome:// to take advantage of auto-reloading.
-      fragment.querySelector("link[rel=stylesheet]").href =
-        "./migration/migration-wizard.css";
-    }
-    return fragment;
+    return MigrationWizard.#template.content.cloneNode(true);
   }
 
   constructor() {
     super();
-    const shadow = this.attachShadow({ mode: "closed" });
+    const shadow = this.attachShadow({ mode: "open" });
 
     if (window.MozXULElement) {
       window.MozXULElement.insertFTLIfNeeded("branding/brand.ftl");
@@ -318,8 +330,11 @@ export class MigrationWizard extends HTMLElement {
       "#choose-import-from-file"
     );
     this.#chooseImportFromFile.addEventListener("click", this);
+    this.#getPermissionsButton = shadow.querySelector("#get-permissions");
+    this.#getPermissionsButton.addEventListener("click", this);
 
     this.#browserProfileSelector.addEventListener("click", this);
+    this.#browserProfileSelector.addEventListener("mousedown", this);
     this.#resourceTypeList = shadow.querySelector("#resource-type-list");
     this.#resourceTypeList.addEventListener("change", this);
 
@@ -339,6 +354,16 @@ export class MigrationWizard extends HTMLElement {
       "#safari-password-import-select"
     );
     this.#safariPasswordImportSelectButton.addEventListener("click", this);
+
+    this.#extensionsSuccessLink = shadow.querySelector(
+      "#extensions-success-link"
+    );
+    this.#extensionsSuccessLink.addEventListener("click", this);
+
+    this.#supportTextLinks = shadow.querySelectorAll(".support-text");
+    this.#supportTextLinks.forEach(link =>
+      link.addEventListener("click", this)
+    );
 
     this.#shadowRoot = shadow;
   }
@@ -415,23 +440,20 @@ export class MigrationWizard extends HTMLElement {
     if (this.#browserProfileSelectorList) {
       return;
     }
-    this.#browserProfileSelectorList = this.querySelector("panel-list");
-    if (!this.#browserProfileSelectorList) {
-      throw new Error(
-        "Could not find a <panel-list> under the MigrationWizard during initialization."
-      );
-    }
+    this.#browserProfileSelectorList = document.createElement("panel-list");
     this.#browserProfileSelectorList.toggleAttribute(
       "min-width-from-anchor",
       true
     );
     this.#browserProfileSelectorList.addEventListener("click", this);
-    // Until bug 1823489 is fixed, this is the easiest way for the
-    // migration wizard to style the selector dropdown so that it more
-    // closely lines up with the edges of the selector button.
-    this.#browserProfileSelectorList.style.boxSizing = "border-box";
-    this.#browserProfileSelectorList.style.overflowY = "auto";
-    this.#browserProfileSelectorList.style.maxHeight = "100%";
+
+    if (document.createXULElement) {
+      let panel = document.createXULElement("panel");
+      panel.appendChild(this.#browserProfileSelectorList);
+      this.#shadowRoot.appendChild(panel);
+    } else {
+      this.#shadowRoot.appendChild(this.#browserProfileSelectorList);
+    }
   }
 
   /**
@@ -504,10 +526,42 @@ export class MigrationWizard extends HTMLElement {
       "div[name='page-selection']"
     );
     selectionPage.setAttribute("migrator-type", panelItem.getAttribute("type"));
+
+    // Safari currently has a special flow for requesting permissions that
+    // occurs _after_ resource selection, so we don't show this message
+    // for that migrator.
+    let showNoPermissionsMessage =
+      panelItem.getAttribute("type") ==
+        MigrationWizardConstants.MIGRATOR_TYPES.BROWSER &&
+      !panelItem.hasPermissions &&
+      panelItem.getAttribute("key") != "safari";
+
+    selectionPage.toggleAttribute("no-permissions", showNoPermissionsMessage);
+    if (showNoPermissionsMessage) {
+      let step2 = selectionPage.querySelector(
+        ".migration-no-permissions-instructions-step2"
+      );
+      step2.setAttribute(
+        "data-l10n-args",
+        JSON.stringify({ permissionsPath: panelItem.permissionsPath })
+      );
+
+      this.dispatchEvent(
+        new CustomEvent("MigrationWizard:PermissionsNeeded", {
+          bubbles: true,
+          detail: {
+            key,
+          },
+        })
+      );
+    }
+
     selectionPage.toggleAttribute(
       "no-resources",
       panelItem.getAttribute("type") ==
-        MigrationWizardConstants.MIGRATOR_TYPES.BROWSER && !resourceTypes.length
+        MigrationWizardConstants.MIGRATOR_TYPES.BROWSER &&
+        !resourceTypes.length &&
+        panelItem.hasPermissions
     );
   }
 
@@ -536,11 +590,38 @@ export class MigrationWizard extends HTMLElement {
       "div[name='page-selection']"
     );
 
+    let header = selectionPage.querySelector(".migration-wizard-header");
+    let selectionHeaderString = this.getAttribute("selection-header-string");
+
+    if (this.hasAttribute("selection-header-string")) {
+      header.textContent = selectionHeaderString;
+      header.toggleAttribute("hidden", !selectionHeaderString);
+    } else {
+      header.removeAttribute("hidden");
+    }
+
+    let selectionSubheaderString = this.getAttribute(
+      "selection-subheader-string"
+    );
+    let subheader = selectionPage.querySelector(".migration-wizard-subheader");
+    subheader.textContent = selectionSubheaderString;
+    subheader.toggleAttribute("hidden", !selectionSubheaderString);
+
     let details = this.#shadowRoot.querySelector("details");
-    selectionPage.toggleAttribute("show-import-all", state.showImportAll);
-    details.open = !state.showImportAll;
+
+    if (this.hasAttribute("force-show-import-all")) {
+      let forceShowImportAll =
+        this.getAttribute("force-show-import-all") == "true";
+      selectionPage.toggleAttribute("show-import-all", forceShowImportAll);
+      details.open = !forceShowImportAll;
+    } else {
+      selectionPage.toggleAttribute("show-import-all", state.showImportAll);
+      details.open = !state.showImportAll;
+    }
 
     this.#expandedDetails = false;
+
+    this.#applyContentCustomizations();
 
     for (let migrator of state.migrators) {
       let opt = document.createElement("panel-item");
@@ -550,34 +631,12 @@ export class MigrationWizard extends HTMLElement {
       opt.displayName = migrator.displayName;
       opt.resourceTypes = migrator.resourceTypes;
       opt.hasPermissions = migrator.hasPermissions;
+      opt.permissionsPath = migrator.permissionsPath;
       opt.brandImage = migrator.brandImage;
 
-      // Bug 1823489 - since the panel-list and panel-items are slotted, we
-      // cannot style them directly from migration-wizard.css. We use inline
-      // styles for now to achieve the desired appearance, but bug 1823489
-      // will investigate having MigrationWizard own the <xul:panel>,
-      // <panel-list> and <panel-item>'s so that styling can be done in the
-      // stylesheet instead.
       let button = opt.shadowRoot.querySelector("button");
-      button.style.minHeight = "40px";
       if (migrator.brandImage) {
         button.style.backgroundImage = `url(${migrator.brandImage})`;
-      } else {
-        button.style.backgroundImage = `url("chrome://global/skin/icons/defaultFavicon.svg")`;
-      }
-
-      // Bug 1823489 - since the panel-list and panel-items are slotted, we
-      // cannot style them or their children in migration-wizard.css. We use
-      // inline styles for now to achieve the desired appearance, but bug 1823489
-      // will investigate having MigrationWizard own the <xul:panel>,
-      // <panel-list> and <panel-item>'s so that styling can be done in the
-      // stylesheet instead.
-      if (migrator.type == MigrationWizardConstants.MIGRATOR_TYPES.FILE) {
-        button.style.backgroundSize = "20px";
-        button.style.backgroundPosition = "6px center";
-        if (this.#browserProfileSelectorList.isDocumentRTL()) {
-          button.style.backgroundPositionX = "right 6px";
-        }
       }
 
       if (migrator.profile) {
@@ -674,8 +733,11 @@ export class MigrationWizard extends HTMLElement {
     let resourceGroups = progressPage.querySelectorAll(
       ".resource-progress-group"
     );
+    this.#extensionsSuccessLink.textContent = "";
+
     let totalProgressGroups = Object.keys(state.progress).length;
     let remainingProgressGroups = totalProgressGroups;
+    let totalWarnings = 0;
 
     for (let group of resourceGroups) {
       let resourceType = group.dataset.resourceType;
@@ -687,7 +749,6 @@ export class MigrationWizard extends HTMLElement {
 
       let progressIcon = group.querySelector(".progress-icon");
       let messageText = group.querySelector("span.message-text");
-      let extensionsSuccessLink = group.querySelector("a.message-text");
       let supportLink = group.querySelector(".support-text");
 
       let labelSpan = group.querySelector("span[default-data-l10n-id]");
@@ -705,10 +766,7 @@ export class MigrationWizard extends HTMLElement {
         }
       }
       messageText.textContent = "";
-      if (extensionsSuccessLink) {
-        extensionsSuccessLink.textContent = "";
-        extensionsSuccessLink.removeAttribute("href");
-      }
+
       if (supportLink) {
         supportLink.textContent = "";
         supportLink.removeAttribute("href");
@@ -722,10 +780,6 @@ export class MigrationWizard extends HTMLElement {
           );
           progressIcon.setAttribute("state", "loading");
           messageText.textContent = "";
-          if (extensionsSuccessLink) {
-            extensionsSuccessLink.textContent = "";
-            extensionsSuccessLink.removeAttribute("href");
-          }
           supportLink.textContent = "";
           supportLink.removeAttribute("href");
           // With no status text, we re-insert the &nbsp; so that the status
@@ -745,8 +799,8 @@ export class MigrationWizard extends HTMLElement {
             MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS
           ) {
             messageText.textContent = "";
-            extensionsSuccessLink.href = "about:addons";
-            extensionsSuccessLink.textContent =
+            this.#extensionsSuccessLink.target = "_blank";
+            this.#extensionsSuccessLink.textContent =
               state.progress[resourceType].message;
           }
           remainingProgressGroups--;
@@ -761,7 +815,9 @@ export class MigrationWizard extends HTMLElement {
           messageText.textContent = state.progress[resourceType].message;
           supportLink.textContent = state.progress[resourceType].linkText;
           supportLink.href = state.progress[resourceType].linkURL;
+          supportLink.target = "_blank";
           remainingProgressGroups--;
+          totalWarnings++;
           break;
         }
         case MigrationWizardConstants.PROGRESS_VALUE.INFO: {
@@ -773,13 +829,14 @@ export class MigrationWizard extends HTMLElement {
           messageText.textContent = state.progress[resourceType].message;
           supportLink.textContent = state.progress[resourceType].linkText;
           supportLink.href = state.progress[resourceType].linkURL;
+          supportLink.target = "_blank";
           if (
             resourceType ==
             MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS
           ) {
             messageText.textContent = "";
-            extensionsSuccessLink.href = "about:addons";
-            extensionsSuccessLink.textContent =
+            this.#extensionsSuccessLink.target = "_blank";
+            this.#extensionsSuccessLink.textContent =
               state.progress[resourceType].message;
           }
           remainingProgressGroups--;
@@ -789,10 +846,21 @@ export class MigrationWizard extends HTMLElement {
     }
 
     let migrationDone = remainingProgressGroups == 0;
-    let headerL10nID = migrationDone
-      ? "migration-wizard-progress-done-header"
-      : "migration-wizard-progress-header";
+    let headerL10nID = "migration-wizard-progress-header";
     let header = this.#shadowRoot.getElementById("progress-header");
+
+    if (migrationDone) {
+      if (totalWarnings) {
+        headerL10nID = "migration-wizard-progress-done-with-warnings-header";
+      } else if (this.getAttribute("data-import-complete-success-string")) {
+        header.textContent = this.getAttribute(
+          "data-import-complete-success-string"
+        );
+      } else {
+        headerL10nID = "migration-wizard-progress-done-header";
+      }
+    }
+
     document.l10n.setAttributes(header, headerL10nID);
 
     let finishButtons = progressPage.querySelectorAll(".finish-button");
@@ -1112,6 +1180,20 @@ export class MigrationWizard extends HTMLElement {
   }
 
   /**
+   * Sends a request to get read permissions for the data associated
+   * with the selected browser.
+   */
+  #getPermissions() {
+    let migrationEventDetail = this.#gatherMigrationEventDetails();
+    this.dispatchEvent(
+      new CustomEvent("MigrationWizard:GetPermissions", {
+        bubbles: true,
+        detail: migrationEventDetail,
+      })
+    );
+  }
+
+  /**
    * Changes selected-data-header text and selected-data text based on
    * how many resources are checked
    */
@@ -1186,7 +1268,10 @@ export class MigrationWizard extends HTMLElement {
     let importButton = this.#shadowRoot.querySelector("#import");
     importButton.disabled = checkedResources == 0;
 
-    if (checkedResources == 0) {
+    if (this.hasAttribute("option-expander-title-string")) {
+      let optionString = this.getAttribute("option-expander-title-string");
+      selectedDataHeader.textContent = optionString;
+    } else if (checkedResources == 0) {
       document.l10n.setAttributes(
         selectedDataHeader,
         "migration-no-selected-data-label"
@@ -1213,98 +1298,244 @@ export class MigrationWizard extends HTMLElement {
     );
   }
 
+  /**
+   * Updates content and layout to apply changes that are
+   * informed through element attributes
+   */
+  #applyContentCustomizations() {
+    let selectionPage = this.#shadowRoot.querySelector(
+      "div[name='page-selection']"
+    );
+    if (this.hasAttribute("hide-select-all")) {
+      let hideSelectAll = this.getAttribute("hide-select-all");
+
+      selectionPage.toggleAttribute("hide-select-all", hideSelectAll);
+    } else {
+      selectionPage.removeAttribute("hide-select-all");
+    }
+
+    if (this.hasAttribute("import-button-string")) {
+      if (this.getAttribute("import-button-string")) {
+        this.#importButton.textContent = this.getAttribute(
+          "import-button-string"
+        );
+      }
+    }
+
+    if (this.hasAttribute("checkbox-margin-inline")) {
+      let inlineMargin = this.getAttribute("checkbox-margin-inline");
+      this.style.setProperty(
+        "--resource-type-label-margin-inline",
+        inlineMargin
+      );
+    }
+
+    if (this.hasAttribute("checkbox-margin-block")) {
+      let blockMargin = this.getAttribute("checkbox-margin-block");
+      this.style.setProperty("--resource-type-label-margin-block", blockMargin);
+    }
+
+    if (this.hasAttribute("import-button-class")) {
+      let importButtonClass = this.getAttribute("import-button-class");
+      if (importButtonClass) {
+        this.#importButton.classList.add(importButtonClass);
+      }
+    }
+
+    if (this.hasAttribute("header-font-size")) {
+      let headerFontSize = this.getAttribute("header-font-size");
+      if (headerFontSize) {
+        this.style.setProperty(
+          "--embedded-wizard-header-font-size",
+          headerFontSize
+        );
+      }
+    }
+
+    if (this.hasAttribute("header-font-weight")) {
+      let headerFontWeight = this.getAttribute("header-font-weight");
+      if (headerFontWeight) {
+        this.style.setProperty(
+          "--embedded-wizard-header-font-weight",
+          headerFontWeight
+        );
+      }
+    }
+
+    if (this.hasAttribute("header-margin-block")) {
+      let headerMarginBlock = this.getAttribute("header-margin-block");
+      if (headerMarginBlock) {
+        this.style.setProperty(
+          "--embedded-wizard-header-margin-block",
+          headerMarginBlock
+        );
+      }
+    }
+
+    if (this.hasAttribute("subheader-font-size")) {
+      let subheaderFontSize = this.getAttribute("subheader-font-size");
+      if (subheaderFontSize) {
+        this.style.setProperty(
+          "--embedded-wizard-subheader-font-size",
+          subheaderFontSize
+        );
+      }
+    }
+
+    if (this.hasAttribute("subheader-font-weight")) {
+      let subheaderFontWeight = this.getAttribute("subheader-font-weight");
+      if (subheaderFontWeight) {
+        this.style.setProperty(
+          "--embedded-wizard-subheader-font-weight",
+          subheaderFontWeight
+        );
+      }
+    }
+
+    if (this.hasAttribute("subheader-margin-block")) {
+      let subheaderMarginBlock = this.getAttribute("subheader-margin-block");
+      if (subheaderMarginBlock) {
+        this.style.setProperty(
+          "--embedded-wizard-subheader-margin-block",
+          subheaderMarginBlock
+        );
+      }
+    }
+  }
+
+  #handleClickEvent(event) {
+    if (
+      event.target == this.#importButton ||
+      event.target == this.#importFromFileButton
+    ) {
+      this.#doImport();
+    } else if (
+      event.target.classList.contains("cancel-close") ||
+      event.target.classList.contains("finish-button")
+    ) {
+      this.dispatchEvent(
+        new CustomEvent("MigrationWizard:Close", { bubbles: true })
+      );
+    } else if (
+      event.currentTarget == this.#browserProfileSelectorList &&
+      event.target != this.#browserProfileSelectorList
+    ) {
+      this.#onBrowserProfileSelectionChanged(event.target);
+      // If the user selected a file migration type from the selector, we'll
+      // help the user out by immediately starting the file migration flow,
+      // rather than waiting for them to click the "Select File".
+      if (
+        event.target.getAttribute("type") ==
+        MigrationWizardConstants.MIGRATOR_TYPES.FILE
+      ) {
+        this.#doImport();
+      }
+    } else if (event.target == this.#safariPermissionButton) {
+      this.#requestSafariPermissions();
+    } else if (event.currentTarget == this.#resourceSummary) {
+      this.#expandedDetails = true;
+    } else if (event.target == this.#chooseImportFromFile) {
+      this.dispatchEvent(
+        new CustomEvent("MigrationWizard:RequestState", {
+          bubbles: true,
+          detail: {
+            allowOnlyFileMigrators: true,
+          },
+        })
+      );
+    } else if (event.target == this.#safariPasswordImportSkipButton) {
+      // If the user chose to skip importing passwords from Safari, we
+      // programmatically uncheck the PASSWORDS resource type and re-request
+      // import.
+      let checkbox = this.#shadowRoot.querySelector(
+        `label[data-resource-type="${MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS}"]`
+      ).control;
+      checkbox.checked = false;
+
+      // If there are no other checked checkboxes, go back to the selection
+      // screen.
+      let checked = this.#shadowRoot.querySelectorAll(
+        `label[data-resource-type] > input:checked`
+      ).length;
+
+      if (!checked) {
+        this.requestState();
+      } else {
+        this.#doImport();
+      }
+    } else if (event.target == this.#safariPasswordImportSelectButton) {
+      this.#selectSafariPasswordFile();
+    } else if (event.target == this.#extensionsSuccessLink) {
+      this.dispatchEvent(
+        new CustomEvent("MigrationWizard:OpenAboutAddons", {
+          bubbles: true,
+        })
+      );
+      event.preventDefault();
+    } else if (
+      [...this.#supportTextLinks].includes(event.target) &&
+      this.hasAttribute("in-aboutwelcome-bundle")
+    ) {
+      // When we're running in the context of a spotlight
+      // the click events for standard anchors are being gobbled up by spotlight,
+      // so we're also firing a custom event to handle those clicks when in that context
+      this.dispatchEvent(
+        new CustomEvent("MigrationWizard:OpenURL", {
+          bubbles: true,
+          detail: {
+            url: event.target.href,
+            where: "tabshifted",
+          },
+        })
+      );
+      event.preventDefault();
+    } else if (event.target == this.#getPermissionsButton) {
+      this.#getPermissions();
+    }
+  }
+
+  #handleChangeEvent(event) {
+    if (event.target == this.#browserProfileSelector) {
+      this.#onBrowserProfileSelectionChanged();
+    } else if (event.target == this.#selectAllCheckbox) {
+      let checkboxes = this.#shadowRoot.querySelectorAll(
+        'label[data-resource-type]:not([hidden]) > input[type="checkbox"]'
+      );
+      for (let checkbox of checkboxes) {
+        checkbox.checked = this.#selectAllCheckbox.checked;
+      }
+      this.#displaySelectedResources();
+    } else {
+      let checkboxes = this.#shadowRoot.querySelectorAll(
+        'label[data-resource-type]:not([hidden]) > input[type="checkbox"]'
+      );
+
+      let allVisibleChecked = Array.from(checkboxes).every(checkbox => {
+        return checkbox.checked;
+      });
+
+      this.#selectAllCheckbox.checked = allVisibleChecked;
+      this.#displaySelectedResources();
+    }
+  }
+
   handleEvent(event) {
+    if (
+      event.target == this.#browserProfileSelector &&
+      (event.type == "mousedown" ||
+        (event.type == "click" &&
+          event.mozInputSource == MouseEvent.MOZ_SOURCE_KEYBOARD))
+    ) {
+      this.#browserProfileSelectorList.toggle(event);
+      return;
+    }
     switch (event.type) {
       case "click": {
-        if (
-          event.target == this.#importButton ||
-          event.target == this.#importFromFileButton
-        ) {
-          this.#doImport();
-        } else if (
-          event.target.classList.contains("cancel-close") ||
-          event.target.classList.contains("finish-button")
-        ) {
-          this.dispatchEvent(
-            new CustomEvent("MigrationWizard:Close", { bubbles: true })
-          );
-        } else if (event.target == this.#browserProfileSelector) {
-          this.#browserProfileSelectorList.show(event);
-        } else if (
-          event.currentTarget == this.#browserProfileSelectorList &&
-          event.target != this.#browserProfileSelectorList
-        ) {
-          this.#onBrowserProfileSelectionChanged(event.target);
-          // If the user selected a file migration type from the selector, we'll
-          // help the user out by immediately starting the file migration flow,
-          // rather than waiting for them to click the "Select File".
-          if (
-            event.target.getAttribute("type") ==
-            MigrationWizardConstants.MIGRATOR_TYPES.FILE
-          ) {
-            this.#doImport();
-          }
-        } else if (event.target == this.#safariPermissionButton) {
-          this.#requestSafariPermissions();
-        } else if (event.currentTarget == this.#resourceSummary) {
-          this.#expandedDetails = true;
-        } else if (event.target == this.#chooseImportFromFile) {
-          this.dispatchEvent(
-            new CustomEvent("MigrationWizard:RequestState", {
-              bubbles: true,
-              detail: {
-                allowOnlyFileMigrators: true,
-              },
-            })
-          );
-        } else if (event.target == this.#safariPasswordImportSkipButton) {
-          // If the user chose to skip importing passwords from Safari, we
-          // programmatically uncheck the PASSWORDS resource type and re-request
-          // import.
-          let checkbox = this.#shadowRoot.querySelector(
-            `label[data-resource-type="${MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS}"]`
-          ).control;
-          checkbox.checked = false;
-
-          // If there are no other checked checkboxes, go back to the selection
-          // screen.
-          let checked = this.#shadowRoot.querySelectorAll(
-            `label[data-resource-type] > input:checked`
-          ).length;
-
-          if (!checked) {
-            this.requestState();
-          } else {
-            this.#doImport();
-          }
-        } else if (event.target == this.#safariPasswordImportSelectButton) {
-          this.#selectSafariPasswordFile();
-        }
+        this.#handleClickEvent(event);
         break;
       }
       case "change": {
-        if (event.target == this.#browserProfileSelector) {
-          this.#onBrowserProfileSelectionChanged();
-        } else if (event.target == this.#selectAllCheckbox) {
-          let checkboxes = this.#shadowRoot.querySelectorAll(
-            'label[data-resource-type]:not([hidden]) > input[type="checkbox"]'
-          );
-          for (let checkbox of checkboxes) {
-            checkbox.checked = this.#selectAllCheckbox.checked;
-          }
-          this.#displaySelectedResources();
-        } else {
-          let checkboxes = this.#shadowRoot.querySelectorAll(
-            'label[data-resource-type]:not([hidden]) > input[type="checkbox"]'
-          );
-
-          let allVisibleChecked = Array.from(checkboxes).every(checkbox => {
-            return checkbox.checked;
-          });
-
-          this.#selectAllCheckbox.checked = allVisibleChecked;
-          this.#displaySelectedResources();
-        }
+        this.#handleChangeEvent(event);
         break;
       }
     }

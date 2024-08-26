@@ -29,7 +29,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   ReaderMode: "resource://gre/modules/ReaderMode.sys.mjs",
-  TabsStore: "resource://gre/modules/RustTabs.sys.mjs",
+  getTabsStore: "resource://services-sync/TabsStore.sys.mjs",
+  RemoteTabRecord: "resource://gre/modules/RustTabs.sys.mjs",
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(
@@ -75,7 +76,7 @@ TabEngine.prototype = {
       tabs.map(tab => {
         // rust wants lastUsed in MS but the provider gives it in seconds
         tab.lastUsed = tab.lastUsed * 1000;
-        return tab;
+        return new lazy.RemoteTabRecord(tab);
       })
     );
 
@@ -125,8 +126,7 @@ TabEngine.prototype = {
   async initialize() {
     await SyncEngine.prototype.initialize.call(this);
 
-    let path = PathUtils.join(PathUtils.profileDir, "synced-tabs.db");
-    this._rustStore = await lazy.TabsStore.init(path);
+    this._rustStore = await lazy.getTabsStore();
     this._bridge = await this._rustStore.bridgedEngine();
 
     // Uniffi doesn't currently only support async methods, so we'll need to hardcode
@@ -376,7 +376,7 @@ export const TabProvider = {
       if (runningByteLength >= bytesMax) {
         log.warn(
           `Can't fit all tabs in sync payload: have ${winTabs.length},
-             but can only fit ${tabRecords.length}.`
+              but can only fit ${tabRecords.length}.`
         );
         break;
       }
@@ -410,12 +410,12 @@ export const TabProvider = {
         continue;
       }
 
-      let thisTab = {
+      let thisTab = new lazy.RemoteTabRecord({
         title: tab.linkedBrowser.contentTitle || "",
         urlHistory: [url],
         icon: "",
         lastUsed: Math.floor((tab.lastAccessed || 0) / 1000),
-      };
+      });
       tabRecords.push(thisTab);
 
       // we don't want to wait for each favicon to resolve to get the bytes
@@ -429,7 +429,7 @@ export const TabProvider = {
         .then(iconData => {
           thisTab.icon = iconData.uri.spec;
         })
-        .catch(ex => {
+        .catch(() => {
           log.trace(
             `Failed to fetch favicon for ${url}`,
             thisTab.urlHistory[0]
@@ -502,7 +502,7 @@ TabTracker.prototype = {
     }
   },
 
-  async observe(subject, topic, data) {
+  async observe(subject, topic) {
     switch (topic) {
       case "domwindowopened":
         let onLoad = () => {

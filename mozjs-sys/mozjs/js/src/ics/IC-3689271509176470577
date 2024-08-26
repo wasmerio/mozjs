@@ -1,0 +1,1 @@
+GetIterator, 1, 2, 4, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(JSObject) , LASTUSED(0) LASTUSED(2) , OP(GuardIsNullOrUndefined) ID(0) OP(LoadObject) ID(1) OFFSET(0) OP(LoadObjectResult) ID(1) OP(ReturnFromIC)  

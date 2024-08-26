@@ -114,7 +114,7 @@ macro_rules! options {
                 let headers = match self.options.input_headers.split_last() {
                     Some((header, headers)) => {
                         // The last input header is passed as an argument in the first position.
-                        args.push(header.clone());
+                        args.push(header.clone().into());
                         headers
                     },
                     None => &[]
@@ -135,13 +135,13 @@ macro_rules! options {
                 args.push("--".to_owned());
 
                 if !self.options.clang_args.is_empty() {
-                    args.extend_from_slice(&self.options.clang_args);
+                    args.extend(self.options.clang_args.iter().map(|s| s.clone().into()));
                 }
 
                 // We need to pass all but the last header via the `-include` clang argument.
                 for header in headers {
                     args.push("-include".to_owned());
-                    args.push(header.clone());
+                    args.push(header.clone().into());
                 }
 
                 args
@@ -221,6 +221,22 @@ options! {
             }
         },
         as_args: "--blocklist-file",
+    },
+    /// Variables that have been blocklisted and should not appear in the generated code.
+    blocklisted_vars: RegexSet {
+        methods: {
+            regex_option! {
+                /// Do not generate any bindings for the given variable.
+                ///
+                /// This option is not recursive, meaning that it will only block variables whose
+                /// names explicitly match the argument of this method.
+                pub fn blocklist_var<T: AsRef<str>>(mut self, arg: T) -> Builder {
+                    self.options.blocklisted_vars.insert(arg);
+                    self
+                }
+            }
+        },
+        as_args: "--blocklist-var",
     },
     /// Types that should be treated as opaque structures in the generated code.
     opaque_types: RegexSet {
@@ -344,6 +360,23 @@ options! {
             }
         },
         as_args: "--allowlist-file",
+    },
+    /// Items that have been allowlisted and should appear in the generated code.
+    allowlisted_items: RegexSet {
+        methods: {
+            regex_option! {
+                /// Generate bindings for the given item, regardless of whether it is a type,
+                /// function, module, etc.
+                ///
+                /// This option is transitive by default. Check the documentation of the
+                /// [`Builder::allowlist_recursively`] method for further information.
+                pub fn allowlist_item<T: AsRef<str>>(mut self, arg: T) -> Builder {
+                    self.options.allowlisted_items.insert(arg);
+                    self
+                }
+            }
+        },
+        as_args: "--allowlist-item",
     },
     /// The default style of for generated `enum`s.
     default_enum_style: EnumVariation {
@@ -1072,24 +1105,24 @@ options! {
         as_args: |value, args| (!value).as_args(args, "--no-convert-floats"),
     },
     /// The set of raw lines to be prepended to the top-level module of the generated Rust code.
-    raw_lines: Vec<String> {
+    raw_lines: Vec<Box<str>> {
         methods: {
             /// Add a line of Rust code at the beginning of the generated bindings. The string is
             /// passed through without any modification.
             pub fn raw_line<T: Into<String>>(mut self, arg: T) -> Self {
-                self.options.raw_lines.push(arg.into());
+                self.options.raw_lines.push(arg.into().into_boxed_str());
                 self
             }
         },
         as_args: |raw_lines, args| {
             for line in raw_lines {
                 args.push("--raw-line".to_owned());
-                args.push(line.clone());
+                args.push(line.clone().into());
             }
         },
     },
     /// The set of raw lines to prepend to different modules.
-    module_lines: HashMap<String, Vec<String>> {
+    module_lines: HashMap<Box<str>, Vec<Box<str>>> {
         methods: {
             /// Add a given line to the beginning of a given module.
             ///
@@ -1102,9 +1135,9 @@ options! {
             {
                 self.options
                     .module_lines
-                    .entry(module.into())
-                    .or_insert_with(Vec::new)
-                    .push(line.into());
+                    .entry(module.into().into_boxed_str())
+                    .or_default()
+                    .push(line.into().into_boxed_str());
                 self
             }
         },
@@ -1112,14 +1145,14 @@ options! {
             for (module, lines) in module_lines {
                 for line in lines.iter() {
                     args.push("--module-raw-line".to_owned());
-                    args.push(module.clone());
-                    args.push(line.clone());
+                    args.push(module.clone().into());
+                    args.push(line.clone().into());
                 }
             }
         },
     },
     /// The input header files.
-    input_headers:  Vec<String> {
+    input_headers:  Vec<Box<str>> {
         methods: {
             /// Add an input C/C++ header to generate bindings for.
             ///
@@ -1143,7 +1176,7 @@ options! {
             ///     .unwrap();
             /// ```
             pub fn header<T: Into<String>>(mut self, header: T) -> Builder {
-                self.options.input_headers.push(header.into());
+                self.options.input_headers.push(header.into().into_boxed_str());
                 self
             }
         },
@@ -1151,11 +1184,11 @@ options! {
         as_args: ignore,
     },
     /// The set of arguments to be passed straight through to Clang.
-    clang_args: Vec<String> {
+    clang_args: Vec<Box<str>> {
         methods: {
             /// Add an argument to be passed straight through to Clang.
             pub fn clang_arg<T: Into<String>>(self, arg: T) -> Builder {
-                self.clang_args([arg.into()])
+                self.clang_args([arg.into().into_boxed_str()])
             }
 
             /// Add several arguments to be passed straight through to Clang.
@@ -1164,7 +1197,7 @@ options! {
                 I::Item: AsRef<str>,
             {
                 for arg in args {
-                    self.options.clang_args.push(arg.as_ref().to_owned());
+                    self.options.clang_args.push(arg.as_ref().to_owned().into_boxed_str());
                 }
                 self
             }
@@ -1173,7 +1206,7 @@ options! {
         as_args: ignore,
     },
     /// Tuples of unsaved file contents of the form (name, contents).
-    input_header_contents: Vec<(String, String)> {
+    input_header_contents: Vec<(Box<str>, Box<str>)> {
         methods: {
             /// Add `contents` as an input C/C++ header named `name`.
             ///
@@ -1187,7 +1220,7 @@ options! {
                     .join(name)
                     .to_str()
                     .expect("Cannot convert current directory name to string")
-                    .to_owned();
+                    .into();
                 self.options
                     .input_header_contents
                     .push((absolute_path, contents.into()));
@@ -1357,7 +1390,7 @@ options! {
             /// or `-fno-inline-functions` if you are responsible of compiling the library to make
             /// them callable.
             #[cfg_attr(
-                features = "experimental",
+                feature = "experimental",
                 doc = "\nCheck the [`Builder::wrap_static_fns`] method for an alternative."
             )]
             pub fn generate_inline_functions(mut self, doit: bool) -> Self {
@@ -1543,7 +1576,7 @@ options! {
         },
         as_args: |rust_target, args| {
             args.push("--rust-target".to_owned());
-            args.push((*rust_target).into());
+            args.push(rust_target.to_string());
         },
     },
     /// Features to be enabled. They are derived from `rust_target`.
@@ -1588,6 +1621,9 @@ options! {
         default: true,
         methods: {
             /// Set whether `size_t` should be translated to `usize`.
+            ///
+            /// If `size_t` is translated to `usize`, type definitions for `size_t` will not be
+            /// emitted.
             ///
             /// `size_t` is translated to `usize` by default.
             pub fn size_t_is_usize(mut self, is: bool) -> Self {

@@ -1,0 +1,1 @@
+GetName, 1, 2, 5, JSVAL_TYPE_UNKNOWN, 32, STUBFIELD(WeakShape) STUBFIELD(WeakShape) STUBFIELD(JSObject) STUBFIELD(RawInt32) , LASTUSED(1) LASTUSED(3) , OP(GuardShape) ID(0) OFFSET(0) OP(LoadEnclosingEnvironment) ID(0) ID(1) OP(GuardShape) ID(1) OFFSET(1) OP(CallNativeGetterResult) ID(1) OFFSET(2) BOOL(1) OFFSET(3) OP(ReturnFromIC)  

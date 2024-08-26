@@ -1,0 +1,1 @@
+Call, 1, 2, 6, JSVAL_TYPE_UNKNOWN, 16, STUBFIELD(WeakBaseScript) STUBFIELD(RawInt32) , LASTUSED(4) LASTUSED(4) , OP(LoadArgumentFixedSlot) ID(1) BYTE(3) OP(GuardToObject) ID(1) OP(GuardClass) ID(1) GUARDCLASSKIND(JSFunction) OP(GuardFunctionScript) ID(1) OFFSET(0) OFFSET(1) OP(CallScriptedFunction) ID(1) ID(0) CALLFLAGS(226) UINT32(1) OP(ReturnFromIC)  

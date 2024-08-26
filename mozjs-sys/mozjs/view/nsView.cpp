@@ -26,8 +26,6 @@
 #include "nsContentUtils.h"  // for nsAutoScriptBlocker
 #include "nsDocShell.h"
 #include "nsLayoutUtils.h"
-#include "mozilla/TimelineConsumers.h"
-#include "mozilla/CompositeTimelineMarker.h"
 #include "mozilla/StartupTimeline.h"
 
 using namespace mozilla;
@@ -39,7 +37,6 @@ nsView::nsView(nsViewManager* aViewManager, ViewVisibility aVisibility)
       mNextSibling(nullptr),
       mFirstChild(nullptr),
       mFrame(nullptr),
-      mZIndex(0),
       mVis(aVisibility),
       mPosX(0),
       mPosY(0),
@@ -497,36 +494,6 @@ void nsView::RemoveChild(nsView* child) {
   }
 }
 
-// Native widgets ultimately just can't deal with the awesome power of
-// CSS2 z-index. However, we set the z-index on the widget anyway
-// because in many simple common cases the widgets do end up in the
-// right order. We set each widget's z-index to the z-index of the
-// nearest ancestor that has non-auto z-index.
-static void UpdateNativeWidgetZIndexes(nsView* aView, int32_t aZIndex) {
-  if (aView->HasWidget()) {
-    nsIWidget* widget = aView->GetWidget();
-    if (widget->GetZIndex() != aZIndex) {
-      widget->SetZIndex(aZIndex);
-    }
-  } else {
-    for (nsView* v = aView->GetFirstChild(); v; v = v->GetNextSibling()) {
-      if (v->GetZIndexIsAuto()) {
-        UpdateNativeWidgetZIndexes(v, aZIndex);
-      }
-    }
-  }
-}
-
-static int32_t FindNonAutoZIndex(nsView* aView) {
-  while (aView) {
-    if (!aView->GetZIndexIsAuto()) {
-      return aView->GetZIndex();
-    }
-    aView = aView->GetParent();
-  }
-  return 0;
-}
-
 struct DefaultWidgetInitData : public widget::InitData {
   DefaultWidgetInitData() : widget::InitData() {
     mWindowType = WindowType::Child;
@@ -639,9 +606,6 @@ void nsView::InitializeWindow(bool aEnableDragDrop, bool aResetVisibility) {
     mWindow->EnableDragDrop(true);
   }
 
-  // propagate the z-index to the widget.
-  UpdateNativeWidgetZIndexes(this, FindNonAutoZIndex(this));
-
   // make sure visibility state is accurate
 
   if (aResetVisibility) {
@@ -713,17 +677,6 @@ nsresult nsView::DetachFromTopLevelWidget() {
   return NS_OK;
 }
 
-void nsView::SetZIndex(bool aAuto, int32_t aZIndex) {
-  bool oldIsAuto = GetZIndexIsAuto();
-  mVFlags = (mVFlags & ~NS_VIEW_FLAG_AUTO_ZINDEX) |
-            (aAuto ? NS_VIEW_FLAG_AUTO_ZINDEX : 0);
-  mZIndex = aZIndex;
-
-  if (HasWidget() || !oldIsAuto || !aAuto) {
-    UpdateNativeWidgetZIndexes(this, FindNonAutoZIndex(this));
-  }
-}
-
 void nsView::AssertNoWindow() {
   // XXX: it would be nice to make this a strong assert
   if (MOZ_UNLIKELY(mWindow)) {
@@ -765,16 +718,14 @@ void nsView::List(FILE* out, int32_t aIndent) const {
     nsRect nonclientBounds = LayoutDeviceIntRect::ToAppUnits(rect, p2a);
     nsrefcnt widgetRefCnt = mWindow.get()->AddRef() - 1;
     mWindow.get()->Release();
-    int32_t Z = mWindow->GetZIndex();
-    fprintf(out, "(widget=%p[%" PRIuPTR "] z=%d pos={%d,%d,%d,%d}) ",
-            (void*)mWindow, widgetRefCnt, Z, nonclientBounds.X(),
-            nonclientBounds.Y(), windowBounds.Width(), windowBounds.Height());
+    fprintf(out, "(widget=%p[%" PRIuPTR "] pos={%d,%d,%d,%d}) ", (void*)mWindow,
+            widgetRefCnt, nonclientBounds.X(), nonclientBounds.Y(),
+            windowBounds.Width(), windowBounds.Height());
   }
   nsRect brect = GetBounds();
   fprintf(out, "{%d,%d,%d,%d} @ %d,%d", brect.X(), brect.Y(), brect.Width(),
           brect.Height(), mPosX, mPosY);
-  fprintf(out, " flags=%x z=%d vis=%d frame=%p <\n", mVFlags, mZIndex,
-          int(mVis), mFrame);
+  fprintf(out, " flags=%x vis=%d frame=%p <\n", mVFlags, int(mVis), mFrame);
   for (nsView* kid = mFirstChild; kid; kid = kid->GetNextSibling()) {
     NS_ASSERTION(kid->GetParent() == this, "incorrect parent");
     kid->List(out, aIndent + 1);
@@ -902,28 +853,6 @@ bool nsView::IsRoot() const {
   NS_ASSERTION(mViewManager != nullptr,
                " View manager is null in nsView::IsRoot()");
   return mViewManager->GetRootView() == this;
-}
-
-nsRect nsView::GetBoundsInParentUnits() const {
-  nsView* parent = GetParent();
-  nsViewManager* VM = GetViewManager();
-  if (this != VM->GetRootView() || !parent) {
-    return mDimBounds;
-  }
-  int32_t ourAPD = VM->AppUnitsPerDevPixel();
-  int32_t parentAPD = parent->GetViewManager()->AppUnitsPerDevPixel();
-  return mDimBounds.ScaleToOtherAppUnitsRoundOut(ourAPD, parentAPD);
-}
-
-nsPoint nsView::ConvertFromParentCoords(nsPoint aPt) const {
-  const nsView* parent = GetParent();
-  if (parent) {
-    aPt = aPt.ScaleToOtherAppUnits(
-        parent->GetViewManager()->AppUnitsPerDevPixel(),
-        GetViewManager()->AppUnitsPerDevPixel());
-  }
-  aPt -= GetPosition();
-  return aPt;
 }
 
 static bool IsPopupWidget(nsIWidget* aWidget) {
@@ -1102,22 +1031,10 @@ void nsView::DidCompositeWindow(mozilla::layers::TransactionId aTransactionId,
   if (aCompositeStart == aCompositeEnd) {
     return;
   }
-
-  nsIDocShell* docShell = context->GetDocShell();
-
-  if (TimelineConsumers::HasConsumer(docShell)) {
-    TimelineConsumers::AddMarkerForDocShell(
-        docShell, MakeUnique<CompositeTimelineMarker>(
-                      aCompositeStart, MarkerTracingType::START));
-    TimelineConsumers::AddMarkerForDocShell(
-        docShell, MakeUnique<CompositeTimelineMarker>(aCompositeEnd,
-                                                      MarkerTracingType::END));
-  }
 }
 
 void nsView::RequestRepaint() {
-  PresShell* presShell = mViewManager->GetPresShell();
-  if (presShell) {
+  if (PresShell* presShell = mViewManager->GetPresShell()) {
     presShell->ScheduleViewManagerFlush();
   }
 }

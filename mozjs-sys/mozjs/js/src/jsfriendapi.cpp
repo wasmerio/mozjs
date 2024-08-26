@@ -18,6 +18,7 @@
 #include "frontend/FrontendContext.h"  // FrontendContext
 #include "gc/PublicIterators.h"
 #include "gc/WeakMap.h"
+#include "js/ColumnNumber.h"  // JS::LimitedColumnNumberOneOrigin
 #include "js/experimental/CodeCoverage.h"
 #include "js/experimental/CTypes.h"  // JS::AutoCTypesActivityCallback, JS::SetCTypesActivityCallback
 #include "js/experimental/Intl.h"  // JS::AddMoz{DateTimeFormat,DisplayNames}Constructor
@@ -45,6 +46,7 @@
 #include "vm/PromiseObject.h"  // js::PromiseObject
 #include "vm/Realm.h"
 #include "vm/StringObject.h"
+#include "vm/Watchtower.h"
 #include "vm/WrapperObject.h"
 #ifdef ENABLE_RECORD_TUPLE
 #  include "vm/RecordType.h"
@@ -358,11 +360,6 @@ js::AutoCheckRecursionLimit::stackKindForCurrentPrincipal(JSContext* cx) const {
   return cx->stackKindForCurrentPrincipal();
 }
 
-JS_PUBLIC_API void js::AutoCheckRecursionLimit::assertMainThread(
-    JSContext* cx) const {
-  MOZ_ASSERT(cx->isMainThreadContext());
-}
-
 JS::NativeStackLimit AutoCheckRecursionLimit::getStackLimit(
     FrontendContext* fc) const {
   return fc->stackLimit();
@@ -423,6 +420,23 @@ JS_PUBLIC_API JSFunction* js::NewFunctionByIdWithReserved(
                                  gc::AllocKind::FUNCTION_EXTENDED);
 }
 
+JS_PUBLIC_API JSFunction* js::NewFunctionByIdWithReservedAndProto(
+    JSContext* cx, JSNative native, HandleObject proto, unsigned nargs,
+    unsigned flags, jsid id) {
+  MOZ_ASSERT(id.isAtom());
+  MOZ_ASSERT(!cx->zone()->isAtomsZone());
+  MOZ_ASSERT(native);
+  CHECK_THREAD(cx);
+  cx->check(id);
+
+  Rooted<JSAtom*> atom(cx, id.toAtom());
+  FunctionFlags funflags = (flags & JSFUN_CONSTRUCTOR)
+                               ? FunctionFlags::NATIVE_CTOR
+                               : FunctionFlags::NATIVE_FUN;
+  return NewFunctionWithProto(cx, native, nargs, funflags, nullptr, atom, proto,
+                              gc::AllocKind::FUNCTION_EXTENDED, TenuredObject);
+}
+
 JS_PUBLIC_API const Value& js::GetFunctionNativeReserved(JSObject* fun,
                                                          size_t which) {
   MOZ_ASSERT(fun->as<JSFunction>().isNativeFun());
@@ -470,8 +484,8 @@ void JS::detail::SetReservedSlotWithBarrier(JSObject* obj, size_t slot,
   if (obj->is<ProxyObject>()) {
     obj->as<ProxyObject>().setReservedSlot(slot, value);
   } else {
-    // Note: we don't use setReservedSlot so that this also works on swappable
-    // DOM objects. See NativeObject::getReservedSlotRef comment.
+    // Note: We do not currently support watching reserved object slots for
+    // property modification.
     obj->as<NativeObject>().setSlot(slot, value);
   }
 }
@@ -483,8 +497,9 @@ void js::SetPreserveWrapperCallbacks(
   cx->runtime()->hasReleasedWrapperCallback = hasReleasedWrapper;
 }
 
-JS_PUBLIC_API unsigned JS_PCToLineNumber(JSScript* script, jsbytecode* pc,
-                                         unsigned* columnp) {
+JS_PUBLIC_API unsigned JS_PCToLineNumber(
+    JSScript* script, jsbytecode* pc,
+    JS::LimitedColumnNumberOneOrigin* columnp) {
   return PCToLineNumber(script, pc, columnp);
 }
 
@@ -627,9 +642,9 @@ extern JS_PUBLIC_API bool JS::ForceLexicalInitialization(JSContext* cx,
   return initializedAny;
 }
 
-extern JS_PUBLIC_API int JS::IsGCPoisoning() {
+extern JS_PUBLIC_API bool JS::IsGCPoisoning() {
 #ifdef JS_GC_ALLOW_EXTRA_POISONING
-  return js::gExtraPoisoningEnabled;
+  return JS::Prefs::extra_gc_poisoning();
 #else
   return false;
 #endif

@@ -12,8 +12,6 @@
 // for ensuring that we can delete those pings upon user request, by plumbing its
 // identifiers into the "deletion-request" ping.
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { Log } from "resource://gre/modules/Log.sys.mjs";
 
 const lazy = {};
@@ -22,6 +20,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Async: "resource://services-common/async.sys.mjs",
   AuthenticationError: "resource://services-sync/sync_auth.sys.mjs",
   FxAccounts: "resource://gre/modules/FxAccounts.sys.mjs",
+  ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   Observers: "resource://services-common/observers.sys.mjs",
   Resource: "resource://services-sync/resource.sys.mjs",
   Status: "resource://services-sync/status.sys.mjs",
@@ -32,11 +31,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Weave: "resource://services-sync/main.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
-});
-
-XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () => {
+ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
   return ChromeUtils.importESModule(
     "resource://gre/modules/FxAccounts.sys.mjs"
   ).getFxAccountsSingleton();
@@ -44,7 +39,7 @@ XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () => {
 
 import * as constants from "resource://services-sync/constants.sys.mjs";
 
-XPCOMUtils.defineLazyGetter(
+ChromeUtils.defineLazyGetter(
   lazy,
   "WeaveService",
   () => Cc["@mozilla.org/weave/service;1"].getService().wrappedJSObject
@@ -246,10 +241,14 @@ export class ErrorSanitizer {
     NotAllowedError: this.E_PERMISSION_DENIED,
   };
 
+  // IOUtils error messages include the specific nsresult error code that caused them.
+  static NS_ERROR_RE = new RegExp(/ \(NS_ERROR_.*\)$/);
+
   static #cleanOSErrorMessage(message, error = undefined) {
     if (DOMException.isInstance(error)) {
       const sub = this.DOMErrorSubstitutions[error.name];
       message = message.replaceAll("\\", "/");
+      message = message.replace(this.NS_ERROR_RE, "");
       if (sub) {
         return `${sub} ${message}`;
       }

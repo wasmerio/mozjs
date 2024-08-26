@@ -30,6 +30,7 @@
           displayName: "Some Browser 0",
           resourceTypes: ["HISTORY", "FORMDATA", "PASSWORDS", "BOOKMARKS", "EXTENSIONS"],
           profile: { id: "person-2", name: "Person 2" },
+          hasPermissions: true,
         },
         {
           key: "some-browser-1",
@@ -37,6 +38,7 @@
           displayName: "Some Browser 1",
           resourceTypes: ["HISTORY", "BOOKMARKS"],
           profile: null,
+          hasPermissions: true,
         },
       ];
 
@@ -82,8 +84,6 @@
 
         let wiz = document.createElement("migration-wizard");
         wiz.toggleAttribute("auto-request-state", true);
-        let panelList = document.createElement("panel-list");
-        wiz.appendChild(panelList);
         let content = document.getElementById("content");
         let promise = new Promise(resolve => {
           content.addEventListener(REQUEST_STATE_EVENT, resolve, {
@@ -137,7 +137,7 @@
         let preamble = gShadowRoot.querySelector(".resource-selection-preamble");
         ok(!isHidden(preamble), "preamble should shown.");
 
-        let panelList = gWiz.querySelector("panel-list");
+        let panelList = gShadowRoot.querySelector("panel-list");
         is(panelList.childElementCount, 2, "Should have two child elements");
 
         let resourceTypeList = gShadowRoot.querySelector("#resource-type-list");
@@ -147,13 +147,13 @@
         // Test that the resource type checkboxes are shown or hidden depending on
         // which resourceTypes are included with the MigratorProfileInstance.
         for (let migratorInstance of MIGRATOR_PROFILE_INSTANCES) {
-          selector.click();
+          synthesizeMouseAtCenter(selector, {}, gWiz.ownerGlobal);
           await new Promise(resolve => {
-            gWiz
+            gShadowRoot
               .querySelector("panel-list")
               .addEventListener("shown", resolve, { once: true });
           });
-          let panelItem = gWiz.querySelector(
+          let panelItem = gShadowRoot.querySelector(
             `panel-item[key="${migratorInstance.key}"]`
           );
           ok(panelItem, "Should find panel-item.");
@@ -218,6 +218,7 @@
             displayName: "Some Browser 0 with no resources",
             resourceTypes: [],
             profile: { id: "person-1", name: "Person 1" },
+            hasPermissions: true,
           }],
           showImportAll: false,
         });
@@ -247,15 +248,15 @@
         ok(isHidden(preamble), "preamble should be hidden.");
 
         let selector = gShadowRoot.querySelector("#browser-profile-selector");
-        selector.click();
+        synthesizeMouseAtCenter(selector, {}, gWiz.ownerGlobal);
         await new Promise(resolve => {
-          let panelList = gWiz.querySelector("panel-list");
+          let panelList = gShadowRoot.querySelector("panel-list");
           if (panelList) {
             panelList.addEventListener("shown", resolve, { once: true });
           }
         });
 
-        let panelItems = gWiz.querySelectorAll("panel-list > panel-item");
+        let panelItems = gShadowRoot.querySelectorAll("panel-list > panel-item");
         is(panelItems.length, 2, "Should have two panel items");
 
         let details = gShadowRoot.querySelector("details");
@@ -382,12 +383,14 @@
             displayName: "Some Browser 0 with a single resource",
             resourceTypes: ["HISTORY"],
             profile: { id: "person-1", name: "Person 1" },
+            hasPermissions: true,
           }, {
             key: "some-browser-1",
             type: MigrationWizardConstants.MIGRATOR_TYPES.BROWSER,
             displayName: "Some Browser 1 with a two resources",
             resourceTypes: ["HISTORY", "BOOKMARKS"],
             profile: { id: "person-2", name: "Person 2" },
+            hasPermissions: true,
           }],
           showImportAll: true,
         });
@@ -407,7 +410,7 @@
           gWiz,
           "MigrationWizard:ResourcesUpdated"
         );
-        let browser1Item = gWiz.querySelector("panel-item[key='some-browser-1']");
+        let browser1Item = gShadowRoot.querySelector("panel-item[key='some-browser-1']");
         browser1Item.click();
         await resourcesUpdated;
 
@@ -722,12 +725,20 @@
           EXTENSIONS_INFO_HREF
         );
         is(
+          extensionsGroup.querySelector("a.message-text").target,
+          "_blank"
+        );
+        is(
           extensionsGroup.querySelector(".support-text").textContent,
           EXTENSIONS_SUPPORT_STRING
         );
         is(
           extensionsGroup.querySelector(".support-text").href,
           EXTENSIONS_SUPPORT_HREF
+        );
+        is(
+          extensionsGroup.querySelector(".support-text").target,
+          "_blank"
         );
 
         // With progress being complete, the header should be using the completed
@@ -789,13 +800,17 @@
           extensionsGroup.querySelector(".support-text").href,
           EXTENSIONS_SUPPORT_HREF
         );
+        is(
+          extensionsGroup.querySelector(".support-text").target,
+          "_blank"
+        );
 
         // With progress being complete, the header should be using the completed
         // migration string.
         let header = gShadowRoot.querySelector("#progress-header");
         is(
           header.getAttribute("data-l10n-id"),
-          "migration-wizard-progress-done-header",
+          "migration-wizard-progress-done-with-warnings-header",
           "Should be showing completed migration header string"
         );
 
@@ -976,7 +991,7 @@
           ".cancel-close button should be visible in dialog mode."
         );
         let closeEvent = BrowserTestUtils.waitForEvent(gWiz, "MigrationWizard:Close");
-        synthesizeMouseAtCenter(button, {});
+        button.click();
         await closeEvent;
 
         gWiz.toggleAttribute("dialog-mode", false);
@@ -1036,6 +1051,7 @@
               displayName: "Legacy Microsoft Browser",
               resourceTypes: ["BOOKMARKS"],
               profile: null,
+              hasPermissions: true,
             }],
             showImportAll: false,
           });
@@ -1059,6 +1075,7 @@
               displayName: "Legacy Microsoft Browser",
               resourceTypes: ["BOOKMARKS"],
               profile: null,
+              hasPermissions: true,
             }],
             showImportAll: true,
           });
@@ -1329,6 +1346,7 @@
             displayName: "Some Browser 0",
             resourceTypes: ["HISTORY", "FORMDATA", "PASSWORDS", "BOOKMARKS"],
             profile: { id: "person-2", name: "Person 2" },
+            hasPermissions: true,
           },
           {
             key: "some-browser-1",
@@ -1336,6 +1354,7 @@
             displayName: "Some Browser 1",
             resourceTypes: ["HISTORY", "BOOKMARKS"],
             profile: null,
+            hasPermissions: true,
           },
           {
             key: FILE_MIGRATOR_KEY,
@@ -1368,14 +1387,400 @@
         errorText = gShadowRoot.querySelector("#file-import-error-message").textContent;
         is(errorText, "");
       });
+
+      /**
+       * Tests that the variant of the wizard can be forced via
+       * attributes on the migration-wizard element.
+       */
+      add_task(async function force_show_import_all() {
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+          showImportAll: true,
+        });
+
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let details = gShadowRoot.querySelector("details");
+        ok(
+          selectionPage.hasAttribute("show-import-all"),
+          "Should be paying attention to showImportAll=true on state object"
+        );
+        ok(!details.open, "Details collapsed by default");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+          showImportAll: false,
+        });
+
+        ok(
+          !selectionPage.hasAttribute("show-import-all"),
+          "Should be paying attention to showImportAll=false on state object"
+        );
+        ok(details.open, "Details expanded by default");
+
+        gWiz.setAttribute("force-show-import-all", "false");
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+          showImportAll: true,
+        });
+        ok(
+          !selectionPage.hasAttribute("show-import-all"),
+          "Should be paying attention to force-show-import-all=false on DOM node"
+        );
+        ok(details.open, "Details expanded by default");
+
+        gWiz.setAttribute("force-show-import-all", "true");
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+          showImportAll: false,
+        });
+        ok(
+          selectionPage.hasAttribute("show-import-all"),
+          "Should be paying attention to force-show-import-all=true on DOM node"
+        );
+        ok(!details.open, "Details collapsed by default");
+
+        gWiz.removeAttribute("force-show-import-all");
+      });
+
+      /**
+       * Tests that for non-Safari migrators without permissions, we show
+       * the appropriate message and the button for getting permissions.
+       */
+      add_task(async function no_permissions() {
+        const SOME_FAKE_PERMISSION_PATH = "/some/fake/path";
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: [{
+            key: "some-browser-0",
+            type: MigrationWizardConstants.MIGRATOR_TYPES.BROWSER,
+            displayName: "Some Browser 0 with no permissions",
+            resourceTypes: [],
+            profile: null,
+            hasPermissions: false,
+            permissionsPath: SOME_FAKE_PERMISSION_PATH,
+          }],
+          showImportAll: false,
+        });
+
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        ok(selectionPage.hasAttribute("no-permissions"), "no-permissions attribute set.");
+
+        let resourceList = gShadowRoot.querySelector(".resource-selection-details");
+        ok(isHidden(resourceList), "Resources list is hidden.");
+
+        let importButton = gShadowRoot.querySelector("#import");
+        ok(isHidden(importButton), "Import button hidden.");
+        let noPermissionsMessage = gShadowRoot.querySelector(".no-permissions-message");
+        ok(!isHidden(noPermissionsMessage), "No permissions message shown.");
+        let getPermissionButton = gShadowRoot.querySelector("#get-permissions");
+        ok(!isHidden(getPermissionButton), "Get permissions button shown.");
+
+        let step2 = gShadowRoot.querySelector(".migration-no-permissions-instructions-step2");
+        ok(step2.hasAttribute("data-l10n-args"));
+        is(JSON.parse(step2.getAttribute("data-l10n-args")).permissionsPath, SOME_FAKE_PERMISSION_PATH);
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+          showImportAll: false,
+        });
+
+        ok(!selectionPage.hasAttribute("no-permissions"), "no-permissions attribute set to false.");
+        ok(!isHidden(resourceList), "Resources list is shown.");
+        ok(!isHidden(importButton), "Import button is shown.");
+        ok(isHidden(noPermissionsMessage), "No permissions message hidden.");
+        ok(isHidden(getPermissionButton), "Get permissions button hidden.");
+      });
+
+      /**
+       * Tests that for the Safari migrator without permissions, we show the
+       * normal resources list and impor tbutton instead of the no permissions
+       * message. Safari has a special flow where permissions are requested
+       * only after resource selection has occurred.
+       */
+      add_task(async function no_permissions_safari() {
+        const SOME_FAKE_PERMISSION_PATH = "/some/fake/safari/path";
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: [{
+            key: "safari",
+            type: MigrationWizardConstants.MIGRATOR_TYPES.BROWSER,
+            displayName: "Safari with no permissions",
+            resourceTypes: ["HISTORY", "BOOKMARKS"],
+            profile: null,
+            hasPermissions: false,
+            permissionsPath: SOME_FAKE_PERMISSION_PATH,
+          }],
+          showImportAll: false,
+        });
+
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        ok(!selectionPage.hasAttribute("no-permissions"), "no-permissions attribute not set.");
+
+        let resourceList = gShadowRoot.querySelector(".resource-selection-details");
+        ok(!isHidden(resourceList), "Resources list is shown.");
+
+        let importButton = gShadowRoot.querySelector("#import");
+        ok(!isHidden(importButton), "Import button shown.");
+        let noPermissionsMessage = gShadowRoot.querySelector(".no-permissions-message");
+        ok(isHidden(noPermissionsMessage), "No permissions message hidden.");
+        let getPermissionButton = gShadowRoot.querySelector("#get-permissions");
+        ok(isHidden(getPermissionButton), "Get permissions button hiddne.");
+      });
+
+      add_task(async function hide_option_expander_subtitle() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        gWiz.setAttribute("hide-option-expander-subtitle", "true");
+        let subtitle = selectionPage.querySelector("#resource-selection-summary > .selected-data");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        ok(gWiz.hasAttribute("hide-option-expander-subtitle"), "hide option expander subtitle attribute is present on migration wizard");
+
+        ok(isHidden(subtitle), "subtitle is hidden");
+
+        gWiz.removeAttribute("hide-option-expander-subtitle");
+      });
+
+      add_task(async function update_option_expander_title_string() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+
+        let title = selectionPage.querySelector(".selected-data-header");
+        gWiz.setAttribute("option-expander-title-string", "test");
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        await BrowserTestUtils.waitForMutationCondition(
+          title,
+          {childList: true},
+          () => title.textContent == "test"
+        )
+        is(title.textContent, "test", "resource selection expander subtitle has been changed");
+
+        gWiz.removeAttribute("option-expander-title-string");
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        await BrowserTestUtils.waitForMutationCondition(
+          title,
+          {childList: true},
+          () => title.textContent != "test"
+        )
+        isnot(title.textContent, "test", "resource selection expander subtitle was reverted");
+      });
+
+      add_task(async function hide_select_all_checkbox() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+
+        let selectAll = selectionPage.querySelector("#select-all");
+        gWiz.setAttribute("hide-select-all", true);
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        ok(isHidden(selectAll), "select all is not displayed");
+
+        gWiz.removeAttribute("hide-select-all");
+      });
+
+      add_task(async function update_import_button_string() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        gWiz.setAttribute("import-button-string", "test");
+        let button = selectionPage.querySelector(".migration-import-button");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        is(button.textContent, "test", "button text is expected");
+
+        gWiz.removeAttribute("import-button-string");
+      });
+
+      add_task(async function update_checkbox_margins() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+
+        gWiz.setAttribute("checkbox-margin-inline", "27px 42px");
+        gWiz.setAttribute("checkbox-margin-block", "42px 27px");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        let checkboxLabels = selectionPage.querySelectorAll(".resource-type-label");
+        for(let label of checkboxLabels) {
+          let computedStyle = getComputedStyle(label);
+          let marginInline = computedStyle.getPropertyValue("margin-inline");
+          let marginBlock = computedStyle.getPropertyValue("margin-block");
+          is(marginInline, "27px 42px", "margin inline is set to expected value");
+          is(marginBlock, "42px 27px", "margin block is set to expected value");
+        }
+
+        gWiz.removeAttribute("checkbox-margin-inline");
+        gWiz.removeAttribute("checkbox-margin-block");
+      });
+
+      add_task(async function update_import_button_class() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let importButton = selectionPage.querySelector("#import");
+
+        gWiz.setAttribute("import-button-class", "primary");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        ok(importButton.classList.contains("primary"), "import button has the primary class");
+
+        gWiz.removeAttribute("import-button-class");
+      });
+
+      add_task(async function update_header_font_size() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let header = selectionPage.querySelector("h1");
+
+        gWiz.setAttribute("header-font-size", "24px");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+        let computedStyle = getComputedStyle(header);
+
+        is(computedStyle.getPropertyValue("font-size"), "24px", "header font size is changed to correct value");
+        gWiz.removeAttribute("header-font-size");
+      });
+
+      add_task(async function update_header_margin_block() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let header = selectionPage.querySelector("h1");
+
+        gWiz.setAttribute("header-margin-block", "20px 30px");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+        let computedStyle = getComputedStyle(header);
+
+        is(computedStyle.getPropertyValue("margin-block"), "20px 30px", "header margin block is changed to correct value");
+        gWiz.removeAttribute("header-margin-block");
+      });
+
+      add_task(async function update_header_string() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let header = selectionPage.querySelector("h1");
+
+        gWiz.setAttribute("selection-header-string", "test string");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        is(header.textContent, "test string", "header text content is changed to correct value");
+        gWiz.removeAttribute("selection-header-string");
+      });
+
+      add_task(async function update_subheader_font_size() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let subheader = selectionPage.querySelector("h1");
+
+        gWiz.setAttribute("subheader-font-size", "24px");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+        let computedStyle = getComputedStyle(subheader);
+
+        is(computedStyle.getPropertyValue("font-size"), "24px", "subheader font size is changed to correct value");
+        gWiz.removeAttribute("subheader-font-size");
+      });
+
+      add_task(async function update_subheader_margin_block() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let subheader = selectionPage.querySelector("h1");
+
+        gWiz.setAttribute("subheader-margin-block", "20px 30px");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+        let computedStyle = getComputedStyle(subheader);
+
+        is(computedStyle.getPropertyValue("margin-block"), "20px 30px", "subheader margin block is changed to correct value");
+        gWiz.removeAttribute("subheader-margin-block");
+      });
+
+      add_task(async function update_subheader_string() {
+        let selectionPage = gShadowRoot.querySelector("div[name='page-selection']");
+        let subheader = selectionPage.querySelector(".migration-wizard-subheader");
+
+        gWiz.setAttribute("selection-subheader-string", "test string");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        is(subheader.textContent, "test string", "subheader text content is changed to correct value");
+
+        gWiz.removeAttribute("selection-subheader-string");
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.SELECTION,
+          migrators: MIGRATOR_PROFILE_INSTANCES,
+        });
+
+        ok(isHidden(subheader), "subheader is hidden")
+      });
+
+      add_task(async function update_data_import_success_string() {
+        let progressPage = gShadowRoot.querySelector("div[name='page-progress']");
+        let header = progressPage.querySelector("h1");
+
+        gWiz.setAttribute("data-import-complete-success-string", "test string");
+
+        gWiz.setState({
+          page: MigrationWizardConstants.PAGES.PROGRESS,
+          key: "chrome",
+          progress: {
+            [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.EXTENSIONS]: {
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
+            },
+            [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.FORMDATA]: {
+              value: MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
+            },
+          },
+        });
+
+        is(header.textContent, "test string", "import success header text content is changed to correct value");
+        gWiz.removeAttribute("data-import-complete-success-string");
+      });
     </script>
   </head>
   <body>
     <p id="display"></p>
     <div id="content">
-      <migration-wizard id="test-wizard" dialog-mode="">
-        <panel-list></panel-list>
-      </migration-wizard>
+      <migration-wizard id="test-wizard" dialog-mode=""></migration-wizard>
     </div>
     <pre id="test"></pre>
   </body>

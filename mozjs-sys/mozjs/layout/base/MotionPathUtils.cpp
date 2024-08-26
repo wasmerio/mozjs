@@ -7,12 +7,14 @@
 #include "mozilla/MotionPathUtils.h"
 
 #include "gfxPlatform.h"
+#include "mozilla/dom/SVGGeometryElement.h"
 #include "mozilla/dom/SVGPathData.h"
 #include "mozilla/dom/SVGViewportElement.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/Matrix.h"
 #include "mozilla/layers/LayersMessages.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/SVGObserverUtils.h"
 #include "mozilla/ShapeUtils.h"
 #include "nsIFrame.h"
 #include "nsLayoutUtils.h"
@@ -31,17 +33,38 @@ CSSPoint MotionPathUtils::ComputeAnchorPointAdjustment(const nsIFrame& aFrame) {
   }
 
   auto transformBox = aFrame.StyleDisplay()->mTransformBox;
-  if (transformBox == StyleGeometryBox::ViewBox ||
-      transformBox == StyleGeometryBox::BorderBox) {
+  if (transformBox == StyleTransformBox::ViewBox ||
+      transformBox == StyleTransformBox::BorderBox) {
     return {};
   }
 
-  if (aFrame.IsFrameOfType(nsIFrame::eSVGContainer)) {
-    nsRect boxRect = nsLayoutUtils::ComputeGeometryBox(
+  if (aFrame.IsSVGContainerFrame()) {
+    nsRect boxRect = nsLayoutUtils::ComputeSVGReferenceRect(
         const_cast<nsIFrame*>(&aFrame), StyleGeometryBox::FillBox);
     return CSSPoint::FromAppUnits(boxRect.TopLeft());
   }
   return CSSPoint::FromAppUnits(aFrame.GetPosition());
+}
+
+// Convert the StyleCoordBox into the StyleGeometryBox in CSS layout.
+// https://drafts.csswg.org/css-box-4/#keywords
+static StyleGeometryBox CoordBoxToGeometryBoxInCSSLayout(
+    StyleCoordBox aCoordBox) {
+  switch (aCoordBox) {
+    case StyleCoordBox::ContentBox:
+      return StyleGeometryBox::ContentBox;
+    case StyleCoordBox::PaddingBox:
+      return StyleGeometryBox::PaddingBox;
+    case StyleCoordBox::BorderBox:
+      return StyleGeometryBox::BorderBox;
+    case StyleCoordBox::FillBox:
+      return StyleGeometryBox::ContentBox;
+    case StyleCoordBox::StrokeBox:
+    case StyleCoordBox::ViewBox:
+      return StyleGeometryBox::BorderBox;
+  }
+  MOZ_ASSERT_UNREACHABLE("Unknown coord-box type");
+  return StyleGeometryBox::BorderBox;
 }
 
 /* static */
@@ -56,7 +79,7 @@ const nsIFrame* MotionPathUtils::GetOffsetPathReferenceBox(
     MOZ_ASSERT(aFrame->GetContent()->IsSVGElement());
     auto* viewportElement =
         dom::SVGElement::FromNode(aFrame->GetContent())->GetCtx();
-    aOutputRect = nsLayoutUtils::ComputeSVGViewBox(viewportElement);
+    aOutputRect = nsLayoutUtils::ComputeSVGOriginBox(viewportElement);
     return viewportElement ? viewportElement->GetPrimaryFrame() : nullptr;
   }
 
@@ -65,7 +88,7 @@ const nsIFrame* MotionPathUtils::GetOffsetPathReferenceBox(
                                      ? offsetPath.AsCoordBox()
                                      : offsetPath.AsOffsetPath().coord_box;
   aOutputRect = nsLayoutUtils::ComputeHTMLReferenceRect(
-      containingBlock, nsLayoutUtils::CoordBoxToGeometryBox(coordBox));
+      containingBlock, CoordBoxToGeometryBoxInCSSLayout(coordBox));
   return containingBlock;
 }
 
@@ -76,14 +99,25 @@ CSSCoord MotionPathUtils::GetRayContainReferenceSize(nsIFrame* aFrame) {
   // https://drafts.fxtf.org/motion-1/#valdef-ray-contain
   //
   // Note: Per the spec, border-box is treated as stroke-box in the SVG context,
-  // Also, SVGUtils::GetBBox() may cache the box via the frame property, so we
-  // have to do const-casting.
   // https://drafts.csswg.org/css-box-4/#valdef-box-border-box
-  CSSSize size = CSSSize::FromAppUnits(
-      nsLayoutUtils::ComputeGeometryBox(aFrame,
-                                        // StrokeBox and BorderBox are in the
-                                        // same switch case for CSS context.
-                                        StyleGeometryBox::StrokeBox)
+
+  // To calculate stroke bounds for an element with `non-scaling-stroke` we
+  // need to resolve its transform to its outer-svg, but to resolve that
+  // transform when it has `transform-box:stroke-box` (or `border-box`)
+  // may require its stroke bounds. There's no ideal way to break this
+  // cyclical dependency, but we break it by using the FillBox.
+  // https://github.com/w3c/csswg-drafts/issues/9640
+
+  const auto size = CSSSize::FromAppUnits(
+      (aFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT)
+           ? nsLayoutUtils::ComputeSVGReferenceRect(
+                 aFrame,
+                 aFrame->StyleSVGReset()->HasNonScalingStroke()
+                     ? StyleGeometryBox::FillBox
+                     : StyleGeometryBox::StrokeBox,
+                 nsLayoutUtils::MayHaveNonScalingStrokeCyclicDependency::Yes)
+           : nsLayoutUtils::ComputeHTMLReferenceRect(
+                 aFrame, StyleGeometryBox::BorderBox))
           .Size());
   return std::max(size.width, size.height);
 }
@@ -96,8 +130,7 @@ nsTArray<nscoord> MotionPathUtils::ComputeBorderRadii(
       aCoordBox);
   nsTArray<nscoord> result(8);
   result.SetLength(8);
-  if (!nsIFrame::ComputeBorderRadii(aBorderRadius, aCoordBox.Size(),
-                                    insetRect.Size(), Sides(),
+  if (!ShapeUtils::ComputeRectRadii(aBorderRadius, aCoordBox, insetRect,
                                     result.Elements())) {
     result.Clear();
   }
@@ -147,6 +180,22 @@ static CSSCoord ComputeSides(const CSSPoint& aOrigin,
   sint = std::fabs(sint);
   cost = std::fabs(cost);
 
+  // The trigonometric formula here doesn't work well if |theta| is 0deg or
+  // 90deg, so we handle these edge cases first.
+  if (sint < std::numeric_limits<double>::epsilon()) {
+    // For 0deg (or 180deg), we use |b| directly.
+    return static_cast<float>(b);
+  }
+
+  if (cost < std::numeric_limits<double>::epsilon()) {
+    // For 90deg (or 270deg), we use |bPrime| directly. This can also avoid 0/0
+    // if both |b| and |cost| are 0.0. (i.e. b / cost).
+    return static_cast<float>(bPrime);
+  }
+
+  // Note: The following formula works well only when 0 < theta < 90deg. So we
+  // handle 0deg and 90deg above first.
+  //
   // If |b * tan(theta)| is larger than |bPrime|, the intersection is
   // on the other side, and |b'| is the opposite side of angle |theta| in this
   // case.
@@ -202,7 +251,11 @@ static CSSCoord ComputeRayPathLength(const StyleRaySize aRaySizeType,
                                      const CSSRect& aContainingBlock) {
   if (aRaySizeType == StyleRaySize::Sides) {
     // If the initial position is not within the box, the distance is 0.
-    if (!aContainingBlock.Contains(aOrigin)) {
+    //
+    // Note: If the origin is at XMost() (and/or YMost()), we should consider it
+    // to be inside containing block (because we expect 100% x (or y) coordinate
+    // is still to be considered inside the containing block.
+    if (!aContainingBlock.ContainsInclusively(aOrigin)) {
       return 0.0;
     }
 
@@ -289,13 +342,12 @@ Maybe<ResolvedMotionPathData> MotionPathUtils::ResolveMotionPath(
     gfx::Float pathLength = path->ComputeLength();
     gfx::Float usedDistance =
         aDistance.ResolveToCSSPixels(CSSCoord(pathLength));
-    if (data.mIsClosedIntervals) {
+    if (data.mIsClosedLoop) {
       // Per the spec, let used offset distance be equal to offset distance
       // modulus the total length of the path. If the total length of the path
       // is 0, used offset distance is also 0.
       usedDistance = pathLength > 0.0 ? fmod(usedDistance, pathLength) : 0.0;
       // We make sure |usedDistance| is 0.0 or a positive value.
-      // https://github.com/w3c/fxtf-drafts/issues/339
       if (usedDistance < 0.0) {
         usedDistance += pathLength;
       }
@@ -380,9 +432,9 @@ Maybe<ResolvedMotionPathData> MotionPathUtils::ResolveMotionPath(
                                      angle, shift});
 }
 
-static inline bool IsClosedPath(const StyleSVGPathData& aPathData) {
+static inline bool IsClosedLoop(const StyleSVGPathData& aPathData) {
   return !aPathData._0.AsSpan().empty() &&
-         aPathData._0.AsSpan().rbegin()->IsClosePath();
+         aPathData._0.AsSpan().rbegin()->IsClose();
 }
 
 // Create a path for "inset(0 round X)", where X is the value of border-radius
@@ -398,11 +450,25 @@ static already_AddRefed<gfx::Path> BuildSimpleInsetPath(
       StyleRect<LengthPercentage>::WithAllSides(LengthPercentage::Zero()),
       aCoordBox);
   nscoord radii[8];
-  const bool hasRadii = nsIFrame::ComputeBorderRadii(
-      aBorderRadius, aCoordBox.Size(), insetRect.Size(), Sides(), radii);
-  return ShapeUtils::BuildInsetPath(insetRect, hasRadii ? radii : nullptr,
-                                    aCoordBox, AppUnitsPerCSSPixel(),
-                                    aPathBuilder);
+  const bool hasRadii =
+      ShapeUtils::ComputeRectRadii(aBorderRadius, aCoordBox, insetRect, radii);
+  return ShapeUtils::BuildRectPath(insetRect, hasRadii ? radii : nullptr,
+                                   aCoordBox, AppUnitsPerCSSPixel(),
+                                   aPathBuilder);
+}
+
+// Create a path for `path("m 0 0")`, which is the default URL path if we cannot
+// resolve a SVG shape element.
+// https://drafts.fxtf.org/motion-1/#valdef-offset-path-url
+static already_AddRefed<gfx::Path> BuildDefaultPathForURL(
+    gfx::PathBuilder* aBuilder) {
+  if (!aBuilder) {
+    return nullptr;
+  }
+
+  Array<const StylePathCommand, 1> array(StylePathCommand::Move(
+      StyleByTo::By, StyleCoordinatePair<StyleCSSFloat>{0.0, 0.0}));
+  return SVGPathData::BuildPath(array, aBuilder, StyleStrokeLinecap::Butt, 0.0);
 }
 
 // Generate data for motion path on the main thread.
@@ -437,11 +503,8 @@ static OffsetPathData GenerateOffsetPathData(const nsIFrame* aFrame) {
                "Should have a valid cached gfx::Path or an empty path string");
     // FIXME: Bug 1836847. Once we support "at <position>" for path(), we have
     // to give it the current box position.
-    return OffsetPathData::Shape(gfxPath.forget(), {}, IsClosedPath(pathData));
+    return OffsetPathData::Shape(gfxPath.forget(), {}, IsClosedLoop(pathData));
   }
-
-  // The rest part is to handle "<basic-shape> || <coord-box>".
-  MOZ_ASSERT(offsetPath.IsBasicShapeOrCoordBox());
 
   nsRect coordBox;
   const nsIFrame* containingFrame =
@@ -449,10 +512,46 @@ static OffsetPathData GenerateOffsetPathData(const nsIFrame* aFrame) {
   if (!containingFrame || coordBox.IsEmpty()) {
     return OffsetPathData::None();
   }
-
-  const nsStyleDisplay* disp = aFrame->StyleDisplay();
   nsPoint currentPosition = aFrame->GetOffsetTo(containingFrame);
   RefPtr<gfx::PathBuilder> builder = MotionPathUtils::GetPathBuilder();
+
+  if (offsetPath.IsUrl()) {
+    dom::SVGGeometryElement* element =
+        SVGObserverUtils::GetAndObserveGeometry(const_cast<nsIFrame*>(aFrame));
+    if (!element) {
+      // Note: This behaves as path("m 0 0") (a <basic-shape>).
+      RefPtr<gfx::Path> path = BuildDefaultPathForURL(builder);
+      // FIXME: Bug 1836847. Once we support "at <position>" for path(), we have
+      // to give it the current box position.
+      return path ? OffsetPathData::Shape(path.forget(), {}, false)
+                  : OffsetPathData::None();
+    }
+
+    // We just need this path to calculate the specific point and direction
+    // angle, so use measuring function and get the benefit of caching the path
+    // in the SVG shape element.
+    RefPtr<gfx::Path> path = element->GetOrBuildPathForMeasuring();
+
+    // The built |path| from SVG shape element doesn't take |coordBox| into
+    // account. It uses the SVG viewport as its coordinate system. So after
+    // mapping it into the CSS layout, we should use |coordBox| as its viewport
+    // and user coordinate system. |currentPosition| is based on the border-box
+    // of the containing block. Therefore, we have to apply an extra translation
+    // to put it at the correct position based on |coordBox|.
+    //
+    // Note: we reuse |OffsetPathData::ShapeData::mCurrentPosition| to include
+    // this extra translation, so we don't have to add an extra field.
+    nsPoint positionInCoordBox = currentPosition - coordBox.TopLeft();
+    return path ? OffsetPathData::Shape(path.forget(),
+                                        std::move(positionInCoordBox),
+                                        element->IsClosedLoop())
+                : OffsetPathData::None();
+  }
+
+  // The rest part is to handle "<basic-shape> || <coord-box>".
+  MOZ_ASSERT(offsetPath.IsBasicShapeOrCoordBox());
+
+  const nsStyleDisplay* disp = aFrame->StyleDisplay();
   RefPtr<gfx::Path> path =
       disp->mOffsetPath.IsCoordBox()
           ? BuildSimpleInsetPath(containingFrame->StyleBorder()->mBorderRadius,
@@ -518,7 +617,7 @@ static OffsetPathData GenerateOffsetPathData(
     }
     // FIXME: Bug 1836847. Once we support "at <position>" for path(), we have
     // to give it the current box position.
-    return OffsetPathData::Shape(path.forget(), {}, IsClosedPath(pathData));
+    return OffsetPathData::Shape(path.forget(), {}, IsClosedLoop(pathData));
   }
 
   // The rest part is to handle "<basic-shape> || <coord-box>".
@@ -541,7 +640,7 @@ static OffsetPathData GenerateOffsetPathData(
         StyleRect<LengthPercentage>::WithAllSides(LengthPercentage::Zero()),
         coordBox);
     const nsTArray<nscoord>& radii = aMotionPathData.coordBoxInsetRadii();
-    path = ShapeUtils::BuildInsetPath(
+    path = ShapeUtils::BuildRectPath(
         insetRect, radii.IsEmpty() ? nullptr : radii.Elements(), coordBox,
         AppUnitsPerCSSPixel(), builder);
   } else {
@@ -596,6 +695,21 @@ already_AddRefed<gfx::Path> MotionPathUtils::BuildSVGPath(
                                 0.0);
 }
 
+static already_AddRefed<gfx::Path> BuildShape(
+    const Span<const StyleShapeCommand>& aShape, gfx::PathBuilder* aPathBuilder,
+    const nsRect& aCoordBox) {
+  if (!aPathBuilder) {
+    return nullptr;
+  }
+
+  // For motion path, we always use CSSPixel unit to compute the offset
+  // transform (i.e. motion path transform).
+  const auto rect = CSSRect::FromAppUnits(aCoordBox);
+  return SVGPathData::BuildPath(aShape, aPathBuilder, StyleStrokeLinecap::Butt,
+                                0.0, rect.Size(),
+                                rect.TopLeft().ToUnknownPoint());
+}
+
 /* static */
 already_AddRefed<gfx::Path> MotionPathUtils::BuildPath(
     const StyleBasicShape& aBasicShape,
@@ -620,18 +734,28 @@ already_AddRefed<gfx::Path> MotionPathUtils::BuildPath(
       return ShapeUtils::BuildEllipsePath(aBasicShape, aCoordBox, center,
                                           AppUnitsPerCSSPixel(), aPathBuilder);
     }
-    case StyleBasicShape::Tag::Inset:
+    case StyleBasicShape::Tag::Rect:
       return ShapeUtils::BuildInsetPath(aBasicShape, aCoordBox,
                                         AppUnitsPerCSSPixel(), aPathBuilder);
     case StyleBasicShape::Tag::Polygon:
       return ShapeUtils::BuildPolygonPath(aBasicShape, aCoordBox,
                                           AppUnitsPerCSSPixel(), aPathBuilder);
-    case StyleBasicShape::Tag::Path:
+    case StyleBasicShape::Tag::PathOrShape: {
       // FIXME: Bug 1836847. Once we support "at <position>" for path(), we have
       // to also check its containing block as well. For now, we are still
       // building its gfx::Path directly by its SVGPathData without other
       // reference. https://github.com/w3c/fxtf-drafts/issues/504
-      return BuildSVGPath(aBasicShape.AsPath().path, aPathBuilder);
+      const auto& pathOrShape = aBasicShape.AsPathOrShape();
+      if (pathOrShape.IsPath()) {
+        return BuildSVGPath(pathOrShape.AsPath().path, aPathBuilder);
+      }
+
+      // Note that shape() always defines the initial position, i.e. "from x y",
+      // by its first move command, so |aOffsetPosition|, i.e. offset-position
+      // property, is ignored.
+      return BuildShape(pathOrShape.AsShape().commands.AsSpan(), aPathBuilder,
+                        aCoordBox);
+    }
   }
 
   return nullptr;

@@ -96,6 +96,9 @@ var DownloadsPanel = {
     this._initialized = true;
 
     window.addEventListener("unload", this.onWindowUnload);
+    document
+      .getElementById("downloadPanelCommands")
+      .addEventListener("command", this);
 
     // Load and resume active downloads if required.  If there are downloads to
     // be shown in the panel, they will be loaded asynchronously.
@@ -135,6 +138,9 @@ var DownloadsPanel = {
     }
 
     window.removeEventListener("unload", this.onWindowUnload);
+    document
+      .getElementById("downloadPanelCommands")
+      .removeEventListener("command", this);
 
     // Ensure that the panel is closed before shutting down.
     this.hidePanel();
@@ -226,6 +232,11 @@ var DownloadsPanel = {
 
   handleEvent(aEvent) {
     switch (aEvent.type) {
+      case "command":
+        // Handle the commands defined in downloadsPanel.inc.xhtml.
+        // Every command "id" is also its corresponding command.
+        goDoCommand(aEvent.target.id);
+        break;
       case "mousemove":
         if (
           !DownloadsView.contextMenuOpen &&
@@ -325,7 +336,7 @@ var DownloadsPanel = {
     // to the browser window when the panel closes automatically.
     this.hidePanel();
 
-    BrowserDownloadsUI();
+    BrowserCommands.downloadsUI();
   },
 
   // Internal functions
@@ -526,7 +537,10 @@ var DownloadsPanel = {
   },
 
   _startWatchingForSpammyDownloadActivation() {
-    Services.els.addSystemEventListener(window, "keydown", this, true);
+    window.addEventListener("keydown", this, {
+      capture: true,
+      mozSystemGroup: true,
+    });
   },
 
   _lastBeepTime: 0,
@@ -544,7 +558,10 @@ var DownloadsPanel = {
   },
 
   _stopWatchingForSpammyDownloadActivation() {
-    Services.els.removeSystemEventListener(window, "keydown", this, true);
+    window.removeEventListener("keydown", this, {
+      capture: true,
+      mozSystemGroup: true,
+    });
   },
 
   /**
@@ -860,7 +877,7 @@ var DownloadsView = {
       } else if (aEvent.shiftKey || aEvent.ctrlKey || aEvent.metaKey) {
         // We adjust the command for supported modifiers to suggest where the download
         // may be opened
-        let openWhere = target.ownerGlobal.whereToOpenLink(aEvent, false, true);
+        let openWhere = BrowserUtils.whereToOpenLink(aEvent, false, true);
         if (["tab", "window", "tabshifted"].includes(openWhere)) {
           command += ":" + openWhere;
         }
@@ -1456,7 +1473,7 @@ var DownloadsSummary = {
    * @param aEvent
    *        The click event being handled.
    */
-  onClick(aEvent) {
+  onClick() {
     DownloadsPanel.showDownloadsHistory();
   },
 
@@ -1670,13 +1687,13 @@ var DownloadsBlockedSubview = {
   },
 };
 
-XPCOMUtils.defineLazyGetter(DownloadsBlockedSubview, "panelMultiView", () =>
+ChromeUtils.defineLazyGetter(DownloadsBlockedSubview, "panelMultiView", () =>
   document.getElementById("downloadsPanel-multiView")
 );
-XPCOMUtils.defineLazyGetter(DownloadsBlockedSubview, "mainView", () =>
+ChromeUtils.defineLazyGetter(DownloadsBlockedSubview, "mainView", () =>
   document.getElementById("downloadsPanel-mainView")
 );
-XPCOMUtils.defineLazyGetter(DownloadsBlockedSubview, "subview", () =>
+ChromeUtils.defineLazyGetter(DownloadsBlockedSubview, "subview", () =>
   document.getElementById("downloadsPanel-blockedSubview")
 );
 

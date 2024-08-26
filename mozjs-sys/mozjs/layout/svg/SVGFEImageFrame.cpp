@@ -40,18 +40,9 @@ class SVGFEImageFrame final : public nsIFrame {
  public:
   NS_DECL_FRAMEARENA_HELPERS(SVGFEImageFrame)
 
-  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
-                    nsIFrame* aPrevInFlow) override;
-  virtual void DestroyFrom(nsIFrame* aDestructRoot,
-                           PostDestroyData& aPostDestroyData) override;
-
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    if (aFlags & eSupportsContainLayoutAndPaint) {
-      return false;
-    }
-
-    return nsIFrame::IsFrameOfType(aFlags & ~(nsIFrame::eSVG));
-  }
+  void Init(nsIContent* aContent, nsContainerFrame* aParent,
+            nsIFrame* aPrevInFlow) override;
+  void Destroy(DestroyContext&) override;
 
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override {
@@ -59,8 +50,8 @@ class SVGFEImageFrame final : public nsIFrame {
   }
 #endif
 
-  virtual nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
-                                    int32_t aModType) override;
+  nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
+                            int32_t aModType) override;
 
   void OnVisibilityChange(
       Visibility aNewVisibility,
@@ -85,17 +76,15 @@ namespace mozilla {
 NS_IMPL_FRAMEARENA_HELPERS(SVGFEImageFrame)
 
 /* virtual */
-void SVGFEImageFrame::DestroyFrom(nsIFrame* aDestructRoot,
-                                  PostDestroyData& aPostDestroyData) {
+void SVGFEImageFrame::Destroy(DestroyContext& aContext) {
   DecApproximateVisibleCount();
 
-  nsCOMPtr<nsIImageLoadingContent> imageLoader =
-      do_QueryInterface(nsIFrame::mContent);
+  nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(mContent);
   if (imageLoader) {
     imageLoader->FrameDestroyed(this);
   }
 
-  nsIFrame::DestroyFrom(aDestructRoot, aPostDestroyData);
+  nsIFrame::Destroy(aContext);
 }
 
 void SVGFEImageFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
@@ -115,8 +104,7 @@ void SVGFEImageFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
   // doesn't have that workaround.
   IncApproximateVisibleCount();
 
-  nsCOMPtr<nsIImageLoadingContent> imageLoader =
-      do_QueryInterface(nsIFrame::mContent);
+  nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(mContent);
   if (imageLoader) {
     imageLoader->FrameCreated(this);
   }
@@ -130,25 +118,7 @@ nsresult SVGFEImageFrame::AttributeChanged(int32_t aNameSpaceID,
     MOZ_ASSERT(
         GetParent()->IsSVGFilterFrame(),
         "Observers observe the filter, so that's what we must invalidate");
-    SVGObserverUtils::InvalidateDirectRenderingObservers(GetParent());
-  }
-
-  // Currently our SMIL implementation does not modify the DOM attributes. Once
-  // we implement the SVG 2 SMIL behaviour this can be removed
-  // SVGFEImageElement::AfterSetAttr's implementation will be sufficient.
-  if (aModType == MutationEvent_Binding::SMIL &&
-      aAttribute == nsGkAtoms::href &&
-      (aNameSpaceID == kNameSpaceID_XLink ||
-       aNameSpaceID == kNameSpaceID_None)) {
-    bool hrefIsSet =
-        element->mStringAttributes[SVGFEImageElement::HREF].IsExplicitlySet() ||
-        element->mStringAttributes[SVGFEImageElement::XLINK_HREF]
-            .IsExplicitlySet();
-    if (hrefIsSet) {
-      element->LoadSVGImage(true, true);
-    } else {
-      element->CancelImageRequests(true);
-    }
+    SVGObserverUtils::InvalidateRenderingObservers(GetParent());
   }
 
   return nsIFrame::AttributeChanged(aNameSpaceID, aAttribute, aModType);
@@ -156,15 +126,10 @@ nsresult SVGFEImageFrame::AttributeChanged(int32_t aNameSpaceID,
 
 void SVGFEImageFrame::OnVisibilityChange(
     Visibility aNewVisibility, const Maybe<OnNonvisible>& aNonvisibleAction) {
-  nsCOMPtr<nsIImageLoadingContent> imageLoader =
-      do_QueryInterface(nsIFrame::mContent);
-  if (!imageLoader) {
-    MOZ_ASSERT_UNREACHABLE("Should have an nsIImageLoadingContent");
-    nsIFrame::OnVisibilityChange(aNewVisibility, aNonvisibleAction);
-    return;
+  nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(mContent);
+  if (imageLoader) {
+    imageLoader->OnVisibilityChange(aNewVisibility, aNonvisibleAction);
   }
-
-  imageLoader->OnVisibilityChange(aNewVisibility, aNonvisibleAction);
 
   nsIFrame::OnVisibilityChange(aNewVisibility, aNonvisibleAction);
 }

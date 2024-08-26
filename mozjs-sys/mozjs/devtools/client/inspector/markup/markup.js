@@ -401,6 +401,10 @@ MarkupView.prototype = {
     return this._contextMenu;
   },
 
+  hasEventDetailsTooltip() {
+    return !!this._eventDetailsTooltip;
+  },
+
   get eventDetailsTooltip() {
     if (!this._eventDetailsTooltip) {
       // This tooltip will be attached to the toolbox document.
@@ -499,6 +503,9 @@ MarkupView.prototype = {
   },
 
   _disableImagePreviewTooltip() {
+    if (!this.imagePreviewTooltip) {
+      return;
+    }
     this.imagePreviewTooltip.stopTogglingOnHover();
   },
 
@@ -825,7 +832,9 @@ MarkupView.prototype = {
         const container = this.getContainer(nodeFront);
         const badge = container?.editor?.displayBadge;
         if (badge) {
-          badge.classList.toggle("active", eventName == "highlighter-shown");
+          const isActive = eventName == "highlighter-shown";
+          badge.classList.toggle("active", isActive);
+          badge.setAttribute("aria-pressed", isActive);
         }
 
         // There is a limit to how many grid highlighters can be active at the same time.
@@ -1209,17 +1218,15 @@ MarkupView.prototype = {
     } else if (type == "idref") {
       // Select the node in the same document.
       nodeFront.walkerFront
-        .document(nodeFront)
-        .then(doc => {
-          return nodeFront.walkerFront
-            .querySelector(doc, "#" + CSS.escape(link))
-            .then(node => {
-              if (!node) {
-                this.emit("idref-attribute-link-failed");
-                return;
-              }
-              this.inspector.selection.setNodeFront(node);
-            });
+        .getIdrefNode(nodeFront, CSS.escape(link))
+        .then(node => {
+          if (!node) {
+            this.emitForTests("idref-attribute-link-failed");
+            return;
+          }
+          this.inspector.selection.setNodeFront(node, {
+            reason: "markup-attribute-link",
+          });
         })
         .catch(console.error);
     }
@@ -1273,6 +1280,15 @@ MarkupView.prototype = {
    */
   _onShortcut(name, event) {
     if (this._isInputOrTextarea(event.target)) {
+      return;
+    }
+
+    // If the selected element is a button (e.g. `flex` badge), we don't want to highjack
+    // keyboard activation.
+    if (
+      event.target.closest(":is(button, [role=button])") &&
+      (name === "Enter" || name === "Space")
+    ) {
       return;
     }
 
@@ -1535,7 +1551,7 @@ MarkupView.prototype = {
     }
   },
 
-  _onTargetAvailable({ targetFront }) {},
+  _onTargetAvailable() {},
 
   _onTargetDestroyed({ targetFront, isModeSwitching }) {
     // Bug 1776250: We only watch targets in order to update containers which
@@ -2083,14 +2099,12 @@ MarkupView.prototype = {
    * Mark the given node selected, and update the inspector.selection
    * object's NodeFront to keep consistent state between UI and selection.
    *
-   * @param  {NodeFront} aNode
+   * @param  {NodeFront} node
    *         The NodeFront to mark as selected.
-   * @param  {String} reason
-   *         The reason for marking the node as selected.
    * @return {Boolean} False if the node is already marked as selected, true
    *         otherwise.
    */
-  markNodeAsSelected(node, reason = "nodeselected") {
+  markNodeAsSelected(node) {
     const container = this.getContainer(node);
     return this._markContainerAsSelected(container);
   },

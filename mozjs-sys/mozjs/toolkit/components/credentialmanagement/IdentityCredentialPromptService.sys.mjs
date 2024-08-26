@@ -157,7 +157,8 @@ export class IdentityCredentialPromptService {
         const data = {
           id: providerIndex,
           icon: iconResult.value,
-          name: displayDomain,
+          name: providerNames[providerIndex],
+          domain: displayDomain,
         };
         providers.push(data);
       }
@@ -272,7 +273,7 @@ export class IdentityCredentialPromptService {
       let mainAction = {
         label: acceptLabel,
         accessKey: acceptKey,
-        callback(event) {
+        callback(_event) {
           let result = listBox.querySelector(
             ".identity-credential-list-item-radio:checked"
           ).value;
@@ -283,7 +284,7 @@ export class IdentityCredentialPromptService {
         {
           label: cancelLabel,
           accessKey: cancelKey,
-          callback(event) {
+          callback(_event) {
             reject();
           },
         },
@@ -450,7 +451,7 @@ export class IdentityCredentialPromptService {
         let mainAction = {
           label: acceptLabel,
           accessKey: acceptKey,
-          callback(event) {
+          callback(_event) {
             resolve(true);
           },
         };
@@ -458,7 +459,7 @@ export class IdentityCredentialPromptService {
           {
             label: cancelLabel,
             accessKey: cancelKey,
-            callback(event) {
+            callback(_event) {
               resolve(false);
             },
           },
@@ -543,11 +544,11 @@ export class IdentityCredentialPromptService {
       providerURL.host,
       {}
     );
-    let headerMessage = localization.formatValueSync(
-      "identity-credential-header-accounts",
-      {
-        provider: providerName || displayDomain,
-      }
+
+    let headerIconResult = await this.loadIconFromManifest(
+      providerManifest,
+      BEST_HEADER_ICON_SIZE,
+      "chrome://global/skin/icons/defaultFavicon.svg"
     );
 
     if (AppConstants.platform === "android") {
@@ -571,8 +572,14 @@ export class IdentityCredentialPromptService {
         console.log(data);
       }
 
+      const provider = {
+        name: providerName || displayDomain,
+        domain: displayDomain,
+        icon: headerIconResult,
+      };
+
       const result = {
-        provider: displayDomain,
+        provider,
         accounts,
       };
 
@@ -585,6 +592,13 @@ export class IdentityCredentialPromptService {
         );
       });
     }
+
+    let headerMessage = localization.formatValueSync(
+      "identity-credential-header-accounts",
+      {
+        provider: providerName || displayDomain,
+      }
+    );
 
     let [accept, cancel] = localization.formatMessagesSync([
       { id: "identity-credential-sign-in-button" },
@@ -648,12 +662,6 @@ export class IdentityCredentialPromptService {
       listBox.append(newItem);
     }
 
-    let headerIconResult = await this.loadIconFromManifest(
-      providerManifest,
-      BEST_HEADER_ICON_SIZE,
-      "chrome://global/skin/icons/defaultFavicon.svg"
-    );
-
     // Create a new promise to wrap the callbacks of the popup buttons
     return new Promise(function (resolve, reject) {
       // Construct the necessary arguments for notification behavior
@@ -668,7 +676,7 @@ export class IdentityCredentialPromptService {
       let mainAction = {
         label: acceptLabel,
         accessKey: acceptKey,
-        callback(event) {
+        callback(_event) {
           let result = listBox.querySelector(
             ".identity-credential-list-item-radio:checked"
           ).value;
@@ -679,7 +687,7 @@ export class IdentityCredentialPromptService {
         {
           label: cancelLabel,
           accessKey: cancelKey,
-          callback(event) {
+          callback(_event) {
             reject();
           },
         },
@@ -729,7 +737,7 @@ export class IdentityCredentialPromptService {
    */
   close(browsingContext) {
     let browser = browsingContext.top.embedderElement;
-    if (!browser) {
+    if (!browser || AppConstants.platform === "android") {
       return;
     }
     let notification = browser.ownerGlobal.PopupNotifications.getNotification(

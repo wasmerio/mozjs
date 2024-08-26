@@ -12,11 +12,10 @@ ChromeUtils.defineESModuleGetters(this, {
   ExtensionControlledPopup:
     "resource:///modules/ExtensionControlledPopup.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
-  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(this, "strBundle", function () {
+ChromeUtils.defineLazyGetter(this, "strBundle", function () {
   return Services.strings.createBundle(
     "chrome://global/locale/extensions.properties"
   );
@@ -28,7 +27,7 @@ const TAB_HIDE_CONFIRMED_TYPE = "tabHideNotification";
 
 const TAB_ID_NONE = -1;
 
-XPCOMUtils.defineLazyGetter(this, "tabHidePopup", () => {
+ChromeUtils.defineLazyGetter(this, "tabHidePopup", () => {
   return new ExtensionControlledPopup({
     confirmedType: TAB_HIDE_CONFIRMED_TYPE,
     anchorId: "alltabs-button",
@@ -83,7 +82,7 @@ let tabListener = {
     }
   },
 
-  onLocationChange(browser, webProgress, request, locationURI, flags) {
+  onLocationChange(browser, webProgress) {
     if (webProgress.isTopLevel) {
       let { gBrowser } = browser.ownerGlobal;
       let nativeTab = gBrowser.getTabForBrowser(browser);
@@ -127,7 +126,7 @@ let tabListener = {
       if (promise) {
         return promise;
       }
-      deferred = PromiseUtils.defer();
+      deferred = Promise.withResolvers();
       if (
         !this.initializingTabs.has(nativeTab) &&
         (nativeTab.linkedBrowser.innerWindowID ||
@@ -357,7 +356,7 @@ this.tabs = class extends ExtensionAPIPersistent {
         return windowId;
       }
 
-      function matchFilters(tab, changed) {
+      function matchFilters(tab) {
         if (!filterProps) {
           return true;
         }
@@ -397,7 +396,10 @@ this.tabs = class extends ExtensionAPIPersistent {
       let listener = event => {
         // Ignore any events prior to TabOpen
         // and events that are triggered while tabs are swapped between windows.
-        if (event.originalTarget.initializingTab) {
+        if (
+          event.originalTarget.initializingTab ||
+          event.originalTarget.ownerGlobal.gBrowserInit?.isAdoptingTab()
+        ) {
           return;
         }
         if (!extension.canAccessWindow(event.originalTarget.ownerGlobal)) {
@@ -661,7 +663,7 @@ this.tabs = class extends ExtensionAPIPersistent {
         onReplaced: new EventManager({
           context,
           name: "tabs.onReplaced",
-          register: fire => {
+          register: () => {
             return () => {};
           },
         }).api(),
@@ -681,7 +683,7 @@ this.tabs = class extends ExtensionAPIPersistent {
         }).api(),
 
         create(createProperties) {
-          return new Promise((resolve, reject) => {
+          return new Promise(resolve => {
             let window =
               createProperties.windowId !== null
                 ? windowTracker.getWindow(createProperties.windowId, context)
@@ -693,7 +695,7 @@ this.tabs = class extends ExtensionAPIPersistent {
             }
             let { gBrowserInit } = window;
             if (!gBrowserInit || !gBrowserInit.delayedStartupFinished) {
-              let obs = (finishedWindow, topic, data) => {
+              let obs = finishedWindow => {
                 if (finishedWindow != window) {
                   return;
                 }
@@ -1024,7 +1026,13 @@ this.tabs = class extends ExtensionAPIPersistent {
               ? windowTracker.getTopWindow(context)
               : windowTracker.getWindow(windowId, context);
 
-          let tab = tabManager.wrapTab(window.gBrowser.selectedTab);
+          let tab = tabManager.getWrapper(window.gBrowser.selectedTab);
+          if (
+            !extension.hasPermission("<all_urls>") &&
+            !tab.hasActiveTabPermission
+          ) {
+            throw new ExtensionError("Missing activeTab permission");
+          }
           await tabListener.awaitTabReady(tab.nativeTab);
 
           let zoom = window.ZoomManager.getZoomForBrowser(
@@ -1362,7 +1370,11 @@ this.tabs = class extends ExtensionAPIPersistent {
           }
           filename = DownloadPaths.sanitize(filename);
 
-          picker.init(activeTab.ownerGlobal, title, Ci.nsIFilePicker.modeSave);
+          picker.init(
+            activeTab.ownerGlobal.browsingContext,
+            title,
+            Ci.nsIFilePicker.modeSave
+          );
           picker.appendFilter("PDF", "*.pdf");
           picker.defaultExtension = "pdf";
           picker.defaultString = filename;

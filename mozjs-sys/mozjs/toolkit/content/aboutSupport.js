@@ -17,11 +17,10 @@ const { AppConstants } = ChromeUtils.importESModule(
 ChromeUtils.defineESModuleGetters(this, {
   DownloadUtils: "resource://gre/modules/DownloadUtils.sys.mjs",
   PlacesDBUtils: "resource://gre/modules/PlacesDBUtils.sys.mjs",
-  PluralForm: "resource://gre/modules/PluralForm.sys.mjs",
   ProcessType: "resource://gre/modules/ProcessType.sys.mjs",
 });
 
-window.addEventListener("load", function onload(event) {
+window.addEventListener("load", function onload() {
   try {
     window.removeEventListener("load", onload);
     Troubleshoot.snapshot().then(async snapshot => {
@@ -93,6 +92,17 @@ var snapshotFormatters = {
     }
     if (AppConstants.platform == "macosx") {
       $("rosetta-box").textContent = data.rosetta;
+    }
+    if (AppConstants.platform == "win") {
+      const translatedList = await Promise.all(
+        data.pointingDevices.map(deviceName => {
+          return document.l10n.formatValue(deviceName);
+        })
+      );
+
+      const formatter = new Intl.ListFormat();
+
+      $("pointing-devices-box").textContent = formatter.format(translatedList);
     }
     $("binary-box").textContent = Services.dirsvc.get(
       "XREExeF",
@@ -236,6 +246,19 @@ var snapshotFormatters = {
     formatHumanReadableBytes($("disk-available-box"), data.diskAvailableBytes);
   },
 
+  async legacyUserStylesheets(legacyUserStylesheets) {
+    $("legacyUserStylesheets-enabled").textContent =
+      legacyUserStylesheets.active;
+    $("legacyUserStylesheets-types").textContent =
+      new Intl.ListFormat(undefined, { style: "short", type: "unit" }).format(
+        legacyUserStylesheets.types
+      ) ||
+      document.l10n.setAttributes(
+        $("legacyUserStylesheets-types"),
+        "legacy-user-stylesheets-no-stylesheets-found"
+      );
+  },
+
   crashes(data) {
     if (!AppConstants.MOZ_CRASHREPORTER) {
       return;
@@ -318,7 +341,7 @@ var snapshotFormatters = {
   },
 
   securitySoftware(data) {
-    if (!AppConstants.isPlatformAndVersionAtLeast("win", "6.2")) {
+    if (AppConstants.platform !== "win") {
       $("security-software").hidden = true;
       $("security-software-table").hidden = true;
       return;
@@ -691,6 +714,9 @@ var snapshotFormatters = {
       compositor = "BasicLayers (" + noOMTCString + ")";
     }
     addRow("features", "compositing", [new Text(compositor)]);
+    addRow("features", "supportFontDetermination", [
+      new Text(data.supportFontDetermination),
+    ]);
     delete data.windowLayerManagerRemote;
     delete data.windowLayerManagerType;
     delete data.numTotalWindows;
@@ -1025,7 +1051,7 @@ var snapshotFormatters = {
       }
       let button = $("enumerate-database-button");
       if (button) {
-        button.addEventListener("click", function (event) {
+        button.addEventListener("click", function () {
           let { KeyValueService } = ChromeUtils.importESModule(
             "resource://gre/modules/kvstore.sys.mjs"
           );
@@ -1048,7 +1074,7 @@ var snapshotFormatters = {
                 $("enumerate-database-result").textContent +=
                   logs.join("\n") + "\n";
               })
-              .catch(err => {
+              .catch(() => {
                 $("enumerate-database-result").textContent += `${name}:\n`;
               });
           }
@@ -1079,7 +1105,101 @@ var snapshotFormatters = {
             'th[data-l10n-id="roundtrip-latency"]'
           ).nextSibling.textContent = latencyString;
         })
-        .catch(e => {});
+        .catch(() => {});
+    }
+
+    function createCDMInfoRow(cdmInfo) {
+      function findElementInArray(array, name) {
+        const rv = array.find(element => element.includes(name));
+        return rv ? rv.split("=")[1] : "Unknown";
+      }
+
+      function getAudioRobustness(array) {
+        return findElementInArray(array, "audio-robustness");
+      }
+
+      function getVideoRobustness(array) {
+        return findElementInArray(array, "video-robustness");
+      }
+
+      function getSupportedCodecs(array) {
+        const mp4Content = findElementInArray(array, "MP4");
+        const webContent = findElementInArray(array, "WEBM");
+
+        const mp4DecodingAndDecryptingCodecs = mp4Content
+          .match(/decoding-and-decrypting:\[([^\]]*)\]/)[1]
+          .split(",");
+        const webmDecodingAndDecryptingCodecs = webContent
+          .match(/decoding-and-decrypting:\[([^\]]*)\]/)[1]
+          .split(",");
+
+        const mp4DecryptingOnlyCodecs = mp4Content
+          .match(/decrypting-only:\[([^\]]*)\]/)[1]
+          .split(",");
+        const webmDecryptingOnlyCodecs = webContent
+          .match(/decrypting-only:\[([^\]]*)\]/)[1]
+          .split(",");
+
+        // Combine and get unique codecs for decoding-and-decrypting (always)
+        // and decrypting-only (only set when it's not empty)
+        let rv = {};
+        rv.decodingAndDecrypting = [
+          ...new Set(
+            [
+              ...mp4DecodingAndDecryptingCodecs,
+              ...webmDecodingAndDecryptingCodecs,
+            ].filter(Boolean)
+          ),
+        ];
+        let temp = [
+          ...new Set(
+            [...mp4DecryptingOnlyCodecs, ...webmDecryptingOnlyCodecs].filter(
+              Boolean
+            )
+          ),
+        ];
+        if (temp.length) {
+          rv.decryptingOnly = temp;
+        }
+        return rv;
+      }
+
+      function getCapabilities(array) {
+        let capabilities = {};
+        capabilities.persistent = findElementInArray(array, "persistent");
+        capabilities.distinctive = findElementInArray(array, "distinctive");
+        capabilities.sessionType = findElementInArray(array, "sessionType");
+        capabilities.codec = getSupportedCodecs(array);
+        return JSON.stringify(capabilities);
+      }
+
+      const rvArray = cdmInfo.capabilities.split(" ");
+      return $.new("tr", [
+        $.new("td", cdmInfo.keySystemName),
+        $.new("td", getVideoRobustness(rvArray)),
+        $.new("td", getAudioRobustness(rvArray)),
+        $.new("td", getCapabilities(rvArray), null, { colspan: "4" }),
+        $.new("td", cdmInfo.clearlead ? "Yes" : "No"),
+        $.new("td", cdmInfo.isHDCP22Compatible ? "Yes" : "No"),
+      ]);
+    }
+
+    async function insertContentDecryptionModuleInfo() {
+      let rows = [];
+      // Retrieve information from GMPCDM
+      let cdmInfo =
+        await ChromeUtils.getGMPContentDecryptionModuleInformation();
+      for (let info of cdmInfo) {
+        rows.push(createCDMInfoRow(info));
+      }
+      // Retrieve information from WMFCDM, only works when MOZ_WMF_CDM is true
+      if (ChromeUtils.getWMFContentDecryptionModuleInformation !== undefined) {
+        cdmInfo = await ChromeUtils.getWMFContentDecryptionModuleInformation();
+        for (let info of cdmInfo) {
+          rows.push(createCDMInfoRow(info));
+        }
+      }
+      $.append($("media-content-decryption-modules-tbody"), rows);
     }
 
     // Basic information
@@ -1110,6 +1230,7 @@ var snapshotFormatters = {
     insertEnumerateDatabase();
 
     // Create codec support matrix if possible
+    let supportInfo = null;
     if (data.codecSupportInfo.length) {
       const [
         supportText,
@@ -1117,12 +1238,14 @@ var snapshotFormatters = {
         codecNameHeaderText,
         codecSWDecodeText,
         codecHWDecodeText,
+        lackOfExtensionText,
       ] = await document.l10n.formatValues([
         "media-codec-support-supported",
         "media-codec-support-unsupported",
         "media-codec-support-codec-name",
         "media-codec-support-sw-decoding",
         "media-codec-support-hw-decoding",
+        "media-codec-support-lack-of-extension",
       ]);
 
       function formatCodecRowHeader(a, b, c) {
@@ -1151,26 +1274,48 @@ var snapshotFormatters = {
         return $.new("tr", [$.new("td", codec), swCell, hwCell]);
       }
 
+      function formatCodecRowForLackOfExtension(codec, sw) {
+        let swCell = $.new("td", sw ? supportText : unsupportedText);
+        // Link to AV1 extension on MS store.
+        let hwCell = $.new("td", [
+          $.new("a", lackOfExtensionText, null, {
+            href: "ms-windows-store://pdp/?ProductId=9MVZQVXJBQ9V",
+          }),
+        ]);
+        if (sw) {
+          swCell.classList.add("supported");
+        } else {
+          swCell.classList.add("unsupported");
+        }
+        hwCell.classList.add("lack-of-extension");
+        return $.new("tr", [$.new("td", codec), swCell, hwCell]);
+      }
+
       // Parse codec support string and create dictionary containing
       // SW/HW support information for each codec found
       let codecs = {};
       for (const codec_string of data.codecSupportInfo.split("\n")) {
         const s = codec_string.split(" ");
         const codec_name = s[0];
-        const codec_support = s[1];
+        const codec_support = s.slice(1);
 
         if (!(codec_name in codecs)) {
           codecs[codec_name] = {
             name: codec_name,
             sw: false,
             hw: false,
+            lackOfExtension: false,
           };
         }
 
-        if (codec_support === "SW") {
+        if (codec_support.includes("SW")) {
           codecs[codec_name].sw = true;
-        } else if (codec_support === "HW") {
+        }
+        if (codec_support.includes("HW")) {
           codecs[codec_name].hw = true;
+        }
+        if (codec_support.includes("LACK_OF_EXTENSION")) {
+          codecs[codec_name].lackOfExtension = true;
         }
       }
 
@@ -1180,9 +1325,15 @@ var snapshotFormatters = {
         if (!codecs.hasOwnProperty(c)) {
           continue;
         }
-        codecSupportRows.push(
-          formatCodecRow(codecs[c].name, codecs[c].sw, codecs[c].hw)
-        );
+        if (codecs[c].lackOfExtension) {
+          codecSupportRows.push(
+            formatCodecRowForLackOfExtension(codecs[c].name, codecs[c].sw)
+          );
+        } else {
+          codecSupportRows.push(
+            formatCodecRow(codecs[c].name, codecs[c].sw, codecs[c].hw)
+          );
+        }
       }
 
       let codecSupportTable = $.new("table", [
@@ -1194,11 +1345,19 @@ var snapshotFormatters = {
         $.new("tbody", codecSupportRows),
       ]);
       codecSupportTable.id = "codec-table";
-
-      if (["win", "macosx", "linux"].includes(AppConstants.platform)) {
-        insertBasicInfo("media-codec-support-info", [codecSupportTable]);
-      }
+      supportInfo = [codecSupportTable];
+    } else {
+      // Don't have access to codec support information
+      supportInfo = await document.l10n.formatValue(
+        "media-codec-support-error"
+      );
     }
+    if (["win", "macosx", "linux", "android"].includes(AppConstants.platform)) {
+      insertBasicInfo("media-codec-support-info", supportInfo);
+    }
+
+    // CDM info
+    insertContentDecryptionModuleInfo();
   },
 
   remoteAgent(data) {
@@ -1207,6 +1366,17 @@ var snapshotFormatters = {
     }
     $("remote-debugging-accepting-connections").textContent = data.running;
     $("remote-debugging-url").textContent = data.url;
+  },
+
+  contentAnalysis(data) {
+    $("content-analysis-active").textContent = data.active;
+    if (data.active) {
+      $("content-analysis-connected-to-agent").textContent = data.connected;
+      $("content-analysis-agent-path").textContent = data.agentPath;
+      $("content-analysis-agent-failed-signature-verification").textContent =
+        data.failedSignatureVerification;
+      $("content-analysis-request-count").textContent = data.requestCount;
+    }
   },
 
   accessibility(data) {
@@ -1334,6 +1504,31 @@ var snapshotFormatters = {
     );
   },
 
+  remoteSettings(data) {
+    if (!data) {
+      return;
+    }
+    const { isSynchronizationBroken, lastCheck, localTimestamp, history } =
+      data;
+
+    $("support-remote-settings-status-ok").style.display =
+      isSynchronizationBroken ? "none" : "block";
+    $("support-remote-settings-status-broken").style.display =
+      isSynchronizationBroken ? "block" : "none";
+    $("support-remote-settings-last-check").textContent = lastCheck;
+    $("support-remote-settings-local-timestamp").textContent = localTimestamp;
+    $.append(
+      $("support-remote-settings-sync-history-tbody"),
+      history["settings-sync"].map(({ status, datetime, infos }) =>
+        $.new("tr", [
+          $.new("td", [document.createTextNode(status)]),
+          $.new("td", [document.createTextNode(datetime)]),
+          $.new("td", [document.createTextNode(JSON.stringify(infos))]),
+        ])
+      )
+    );
+  },
+
   normandy(data) {
     if (!data) {
       return;
@@ -1446,7 +1641,7 @@ function sortedArrayFromObject(obj) {
   for (let prop in obj) {
     tuples.push([prop, obj[prop]]);
   }
-  tuples.sort(([prop1, v1], [prop2, v2]) => prop1.localeCompare(prop2));
+  tuples.sort(([prop1], [prop2]) => prop1.localeCompare(prop2));
   return tuples;
 }
 
@@ -1597,7 +1792,7 @@ Serializer.prototype = {
     }
   },
 
-  _startNewLine(lines) {
+  _startNewLine() {
     let currLine = this._currentLine;
     if (currLine) {
       // The current line is not empty.  Trim it.
@@ -1610,7 +1805,7 @@ Serializer.prototype = {
     this._lines.push("");
   },
 
-  _appendText(text, lines) {
+  _appendText(text) {
     this._currentLine += text;
   },
 
@@ -1766,13 +1961,13 @@ function safeModeRestart() {
 function setupEventListeners() {
   let button = $("reset-box-button");
   if (button) {
-    button.addEventListener("click", function (event) {
+    button.addEventListener("click", function () {
       ResetProfile.openConfirmationDialog(window);
     });
   }
   button = $("clear-startup-cache-button");
   if (button) {
-    button.addEventListener("click", async function (event) {
+    button.addEventListener("click", async function () {
       const [promptTitle, promptBody, restartButtonLabel] =
         await document.l10n.formatValues([
           { id: "startup-cache-dialog-title2" },
@@ -1805,7 +2000,7 @@ function setupEventListeners() {
   }
   button = $("restart-in-safe-mode-button");
   if (button) {
-    button.addEventListener("click", function (event) {
+    button.addEventListener("click", function () {
       if (
         Services.obs
           .enumerateObservers("restart-in-safe-mode")
@@ -1823,7 +2018,7 @@ function setupEventListeners() {
   if (AppConstants.MOZ_UPDATER) {
     button = $("update-dir-button");
     if (button) {
-      button.addEventListener("click", function (event) {
+      button.addEventListener("click", function () {
         // Get the update directory.
         let updateDir = Services.dirsvc.get("UpdRootD", Ci.nsIFile);
         if (!updateDir.exists()) {
@@ -1841,7 +2036,7 @@ function setupEventListeners() {
     }
     button = $("show-update-history-button");
     if (button) {
-      button.addEventListener("click", function (event) {
+      button.addEventListener("click", function () {
         window.browsingContext.topChromeWindow.openDialog(
           "chrome://mozapps/content/update/history.xhtml",
           "Update:History",
@@ -1852,7 +2047,7 @@ function setupEventListeners() {
   }
   button = $("verify-place-integrity-button");
   if (button) {
-    button.addEventListener("click", function (event) {
+    button.addEventListener("click", function () {
       PlacesDBUtils.checkAndFixDatabase().then(tasksStatusMap => {
         let logs = [];
         for (let [key, value] of tasksStatusMap) {
@@ -1867,13 +2062,13 @@ function setupEventListeners() {
     });
   }
 
-  $("copy-raw-data-to-clipboard").addEventListener("click", function (event) {
+  $("copy-raw-data-to-clipboard").addEventListener("click", function () {
     copyRawDataToClipboard(this);
   });
-  $("copy-to-clipboard").addEventListener("click", function (event) {
+  $("copy-to-clipboard").addEventListener("click", function () {
     copyContentsToClipboard();
   });
-  $("profile-dir-button").addEventListener("click", function (event) {
+  $("profile-dir-button").addEventListener("click", function () {
     openProfileDirectory();
   });
 }

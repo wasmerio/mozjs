@@ -36,8 +36,9 @@ add_task(async function () {
       "the rule-view."
   );
   ok(flexboxToggle, "flexbox highlighter toggle is visible.");
-  ok(
-    !flexboxToggle.classList.contains("active"),
+  is(
+    flexboxToggle.getAttribute("aria-pressed"),
+    "false",
     "Flexbox highlighter toggle button is not active."
   );
   ok(
@@ -61,8 +62,9 @@ add_task(async function () {
     "Checking the flexbox highlighter is created and toggle button is active in " +
       "the rule-view."
   );
-  ok(
-    flexboxToggle.classList.contains("active"),
+  is(
+    flexboxToggle.getAttribute("aria-pressed"),
+    "true",
     "Flexbox highlighter toggle is active."
   );
   ok(
@@ -86,8 +88,9 @@ add_task(async function () {
       "in the rule-view."
   );
   ok(flexboxToggle, "Flexbox highlighter toggle is visible.");
-  ok(
-    !flexboxToggle.classList.contains("active"),
+  is(
+    flexboxToggle.getAttribute("aria-pressed"),
+    "false",
     "Flexbox highlighter toggle button is not active."
   );
   ok(
@@ -107,12 +110,14 @@ add_task(async function () {
     "Checking the flexbox highlighter is created for the second flexbox container " +
       "and toggle button is active in the rule-view."
   );
-  ok(
-    flexboxToggle.classList.contains("active"),
+  is(
+    flexboxToggle.getAttribute("aria-pressed"),
+    "true",
     "Flexbox highlighter toggle is active."
   );
-  ok(
-    getNodeForActiveHighlighter(HIGHLIGHTER_TYPE) != firstFlexboxHighterShown,
+  Assert.notEqual(
+    getNodeForActiveHighlighter(HIGHLIGHTER_TYPE),
+    firstFlexboxHighterShown,
     "Flexbox highlighter for the second flexbox container is shown."
   );
 
@@ -126,8 +131,9 @@ add_task(async function () {
       "the rule-view."
   );
   ok(flexboxToggle, "Flexbox highlighter toggle is visible.");
-  ok(
-    !flexboxToggle.classList.contains("active"),
+  is(
+    flexboxToggle.getAttribute("aria-pressed"),
+    "false",
     "Flexbox highlighter toggle button is not active."
   );
 });

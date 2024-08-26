@@ -24,7 +24,9 @@ class AccShowEvent;
  */
 class DocAccessibleChild : public PDocAccessibleChild {
  public:
-  DocAccessibleChild(DocAccessible* aDoc, IProtocol* aManager) : mDoc(aDoc) {
+  DocAccessibleChild(DocAccessible* aDoc,
+                     mozilla::ipc::IRefCountedProtocol* aManager)
+      : mDoc(aDoc) {
     MOZ_COUNT_CTOR(DocAccessibleChild);
     SetManager(aManager);
   }
@@ -48,8 +50,7 @@ class DocAccessibleChild : public PDocAccessibleChild {
   /**
    * Serializes a shown tree and sends it to the chrome process.
    */
-  void InsertIntoIpcTree(LocalAccessible* aParent, LocalAccessible* aChild,
-                         uint32_t aIdxInParent, bool aSuppressShowEvent);
+  void InsertIntoIpcTree(LocalAccessible* aChild, bool aSuppressShowEvent);
   void ShowEvent(AccShowEvent* aShowEvent);
 
   virtual void ActorDestroy(ActorDestroyReason) override {
@@ -133,19 +134,19 @@ class DocAccessibleChild : public PDocAccessibleChild {
   bool SendCaretMoveEvent(const uint64_t& aID, const int32_t& aOffset,
                           const bool& aIsSelectionCollapsed,
                           const bool& aIsAtEndOfLine,
-                          const int32_t& aGranularity);
+                          const int32_t& aGranularity, bool aFromUser);
   bool SendFocusEvent(const uint64_t& aID);
 
 #if !defined(XP_WIN)
   virtual mozilla::ipc::IPCResult RecvAnnounce(
       const uint64_t& aID, const nsAString& aAnnouncement,
       const uint16_t& aPriority) override;
+#endif  // !defined(XP_WIN)
 
   virtual mozilla::ipc::IPCResult RecvScrollSubstringToPoint(
       const uint64_t& aID, const int32_t& aStartOffset,
       const int32_t& aEndOffset, const uint32_t& aCoordinateType,
       const int32_t& aX, const int32_t& aY) override;
-#endif  // !defined(XP_WIN)
 
  private:
   LayoutDeviceIntRect GetCaretRectFor(const uint64_t& aID);
@@ -154,12 +155,7 @@ class DocAccessibleChild : public PDocAccessibleChild {
   static void FlattenTree(LocalAccessible* aRoot,
                           nsTArray<LocalAccessible*>& aTree);
 
-  static void SerializeTree(nsTArray<LocalAccessible*>& aTree,
-                            nsTArray<AccessibleData>& aData);
-
-  virtual void MaybeSendShowEvent(ShowEventData& aData, bool aFromUser) {
-    Unused << SendShowEvent(aData, aFromUser);
-  }
+  static AccessibleData SerializeAcc(LocalAccessible* aAcc);
 
   void DetachDocument() {
     if (mDoc) {

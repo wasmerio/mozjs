@@ -38,6 +38,15 @@ function callForEveryWindow(callback) {
 
 export const EveryWindow = {
   /**
+   * The current list of all browser windows whose delayedStartupPromise has resolved
+   */
+  get readyWindows() {
+    return Array.from(Services.wm.getEnumerator("navigator:browser")).filter(
+      win => win.gBrowserInit?.delayedStartupFinished
+    );
+  },
+
+  /**
    * Registers init and uninit functions to be called on every window.
    *
    * @param {string} id A unique identifier for the consumer, to be
@@ -55,7 +64,7 @@ export const EveryWindow = {
 
     if (!initialized) {
       let addUnloadListener = win => {
-        function observer(subject, topic, data) {
+        function observer(subject, topic) {
           if (topic == "domwindowclosed" && subject === win) {
             Services.ww.unregisterNotification(observer);
             for (let c of callbacks.values()) {

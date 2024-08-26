@@ -17,6 +17,7 @@ include protocol PSandboxTesting;
 
 include "mozilla/ipc/ByteBufUtils.h";
 
+using mozilla::dom::ContentParentId from "mozilla/dom/ipc/IdType.h";
 using mozilla::dom::NativeThreadId from "mozilla/dom/NativeThreadId.h";
 using mozilla::media::MediaCodecsSupported from "MediaCodecsSupport.h";
 
@@ -40,7 +41,7 @@ namespace mozilla {
 // (RemoteDataDecoder) process. There is one instance of this protocol,
 // with the RDDParent living on the main thread of the RDD process and
 // the RDDChild living on the main thread of the UI process.
-[NeedsOtherPid]
+[NeedsOtherPid, ParentProc=RDD, ChildProc=Parent]
 protocol PRDD
 {
 parent:
@@ -52,7 +53,7 @@ parent:
   async InitProfiler(Endpoint<PProfilerChild> endpoint);
 
   async NewContentRemoteDecoderManager(
-            Endpoint<PRemoteDecoderManagerParent> endpoint);
+            Endpoint<PRemoteDecoderManagerParent> endpoint, ContentParentId childId);
 
   async RequestMemoryReport(uint32_t generation,
                             bool anonymize,

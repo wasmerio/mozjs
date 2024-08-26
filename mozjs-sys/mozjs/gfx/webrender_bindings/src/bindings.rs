@@ -7,7 +7,7 @@
 
 use gleam::gl;
 use std::cell::RefCell;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 use std::ffi::OsString;
 use std::ffi::{CStr, CString};
 use std::io::Cursor;
@@ -16,7 +16,7 @@ use std::ops::Range;
 #[cfg(target_os = "android")]
 use std::os::raw::c_int;
 use std::os::raw::{c_char, c_float, c_void};
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "windows")))]
 use std::os::unix::ffi::OsStringExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStringExt;
@@ -27,22 +27,21 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{env, mem, ptr, slice};
 use thin_vec::ThinVec;
+use webrender::glyph_rasterizer::GlyphRasterThread;
 
 use euclid::SideOffsets2D;
 use moz2d_renderer::Moz2dBlobImageHandler;
 use nsstring::nsAString;
-use num_cpus;
 use program_cache::{remove_disk_cache, WrProgramCache};
-use rayon;
 use tracy_rs::register_thread_with_profiler;
 use webrender::sw_compositor::SwCompositor;
 use webrender::{
     api::units::*, api::*, create_webrender_instance, render_api::*, set_profiler_hooks, AsyncPropertySampler,
-    AsyncScreenshotHandle, Compositor, CompositorCapabilities, CompositorConfig, CompositorSurfaceTransform,
-    DebugFlags, Device, MappableCompositor, MappedTileInfo, NativeSurfaceId, NativeSurfaceInfo, NativeTileId,
-    PartialPresentCompositor, PipelineInfo, ProfilerHooks, RecordedFrameHandle, Renderer, RendererStats,
-    SWGLCompositeSurfaceInfo, SceneBuilderHooks, ShaderPrecacheFlags, Shaders, SharedShaders, TextureCacheConfig,
-    UploadMethod, WebRenderOptions, WindowVisibility, ONE_TIME_USAGE_HINT,
+    AsyncScreenshotHandle, Compositor, CompositorCapabilities, CompositorConfig, CompositorSurfaceTransform, Device,
+    MappableCompositor, MappedTileInfo, NativeSurfaceId, NativeSurfaceInfo, NativeTileId, PartialPresentCompositor,
+    PipelineInfo, ProfilerHooks, RecordedFrameHandle, Renderer, RendererStats, SWGLCompositeSurfaceInfo,
+    SceneBuilderHooks, ShaderPrecacheFlags, Shaders, SharedShaders, TextureCacheConfig, UploadMethod, WebRenderOptions,
+    WindowVisibility, ONE_TIME_USAGE_HINT,
 };
 use wr_malloc_size_of::MallocSizeOfOps;
 
@@ -214,34 +213,66 @@ impl DocumentHandle {
 
 #[repr(C)]
 pub struct WrVecU8 {
+    /// `data` must always be valid for passing to Vec::from_raw_parts.
+    /// In particular, it must be non-null even if capacity is zero.
     data: *mut u8,
     length: usize,
     capacity: usize,
 }
 
 impl WrVecU8 {
-    fn into_vec(self) -> Vec<u8> {
-        unsafe { Vec::from_raw_parts(self.data, self.length, self.capacity) }
+    fn into_vec(mut self) -> Vec<u8> {
+        // Clear self and then drop self.
+        self.flush_into_vec()
     }
 
-    // Equivalent to `into_vec` but clears self instead of consuming the value.
+    // Clears self without consuming self.
     fn flush_into_vec(&mut self) -> Vec<u8> {
-        self.convert_into_vec::<u8>()
-    }
-
-    // Like flush_into_vec, but also does an unsafe conversion to the desired type.
-    fn convert_into_vec<T>(&mut self) -> Vec<T> {
+        // Create a Vec using Vec::from_raw_parts.
+        //
+        // Here are the safety requirements, verbatim from the documentation of `from_raw_parts`:
+        //
+        // > * `ptr` must have been allocated using the global allocator, such as via
+        // >   the [`alloc::alloc`] function.
+        // > * `T` needs to have the same alignment as what `ptr` was allocated with.
+        // >   (`T` having a less strict alignment is not sufficient, the alignment really
+        // >   needs to be equal to satisfy the [`dealloc`] requirement that memory must be
+        // >   allocated and deallocated with the same layout.)
+        // > * The size of `T` times the `capacity` (ie. the allocated size in bytes) needs
+        // >   to be the same size as the pointer was allocated with. (Because similar to
+        // >   alignment, [`dealloc`] must be called with the same layout `size`.)
+        // > * `length` needs to be less than or equal to `capacity`.
+        // > * The first `length` values must be properly initialized values of type `T`.
+        // > * `capacity` needs to be the capacity that the pointer was allocated with.
+        // > * The allocated size in bytes must be no larger than `isize::MAX`.
+        // >   See the safety documentation of [`pointer::offset`].
+        //
+        // These comments don't say what to do for zero-capacity vecs which don't have
+        // an allocation. In particular, the requirement "`ptr` must have been allocated"
+        // is not met for such vecs.
+        //
+        // However, the safety requirements of `slice::from_raw_parts` are more explicit
+        // about the empty case:
+        //
+        // > * `data` must be non-null and aligned even for zero-length slices. One
+        // >   reason for this is that enum layout optimizations may rely on references
+        // >   (including slices of any length) being aligned and non-null to distinguish
+        // >   them from other data. You can obtain a pointer that is usable as `data`
+        // >   for zero-length slices using [`NonNull::dangling()`].
+        //
+        // For the empty case we follow this requirement rather than the more stringent
+        // requirement from the `Vec::from_raw_parts` docs.
         let vec = unsafe {
-            Vec::from_raw_parts(
-                self.data as *mut T,
-                self.length / mem::size_of::<T>(),
-                self.capacity / mem::size_of::<T>(),
-            )
+            Vec::from_raw_parts(self.data, self.length, self.capacity)
         };
-        self.data = ptr::null_mut();
+        self.data = ptr::NonNull::dangling().as_ptr();
         self.length = 0;
         self.capacity = 0;
         vec
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe { core::slice::from_raw_parts(self.data, self.length) }
     }
 
     fn from_vec(mut v: Vec<u8>) -> WrVecU8 {
@@ -1505,6 +1536,35 @@ impl PartialPresentCompositor for WrPartialPresentCompositor {
 /// A wrapper around a strong reference to a Shaders object.
 pub struct WrShaders(SharedShaders);
 
+pub struct WrGlyphRasterThread(GlyphRasterThread);
+
+#[no_mangle]
+pub extern "C" fn wr_glyph_raster_thread_new() -> *mut WrGlyphRasterThread {
+    let thread = GlyphRasterThread::new(
+        || {
+            gecko_profiler::register_thread("WrGlyphRasterizer");
+        },
+        || {
+            gecko_profiler::unregister_thread();
+        },
+    );
+
+    match thread {
+        Ok(thread) => {
+            return Box::into_raw(Box::new(WrGlyphRasterThread(thread)));
+        },
+        Err(..) => {
+            return std::ptr::null_mut();
+        },
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn wr_glyph_raster_thread_delete(thread: *mut WrGlyphRasterThread) {
+    let thread = unsafe { Box::from_raw(thread) };
+    thread.0.shut_down();
+}
+
 // Call MakeCurrent before this.
 #[no_mangle]
 pub extern "C" fn wr_window_new(
@@ -1523,6 +1583,7 @@ pub extern "C" fn wr_window_new(
     shaders: Option<&mut WrShaders>,
     thread_pool: *mut WrThreadPool,
     thread_pool_low_priority: *mut WrThreadPool,
+    glyph_raster_thread: Option<&WrGlyphRasterThread>,
     size_of_op: VoidPtrToSizeFn,
     enclosing_size_of_op: VoidPtrToSizeFn,
     document_id: u32,
@@ -1655,6 +1716,7 @@ pub extern "C" fn wr_window_new(
         ))),
         crash_annotator: Some(Box::new(MozCrashAnnotator)),
         workers: Some(workers),
+        dedicated_glyph_raster_thread: glyph_raster_thread.map(|grt| grt.0.clone()),
         size_of_op: Some(size_of_op),
         enclosing_size_of_op: Some(enclosing_size_of_op),
         cached_programs,
@@ -1787,6 +1849,11 @@ pub extern "C" fn wr_api_set_bool(dh: &mut DocumentHandle, param_name: BoolParam
 #[no_mangle]
 pub extern "C" fn wr_api_set_int(dh: &mut DocumentHandle, param_name: IntParameter, val: i32) {
     dh.api.set_parameter(Parameter::Int(param_name, val));
+}
+
+#[no_mangle]
+pub extern "C" fn wr_api_set_float(dh: &mut DocumentHandle, param_name: FloatParameter, val: f32) {
+    dh.api.set_parameter(Parameter::Float(param_name, val));
 }
 
 #[no_mangle]
@@ -2001,11 +2068,9 @@ pub extern "C" fn wr_transaction_append_transform_properties(
 #[no_mangle]
 pub extern "C" fn wr_transaction_scroll_layer(
     txn: &mut Transaction,
-    pipeline_id: WrPipelineId,
-    scroll_id: u64,
+    scroll_id: ExternalScrollId,
     sampled_scroll_offsets: &ThinVec<SampledScrollOffset>,
 ) {
-    let scroll_id = ExternalScrollId(scroll_id, pipeline_id);
     txn.set_scroll_offsets(scroll_id, sampled_scroll_offsets.to_vec());
 }
 
@@ -2016,6 +2081,15 @@ pub extern "C" fn wr_transaction_set_is_transform_async_zooming(
     is_zooming: bool,
 ) {
     txn.set_is_transform_async_zooming(is_zooming, PropertyBindingId::new(animation_id));
+}
+
+#[no_mangle]
+pub extern "C" fn wr_transaction_add_minimap_data(
+    txn: &mut Transaction,
+    scroll_id: ExternalScrollId,
+    minimap_data: MinimapData,
+) {
+    txn.set_minimap_data(scroll_id, minimap_data);
 }
 
 #[no_mangle]
@@ -2049,13 +2123,30 @@ pub extern "C" fn wr_resource_updates_add_blob_image(
     bytes: &mut WrVecU8,
     visible_rect: DeviceIntRect,
 ) {
+    // If we're at risk of generating an excessive number of tiles, try making
+    // them larger so as to reduce the total number. This helps avoid swamping
+    // the Moz2dBlobRasterizer with too many parallel requests.
+    const TILE_COUNT_LIMIT: i64 = 8192;
+    const TILE_SIZE_LIMIT: u16 = 2048;
+    let mut adjusted = tile_size;
+    // Rather than some tricky computation involving the image dimensions, just
+    // keep doubling tile_size until the estimated count is reasonable, or size
+    // gets too big. The size limit means this loop won't execute more than a
+    // handful of times even in extreme cases.
+    while adjusted < TILE_SIZE_LIMIT
+        && ((descriptor.height / adjusted as i32 + 1) as i64 * (descriptor.width / adjusted as i32 + 1) as i64)
+            > TILE_COUNT_LIMIT
+    {
+        adjusted = adjusted * 2;
+    }
+
     txn.add_blob_image(
         image_key,
         descriptor.into(),
         Arc::new(bytes.flush_into_vec()),
         visible_rect,
-        if descriptor.format == ImageFormat::BGRA8 {
-            Some(tile_size)
+        if descriptor.format == ImageFormat::BGRA8 || adjusted > tile_size {
+            Some(adjusted)
         } else {
             None
         },
@@ -2295,22 +2386,29 @@ pub extern "C" fn wr_api_stop_capture_sequence(dh: &mut DocumentHandle) {
 
 #[cfg(target_os = "windows")]
 fn read_font_descriptor(bytes: &mut WrVecU8, index: u32) -> NativeFontHandle {
-    let wchars = bytes.convert_into_vec::<u16>();
+    let wchars: Vec<u16> =
+        bytes.as_slice().chunks_exact(2).map(|c| u16::from_ne_bytes([c[0], c[1]])).collect();
     NativeFontHandle {
         path: PathBuf::from(OsString::from_wide(&wchars)),
         index,
     }
 }
 
-#[cfg(target_os = "macos")]
-fn read_font_descriptor(bytes: &mut WrVecU8, _index: u32) -> NativeFontHandle {
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn read_font_descriptor(bytes: &mut WrVecU8, index: u32) -> NativeFontHandle {
+    // On macOS, the descriptor string is a concatenation of the PostScript name
+    // and the font file path (to disambiguate cases where there are multiple
+    // faces with the same psname present). The index is the length of the psname
+    // portion of the descriptor (= starting offset of the path).
+    // Here, we split the descriptor into its two components for further use.
     let chars = bytes.flush_into_vec();
     NativeFontHandle {
-        name: String::from_utf8(chars).unwrap(),
+        name: String::from_utf8(chars[..index as usize].to_vec()).unwrap_or("".to_string()),
+        path: String::from_utf8(chars[index as usize..].to_vec()).unwrap_or("".to_string()),
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "windows")))]
 fn read_font_descriptor(bytes: &mut WrVecU8, index: u32) -> NativeFontHandle {
     let chars = bytes.flush_into_vec();
     NativeFontHandle {
@@ -2345,13 +2443,24 @@ pub extern "C" fn wr_resource_updates_add_font_instance(
     platform_options: *const FontInstancePlatformOptions,
     variations: &mut WrVecU8,
 ) {
+    // Deserialize a sequence of FontVariation objects from the raw bytes.
+    // Every FontVariation is 8 bytes: one u32 and one f32.
+    // The code below would look better with slice::chunk_arrays:
+    // https://github.com/rust-lang/rust/issues/74985
+    let variations: Vec<FontVariation> =
+        variations.as_slice().chunks_exact(8).map(|c| {
+            assert_eq!(c.len(), 8);
+            let tag = u32::from_ne_bytes([c[0], c[1], c[2], c[3]]);
+            let value = f32::from_ne_bytes([c[4], c[5], c[6], c[7]]);
+            FontVariation { tag, value }
+        }).collect();
     txn.add_font_instance(
         key,
         font_key,
         glyph_size,
         unsafe { options.as_ref().cloned() },
         unsafe { platform_options.as_ref().cloned() },
-        variations.convert_into_vec::<FontVariation>(),
+        variations,
     );
 }
 
@@ -2728,8 +2837,19 @@ pub extern "C" fn wr_dp_define_sticky_frame(
     horizontal_bounds: StickyOffsetBounds,
     applied_offset: LayoutVector2D,
     key: SpatialTreeItemKey,
+    animation: *const WrAnimationProperty
 ) -> WrSpatialId {
     assert!(unsafe { is_in_main_thread() });
+    let anim = unsafe { animation.as_ref() };
+    let transform = anim.map(|anim| {
+      debug_assert!(anim.id > 0);
+      match anim.effect_type {
+        WrAnimationType::Transform => {
+          PropertyBinding::Binding(PropertyBindingKey::new(anim.id), LayoutTransform::identity())
+        },
+        _ => unreachable!("sticky elements can only have a transform animated")
+      }
+    });
     let spatial_id = state.frame_builder.dl_builder.define_sticky_frame(
         parent_spatial_id.to_webrender(state.pipeline_id),
         content_rect,
@@ -2743,6 +2863,7 @@ pub extern "C" fn wr_dp_define_sticky_frame(
         horizontal_bounds,
         applied_offset,
         key,
+        transform
     );
 
     WrSpatialId { id: spatial_id.0 }

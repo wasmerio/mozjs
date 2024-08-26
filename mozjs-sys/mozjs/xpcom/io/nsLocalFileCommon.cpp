@@ -41,6 +41,9 @@ const char* const sExecutableExts[] = {
   ".air",         // Adobe AIR installer
   ".app",         // executable application
   ".application", // from bug 348763
+  ".appref-ms",   // ClickOnce link
+  ".appx",
+  ".appxbundle",
   ".asp",
   ".atloc",       // Appletalk Location
   ".bas",
@@ -95,6 +98,8 @@ const char* const sExecutableExts[] = {
   ".msh2xml",     // Microsoft Shell
   ".mshxml",      // Microsoft Shell
   ".msi",
+  ".msix",
+  ".msixbundle",
   ".msp",
   ".mst",
   ".ops",         // Office Profile Settings
@@ -133,7 +138,9 @@ const char* const sExecutableExts[] = {
   ".ws",
   ".wsc",
   ".wsf",
-  ".wsh"
+  ".wsh",
+  ".xll",         // MS Excel dynamic link library
+  ".xrm-ms"
     // clang-format on
 };
 

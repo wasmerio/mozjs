@@ -44,17 +44,17 @@ function AddOldMenuSideButtons() {
   CustomizableUI.addWidgetToArea(
     "library-button",
     "nav-bar",
-    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 2
+    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 3
   );
   CustomizableUI.addWidgetToArea(
     "sidebar-button",
     "nav-bar",
-    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 2
+    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 3
   );
   CustomizableUI.addWidgetToArea(
     "unified-extensions-button",
     "nav-bar",
-    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 2
+    CustomizableUI.getWidgetIdsInArea("nav-bar").length - 3
   );
 }
 
@@ -117,7 +117,7 @@ add_setup(async function () {
   let bookmarks = new Array(BOOKMARKS_COUNT);
   for (let i = 0; i < BOOKMARKS_COUNT; ++i) {
     // eslint-disable-next-line @microsoft/sdl/no-insecure-url
-    bookmarks[i] = { url: `http://test.places.${i}/` };
+    bookmarks[i] = { url: `http://test.places.${i}y/` };
   }
   await PlacesUtils.bookmarks.insertTree({
     guid: PlacesUtils.bookmarks.toolbarGuid,
@@ -315,7 +315,7 @@ add_task(async function testArrowsDisabledButtons() {
         "ArrowLeft on Reload button when prior buttons disabled does nothing"
       );
 
-      BrowserTestUtils.loadURIString(aBrowser, "https://example.com/2");
+      BrowserTestUtils.startLoadingURIString(aBrowser, "https://example.com/2");
       await BrowserTestUtils.browserLoaded(aBrowser);
       await waitUntilReloadEnabled();
       startFromUrlBar();
@@ -554,6 +554,9 @@ add_task(async function testTabStopsAfterSearchBarAdded() {
     await expectFocusAfterKey("Tab", "searchbar", true);
     await expectFocusAfterKey("Tab", afterUrlBarButton);
     await expectFocusAfterKey("ArrowRight", "library-button");
+    await expectFocusAfterKey("ArrowLeft", afterUrlBarButton);
+    await expectFocusAfterKey("Shift+Tab", "searchbar", true);
+    await expectFocusAfterKey("Shift+Tab", gURLBar.inputField);
   });
   await SpecialPowers.popPrefEnv();
   RemoveOldMenuSideButtons();

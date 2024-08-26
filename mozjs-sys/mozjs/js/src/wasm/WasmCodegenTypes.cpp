@@ -45,6 +45,74 @@ bool TrapSiteVectorArray::empty() const {
   return true;
 }
 
+#ifdef DEBUG
+const char* js::wasm::NameOfTrap(Trap trap) {
+  switch (trap) {
+    case Trap::Unreachable:
+      return "Unreachable";
+    case Trap::IntegerOverflow:
+      return "IntegerOverflow";
+    case Trap::InvalidConversionToInteger:
+      return "InvalidConversionToInteger";
+    case Trap::IntegerDivideByZero:
+      return "IntegerDivideByZero";
+    case Trap::OutOfBounds:
+      return "OutOfBounds";
+    case Trap::UnalignedAccess:
+      return "UnalignedAccess";
+    case Trap::IndirectCallToNull:
+      return "IndirectCallToNull";
+    case Trap::IndirectCallBadSig:
+      return "IndirectCallBadSig";
+    case Trap::NullPointerDereference:
+      return "NullPointerDereference";
+    case Trap::BadCast:
+      return "BadCast";
+    case Trap::StackOverflow:
+      return "StackOverflow";
+    case Trap::CheckInterrupt:
+      return "CheckInterrupt";
+    case Trap::ThrowReported:
+      return "ThrowReported";
+    case Trap::Limit:
+      return "Limit";
+    default:
+      return "NameOfTrap:unknown";
+  }
+}
+
+const char* js::wasm::NameOfTrapMachineInsn(TrapMachineInsn tmi) {
+  switch (tmi) {
+    case TrapMachineInsn::OfficialUD:
+      return "OfficialUD";
+    case TrapMachineInsn::Load8:
+      return "Load8";
+    case TrapMachineInsn::Load16:
+      return "Load16";
+    case TrapMachineInsn::Load32:
+      return "Load32";
+    case TrapMachineInsn::Load64:
+      return "Load64";
+    case TrapMachineInsn::Load128:
+      return "Load128";
+    case TrapMachineInsn::Store8:
+      return "Store8";
+    case TrapMachineInsn::Store16:
+      return "Store16";
+    case TrapMachineInsn::Store32:
+      return "Store32";
+    case TrapMachineInsn::Store64:
+      return "Store64";
+    case TrapMachineInsn::Store128:
+      return "Store128";
+    case TrapMachineInsn::Atomic:
+      return "Atomic";
+    default:
+      return "NameOfTrapMachineInsn::unknown";
+  }
+}
+#endif  // DEBUG
+
 void TrapSiteVectorArray::clear() {
   for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
     (*this)[trap].clear();
@@ -61,6 +129,14 @@ void TrapSiteVectorArray::shrinkStorageToFit() {
   for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
     (*this)[trap].shrinkStorageToFit();
   }
+}
+
+size_t TrapSiteVectorArray::sumOfLengths() const {
+  size_t ret = 0;
+  for (Trap trap : MakeEnumeratedRange(Trap::Limit)) {
+    ret += (*this)[trap].length();
+  }
+  return ret;
 }
 
 size_t TrapSiteVectorArray::sizeOfExcludingThis(
@@ -94,6 +170,7 @@ CodeRange::CodeRange(Kind kind, uint32_t funcIndex, Offsets offsets)
   u.func.lineOrBytecode_ = 0;
   u.func.beginToUncheckedCallEntry_ = 0;
   u.func.beginToTierEntry_ = 0;
+  u.func.hasUnwindInfo_ = false;
   MOZ_ASSERT(isEntry());
   MOZ_ASSERT(begin_ <= end_);
 }
@@ -123,10 +200,11 @@ CodeRange::CodeRange(Kind kind, uint32_t funcIndex, CallableOffsets offsets)
   u.func.lineOrBytecode_ = 0;
   u.func.beginToUncheckedCallEntry_ = 0;
   u.func.beginToTierEntry_ = 0;
+  u.func.hasUnwindInfo_ = false;
 }
 
 CodeRange::CodeRange(uint32_t funcIndex, uint32_t funcLineOrBytecode,
-                     FuncOffsets offsets)
+                     FuncOffsets offsets, bool hasUnwindInfo)
     : begin_(offsets.begin),
       ret_(offsets.ret),
       end_(offsets.end),
@@ -139,6 +217,7 @@ CodeRange::CodeRange(uint32_t funcIndex, uint32_t funcLineOrBytecode,
   u.func.lineOrBytecode_ = funcLineOrBytecode;
   u.func.beginToUncheckedCallEntry_ = offsets.uncheckedCallEntry - begin_;
   u.func.beginToTierEntry_ = offsets.tierEntry - begin_;
+  u.func.hasUnwindInfo_ = hasUnwindInfo;
 }
 
 const CodeRange* wasm::LookupInSorted(const CodeRangeVector& codeRanges,
@@ -155,38 +234,44 @@ const CodeRange* wasm::LookupInSorted(const CodeRangeVector& codeRanges,
 }
 
 CallIndirectId CallIndirectId::forAsmJSFunc() {
-  return CallIndirectId(CallIndirectIdKind::AsmJS, 0);
+  return CallIndirectId(CallIndirectIdKind::AsmJS);
 }
 
-CallIndirectId CallIndirectId::forFunc(const ModuleEnvironment& moduleEnv,
+CallIndirectId CallIndirectId::forFunc(const CodeMetadata& codeMeta,
                                        uint32_t funcIndex) {
   // asm.js tables are homogenous and don't require a signature check
-  if (moduleEnv.isAsmJS()) {
+  if (codeMeta.isAsmJS()) {
     return CallIndirectId::forAsmJSFunc();
   }
 
-  FuncDesc func = moduleEnv.funcs[funcIndex];
+  FuncDesc func = codeMeta.funcs[funcIndex];
   if (!func.canRefFunc()) {
     return CallIndirectId();
   }
-  return CallIndirectId::forFuncType(moduleEnv,
-                                     moduleEnv.funcs[funcIndex].typeIndex);
+  return CallIndirectId::forFuncType(codeMeta,
+                                     codeMeta.funcs[funcIndex].typeIndex);
 }
 
-CallIndirectId CallIndirectId::forFuncType(const ModuleEnvironment& moduleEnv,
+CallIndirectId CallIndirectId::forFuncType(const CodeMetadata& codeMeta,
                                            uint32_t funcTypeIndex) {
   // asm.js tables are homogenous and don't require a signature check
-  if (moduleEnv.isAsmJS()) {
+  if (codeMeta.isAsmJS()) {
     return CallIndirectId::forAsmJSFunc();
   }
 
-  const FuncType& funcType = moduleEnv.types->type(funcTypeIndex).funcType();
+  const TypeDef& typeDef = codeMeta.types->type(funcTypeIndex);
+  const FuncType& funcType = typeDef.funcType();
+  CallIndirectId callIndirectId;
   if (funcType.hasImmediateTypeId()) {
-    return CallIndirectId(CallIndirectIdKind::Immediate,
-                          funcType.immediateTypeId());
+    callIndirectId.kind_ = CallIndirectIdKind::Immediate;
+    callIndirectId.immediate_ = funcType.immediateTypeId();
+  } else {
+    callIndirectId.kind_ = CallIndirectIdKind::Global;
+    callIndirectId.global_.instanceDataOffset_ =
+        codeMeta.offsetOfTypeDef(funcTypeIndex);
+    callIndirectId.global_.hasSuperType_ = typeDef.superTypeDef() != nullptr;
   }
-  return CallIndirectId(CallIndirectIdKind::Global,
-                        moduleEnv.offsetOfTypeDef(funcTypeIndex));
+  return callIndirectId;
 }
 
 CalleeDesc CalleeDesc::function(uint32_t funcIndex) {
@@ -201,24 +286,24 @@ CalleeDesc CalleeDesc::import(uint32_t instanceDataOffset) {
   c.u.import.instanceDataOffset_ = instanceDataOffset;
   return c;
 }
-CalleeDesc CalleeDesc::wasmTable(const ModuleEnvironment& moduleEnv,
+CalleeDesc CalleeDesc::wasmTable(const CodeMetadata& codeMeta,
                                  const TableDesc& desc, uint32_t tableIndex,
                                  CallIndirectId callIndirectId) {
   CalleeDesc c;
   c.which_ = WasmTable;
   c.u.table.instanceDataOffset_ =
-      moduleEnv.offsetOfTableInstanceData(tableIndex);
+      codeMeta.offsetOfTableInstanceData(tableIndex);
   c.u.table.minLength_ = desc.initialLength;
   c.u.table.maxLength_ = desc.maximumLength;
   c.u.table.callIndirectId_ = callIndirectId;
   return c;
 }
-CalleeDesc CalleeDesc::asmJSTable(const ModuleEnvironment& moduleEnv,
+CalleeDesc CalleeDesc::asmJSTable(const CodeMetadata& codeMeta,
                                   uint32_t tableIndex) {
   CalleeDesc c;
   c.which_ = AsmJSTable;
   c.u.table.instanceDataOffset_ =
-      moduleEnv.offsetOfTableInstanceData(tableIndex);
+      codeMeta.offsetOfTableInstanceData(tableIndex);
   return c;
 }
 CalleeDesc CalleeDesc::builtin(SymbolicAddress callee) {

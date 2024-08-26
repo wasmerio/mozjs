@@ -210,9 +210,10 @@ impl Type {
         self.layout.or_else(|| {
             match self.kind {
                 TypeKind::Comp(ref ci) => ci.layout(ctx),
-                TypeKind::Array(inner, length) if length == 0 => Some(
-                    Layout::new(0, ctx.resolve_type(inner).layout(ctx)?.align),
-                ),
+                TypeKind::Array(inner, 0) => Some(Layout::new(
+                    0,
+                    ctx.resolve_type(inner).layout(ctx)?.align,
+                )),
                 // FIXME(emilio): This is a hack for anonymous union templates.
                 // Use the actual pointer size!
                 TypeKind::Pointer(..) => Some(Layout::new(
@@ -557,6 +558,8 @@ impl TemplateParameters for TypeKind {
 /// The kind of float this type represents.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) enum FloatKind {
+    /// A half (`_Float16` or `__fp16`)
+    Float16,
     /// A `float`.
     Float,
     /// A `double`.

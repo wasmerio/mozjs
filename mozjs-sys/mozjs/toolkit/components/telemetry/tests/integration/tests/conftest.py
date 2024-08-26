@@ -10,7 +10,7 @@ import time
 
 import mozinstall
 import pytest
-from marionette_driver import By, keys
+from marionette_driver import keys
 from marionette_driver.addons import Addons
 from marionette_driver.errors import MarionetteException
 from marionette_driver.marionette import Marionette
@@ -84,7 +84,9 @@ def fixture_marionette(binary, ping_server):
 @pytest.fixture(name="ping_server")
 def fixture_ping_server():
     """Run a ping server on localhost on a free port assigned by the OS"""
-    server = PingServer(SERVER_ROOT, "http://localhost:0")
+    server = PingServer(
+        os.path.join(build.topsrcdir, SERVER_ROOT), "http://localhost:0"
+    )
     server.start()
     yield server
     server.stop()
@@ -127,8 +129,8 @@ class Browser(object):
         with self.marionette.using_context(self.marionette.CONTEXT_CHROME):
             return self.marionette.execute_script(
                 """\
-                const { ClientID } = ChromeUtils.import(
-                  "resource://gre/modules/ClientID.jsm"
+                const { ClientID } = ChromeUtils.importESModule(
+                  "resource://gre/modules/ClientID.sys.mjs"
                 );
                 return ClientID.getCachedClientID();
             """
@@ -165,8 +167,8 @@ class Browser(object):
             # triggers an "environment-change" ping.
             script = """\
                     let [resolve] = arguments;
-            const { TelemetryEnvironment } = ChromeUtils.import(
-              "resource://gre/modules/TelemetryEnvironment.jsm"
+            const { TelemetryEnvironment } = ChromeUtils.importESModule(
+              "resource://gre/modules/TelemetryEnvironment.sys.mjs"
             );
             TelemetryEnvironment.onInitialized().then(resolve);
             """
@@ -233,7 +235,7 @@ class Browser(object):
 
         with self.marionette.using_context(self.marionette.CONTEXT_CHROME):
             self.marionette.execute_script("gURLBar.select();")
-            urlbar = self.marionette.find_element(By.ID, "urlbar-input")
+            urlbar = self.marionette.execute_script("return gURLBar.inputField")
             urlbar.send_keys(keys.Keys.DELETE)
             urlbar.send_keys(text + keys.Keys.ENTER)
 

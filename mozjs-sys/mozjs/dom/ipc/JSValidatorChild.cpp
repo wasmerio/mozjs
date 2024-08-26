@@ -16,6 +16,7 @@
 #include "js/SourceText.h"
 #include "js/experimental/CompileScript.h"
 #include "js/experimental/JSStencil.h"
+#include "xpcpublic.h"
 
 using namespace mozilla::dom;
 using Encoding = mozilla::Encoding;
@@ -178,7 +179,12 @@ JSValidatorChild::GetUTF8EncodedContent(
 
 JSValidatorChild::ValidatorResult JSValidatorChild::ShouldAllowJS(
     const mozilla::Span<const char>& aSpan) const {
-  MOZ_ASSERT(!aSpan.IsEmpty());
+  // It's possible that the data we get is not valid UTF-8, so aSpan
+  // ends empty here. We should treat it as a failure because this
+  // is not valid JS.
+  if (aSpan.IsEmpty()) {
+    return ValidatorResult::Failure;
+  }
 
   MOZ_DIAGNOSTIC_ASSERT(IsUtf8(aSpan));
 
@@ -195,10 +201,14 @@ JSValidatorChild::ValidatorResult JSValidatorChild::ShouldAllowJS(
   }
 
   // Parse to JavaScript
-  JS::CompileOptions options((JS::CompileOptions::ForFrontendContext()));
-  JS::CompilationStorage storage;
+  JS::PrefableCompileOptions prefableOptions;
+  xpc::SetPrefableCompileOptions(prefableOptions);
+  // For the syntax validation purpose, asm.js doesn't need to be enabled.
+  prefableOptions.setAsmJSOption(JS::AsmJSOption::DisabledByAsmJSPref);
+
+  JS::CompileOptions options(prefableOptions);
   RefPtr<JS::Stencil> stencil =
-      JS::CompileGlobalScriptToStencil(fc, options, srcBuf, storage);
+      JS::CompileGlobalScriptToStencil(fc, options, srcBuf);
 
   if (!stencil) {
     JS::ClearFrontendErrors(fc);

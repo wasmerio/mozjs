@@ -30,7 +30,7 @@ netwerk:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1797695
     notification_emails:
       - necko@mozilla.com
-      - ddamjanovic@mozilla.com
+      - vgosu@mozilla.com
     expires: never
   eh_link_type:
     type: labeled_counter
@@ -56,79 +56,20 @@ netwerk:
     expires: never
 
 network:
-  data_size_per_type:
+  byte_range_request:
     type: labeled_counter
     labels:
-      - text_html
-      - text_css
-      - text_json
-      - text_plain
-      - text_javascript
-      - text_other
-      - audio
-      - video
-      - multipart
-      - icon
-      - image
-      - ocsp
-      - xpinstall
-      - wasm
-      - pdf
-      - octet_stream
-      - proxy
-      - compressed
-      - x509
-      - application_other
+      - cacheable
+      - not_cacheable
     description: >
-      Number of KB we transferred keyed by "contentType"
+      Counts of cacheable/non-cacheable byte-range requests
     bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1808695
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898737
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1808695
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898737
     notification_emails:
       - necko@mozilla.com
-      - rtestard@mozilla.com
-    expires: 130
-    telemetry_mirror: NETWORKING_DATA_TRANSFERRED_PER_CONTENT_TYPE
-    no_lint:
-      - COMMON_PREFIX
-
-  data_size_pb_per_type:
-    type: labeled_counter
-    labels:
-      - text_html
-      - text_css
-      - text_json
-      - text_plain
-      - text_javascript
-      - text_other
-      - audio
-      - video
-      - multipart
-      - icon
-      - image
-      - ocsp
-      - xpinstall
-      - wasm
-      - pdf
-      - octet_stream
-      - proxy
-      - compressed
-      - x509
-      - application_other
-    description: >
-      Number of KB we transferred keyed by "contentType"
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1808695
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1808695
-    notification_emails:
-      - necko@mozilla.com
-      - rtestard@mozilla.com
-    expires: 130
-    telemetry_mirror: NETWORKING_DATA_TRANSFERRED_PB_PER_CONTENT_TYPE
-    no_lint:
-      - COMMON_PREFIX
+    expires: never
 
   cors_authorization_header:
     type: labeled_counter
@@ -141,9 +82,197 @@ network:
       `Access-Control-Request-Headers` header and the possible outcomes.
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1687364
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902182
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1687364
     notification_emails:
       - necko@mozilla.com
       - kershaw@mozilla.com
-    expires: 130
+    expires: 140
+
+  cache_hit_time:
+    type: timing_distribution
+    time_unit: millisecond
+    telemetry_mirror: NETWORK_CACHE_V2_HIT_TIME_MS
+    description: >
+      Time to open existing cache entry file.
+      (Migrated from the geckoview metric of the same name).
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1877839
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077#c10
+    notification_emails:
+      - necko@mozilla.com
+    expires: never
+
+  font_download_end:
+    type: timing_distribution
+    time_unit: millisecond
+    telemetry_mirror: WEBFONT_DOWNLOAD_TIME_AFTER_START
+    description: >
+      Time after navigationStart that all webfont downloads are completed.
+      (Migrated from the geckoview metric of the same name).
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1877839
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1877839
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077#c10
+    notification_emails:
+      - perf-telemetry-alerts@mozilla.com
+      - necko@mozilla.com
+      - bdekoz@mozilla.com
+    expires: never
+
+  first_from_cache:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      In the HTTP page channel, time from connection open to cache read start.
+      Corresponds to Legacy histogram HTTP_PAGE_OPEN_TO_FIRST_FROM_CACHE_V2 in
+      Desktop.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1877839
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077#c10
+    notification_emails:
+      - necko@mozilla.com
+    expires: never
+
+  tcp_connection:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      In the HTTP page channel, time from the TCP SYN packet is received to
+      the connection is established and ready for HTTP.
+      Corresponds to Legacy histogram HTTP_PAGE_TCP_CONNECTION_2 in Desktop
+      (Migrated from the geckoview metric of the same name).
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=772589
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1877839
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077#c10
+    notification_emails:
+      - necko@mozilla.com
+      - vgosu@mozilla.com
+    expires: never
+
+  dns_start:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      In the HTTP page channel, time from connection open to the DNS request
+      being issued.
+      Corresponds to Legacy histogram HTTP_PAGE_DNS_ISSUE_TIME in Desktop.
+      (Migrated from the geckoview metric of the same name).
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1877839
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077#c10
+    notification_emails:
+      - necko@mozilla.com
+      - vgosu@mozilla.com
+    expires: never
+
+  dns_end:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      In the HTTP page channel, time from the DNS request being issued to
+      the response.
+      Corresponds to Legacy histogram HTTP_PAGE_DNS_LOOKUP_TIME in Desktop.
+      (Migrated from the geckoview metric of the same name).
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1877839
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077#c10
+    notification_emails:
+      - necko@mozilla.com
+      - vgosu@mozilla.com
+    expires: never
+
+  tls_early_data_negotiated:
+    type: labeled_counter
+    labels:
+      - not_available
+      - available_and_used
+      - available_but_not_used
+    description: >
+      Sending TLS early data was not possible, possible and used, or possible but not used.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1296288
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1654309
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1749881
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898018
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898018
+    notification_emails:
+      - necko@mozilla.com
+      - vgosu@mozilla.com
+    expires: never
+
+  tls_early_data_accepted:
+    type: labeled_counter
+    labels:
+      - accepted
+      - rejected
+    description: >
+      TLS early data was used and it was accepted or rejected by the remote host.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1296288
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1654309
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1749881
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898018
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898018
+    notification_emails:
+      - necko@mozilla.com
+      - vgosu@mozilla.com
+    expires: never
+
+  tls_early_data_bytes_written:
+    type: custom_distribution
+    unit: byte
+    range_min: 0
+    range_max: 60000
+    bucket_count: 100
+    histogram_type: exponential
+    description: >
+      Amount of bytes sent using TLS early data at the start of a TLS connection for a given channel.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1296288
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1654309
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1749881
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898018
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898018
+    notification_emails:
+      - necko@mozilla.com
+      - vgosu@mozilla.com
+    expires: never
+    telemetry_mirror: TLS_EARLY_DATA_BYTES_WRITTEN
+
+  tls_handshake:
+    type: timing_distribution
+    time_unit: millisecond
+    description: >
+      In the HTTP page channel, time from after the TCP SYN packet is
+      received to the secure connection is established and ready for HTTP.
+      Corresponds to Legacy histogram HTTP_PAGE_TLS_HANDSHAKE in Desktop.
+      (Migrated from the geckoview metric of the same name).
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=772589
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1877839
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1580077#c10
+    notification_emails:
+      - necko@mozilla.com
+      - vgosu@mozilla.com
+    expires: never

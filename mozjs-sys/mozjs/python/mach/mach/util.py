@@ -20,20 +20,12 @@ def setenv(key, value):
     """Compatibility shim to ensure the proper string type is used with
     os.environ for the version of Python being used.
     """
-    from six import text_type
-
     encoding = "mbcs" if sys.platform == "win32" else "utf-8"
 
-    if sys.version_info[0] == 2:
-        if isinstance(key, text_type):
-            key = key.encode(encoding)
-        if isinstance(value, text_type):
-            value = value.encode(encoding)
-    else:
-        if isinstance(key, bytes):
-            key = key.decode(encoding)
-        if isinstance(value, bytes):
-            value = value.decode(encoding)
+    if isinstance(key, bytes):
+        key = key.decode(encoding)
+    if isinstance(value, bytes):
+        value = value.decode(encoding)
 
     os.environ[key] = value
 
@@ -115,3 +107,18 @@ def to_optional_str(path: Optional[Path]):
         return str(path)
     else:
         return None
+
+
+def strtobool(value: str):
+    # Reimplementation of distutils.util.strtobool
+    # https://docs.python.org/3.9/distutils/apiref.html#distutils.util.strtobool
+    true_vals = ("y", "yes", "t", "true", "on", "1")
+    false_vals = ("n", "no", "f", "false", "off", "0")
+
+    value = value.lower()
+    if value in true_vals:
+        return 1
+    if value in false_vals:
+        return 0
+
+    raise ValueError(f'Expected one of: {", ".join(true_vals + false_vals)}')

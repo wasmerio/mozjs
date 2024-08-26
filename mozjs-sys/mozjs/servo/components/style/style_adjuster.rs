@@ -294,11 +294,9 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
                 .add_flags(ComputedValueFlags::SELF_OR_ANCESTOR_HAS_SIZE_CONTAINER_TYPE);
         }
 
-        #[cfg(feature = "servo-layout-2013")]
-        {
-            if self.style.get_parent_column().is_multicol() {
-                self.style.add_flags(ComputedValueFlags::CAN_BE_FRAGMENTED);
-            }
+        #[cfg(feature = "servo")]
+        if self.style.get_parent_column().is_multicol() {
+            self.style.add_flags(ComputedValueFlags::CAN_BE_FRAGMENTED);
         }
     }
 
@@ -482,15 +480,15 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
 
     fn adjust_for_contain(&mut self) {
         let box_style = self.style.get_box();
-        debug_assert_eq!(
-            box_style.clone_contain(),
-            box_style.clone_effective_containment()
-        );
         let container_type = box_style.clone_container_type();
         let content_visibility = box_style.clone_content_visibility();
         if container_type == ContainerType::Normal &&
             content_visibility == ContentVisibility::Visible
         {
+            debug_assert_eq!(
+                box_style.clone_contain(),
+                box_style.clone_effective_containment()
+            );
             return;
         }
         let old_contain = box_style.clone_contain();
@@ -522,6 +520,10 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             },
         }
         if new_contain == old_contain {
+            debug_assert_eq!(
+                box_style.clone_contain(),
+                box_style.clone_effective_containment()
+            );
             return;
         }
         self.style
@@ -625,7 +627,6 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             return;
         }
 
-        debug_assert_eq!(self.style.get_box().clone_display(), Display::Block);
         // TODO We actually want style from parent rather than layout
         // parent, so that this fixup doesn't happen incorrectly when
         // when <fieldset> has "display: contents".
@@ -860,7 +861,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         };
 
         if appearance == Appearance::Menulist {
-            if self.style.get_inherited_text().clone_line_height() == LineHeight::normal() {
+            if self.style.get_font().clone_line_height() == LineHeight::normal() {
                 return;
             }
             if self.style.pseudo.is_some() {
@@ -873,7 +874,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
                 return;
             }
             self.style
-                .mutate_inherited_text()
+                .mutate_font()
                 .set_line_height(LineHeight::normal());
         }
     }

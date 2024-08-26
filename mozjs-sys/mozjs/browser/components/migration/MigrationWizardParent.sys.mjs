@@ -5,11 +5,10 @@
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { MigrationUtils } from "resource:///modules/MigrationUtils.sys.mjs";
 import { E10SUtils } from "resource://gre/modules/E10SUtils.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "gFluentStrings", function () {
+ChromeUtils.defineLazyGetter(lazy, "gFluentStrings", function () {
   return new Localization([
     "branding/brand.ftl",
     "browser/migrationWizard.ftl",
@@ -20,6 +19,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FirefoxProfileMigrator: "resource:///modules/FirefoxProfileMigrator.sys.mjs",
   InternalTestingProfileMigrator:
     "resource:///modules/InternalTestingProfileMigrator.sys.mjs",
+  LoginCSVImport: "resource://gre/modules/LoginCSVImport.sys.mjs",
   MigrationWizardConstants:
     "chrome://browser/content/migration/migration-wizard-constants.mjs",
   PasswordFileMigrator: "resource:///modules/FileMigrators.sys.mjs",
@@ -30,10 +30,6 @@ if (AppConstants.platform == "macosx") {
     SafariProfileMigrator: "resource:///modules/SafariProfileMigrator.sys.mjs",
   });
 }
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  LoginCSVImport: "resource://gre/modules/LoginCSVImport.jsm",
-});
 
 /**
  * Set to true once the first instance of MigrationWizardParent has received
@@ -165,6 +161,23 @@ export class MigrationWizardParent extends JSWindowActorParent {
         this.#recordEvent(message.data.type, message.data.args);
         break;
       }
+
+      case "OpenAboutAddons": {
+        let browser = this.browsingContext.topChromeWindow;
+        this.#openAboutAddons(browser);
+        break;
+      }
+
+      case "GetPermissions": {
+        let migrator = await MigrationUtils.getMigrator(message.data.key);
+        return migrator.getPermissions(this.browsingContext.topChromeWindow);
+      }
+
+      case "OpenURL": {
+        let browser = this.browsingContext.topChromeWindow;
+        this.#openURL(browser, message.data.url, message.data.where);
+        break;
+      }
     }
 
     return null;
@@ -212,7 +225,11 @@ export class MigrationWizardParent extends JSWindowActorParent {
 
     let { result, path } = await new Promise(resolve => {
       let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-      fp.init(window, filePickerConfig.title, Ci.nsIFilePicker.modeOpen);
+      fp.init(
+        window.browsingContext,
+        filePickerConfig.title,
+        Ci.nsIFilePicker.modeOpen
+      );
 
       for (let filter of filePickerConfig.filters) {
         fp.appendFilter(filter.title, filter.extensionPattern);
@@ -292,7 +309,11 @@ export class MigrationWizardParent extends JSWindowActorParent {
 
     let { result, path } = await new Promise(resolve => {
       let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-      fp.init(window, filePickerConfig.title, Ci.nsIFilePicker.modeOpen);
+      fp.init(
+        window.browsingContext,
+        filePickerConfig.title,
+        Ci.nsIFilePicker.modeOpen
+      );
 
       for (let filter of filePickerConfig.filters) {
         fp.appendFilter(filter.title, filter.extensionPattern);
@@ -378,22 +399,33 @@ export class MigrationWizardParent extends JSWindowActorParent {
         progress,
       });
 
-      let summary = await lazy.LoginCSVImport.importFromCSV(
-        migrationDetails.safariPasswordFilePath
-      );
-      let quantity = summary.filter(entry => entry.result == "added").length;
+      try {
+        let summary = await lazy.LoginCSVImport.importFromCSV(
+          migrationDetails.safariPasswordFilePath
+        );
+        let quantity = summary.filter(entry => entry.result == "added").length;
 
-      progress[
-        lazy.MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS
-      ] = {
-        value: lazy.MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
-        message: await lazy.gFluentStrings.formatValue(
-          "migration-wizard-progress-success-passwords",
-          {
-            quantity,
-          }
-        ),
-      };
+        progress[
+          lazy.MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS
+        ] = {
+          value: lazy.MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
+          message: await lazy.gFluentStrings.formatValue(
+            "migration-wizard-progress-success-passwords",
+            {
+              quantity,
+            }
+          ),
+        };
+      } catch (e) {
+        progress[
+          lazy.MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PASSWORDS
+        ] = {
+          value: lazy.MigrationWizardConstants.PROGRESS_VALUE.WARNING,
+          message: await lazy.gFluentStrings.formatValue(
+            "migration-passwords-from-file-no-valid-data"
+          ),
+        };
+      }
     }
 
     this.sendAsyncMessage("UpdateProgress", {
@@ -566,6 +598,21 @@ export class MigrationWizardParent extends JSWindowActorParent {
         return null;
       }
 
+      if (!(await migrator.hasPermissions())) {
+        // If we're unable to get permissions for this migrator, then we
+        // just don't bother showing it.
+        let permissionsPath = await migrator.canGetPermissions();
+        if (!permissionsPath) {
+          return null;
+        }
+        return this.#serializeMigratorAndProfile(
+          migrator,
+          null,
+          false /* hasPermissions */,
+          permissionsPath
+        );
+      }
+
       let sourceProfiles = await migrator.getSourceProfiles();
       if (Array.isArray(sourceProfiles)) {
         if (!sourceProfiles.length) {
@@ -611,9 +658,23 @@ export class MigrationWizardParent extends JSWindowActorParent {
    *   The user profile object representing the profile to get information
    *   about. This object is usually gotten by calling getSourceProfiles on
    *   the migrator.
+   * @param {boolean} [hasPermissions=true]
+   *   Whether or not the migrator has permission to read the data for the
+   *   other browser. It is expected that the caller will have already
+   *   computed this by calling hasPermissions() on the migrator, and
+   *   passing the result into this method. This is true by default.
+   * @param {string} [permissionsPath=undefined]
+   *   The path that the selected migrator needs read access to in order to
+   *   do a migration, in the event that hasPermissions is false. This is
+   *   undefined if hasPermissions is true.
    * @returns {Promise<MigratorProfileInstance>}
    */
-  async #serializeMigratorAndProfile(migrator, profileObj) {
+  async #serializeMigratorAndProfile(
+    migrator,
+    profileObj,
+    hasPermissions = true,
+    permissionsPath
+  ) {
     let [profileMigrationData, lastModifiedDate] = await Promise.all([
       migrator.getMigrateData(profileObj),
       migrator.getLastUsedDate(),
@@ -621,25 +682,33 @@ export class MigrationWizardParent extends JSWindowActorParent {
 
     let availableResourceTypes = [];
 
-    for (let resourceType in MigrationUtils.resourceTypes) {
-      // Normally, we check each possible resourceType to see if we have one or
-      // more corresponding resourceTypes in profileMigrationData. The exception
-      // is for Safari, where the migrator does not expose a PASSWORDS resource
-      // type, but we allow the user to express that they'd like to import
-      // passwords from it anyways. This is because the Safari migration flow is
-      // special, and allows the user to import passwords from a file exported
-      // from Safari.
-      if (
-        profileMigrationData & MigrationUtils.resourceTypes[resourceType] ||
-        (migrator.constructor.key == lazy.SafariProfileMigrator?.key &&
-          MigrationUtils.resourceTypes[resourceType] ==
-            MigrationUtils.resourceTypes.PASSWORDS &&
-          Services.prefs.getBoolPref(
-            "signon.management.page.fileImport.enabled",
-            false
-          ))
-      ) {
-        availableResourceTypes.push(resourceType);
+    // Even if we don't have permissions, we'll show the resources available
+    // for Safari. For Safari, the workflow is to request permissions only
+    // after the resources have been selected.
+    if (
+      hasPermissions ||
+      migrator.constructor.key == lazy.SafariProfileMigrator?.key
+    ) {
+      for (let resourceType in MigrationUtils.resourceTypes) {
+        // Normally, we check each possible resourceType to see if we have one or
+        // more corresponding resourceTypes in profileMigrationData. The exception
+        // is for Safari, where the migrator does not expose a PASSWORDS resource
+        // type, but we allow the user to express that they'd like to import
+        // passwords from it anyways. This is because the Safari migration flow is
+        // special, and allows the user to import passwords from a file exported
+        // from Safari.
+        if (
+          profileMigrationData & MigrationUtils.resourceTypes[resourceType] ||
+          (migrator.constructor.key == lazy.SafariProfileMigrator?.key &&
+            MigrationUtils.resourceTypes[resourceType] ==
+              MigrationUtils.resourceTypes.PASSWORDS &&
+            Services.prefs.getBoolPref(
+              "signon.management.page.fileImport.enabled",
+              false
+            ))
+        ) {
+          availableResourceTypes.push(resourceType);
+        }
       }
     }
 
@@ -664,6 +733,8 @@ export class MigrationWizardParent extends JSWindowActorParent {
       resourceTypes: availableResourceTypes,
       profile: profileObj,
       lastModifiedDate,
+      hasPermissions,
+      permissionsPath,
     };
   }
 
@@ -761,5 +832,43 @@ export class MigrationWizardParent extends JSWindowActorParent {
       brandImage: fileMigrator.constructor.brandImage,
       resourceTypes: [],
     };
+  }
+
+  /**
+   * Opens the about:addons page in a new background tab in the same window
+   * as the passed browser.
+   *
+   * @param {Element} browser
+   *   The browser element requesting that about:addons opens.
+   */
+  #openAboutAddons(browser) {
+    let window = browser.ownerGlobal;
+    window.openTrustedLinkIn("about:addons", "tab", { inBackground: true });
+  }
+
+  /**
+   * Opens a url in a new background tab in the same window
+   * as the passed browser.
+   *
+   * @param {Element} browser
+   *   The browser element requesting that the URL opens in.
+   * @param {string} url
+   *   The URL that will be opened.
+   * @param {string} where
+   *   Where the URL will be opened. Defaults to current tab.
+   */
+  #openURL(browser, url, where) {
+    let window = browser.ownerGlobal;
+    window.openLinkIn(
+      Services.urlFormatter.formatURL(url),
+      where || "current",
+      {
+        private: false,
+        triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal(
+          {}
+        ),
+        csp: null,
+      }
+    );
   }
 }

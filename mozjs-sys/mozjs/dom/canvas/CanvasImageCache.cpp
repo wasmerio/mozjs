@@ -9,10 +9,8 @@
 #include "imgIRequest.h"
 #include "mozilla/dom/Element.h"
 #include "nsTHashtable.h"
-#include "mozilla/dom/HTMLCanvasElement.h"
 #include "nsContentUtils.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/StaticPrefs_canvas.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/gfx/2D.h"
 #include "gfx2DGlue.h"
@@ -27,11 +25,11 @@ using namespace gfx;
  * due to CORS security.
  */
 struct ImageCacheKey {
-  ImageCacheKey(imgIContainer* aImage, HTMLCanvasElement* aCanvas,
+  ImageCacheKey(imgIContainer* aImage, CanvasRenderingContext2D* aContext,
                 BackendType aBackendType)
-      : mImage(aImage), mCanvas(aCanvas), mBackendType(aBackendType) {}
+      : mImage(aImage), mContext(aContext), mBackendType(aBackendType) {}
   nsCOMPtr<imgIContainer> mImage;
-  HTMLCanvasElement* mCanvas;
+  CanvasRenderingContext2D* mContext;
   BackendType mBackendType;
 };
 
@@ -42,14 +40,15 @@ struct ImageCacheKey {
 struct ImageCacheEntryData {
   ImageCacheEntryData(const ImageCacheEntryData& aOther)
       : mImage(aOther.mImage),
-        mCanvas(aOther.mCanvas),
+        mContext(aOther.mContext),
         mBackendType(aOther.mBackendType),
         mSourceSurface(aOther.mSourceSurface),
         mSize(aOther.mSize),
-        mIntrinsicSize(aOther.mIntrinsicSize) {}
+        mIntrinsicSize(aOther.mIntrinsicSize),
+        mCropRect(aOther.mCropRect) {}
   explicit ImageCacheEntryData(const ImageCacheKey& aKey)
       : mImage(aKey.mImage),
-        mCanvas(aKey.mCanvas),
+        mContext(aKey.mContext),
         mBackendType(aKey.mBackendType) {}
 
   nsExpirationState* GetExpirationState() { return &mState; }
@@ -57,12 +56,13 @@ struct ImageCacheEntryData {
 
   // Key
   nsCOMPtr<imgIContainer> mImage;
-  HTMLCanvasElement* mCanvas;
+  CanvasRenderingContext2D* mContext;
   BackendType mBackendType;
   // Value
   RefPtr<SourceSurface> mSourceSurface;
   IntSize mSize;
   IntSize mIntrinsicSize;
+  Maybe<IntRect> mCropRect;
   nsExpirationState mState;
 };
 
@@ -78,13 +78,13 @@ class ImageCacheEntry : public PLDHashEntryHdr {
   ~ImageCacheEntry() = default;
 
   bool KeyEquals(KeyTypePointer key) const {
-    return mData->mImage == key->mImage && mData->mCanvas == key->mCanvas &&
+    return mData->mImage == key->mImage && mData->mContext == key->mContext &&
            mData->mBackendType == key->mBackendType;
   }
 
   static KeyTypePointer KeyToPointer(KeyType& key) { return &key; }
   static PLDHashNumber HashKey(KeyTypePointer key) {
-    return HashGeneric(key->mImage.get(), key->mCanvas, key->mBackendType);
+    return HashGeneric(key->mImage.get(), key->mContext, key->mBackendType);
   }
   enum { ALLOW_MEMMOVE = true };
 
@@ -151,7 +151,7 @@ class ImageCache final : public nsExpirationTracker<ImageCacheEntryData, 4> {
         AllCanvasImageCacheKey(aObject->mImage, aObject->mBackendType));
 
     // Deleting the entry will delete aObject since the entry owns aObject.
-    mCache.RemoveEntry(ImageCacheKey(aObject->mImage, aObject->mCanvas,
+    mCache.RemoveEntry(ImageCacheKey(aObject->mImage, aObject->mContext,
                                      aObject->mBackendType));
   }
 
@@ -263,13 +263,33 @@ static already_AddRefed<imgIContainer> GetImageContainer(dom::Element* aImage) {
   return imgContainer.forget();
 }
 
-void CanvasImageCache::NotifyDrawImage(Element* aImage,
-                                       HTMLCanvasElement* aCanvas,
-                                       DrawTarget* aTarget,
-                                       SourceSurface* aSource,
-                                       const IntSize& aSize,
-                                       const IntSize& aIntrinsicSize) {
-  if (!aTarget) {
+void CanvasImageCache::NotifyCanvasDestroyed(
+    CanvasRenderingContext2D* aContext) {
+  MOZ_ASSERT(aContext);
+
+  if (!NS_IsMainThread() || !gImageCache) {
+    return;
+  }
+
+  for (auto i = gImageCache->mCache.Iter(); !i.Done(); i.Next()) {
+    ImageCacheEntryData* data = i.Get()->mData.get();
+    if (data->mContext == aContext) {
+      gImageCache->RemoveObject(data);
+      gImageCache->mAllCanvasCache.RemoveEntry(
+          AllCanvasImageCacheKey(data->mImage, data->mBackendType));
+      i.Remove();
+    }
+  }
+}
+
+void CanvasImageCache::NotifyDrawImage(
+    Element* aImage, CanvasRenderingContext2D* aContext, DrawTarget* aTarget,
+    SourceSurface* aSource, const IntSize& aSize, const IntSize& aIntrinsicSize,
+    const Maybe<IntRect>& aCropRect) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aContext);
+
+  if (!aTarget || !aContext) {
     return;
   }
 
@@ -286,7 +306,7 @@ void CanvasImageCache::NotifyDrawImage(Element* aImage,
 
   BackendType backendType = aTarget->GetBackendType();
   AllCanvasImageCacheKey allCanvasCacheKey(imgContainer, backendType);
-  ImageCacheKey canvasCacheKey(imgContainer, aCanvas, backendType);
+  ImageCacheKey canvasCacheKey(imgContainer, aContext, backendType);
   ImageCacheEntry* entry = gImageCache->mCache.PutEntry(canvasCacheKey);
 
   if (entry) {
@@ -300,6 +320,7 @@ void CanvasImageCache::NotifyDrawImage(Element* aImage,
     entry->mData->mSourceSurface = aSource;
     entry->mData->mSize = aSize;
     entry->mData->mIntrinsicSize = aIntrinsicSize;
+    entry->mData->mCropRect = aCropRect;
 
     AllCanvasImageCacheEntry* allEntry =
         gImageCache->mAllCanvasCache.PutEntry(allCanvasCacheKey);
@@ -311,6 +332,8 @@ void CanvasImageCache::NotifyDrawImage(Element* aImage,
 
 SourceSurface* CanvasImageCache::LookupAllCanvas(Element* aImage,
                                                  DrawTarget* aTarget) {
+  MOZ_ASSERT(NS_IsMainThread());
+
   if (!gImageCache || !aTarget) {
     return nullptr;
   }
@@ -329,11 +352,13 @@ SourceSurface* CanvasImageCache::LookupAllCanvas(Element* aImage,
   return entry->mSourceSurface;
 }
 
-SourceSurface* CanvasImageCache::LookupCanvas(Element* aImage,
-                                              HTMLCanvasElement* aCanvas,
-                                              DrawTarget* aTarget,
-                                              IntSize* aSizeOut,
-                                              IntSize* aIntrinsicSizeOut) {
+SourceSurface* CanvasImageCache::LookupCanvas(
+    Element* aImage, CanvasRenderingContext2D* aContext, DrawTarget* aTarget,
+    IntSize* aSizeOut, IntSize* aIntrinsicSizeOut,
+    Maybe<IntRect>* aCropRectOut) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aContext);
+
   if (!gImageCache || !aTarget) {
     return nullptr;
   }
@@ -350,7 +375,7 @@ SourceSurface* CanvasImageCache::LookupCanvas(Element* aImage,
   // optimized surface given to a Skia backend would cause a readback. For
   // details, see bug 1794442.
   ImageCacheEntry* entry = gImageCache->mCache.GetEntry(
-      ImageCacheKey(imgContainer, aCanvas, aTarget->GetBackendType()));
+      ImageCacheKey(imgContainer, aContext, aTarget->GetBackendType()));
   if (!entry) {
     return nullptr;
   }
@@ -360,6 +385,7 @@ SourceSurface* CanvasImageCache::LookupCanvas(Element* aImage,
   gImageCache->MarkUsed(entry->mData.get());
   *aSizeOut = entry->mData->mSize;
   *aIntrinsicSizeOut = entry->mData->mIntrinsicSize;
+  *aCropRectOut = entry->mData->mCropRect;
   return entry->mData->mSourceSurface;
 }
 

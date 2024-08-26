@@ -1,17 +1,14 @@
 "use strict";
 
-const { Spotlight } = ChromeUtils.import(
-  "resource://activity-stream/lib/Spotlight.jsm"
+const { Spotlight } = ChromeUtils.importESModule(
+  "resource:///modules/asrouter/Spotlight.sys.mjs"
 );
 const { PanelTestProvider } = ChromeUtils.importESModule(
-  "resource://activity-stream/lib/PanelTestProvider.sys.mjs"
-);
-const { BrowserWindowTracker } = ChromeUtils.importESModule(
-  "resource:///modules/BrowserWindowTracker.sys.mjs"
+  "resource:///modules/asrouter/PanelTestProvider.sys.mjs"
 );
 
-const { AboutWelcomeTelemetry } = ChromeUtils.import(
-  "resource://activity-stream/aboutwelcome/lib/AboutWelcomeTelemetry.jsm"
+const { AboutWelcomeTelemetry } = ChromeUtils.importESModule(
+  "resource:///modules/aboutwelcome/AboutWelcomeTelemetry.sys.mjs"
 );
 
 async function waitForClick(selector, win) {
@@ -85,9 +82,6 @@ add_task(async function send_dismiss_event_telemetry() {
   );
   let browser = BrowserWindowTracker.getTopWindow().gBrowser.selectedBrowser;
   let sandbox = sinon.createSandbox();
-  sandbox
-    .stub(AboutWelcomeTelemetry.prototype, "pingCentre")
-    .value({ sendStructuredIngestionPing: () => {} });
   let spy = sandbox.spy(AboutWelcomeTelemetry.prototype, "sendTelemetry");
   // send without a dispatch function so that default is used
   await showAndWaitForDialog({ message, browser }, async win => {

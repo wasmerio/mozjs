@@ -1,4 +1,4 @@
-// |reftest| shell-option(--enable-array-from-async) skip-if(!Array.fromAsync||!xulRuntime.shell) async -- Array.fromAsync is not enabled unconditionally, requires shell-options
+// |reftest| async
 // Copyright (C) 2023 Igalia, S.L. All rights reserved.
 // This code is governed by the BSD license found in the LICENSE file.
 
@@ -59,9 +59,7 @@ asyncTest(async function () {
 
   actualCalls.splice(0);  // reset
 
-  // Note https://github.com/tc39/proposal-array-from-async/issues/35
   const expectedCallsForArrayLike = [
-    "construct MyArray",
     "construct MyArray",
     "defineProperty A[0]",
     "defineProperty A[1]",

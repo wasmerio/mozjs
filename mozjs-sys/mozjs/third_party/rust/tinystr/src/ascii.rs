@@ -22,6 +22,37 @@ impl<const N: usize> TinyAsciiStr<N> {
         Self::from_bytes_inner(bytes, 0, bytes.len(), false)
     }
 
+    /// Creates a `TinyAsciiStr<N>` from a byte slice, replacing invalid bytes.
+    ///
+    /// Null and non-ASCII bytes (i.e. those outside the range `0x01..=0x7F`)
+    /// will be replaced with the '?' character.
+    ///
+    /// The input slice will be truncated if its length exceeds `N`.
+    pub const fn from_bytes_lossy(bytes: &[u8]) -> Self {
+        const QUESTION: u8 = b'?';
+        let mut out = [0; N];
+        let mut i = 0;
+        // Ord is not available in const, so no `.min(N)`
+        let len = if bytes.len() > N { N } else { bytes.len() };
+
+        // Indexing is protected by the len check above
+        #[allow(clippy::indexing_slicing)]
+        while i < len {
+            let b = bytes[i];
+            if b > 0 && b < 0x80 {
+                out[i] = b;
+            } else {
+                out[i] = QUESTION;
+            }
+            i += 1;
+        }
+
+        Self {
+            // SAFETY: `out` only contains ASCII bytes and has same size as `self.bytes`
+            bytes: unsafe { AsciiByte::to_ascii_byte_array(&out) },
+        }
+    }
+
     /// Attempts to parse a fixed-length byte array to a `TinyAsciiStr`.
     ///
     /// The byte array may contain trailing NUL bytes.
@@ -140,21 +171,23 @@ impl<const N: usize> TinyAsciiStr<N> {
     pub const fn as_bytes(&self) -> &[u8] {
         // Safe because `self.bytes.as_slice()` pointer-casts to `&[u8]`,
         // and changing the length of that slice to self.len() < N is safe.
-        unsafe { core::mem::transmute((self.bytes.as_slice().as_ptr(), self.len())) }
+        unsafe {
+            core::slice::from_raw_parts(self.bytes.as_slice().as_ptr() as *const u8, self.len())
+        }
     }
 
     #[inline]
     #[must_use]
     pub const fn all_bytes(&self) -> &[u8; N] {
         // SAFETY: `self.bytes` has same size as [u8; N]
-        unsafe { core::mem::transmute(&self.bytes) }
+        unsafe { &*(self.bytes.as_ptr() as *const [u8; N]) }
     }
 
     #[inline]
     #[must_use]
-    /// Resizes a TinyAsciiStr<N> to a TinyAsciiStr<M>.
+    /// Resizes a `TinyAsciiStr<N>` to a `TinyAsciiStr<M>`.
     ///
-    /// If M < len() the string gets truncated, otherwise only the
+    /// If `M < len()` the string gets truncated, otherwise only the
     /// memory representation changes.
     pub const fn resize<const M: usize>(self) -> TinyAsciiStr<M> {
         let mut bytes = [0; M];
@@ -518,7 +551,7 @@ macro_rules! to {
             while i < N && $self.bytes[i] as u8 != AsciiByte::B0 as u8 {
                 // SAFETY: AsciiByte is repr(u8) and has same size as u8
                 unsafe {
-                    $self.bytes[i] = core::mem::transmute(
+                    $self.bytes[i] = core::mem::transmute::<u8, AsciiByte>(
                         ($self.bytes[i] as u8).$later_char_to()
                     );
                 }
@@ -527,7 +560,7 @@ macro_rules! to {
             // SAFETY: AsciiByte is repr(u8) and has same size as u8
             $(
                 $self.bytes[0] = unsafe {
-                    core::mem::transmute(($self.bytes[0] as u8).$first_char_to())
+                    core::mem::transmute::<u8, AsciiByte>(($self.bytes[0] as u8).$first_char_to())
                 };
             )?
         }
@@ -623,7 +656,7 @@ impl<const N: usize> Deref for TinyAsciiStr<N> {
 impl<const N: usize> FromStr for TinyAsciiStr<N> {
     type Err = TinyStrError;
     #[inline]
-    fn from_str(s: &str) -> Result<Self, TinyStrError> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::from_str(s)
     }
 }
@@ -729,7 +762,7 @@ mod test {
             };
             let expected = reference_f(&s);
             let actual = tinystr_f(t);
-            assert_eq!(expected, actual, "TinyAsciiStr<{}>: {:?}", N, s);
+            assert_eq!(expected, actual, "TinyAsciiStr<{N}>: {s:?}");
         }
     }
 
@@ -978,5 +1011,23 @@ mod test {
         check::<5>();
         check::<8>();
         check::<16>();
+    }
+
+    #[test]
+    fn lossy_constructor() {
+        assert_eq!(TinyAsciiStr::<4>::from_bytes_lossy(b"").as_str(), "");
+        assert_eq!(
+            TinyAsciiStr::<4>::from_bytes_lossy(b"oh\0o").as_str(),
+            "oh?o"
+        );
+        assert_eq!(TinyAsciiStr::<4>::from_bytes_lossy(b"\0").as_str(), "?");
+        assert_eq!(
+            TinyAsciiStr::<4>::from_bytes_lossy(b"toolong").as_str(),
+            "tool"
+        );
+        assert_eq!(
+            TinyAsciiStr::<4>::from_bytes_lossy(&[b'a', 0x80, 0xFF, b'1']).as_str(),
+            "a??1"
+        );
     }
 }

@@ -297,7 +297,7 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
     uint64_t state = 0;
     if (mCachedFields) {
       if (auto oldState =
-              mCachedFields->GetAttribute<uint64_t>(nsGkAtoms::state)) {
+              mCachedFields->GetAttribute<uint64_t>(CacheKey::State)) {
         state = *oldState;
       }
     } else {
@@ -308,7 +308,7 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
     } else {
       state &= ~aState;
     }
-    mCachedFields->SetAttribute(nsGkAtoms::state, state);
+    mCachedFields->SetAttribute(CacheKey::State, state);
   }
 
   void InvalidateGroupInfo();
@@ -365,18 +365,24 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
 
   virtual void DOMNodeID(nsString& aID) const override;
 
+  virtual void DOMNodeClass(nsString& aClass) const override;
+
   virtual void ScrollToPoint(uint32_t aScrollType, int32_t aX,
                              int32_t aY) override;
 
 #if !defined(XP_WIN)
   void Announce(const nsString& aAnnouncement, uint16_t aPriority);
-
-  void ScrollSubstringToPoint(int32_t aStartOffset, int32_t aEndOffset,
-                              uint32_t aCoordinateType, int32_t aX, int32_t aY);
 #endif  // !defined(XP_WIN)
+
+  // HTMLMeterAccessible
+  int32_t ValueRegion() const;
 
   // HyperTextAccessibleBase
   virtual already_AddRefed<AccAttributes> DefaultTextAttributes() override;
+
+  virtual void ScrollSubstringToPoint(int32_t aStartOffset, int32_t aEndOffset,
+                                      uint32_t aCoordinateType, int32_t aX,
+                                      int32_t aY) override;
 
   /**
    * Invalidate cached HyperText offsets. This should be called whenever a
@@ -390,7 +396,7 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
    */
   void InvalidateCachedHyperTextOffsets() {
     if (mCachedFields) {
-      mCachedFields->Remove(nsGkAtoms::offset);
+      mCachedFields->Remove(CacheKey::HyperTextOffsets);
     }
   }
 
@@ -398,11 +404,11 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
   virtual size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf);
 
  protected:
-  RemoteAccessible(uint64_t aID, RemoteAccessible* aParent,
-                   DocAccessibleParent* aDoc, role aRole, AccType aType,
-                   AccGenericType aGenericTypes, uint8_t aRoleMapEntryIndex)
+  RemoteAccessible(uint64_t aID, DocAccessibleParent* aDoc, role aRole,
+                   AccType aType, AccGenericType aGenericTypes,
+                   uint8_t aRoleMapEntryIndex)
       : Accessible(aType, aGenericTypes, aRoleMapEntryIndex),
-        mParent(aParent->ID()),
+        mParent(kNoParent),
         mDoc(aDoc),
         mWrapper(0),
         mID(aID),
@@ -412,8 +418,7 @@ class RemoteAccessible : public Accessible, public HyperTextAccessibleBase {
   }
 
   explicit RemoteAccessible(DocAccessibleParent* aThisAsDoc)
-      : Accessible(),
-        mParent(kNoParent),
+      : mParent(kNoParent),
         mDoc(aThisAsDoc),
         mWrapper(0),
         mID(0),

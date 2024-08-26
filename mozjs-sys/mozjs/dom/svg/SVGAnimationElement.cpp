@@ -6,17 +6,14 @@
 
 #include "mozilla/dom/SVGAnimationElement.h"
 #include "mozilla/dom/SVGSVGElement.h"
+#include "mozilla/dom/SVGSwitchElement.h"
 #include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/ElementInlines.h"
 #include "mozilla/SMILAnimationController.h"
 #include "mozilla/SMILAnimationFunction.h"
 #include "mozilla/SMILTimeContainer.h"
-#include "mozilla/SVGObserverUtils.h"
 #include "nsContentUtils.h"
 #include "nsIContentInlines.h"
-#include "nsIReferrerInfo.h"
-#include "nsIURI.h"
-#include "prtime.h"
 
 namespace mozilla::dom {
 
@@ -156,12 +153,13 @@ nsresult SVGAnimationElement::BindToTree(BindContext& aContext,
     mTimedElement.BindToTree(*this);
   }
 
+  mTimedElement.SetIsDisabled(IsDisabled());
   AnimationNeedsResample();
 
   return NS_OK;
 }
 
-void SVGAnimationElement::UnbindFromTree(bool aNullParent) {
+void SVGAnimationElement::UnbindFromTree(UnbindContext& aContext) {
   SMILAnimationController* controller = OwnerDoc()->GetAnimationController();
   if (controller) {
     controller->UnregisterAnimationElement(this);
@@ -172,7 +170,7 @@ void SVGAnimationElement::UnbindFromTree(bool aNullParent) {
 
   AnimationNeedsResample();
 
-  SVGAnimationElementBase::UnbindFromTree(aNullParent);
+  SVGAnimationElementBase::UnbindFromTree(aContext);
 }
 
 bool SVGAnimationElement::ParseAttribute(int32_t aNamespaceID,
@@ -232,8 +230,7 @@ void SVGAnimationElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                         aSubjectPrincipal, aNotify);
 
   if (SVGTests::IsConditionalProcessingAttribute(aName)) {
-    bool isDisabled = !SVGTests::PassesConditionalProcessingTests();
-    if (mTimedElement.SetIsDisabled(isDisabled)) {
+    if (mTimedElement.SetIsDisabled(IsDisabled())) {
       AnimationNeedsResample();
     }
   }
@@ -274,6 +271,38 @@ void SVGAnimationElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
     UpdateHrefTarget(aValue->GetStringValue());
   }  // else: we're not yet in a document -- we'll update the target on
      // next BindToTree call.
+}
+
+bool SVGAnimationElement::IsDisabled() {
+  if (!SVGTests::PassesConditionalProcessingTests()) {
+    return true;
+  }
+  nsIContent* child = this;
+  while (nsIContent* parent = child->GetFlattenedTreeParent()) {
+    if (!parent->IsSVGElement()) {
+      return false;
+    }
+    if (auto* svgSwitch = SVGSwitchElement::FromNodeOrNull(parent)) {
+      nsIFrame* frame = svgSwitch->GetPrimaryFrame();
+      // If we've been reflowed then the active child has been determined,
+      // otherwise we'll have to calculate whether this is the active child.
+      if (frame && !frame->HasAnyStateBits(NS_FRAME_FIRST_REFLOW)) {
+        if (child != svgSwitch->GetActiveChild()) {
+          return true;
+        }
+      } else {
+        if (child != SVGTests::FindActiveSwitchChild(svgSwitch)) {
+          return true;
+        }
+      }
+    } else if (auto* svgGraphics = SVGGraphicsElement::FromNode(parent)) {
+      if (!svgGraphics->PassesConditionalProcessingTests()) {
+        return true;
+      }
+    }
+    child = parent;
+  }
+  return false;
 }
 
 //----------------------------------------------------------------------
@@ -347,15 +376,11 @@ bool SVGAnimationElement::IsEventAttributeNameInternal(nsAtom* aName) {
 }
 
 void SVGAnimationElement::UpdateHrefTarget(const nsAString& aHrefStr) {
-  nsCOMPtr<nsIURI> baseURI = GetBaseURI();
   if (nsContentUtils::IsLocalRefURL(aHrefStr)) {
-    baseURI = SVGObserverUtils::GetBaseURLForLocalRef(this, baseURI);
+    mHrefTarget.ResetWithLocalRef(*this, aHrefStr);
+  } else {
+    mHrefTarget.Unlink();
   }
-  nsCOMPtr<nsIURI> targetURI;
-  nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(targetURI), aHrefStr,
-                                            OwnerDoc(), baseURI);
-  mHrefTarget.ResetToURIFragmentID(
-      this, targetURI, OwnerDoc()->ReferrerInfoForInternalCSSAndSVGResources());
   AnimationTargetChanged();
 }
 

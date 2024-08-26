@@ -46,6 +46,10 @@
 #  include <valgrind/valgrind.h>
 #endif
 
+#if defined(XP_IOS)
+#  include <BrowserEngineCore/BEMemory.h>
+#endif
+
 using namespace js;
 using namespace js::jit;
 
@@ -191,10 +195,8 @@ static DWORD ExceptionHandler(PEXCEPTION_RECORD exceptionRecord,
   return ExceptionContinueSearch;
 }
 
-PRUNTIME_FUNCTION RuntimeFunctionCallback(DWORD64 ControlPc, PVOID Context);
-
 // Required for enabling Stackwalking on windows using external tools.
-NTSYSAPI DWORD NTAPI RtlAddGrowableFunctionTable(
+extern "C" NTSYSAPI DWORD NTAPI RtlAddGrowableFunctionTable(
     PVOID* DynamicTable, PRUNTIME_FUNCTION FunctionTable, DWORD EntryCount,
     DWORD MaximumEntryCount, ULONG_PTR RangeBase, ULONG_PTR RangeEnd);
 
@@ -277,47 +279,28 @@ static bool RegisterExecutableMemory(void* p, size_t bytes, size_t pageSize) {
   r->thunk[11] = 0xe0;
 #    endif
 
-  BOOLEAN result = false;
-
-  // RtlAddGrowableFunctionTable is only available in Windows 8.1 and higher.
-  // This can be simplified if our compile target changes.
-  HMODULE ntdll_module =
-      LoadLibraryExW(L"ntdll.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
-
-  static decltype(&::RtlAddGrowableFunctionTable) addGrowableFunctionTable =
-      reinterpret_cast<decltype(&::RtlAddGrowableFunctionTable)>(
-          ::GetProcAddress(ntdll_module, "RtlAddGrowableFunctionTable"));
-
-  // AddGrowableFunctionTable will write into the region. We must therefore
+  // RtlAddGrowableFunctionTable will write into the region. We must therefore
   // only write-protect is after this has been called.
-  if (addGrowableFunctionTable) {
-    // XXX NB: The profiler believes this function is only called from the main
-    // thread. If that ever becomes untrue, the profiler must be updated
-    // immediately.
+
+  // XXX NB: The profiler believes this function is only called from the main
+  // thread. If that ever becomes untrue, the profiler must be updated
+  // immediately.
+  {
     AutoSuppressStackWalking suppress;
-    result = addGrowableFunctionTable(&r->dynamicTable, &r->runtimeFunction, 1,
-                                      1, (ULONG_PTR)p,
-                                      (ULONG_PTR)p + bytes - pageSize) == S_OK;
-  } else {
-    if (!sJitExceptionHandler) {
-      // No point installing this.
+    DWORD result = RtlAddGrowableFunctionTable(
+        &r->dynamicTable, &r->runtimeFunction, 1, 1, (ULONG_PTR)p,
+        (ULONG_PTR)p + bytes - pageSize);
+    if (result != S_OK) {
       return false;
     }
-    // XXX NB: The profiler believes this function is only called from the main
-    // thread. If that ever becomes untrue, the profiler must be updated
-    // immediately.
-    AutoSuppressStackWalking suppress;
-    result =
-        RtlInstallFunctionTableCallback((DWORD64)p | 0x3, (DWORD64)p, bytes,
-                                        RuntimeFunctionCallback, NULL, NULL);
   }
 
   DWORD oldProtect;
-  if (result && !VirtualProtect(p, pageSize, PAGE_EXECUTE_READ, &oldProtect)) {
+  if (!VirtualProtect(p, pageSize, PAGE_EXECUTE_READ, &oldProtect)) {
     MOZ_CRASH();
   }
 
-  return result;
+  return true;
 }
 
 static void UnregisterExecutableMemory(void* p, size_t bytes, size_t pageSize) {
@@ -505,9 +488,23 @@ static void* ReserveProcessExecutableMemory(size_t bytes) {
   //
   // This means we have to use the following strategy on Apple Silicon:
   //
-  // * Reserve:  mmap with PROT_READ | PROT_WRITE | PROT_EXEC, then decommit
+  // * Reserve:  1) mmap with PROT_READ | PROT_WRITE | PROT_EXEC and MAP_JIT
+  //             2) decommit
   // * Commit:   madvise with MADV_FREE_REUSE
   // * Decommit: madvise with MADV_FREE_REUSABLE
+  //
+  // On Intel Macs we also need to use MAP_JIT, to be compatible with the
+  // Hardened Runtime (with com.apple.security.cs.allow-jit = true). The
+  // pthread_jit_write_protect_np API is not available on Intel and MAP_JIT
+  // can't be used with MAP_FIXED, so we have to use a hybrid of the above two
+  // strategies:
+  //
+  // * Reserve:  1) mmap with PROT_NONE and MAP_JIT
+  //             2) decommit
+  // * Commit:   1) madvise with MADV_FREE_REUSE
+  //             2) mprotect with PROT_READ | ...
+  // * Decommit: 1) mprotect with PROT_NONE
+  //             2) madvise with MADV_FREE_REUSABLE
   //
   // This is inspired by V8's code in OS::SetPermissions.
 
@@ -516,16 +513,18 @@ static void* ReserveProcessExecutableMemory(size_t bytes) {
   void* randomAddr = ComputeRandomAllocationAddress();
   unsigned protection = PROT_NONE;
   unsigned flags = MAP_NORESERVE | MAP_PRIVATE | MAP_ANON;
-#  ifdef JS_USE_APPLE_FAST_WX
-  protection = PROT_READ | PROT_WRITE | PROT_EXEC;
+#  if defined(XP_DARWIN)
   flags |= MAP_JIT;
+#    if defined(JS_USE_APPLE_FAST_WX)
+  protection = PROT_READ | PROT_WRITE | PROT_EXEC;
+#    endif
 #  endif
   void* p = MozTaggedAnonymousMmap(randomAddr, bytes, protection, flags, -1, 0,
                                    "js-executable-memory");
   if (p == MAP_FAILED) {
     return nullptr;
   }
-#  ifdef JS_USE_APPLE_FAST_WX
+#  if defined(XP_DARWIN)
   DecommitPages(p, bytes);
 #  endif
   return p;
@@ -569,12 +568,21 @@ static unsigned ProtectionSettingToFlags(ProtectionSetting protection) {
 [[nodiscard]] static bool CommitPages(void* addr, size_t bytes,
                                       ProtectionSetting protection) {
   // See the comment in ReserveProcessExecutableMemory.
-#  ifdef JS_USE_APPLE_FAST_WX
+#  if defined(XP_DARWIN)
   int ret;
   do {
     ret = madvise(addr, bytes, MADV_FREE_REUSE);
   } while (ret != 0 && errno == EAGAIN);
-  return ret == 0;
+  if (ret != 0) {
+    return false;
+  }
+#    if !defined(JS_USE_APPLE_FAST_WX)
+  unsigned flags = ProtectionSettingToFlags(protection);
+  if (mprotect(addr, bytes, flags)) {
+    return false;
+  }
+#    endif
+  return true;
 #  else
   unsigned flags = ProtectionSettingToFlags(protection);
   void* p = MozTaggedAnonymousMmap(addr, bytes, flags,
@@ -590,8 +598,12 @@ static unsigned ProtectionSettingToFlags(ProtectionSetting protection) {
 
 static void DecommitPages(void* addr, size_t bytes) {
   // See the comment in ReserveProcessExecutableMemory.
-#  ifdef JS_USE_APPLE_FAST_WX
+#  if defined(XP_DARWIN)
   int ret;
+#    if !defined(JS_USE_APPLE_FAST_WX)
+  ret = mprotect(addr, bytes, PROT_NONE);
+  MOZ_RELEASE_ASSERT(ret == 0);
+#    endif
   do {
     ret = madvise(addr, bytes, MADV_FREE_REUSABLE);
   } while (ret != 0 && errno == EAGAIN);
@@ -702,7 +714,6 @@ class ProcessExecutableMemory {
         lock_(mutexid::ProcessExecutableRegion),
         pagesAllocated_(0),
         cursor_(0),
-        rng_(),
         pages_() {}
 
   [[nodiscard]] bool init() {
@@ -980,30 +991,22 @@ bool js::jit::ReprotectRegion(void* start, size_t size,
   return true;
 }
 
-#if defined(XP_WIN) && defined(NEED_JIT_UNWIND_HANDLING)
-static PRUNTIME_FUNCTION RuntimeFunctionCallback(DWORD64 ControlPc,
-                                                 PVOID Context) {
-  MOZ_ASSERT(sJitExceptionHandler);
-
-  // RegisterExecutableMemory already set up the runtime function in the
-  // exception-data page preceding the allocation.
-  uint8_t* p = execMemory.base();
-  if (!p) {
-    return nullptr;
-  }
-  return (PRUNTIME_FUNCTION)(p - gc::SystemPageSize() +
-                             offsetof(ExceptionHandlerRecord, runtimeFunction));
-}
-#endif
-
 #ifdef JS_USE_APPLE_FAST_WX
 void js::jit::AutoMarkJitCodeWritableForThread::markExecutable(
     bool executable) {
+#  if defined(XP_IOS)
+  if (executable) {
+    be_memory_inline_jit_restrict_rwx_to_rx_with_witness();
+  } else {
+    be_memory_inline_jit_restrict_rwx_to_rw_with_witness();
+  }
+#  else
   if (__builtin_available(macOS 11.0, *)) {
     pthread_jit_write_protect_np(executable);
   } else {
     MOZ_CRASH("pthread_jit_write_protect_np must be available");
   }
+#  endif
 }
 #endif
 

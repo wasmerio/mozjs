@@ -1,0 +1,1 @@
+Call, 1, 2, 6, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(0) LASTUSED(4) , OP(LoadArgumentFixedSlot) ID(1) BYTE(0) OP(GuardToObject) ID(1) OP(GuardIsNotProxy) ID(1) OP(GuardIsFixedLengthTypedArray) ID(1) OP(LoadArrayBufferViewLengthInt32Result) ID(1) OP(ReturnFromIC)  

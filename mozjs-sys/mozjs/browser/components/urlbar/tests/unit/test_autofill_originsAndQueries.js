@@ -171,7 +171,7 @@ add_autofill_task(async function wwwShouldNotMatchNoWWW() {
         makeVisitResult(context, {
           source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
           uri: "http://www." + search + "/",
-          fallbackTitle: "http://www." + search + "/",
+          fallbackTitle: "www." + search + "/",
           displayUrl: "http://www." + search,
           heuristic: true,
           providerName: HEURISTIC_FALLBACK_PROVIDERNAME,
@@ -189,7 +189,7 @@ add_autofill_task(async function wwwShouldNotMatchNoWWW() {
         makeVisitResult(context, {
           source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
           uri: "http://www." + search,
-          fallbackTitle: "http://www." + search,
+          fallbackTitle: "www." + search,
           iconUri: `page-icon:http://www.${host}/`,
           heuristic: true,
           providerName: HEURISTIC_FALLBACK_PROVIDERNAME,
@@ -408,7 +408,7 @@ add_autofill_task(async function httpsWWWShouldNotMatchNoWWW() {
         makeVisitResult(context, {
           source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
           uri: "http://www." + search + "/",
-          fallbackTitle: "http://www." + search + "/",
+          fallbackTitle: "www." + search + "/",
           displayUrl: "http://www." + search,
           heuristic: true,
           providerName: HEURISTIC_FALLBACK_PROVIDERNAME,
@@ -426,7 +426,7 @@ add_autofill_task(async function httpsWWWShouldNotMatchNoWWW() {
         makeVisitResult(context, {
           source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
           uri: "http://www." + search,
-          fallbackTitle: "http://www." + search,
+          fallbackTitle: "www." + search,
           iconUri: `page-icon:http://www.${host}/`,
           heuristic: true,
           providerName: HEURISTIC_FALLBACK_PROVIDERNAME,
@@ -820,7 +820,7 @@ add_autofill_task(async function frecency() {
         makeVisitResult(context, {
           source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
           uri: "http://" + search,
-          fallbackTitle: "http://" + search,
+          fallbackTitle: search,
           iconUri: `page-icon:http://${host}/`,
           heuristic: true,
           providerName: HEURISTIC_FALLBACK_PROVIDERNAME,
@@ -893,8 +893,11 @@ add_autofill_task(async function bookmarkBelowThreshold() {
   await cleanup();
 });
 
-// Bookmarked places should be autofilled when they *do* meet the threshold.
+// Bookmarked places should be autofilled also when they meet the threshold.
 add_autofill_task(async function bookmarkAboveThreshold() {
+  // Add a visit to the URL, otherwise origin frecency will be too small, note
+  // it would be filled anyway as bookmarks are always filled.
+  await PlacesTestUtils.addVisits(["http://" + url]);
   // Bookmark a URL.
   await PlacesTestUtils.addBookmarkWithDetails({
     uri: "http://" + url,
@@ -946,7 +949,7 @@ add_autofill_task(async function zeroThreshold() {
     await db.execute("UPDATE moz_places SET frecency = -1 WHERE url = :url", {
       url: pageUrl,
     });
-    await db.executeCached("DELETE FROM moz_updateoriginsupdate_temp");
+    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
   });
 
   // Make sure the place's frecency is -1.
@@ -957,13 +960,10 @@ add_autofill_task(async function zeroThreshold() {
   );
   Assert.equal(placeFrecency, -1);
 
-  // Make sure the origin's frecency is 0.
   let originFrecency = await getOriginFrecency("http://", host);
-  Assert.equal(originFrecency, 0);
-
-  // Make sure the autofill threshold is 0.
+  Assert.equal(originFrecency, 1, "Check expected origin's frecency");
   let threshold = await getOriginAutofillThreshold();
-  Assert.equal(threshold, 0);
+  Assert.equal(threshold, 1, "Check expected origins threshold");
 
   let context = createContext(search, { isPrivate: false });
   await check_results({
@@ -1029,7 +1029,7 @@ add_autofill_task(async function suggestHistoryFalse_visit() {
         makeVisitResult(context, {
           source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
           uri: "http://" + search,
-          fallbackTitle: "http://" + search,
+          fallbackTitle: search,
           iconUri: `page-icon:http://${host}/`,
           heuristic: true,
           providerName: HEURISTIC_FALLBACK_PROVIDERNAME,
@@ -1087,7 +1087,7 @@ add_autofill_task(async function suggestHistoryFalse_visit_prefix() {
         makeVisitResult(context, {
           source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
           uri: "http://" + search,
-          fallbackTitle: "http://" + search,
+          fallbackTitle: search,
           iconUri: `page-icon:http://${host}/`,
           heuristic: true,
           providerName: HEURISTIC_FALLBACK_PROVIDERNAME,
@@ -1120,14 +1120,14 @@ add_autofill_task(async function suggestHistoryFalse_bookmark_0() {
   // Make the bookmark fall below the autofill frecency threshold so we ensure
   // the bookmark is always autofilled in this case, even if it doesn't meet
   // the threshold.
-  let meetsThreshold = true;
-  while (meetsThreshold) {
+  await TestUtils.waitForCondition(async () => {
     // Add a visit to another origin to boost the threshold.
     await PlacesTestUtils.addVisits("http://foo-" + url);
+    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
     let originFrecency = await getOriginFrecency("http://", host);
     let threshold = await getOriginAutofillThreshold();
-    meetsThreshold = threshold <= originFrecency;
-  }
+    return threshold > originFrecency;
+  }, "Make the bookmark fall below the frecency threshold");
 
   // At this point, the bookmark doesn't meet the threshold, but it should
   // still be autofilled.
@@ -1191,7 +1191,7 @@ add_autofill_task(async function suggestHistoryFalse_bookmark_1() {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: "http://" + search,
-        fallbackTitle: "http://" + search,
+        fallbackTitle: search,
         iconUri: `page-icon:http://${host}/`,
         heuristic: true,
         providerName: HEURISTIC_FALLBACK_PROVIDERNAME,
@@ -1227,14 +1227,14 @@ add_autofill_task(async function suggestHistoryFalse_bookmark_prefix_0() {
   // Make the bookmark fall below the autofill frecency threshold so we ensure
   // the bookmark is always autofilled in this case, even if it doesn't meet
   // the threshold.
-  let meetsThreshold = true;
-  while (meetsThreshold) {
+  await TestUtils.waitForCondition(async () => {
     // Add a visit to another origin to boost the threshold.
     await PlacesTestUtils.addVisits("http://foo-" + url);
+    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
     let originFrecency = await getOriginFrecency("http://", host);
     let threshold = await getOriginAutofillThreshold();
-    meetsThreshold = threshold <= originFrecency;
-  }
+    return threshold > originFrecency;
+  }, "Make the bookmark fall below the frecency threshold");
 
   // At this point, the bookmark doesn't meet the threshold, but it should
   // still be autofilled.
@@ -1451,7 +1451,10 @@ add_autofill_task(async function suggestBookmarkFalse_visit_1() {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: prefixedUrl,
-        fallbackTitle: prefixedUrl,
+        fallbackTitle: UrlbarUtils.stripPrefixAndTrim(prefixedUrl, {
+          stripHttp: true,
+          stripHttps: true,
+        })[0],
         heuristic: true,
         iconUri: origins ? "" : `page-icon:http://${host}/`,
         providerName: HEURISTIC_FALLBACK_PROVIDERNAME,
@@ -1660,7 +1663,7 @@ add_autofill_task(async function suggestBookmarkFalse_unvisitedBookmark() {
         makeVisitResult(context, {
           source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
           uri: "http://" + search,
-          fallbackTitle: "http://" + search,
+          fallbackTitle: search,
           iconUri: `page-icon:http://${host}/`,
           heuristic: true,
           providerName: HEURISTIC_FALLBACK_PROVIDERNAME,

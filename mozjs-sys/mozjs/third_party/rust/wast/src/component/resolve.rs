@@ -170,7 +170,7 @@ impl<'a> Resolver<'a> {
                 }
                 self.export(&mut e.kind)
             }
-            ComponentField::Custom(_) => Ok(()),
+            ComponentField::Custom(_) | ComponentField::Producers(_) => Ok(()),
         }
     }
 
@@ -375,7 +375,9 @@ impl<'a> Resolver<'a> {
             }
             CanonicalFuncKind::ResourceNew(info) => return self.resolve_ns(&mut info.ty, Ns::Type),
             CanonicalFuncKind::ResourceRep(info) => return self.resolve_ns(&mut info.ty, Ns::Type),
-            CanonicalFuncKind::ResourceDrop(info) => return self.component_val_type(&mut info.ty),
+            CanonicalFuncKind::ResourceDrop(info) => {
+                return self.resolve_ns(&mut info.ty, Ns::Type)
+            }
         };
 
         for opt in opts {
@@ -452,11 +454,6 @@ impl<'a> Resolver<'a> {
                     self.component_val_type(field)?;
                 }
             }
-            ComponentDefinedType::Union(t) => {
-                for ty in t.types.iter_mut() {
-                    self.component_val_type(ty)?;
-                }
-            }
             ComponentDefinedType::Option(o) => {
                 self.component_val_type(&mut o.element)?;
             }
@@ -526,6 +523,7 @@ impl<'a> Resolver<'a> {
                     ValType::Ref(r) => match &mut r.heap {
                         core::HeapType::Func
                         | core::HeapType::Extern
+                        | core::HeapType::Exn
                         | core::HeapType::Any
                         | core::HeapType::Eq
                         | core::HeapType::Array
@@ -533,8 +531,9 @@ impl<'a> Resolver<'a> {
                         | core::HeapType::Struct
                         | core::HeapType::None
                         | core::HeapType::NoFunc
-                        | core::HeapType::NoExtern => {}
-                        core::HeapType::Index(id) => {
+                        | core::HeapType::NoExtern
+                        | core::HeapType::NoExn => {}
+                        core::HeapType::Concrete(id) => {
                             self.resolve_ns(id, Ns::Type)?;
                         }
                     },
@@ -845,7 +844,7 @@ impl<'a> ComponentState<'a> {
                 ComponentExportKind::Component(_) => self.components.register(e.id, "component")?,
                 ComponentExportKind::Type(_) => self.types.register(e.id, "type")?,
             },
-            ComponentField::Custom(_) => return Ok(()),
+            ComponentField::Custom(_) | ComponentField::Producers(_) => return Ok(()),
         };
 
         Ok(())

@@ -1,0 +1,1 @@
+BinaryArith, 2, 3, 5, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(1) LASTUSED(3) LASTUSED(3) , OP(GuardIsNumber) ID(0) OP(TruncateDoubleToUInt32) ID(0) ID(2) OP(GuardToInt32) ID(1) OP(Int32RightShiftResult) ID(2) ID(1) OP(ReturnFromIC)  

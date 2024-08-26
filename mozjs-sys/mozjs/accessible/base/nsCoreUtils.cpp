@@ -15,7 +15,6 @@
 #include "nsIDocShell.h"
 #include "nsIObserverService.h"
 #include "nsPresContext.h"
-#include "nsIScrollableFrame.h"
 #include "nsISelectionController.h"
 #include "nsISimpleEnumerator.h"
 #include "mozilla/dom/TouchEvent.h"
@@ -24,6 +23,7 @@
 #include "mozilla/EventStateManager.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/TouchEvents.h"
 #include "nsView.h"
 #include "nsGkAtoms.h"
@@ -35,6 +35,7 @@
 #include "nsTreeColumns.h"
 #include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/ElementInternals.h"
 #include "mozilla/dom/HTMLLabelElement.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/dom/Selection.h"
@@ -126,8 +127,8 @@ void nsCoreUtils::DispatchMouseEvent(EventMessage aMessage, int32_t aX,
                                      int32_t aY, nsIContent* aContent,
                                      nsIFrame* aFrame, PresShell* aPresShell,
                                      nsIWidget* aRootWidget) {
-  WidgetMouseEvent event(true, aMessage, aRootWidget, WidgetMouseEvent::eReal,
-                         WidgetMouseEvent::eNormal);
+  MOZ_ASSERT(!IsPointerEventMessage(aMessage));
+  WidgetMouseEvent event(true, aMessage, aRootWidget, WidgetMouseEvent::eReal);
 
   event.mRefPoint = LayoutDeviceIntPoint(aX, aY);
 
@@ -252,21 +253,24 @@ nsresult nsCoreUtils::ScrollSubstringTo(nsIFrame* aFrame, nsRange* aRange,
   return NS_OK;
 }
 
-void nsCoreUtils::ScrollFrameToPoint(nsIFrame* aScrollableFrame,
+void nsCoreUtils::ScrollFrameToPoint(nsIFrame* aScrollContainerFrame,
                                      nsIFrame* aFrame,
                                      const LayoutDeviceIntPoint& aPoint) {
-  nsIScrollableFrame* scrollableFrame = do_QueryFrame(aScrollableFrame);
-  if (!scrollableFrame) return;
+  ScrollContainerFrame* scrollContainerFrame =
+      do_QueryFrame(aScrollContainerFrame);
+  if (!scrollContainerFrame) {
+    return;
+  }
 
   nsPoint point = LayoutDeviceIntPoint::ToAppUnits(
       aPoint, aFrame->PresContext()->AppUnitsPerDevPixel());
   nsRect frameRect = aFrame->GetScreenRectInAppUnits();
   nsPoint deltaPoint = point - frameRect.TopLeft();
 
-  nsPoint scrollPoint = scrollableFrame->GetScrollPosition();
+  nsPoint scrollPoint = scrollContainerFrame->GetScrollPosition();
   scrollPoint -= deltaPoint;
 
-  scrollableFrame->ScrollTo(scrollPoint, ScrollMode::Instant);
+  scrollContainerFrame->ScrollTo(scrollPoint, ScrollMode::Instant);
 }
 
 void nsCoreUtils::ConvertScrollTypeToPercents(uint32_t aScrollType,
@@ -312,9 +316,9 @@ void nsCoreUtils::ConvertScrollTypeToPercents(uint32_t aScrollType,
       whenX = WhenToScroll::Always;
       break;
     default:
-      whereY = WhereToScroll::Nearest;
+      whereY = WhereToScroll::Center;
       whenY = WhenToScroll::IfNotFullyVisible;
-      whereX = WhereToScroll::Nearest;
+      whereX = WhereToScroll::Center;
       whenX = WhenToScroll::IfNotFullyVisible;
   }
   *aVertical = ScrollAxis(whereY, whenY);
@@ -619,4 +623,35 @@ bool nsCoreUtils::IsDocumentVisibleConsideringInProcessAncestors(
     }
   } while ((parent = parent->GetInProcessParentDocument()));
   return true;
+}
+
+bool nsCoreUtils::IsDescendantOfAnyShadowIncludingAncestor(
+    nsINode* aDescendant, nsINode* aStartAncestor) {
+  const nsINode* descRoot = aDescendant->SubtreeRoot();
+  nsINode* ancRoot = aStartAncestor->SubtreeRoot();
+  for (;;) {
+    if (ancRoot == descRoot) {
+      return true;
+    }
+    auto* shadow = mozilla::dom::ShadowRoot::FromNode(ancRoot);
+    if (!shadow || !shadow->GetHost()) {
+      break;
+    }
+    ancRoot = shadow->GetHost()->SubtreeRoot();
+  }
+  return false;
+}
+
+Element* nsCoreUtils::GetAriaActiveDescendantElement(Element* aElement) {
+  if (Element* activeDescendant = aElement->GetAriaActiveDescendantElement()) {
+    return activeDescendant;
+  }
+
+  if (auto* element = nsGenericHTMLElement::FromNode(aElement)) {
+    if (auto* internals = element->GetInternals()) {
+      return internals->GetAriaActiveDescendantElement();
+    }
+  }
+
+  return nullptr;
 }

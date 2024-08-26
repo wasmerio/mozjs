@@ -52,6 +52,7 @@
 #include "mozilla/StackWalk.h"
 #ifdef XP_WIN
 #  include "mozilla/StackWalkThread.h"
+#  include "mozilla/WindowsStackWalkInitialization.h"
 #endif
 #include "mozilla/StaticPtr.h"
 #include "mozilla/ThreadLocal.h"
@@ -1195,11 +1196,49 @@ static const char* const kMainThreadName = "GeckoMain";
 ////////////////////////////////////////////////////////////////////////
 // BEGIN sampling/unwinding code
 
+// Additional registers that have to be saved when thread is paused.
+#if defined(GP_PLAT_x86_linux) || defined(GP_PLAT_x86_android) || \
+    defined(GP_ARCH_x86)
+#  define UNWINDING_REGS_HAVE_ECX_EDX
+#elif defined(GP_PLAT_amd64_linux) || defined(GP_PLAT_amd64_android) || \
+    defined(GP_PLAT_amd64_freebsd) || defined(GP_ARCH_amd64) ||         \
+    defined(__x86_64__)
+#  define UNWINDING_REGS_HAVE_R10_R12
+#elif defined(GP_PLAT_arm_linux) || defined(GP_PLAT_arm_android)
+#  define UNWINDING_REGS_HAVE_LR_R7
+#elif defined(GP_PLAT_arm64_linux) || defined(GP_PLAT_arm64_android) || \
+    defined(GP_PLAT_arm64_freebsd) || defined(GP_ARCH_arm64) ||         \
+    defined(__aarch64__)
+#  define UNWINDING_REGS_HAVE_LR_R11
+#endif
+
 // The registers used for stack unwinding and a few other sampling purposes.
 // The ctor does nothing; users are responsible for filling in the fields.
 class Registers {
  public:
-  Registers() : mPC{nullptr}, mSP{nullptr}, mFP{nullptr}, mLR{nullptr} {}
+  Registers()
+      : mPC{nullptr},
+        mSP{nullptr},
+        mFP{nullptr}
+#if defined(UNWINDING_REGS_HAVE_ECX_EDX)
+        ,
+        mEcx{nullptr},
+        mEdx{nullptr}
+#elif defined(UNWINDING_REGS_HAVE_R10_R12)
+        ,
+        mR10{nullptr},
+        mR12{nullptr}
+#elif defined(UNWINDING_REGS_HAVE_LR_R7)
+        ,
+        mLR{nullptr},
+        mR7{nullptr}
+#elif defined(UNWINDING_REGS_HAVE_LR_R11)
+        ,
+        mLR{nullptr},
+        mR11{nullptr}
+#endif
+  {
+  }
 
   void Clear() { memset(this, 0, sizeof(*this)); }
 
@@ -1209,7 +1248,20 @@ class Registers {
   Address mPC;  // Instruction pointer.
   Address mSP;  // Stack pointer.
   Address mFP;  // Frame pointer.
-  Address mLR;  // ARM link register.
+#if defined(UNWINDING_REGS_HAVE_ECX_EDX)
+  Address mEcx;  // Temp for return address.
+  Address mEdx;  // Temp for frame pointer.
+#elif defined(UNWINDING_REGS_HAVE_R10_R12)
+  Address mR10;  // Temp for return address.
+  Address mR12;  // Temp for frame pointer.
+#elif defined(UNWINDING_REGS_HAVE_LR_R7)
+  Address mLR;  // ARM link register, or temp for return address.
+  Address mR7;  // Temp for frame pointer.
+#elif defined(UNWINDING_REGS_HAVE_LR_R11)
+  Address mLR;   // ARM link register, or temp for return address.
+  Address mR11;  // Temp for frame pointer.
+#endif
+
 #if defined(GP_OS_linux) || defined(GP_OS_android) || defined(GP_OS_freebsd)
   // This contains all the registers, which means it duplicates the four fields
   // above. This is ok.
@@ -1231,9 +1283,9 @@ struct NativeStack {
 
 // Merges the profiling stack and native stack, outputting the details to
 // aCollector.
-static void MergeStacks(uint32_t aFeatures, bool aIsSynchronous,
+static void MergeStacks(bool aIsSynchronous,
                         const RegisteredThread& aRegisteredThread,
-                        const Registers& aRegs, const NativeStack& aNativeStack,
+                        const NativeStack& aNativeStack,
                         ProfilerStackCollector& aCollector) {
   // WARNING: this function runs within the profiler's "critical section".
   // WARNING: this function might be called while the profiler is inactive, and
@@ -1643,13 +1695,11 @@ static inline void DoSharedSample(
       aCaptureOptions == StackCaptureOptions::Full) {
     DoNativeBacktrace(aLock, aRegisteredThread, aRegs, nativeStack);
 
-    MergeStacks(ActivePS::Features(aLock), aIsSynchronous, aRegisteredThread,
-                aRegs, nativeStack, collector);
+    MergeStacks(aIsSynchronous, aRegisteredThread, nativeStack, collector);
   } else
 #endif
   {
-    MergeStacks(ActivePS::Features(aLock), aIsSynchronous, aRegisteredThread,
-                aRegs, nativeStack, collector);
+    MergeStacks(aIsSynchronous, aRegisteredThread, nativeStack, collector);
 
     // We can't walk the whole native stack, but we can record the top frame.
     if (aCaptureOptions == StackCaptureOptions::Full) {
@@ -1694,6 +1744,11 @@ static void DoPeriodicSample(PSLockRef aLock,
   DoSharedSample(aLock, /* aIsSynchronous = */ false, aRegisteredThread, aRegs,
                  aSamplePos, aBufferRangeStart, aBuffer);
 }
+
+#undef UNWINDING_REGS_HAVE_ECX_EDX
+#undef UNWINDING_REGS_HAVE_R10_R12
+#undef UNWINDING_REGS_HAVE_LR_R7
+#undef UNWINDING_REGS_HAVE_LR_R11
 
 // END sampling/unwinding code
 ////////////////////////////////////////////////////////////////////////
@@ -2242,7 +2297,7 @@ void SamplerThread::Run() {
   // Not *no*-stack-sampling means we do want stack sampling.
   const bool stackSampling = !ProfilerFeature::HasNoStackSampling(features);
 
-  // Use local BlocksRingBuffer&ProfileBuffer to capture the stack.
+  // Use local ProfileBuffer to capture the stack.
   // (This is to avoid touching the CorePS::CoreBuffer lock while
   // a thread is suspended, because that thread could be working with
   // the CorePS::CoreBuffer as well.)
@@ -2291,14 +2346,9 @@ void SamplerThread::Run() {
           // create Buffer entries for each counter
           buffer.AddEntry(ProfileBufferEntry::CounterId(counter));
           buffer.AddEntry(ProfileBufferEntry::Time(delta.ToMilliseconds()));
-          // XXX support keyed maps of counts
-          // In the future, we'll support keyed counters - for example, counters
-          // with a key which is a thread ID. For "simple" counters we'll just
-          // use a key of 0.
           int64_t count;
           uint64_t number;
           counter->Sample(count, number);
-          buffer.AddEntry(ProfileBufferEntry::CounterKey(0));
           buffer.AddEntry(ProfileBufferEntry::Count(count));
           if (number) {
             buffer.AddEntry(ProfileBufferEntry::Number(number));
@@ -3071,8 +3121,8 @@ static void locked_profiler_start(PSLockRef aLock, PowerOfTwo32 aCapacity,
 
   mozilla::base_profiler_markers_detail::EnsureBufferForMainThreadAddMarker();
 
-#if defined(GP_PLAT_amd64_windows)
-  InitializeWin64ProfilerHooks();
+#if defined(GP_PLAT_amd64_windows) || defined(GP_PLAT_arm64_windows)
+  mozilla::WindowsStackWalkInitialization();
 #endif
 
   // Fall back to the default values if the passed-in values are unreasonable.
@@ -3734,13 +3784,11 @@ void profiler_suspend_and_sample_thread(BaseProfilerThreadId aThreadId,
 #    error "Invalid configuration"
 #  endif
 
-          MergeStacks(aFeatures, isSynchronous, registeredThread, aRegs,
-                      nativeStack, aCollector);
+          MergeStacks(isSynchronous, registeredThread, nativeStack, aCollector);
         } else
 #endif
         {
-          MergeStacks(aFeatures, isSynchronous, registeredThread, aRegs,
-                      nativeStack, aCollector);
+          MergeStacks(isSynchronous, registeredThread, nativeStack, aCollector);
 
           aCollector.CollectNativeLeafAddr((void*)aRegs.mPC);
         }

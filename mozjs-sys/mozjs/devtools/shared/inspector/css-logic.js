@@ -17,7 +17,7 @@ const MAX_DATA_URL_LENGTH = 40;
 
 loader.lazyRequireGetter(
   this,
-  "getCSSLexer",
+  "InspectorCSSParserWrapper",
   "resource://devtools/shared/css/lexer.js",
   true
 );
@@ -74,6 +74,8 @@ exports.CSSAtRuleClassNameType = {
   CSSMediaRule: "media",
   CSSNamespaceRule: "namespace",
   CSSPageRule: "page",
+  CSSScopeRule: "scope",
+  CSSStartingStyleRule: "starting-style",
   CSSSupportsRule: "supports",
 };
 
@@ -101,6 +103,8 @@ exports.getCSSAtRuleTypeName = function (cssRule) {
  * @returns {String} A localized version of the given key.
  */
 exports.l10n = name => styleInspectorL10N.getStr(name);
+exports.l10nFormatStr = (name, ...args) =>
+  styleInspectorL10N.getFormatStr(name, ...args);
 
 /**
  * Is the given property sheet an author stylesheet?
@@ -151,35 +155,43 @@ exports.shortSource = function (sheet) {
     );
   }
 
+  let name = sheet.href;
+
   // If the sheet is a data URL, return a trimmed version of it.
   const dataUrl = sheet.href.trim().match(/^data:.*?,((?:.|\r|\n)*)$/);
   if (dataUrl) {
-    return dataUrl[1].length > MAX_DATA_URL_LENGTH
-      ? `${dataUrl[1].substr(0, MAX_DATA_URL_LENGTH - 1)}…`
-      : dataUrl[1];
-  }
-
-  // We try, in turn, the filename, filePath, query string, whole thing
-  let url = {};
-  try {
-    url = new URL(sheet.href);
-  } catch (ex) {
-    // Some UA-provided stylesheets are not valid URLs.
-  }
-
-  if (url.pathname) {
-    const index = url.pathname.lastIndexOf("/");
-    if (index !== -1 && index < url.pathname.length) {
-      return url.pathname.slice(index + 1);
+    name =
+      dataUrl[1].length > MAX_DATA_URL_LENGTH
+        ? `${dataUrl[1].substr(0, MAX_DATA_URL_LENGTH - 1)}…`
+        : dataUrl[1];
+  } else {
+    // We try, in turn, the filename, filePath, query string, whole thing
+    let url = {};
+    try {
+      url = new URL(sheet.href);
+    } catch (ex) {
+      // Some UA-provided stylesheets are not valid URLs.
     }
-    return url.pathname;
+
+    if (url.pathname) {
+      const index = url.pathname.lastIndexOf("/");
+      if (index !== -1 && index < url.pathname.length) {
+        name = url.pathname.slice(index + 1);
+      } else {
+        name = url.pathname;
+      }
+    } else if (url.query) {
+      name = url.query;
+    }
   }
 
-  if (url.query) {
-    return url.query;
+  try {
+    name = decodeURIComponent(name);
+  } catch (e) {
+    // This may still fail if the URL contains invalid % numbers (for ex)
   }
 
-  return sheet.href;
+  return name;
 };
 
 /**
@@ -232,6 +244,7 @@ function getLineCountInComments(text) {
  *         The CSS source to prettify.
  * @param  {Number} ruleCount
  *         The number of CSS rules expected in the CSS source.
+ *         Set to null to force the text to be pretty-printed.
  *
  * @return {Object}
  *         Object with the prettified source and source mappings.
@@ -279,7 +292,7 @@ function prettifyCSS(text, ruleCount) {
   // minified file.
   let indent = "";
   let indentLevel = 0;
-  const tokens = getCSSLexer(text);
+  const lexer = new InspectorCSSParserWrapper(text);
   // List of mappings of token positions from original source to prettified source.
   const mappings = [];
   // Line and column offsets used to shift the token positions after prettyfication.
@@ -296,15 +309,15 @@ function prettifyCSS(text, ruleCount) {
   // seen.  This function also updates |pushbackToken|.
   const readUntilSignificantToken = () => {
     while (true) {
-      const token = tokens.nextToken();
-      if (!token || token.tokenType !== "whitespace") {
+      const token = lexer.nextToken();
+      if (!token || token.tokenType !== "WhiteSpace") {
         pushbackToken = token;
         return token;
       }
       // Saw whitespace.  Before committing to it, check the next
       // token.
-      const nextToken = tokens.nextToken();
-      if (!nextToken || nextToken.tokenType !== "comment") {
+      const nextToken = lexer.nextToken();
+      if (!nextToken || nextToken.tokenType !== "Comment") {
         pushbackToken = nextToken;
         return token;
       }
@@ -344,15 +357,15 @@ function prettifyCSS(text, ruleCount) {
         token = pushbackToken;
         pushbackToken = undefined;
       } else {
-        token = tokens.nextToken();
+        token = lexer.nextToken();
       }
       if (!token) {
         endIndex = text.length;
         break;
       }
 
-      const line = tokens.lineNumber;
-      const column = tokens.columnNumber;
+      const line = lexer.lineNumber;
+      const column = lexer.columnNumber;
       mappings.push({
         original: {
           line,
@@ -366,17 +379,17 @@ function prettifyCSS(text, ruleCount) {
       // Shift the column offset for the next token by the current token's length.
       columnOffset += token.endOffset - token.startOffset;
 
-      if (token.tokenType === "at") {
+      if (token.tokenType === "AtKeyword") {
         isInAtRuleDefinition = true;
       }
 
       // A "}" symbol must be inserted later, to deal with indentation
       // and newline.
-      if (token.tokenType === "symbol" && token.text === "}") {
+      if (token.tokenType === "CloseCurlyBracket") {
         isInSelector = true;
         isCloseBrace = true;
         break;
-      } else if (token.tokenType === "symbol" && token.text === "{") {
+      } else if (token.tokenType === "CurlyBracketBlock") {
         if (isInAtRuleDefinition) {
           isInAtRuleDefinition = false;
         } else {
@@ -385,7 +398,7 @@ function prettifyCSS(text, ruleCount) {
         break;
       }
 
-      if (token.tokenType !== "whitespace") {
+      if (token.tokenType !== "WhiteSpace") {
         anyNonWS = true;
       }
 
@@ -394,20 +407,19 @@ function prettifyCSS(text, ruleCount) {
       }
       endIndex = token.endOffset;
 
-      if (token.tokenType === "symbol" && token.text === ";") {
+      if (token.tokenType === "Semicolon") {
         break;
       }
 
       if (
-        token.tokenType === "symbol" &&
-        token.text === "," &&
+        token.tokenType === "Comma" &&
         isInSelector &&
         !isInAtRuleDefinition
       ) {
         break;
       }
 
-      lastWasWS = token.tokenType === "whitespace";
+      lastWasWS = token.tokenType === "WhiteSpace";
     }
     return token;
   };
@@ -463,7 +475,7 @@ function prettifyCSS(text, ruleCount) {
       break;
     }
 
-    if (token.tokenType === "symbol" && token.text === "{") {
+    if (token.tokenType === "CurlyBracketBlock") {
       if (!lastWasWS) {
         result += " ";
         columnOffset++;
@@ -489,9 +501,10 @@ function prettifyCSS(text, ruleCount) {
     // Here we ignore the case where whitespace appears at the end of
     // the text.
     if (
+      ruleCount !== null &&
       pushbackToken &&
       token &&
-      token.tokenType === "whitespace" &&
+      token.tokenType === "WhiteSpace" &&
       /\n/g.test(text.substring(token.startOffset, token.endOffset))
     ) {
       return { result: originalText, mappings: [] };
@@ -565,7 +578,8 @@ function hasVisitedState(node) {
     return false;
   }
 
-  const ELEMENT_STATE_VISITED = 1 << 19;
+  // ElementState::VISITED
+  const ELEMENT_STATE_VISITED = 1 << 18;
 
   return (
     !!(InspectorUtils.getContentState(node) & ELEMENT_STATE_VISITED) ||
@@ -807,3 +821,25 @@ function getXPath(ele) {
   return parts.length ? "/" + parts.reverse().join("/") : "";
 }
 exports.getXPath = getXPath;
+
+/**
+ * Build up a regular expression that matches a CSS variable token. This is an
+ * ident token that starts with two dashes "--".
+ *
+ * https://www.w3.org/TR/css-syntax-3/#ident-token-diagram
+ */
+var NON_ASCII = "[^\\x00-\\x7F]";
+var ESCAPE = "\\\\[^\n\r]";
+var VALID_CHAR = ["[_a-z0-9-]", NON_ASCII, ESCAPE].join("|");
+var IS_VARIABLE_TOKEN = new RegExp(`^--(${VALID_CHAR})*$`, "i");
+
+/**
+ * Check that this is a CSS variable.
+ *
+ * @param {String} input
+ * @return {Boolean}
+ */
+function isCssVariable(input) {
+  return !!input.match(IS_VARIABLE_TOKEN);
+}
+exports.isCssVariable = isCssVariable;

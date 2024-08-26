@@ -37,6 +37,7 @@
 #include "mozilla/dom/quota/Client.h"
 #include "mozilla/dom/quota/ClientImpl.h"
 #include "mozilla/dom/quota/DirectoryLock.h"
+#include "mozilla/dom/quota/DirectoryLockInlines.h"
 #include "mozilla/dom/quota/FileStreams.h"
 #include "mozilla/dom/quota/QuotaCommon.h"
 #include "mozilla/dom/quota/QuotaManager.h"
@@ -128,7 +129,7 @@ class Connection final : public PBackgroundSDBConnectionParent {
   Connection(PersistenceType aPersistenceType,
              const PrincipalInfo& aPrincipalInfo);
 
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(mozilla::dom::Connection)
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(mozilla::dom::Connection, override)
 
   Maybe<DirectoryLock&> MaybeDirectoryLockRef() const {
     AssertIsOnBackgroundThread();
@@ -302,8 +303,7 @@ class ConnectionOperationBase : public Runnable,
   void ActorDestroy(ActorDestroyReason aWhy) override;
 };
 
-class OpenOp final : public ConnectionOperationBase,
-                     public OpenDirectoryListener {
+class OpenOp final : public ConnectionOperationBase {
   enum class State {
     // Just created on the PBackground thread, dispatched to the main thread.
     // Next step is FinishOpen.
@@ -367,15 +367,12 @@ class OpenOp final : public ConnectionOperationBase,
 
   void Cleanup() override;
 
-  NS_DECL_ISUPPORTS_INHERITED
-
   NS_IMETHOD
   Run() override;
 
-  // OpenDirectoryListener overrides.
-  void DirectoryLockAcquired(DirectoryLock* aLock) override;
+  void DirectoryLockAcquired(DirectoryLock* aLock);
 
-  void DirectoryLockFailed() override;
+  void DirectoryLockFailed();
 };
 
 class SeekOp final : public ConnectionOperationBase {
@@ -529,9 +526,9 @@ void AllowToCloseConnectionsMatching(const Condition& aCondition) {
  * Exported functions
  ******************************************************************************/
 
-PBackgroundSDBConnectionParent* AllocPBackgroundSDBConnectionParent(
-    const PersistenceType& aPersistenceType,
-    const PrincipalInfo& aPrincipalInfo) {
+already_AddRefed<PBackgroundSDBConnectionParent>
+AllocPBackgroundSDBConnectionParent(const PersistenceType& aPersistenceType,
+                                    const PrincipalInfo& aPrincipalInfo) {
   AssertIsOnBackgroundThread();
 
   if (NS_WARN_IF(QuotaClient::IsShuttingDownOnBackgroundThread())) {
@@ -555,7 +552,7 @@ PBackgroundSDBConnectionParent* AllocPBackgroundSDBConnectionParent(
 
   RefPtr<Connection> actor = new Connection(aPersistenceType, aPrincipalInfo);
 
-  return actor.forget().take();
+  return actor.forget();
 }
 
 bool RecvPBackgroundSDBConnectionConstructor(
@@ -566,15 +563,6 @@ bool RecvPBackgroundSDBConnectionConstructor(
   MOZ_ASSERT(aActor);
   MOZ_ASSERT(!QuotaClient::IsShuttingDownOnBackgroundThread());
 
-  return true;
-}
-
-bool DeallocPBackgroundSDBConnectionParent(
-    PBackgroundSDBConnectionParent* aActor) {
-  AssertIsOnBackgroundThread();
-  MOZ_ASSERT(aActor);
-
-  RefPtr<Connection> actor = dont_AddRef(static_cast<Connection*>(aActor));
   return true;
 }
 
@@ -731,7 +719,9 @@ void Connection::OnClose() {
 
   mOrigin.Truncate();
   mName.Truncate();
-  mDirectoryLock = nullptr;
+
+  DropDirectoryLock(mDirectoryLock);
+
   mFileRandomAccessStream = nullptr;
   mOpen = false;
 
@@ -1130,13 +1120,20 @@ nsresult OpenOp::FinishOpen() {
 
   // Open the directory
 
-  RefPtr<DirectoryLock> directoryLock = quotaManager->CreateDirectoryLock(
-      GetConnection()->GetPersistenceType(), mOriginMetadata,
-      mozilla::dom::quota::Client::SDB,
-      /* aExclusive */ false);
-
   mState = State::DirectoryOpenPending;
-  directoryLock->Acquire(this);
+
+  quotaManager
+      ->OpenClientDirectory({mOriginMetadata, mozilla::dom::quota::Client::SDB})
+      ->Then(
+          GetCurrentSerialEventTarget(), __func__,
+          [self = RefPtr(this)](
+              const ClientDirectoryLockPromise::ResolveOrRejectValue& aValue) {
+            if (aValue.IsResolve()) {
+              self->DirectoryLockAcquired(aValue.ResolveValue());
+            } else {
+              self->DirectoryLockFailed();
+            }
+          });
 
   return NS_OK;
 }
@@ -1182,8 +1179,6 @@ nsresult OpenOp::DatabaseWork() {
   QuotaManager* quotaManager = QuotaManager::Get();
   MOZ_ASSERT(quotaManager);
 
-  QM_TRY(MOZ_TO_RESULT(quotaManager->EnsureStorageIsInitialized()));
-
   QM_TRY_INSPECT(
       const auto& dbDirectory,
       ([persistenceType = GetConnection()->GetPersistenceType(), &quotaManager,
@@ -1194,8 +1189,8 @@ nsresult OpenOp::DatabaseWork() {
               mOriginMetadata));
         }
 
-        QM_TRY(
-            MOZ_TO_RESULT(quotaManager->EnsureTemporaryStorageIsInitialized()));
+        QM_TRY(MOZ_TO_RESULT(
+            quotaManager->EnsureTemporaryStorageIsInitializedInternal()));
         QM_TRY_RETURN(quotaManager->EnsureTemporaryOriginIsInitialized(
             persistenceType, mOriginMetadata));
       }()
@@ -1275,7 +1270,8 @@ void OpenOp::StreamClosedCallback() {
   MOZ_ASSERT(mFileRandomAccessStream);
   MOZ_ASSERT(mFileRandomAccessStreamOpen);
 
-  mDirectoryLock = nullptr;
+  DropDirectoryLock(mDirectoryLock);
+
   mFileRandomAccessStream = nullptr;
   mFileRandomAccessStreamOpen = false;
 }
@@ -1333,16 +1329,14 @@ void OpenOp::Cleanup() {
         new StreamHelper(mFileRandomAccessStream, callback);
     helper->AsyncClose();
   } else {
-    MOZ_ASSERT(!mFileRandomAccessStreamOpen);
+    SafeDropDirectoryLock(mDirectoryLock);
 
-    mDirectoryLock = nullptr;
     mFileRandomAccessStream = nullptr;
+    MOZ_ASSERT(!mFileRandomAccessStreamOpen);
   }
 
   ConnectionOperationBase::Cleanup();
 }
-
-NS_IMPL_ISUPPORTS_INHERITED0(OpenOp, ConnectionOperationBase)
 
 NS_IMETHODIMP
 OpenOp::Run() {

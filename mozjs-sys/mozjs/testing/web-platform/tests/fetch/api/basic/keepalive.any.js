@@ -1,7 +1,6 @@
 // META: global=window
+// META: timeout=long
 // META: title=Fetch API: keepalive handling
-// META: script=/resources/testharness.js
-// META: script=/resources/testharnessreport.js
 // META: script=/common/utils.js
 // META: script=/common/get-host-info.sub.js
 // META: script=../resources/keepalive-helper.js
@@ -19,7 +18,7 @@ const {
  * document event.
  */
 function keepaliveSimpleRequestTest(method) {
-  for (const evt of ['load', 'pagehide', 'unload']) {
+  for (const evt of ['load', 'unload', 'pagehide']) {
     const desc =
         `[keepalive] simple ${method} request on '${evt}' [no payload]`;
     promise_test(async (test) => {
@@ -31,7 +30,6 @@ function keepaliveSimpleRequestTest(method) {
       if (evt != 'load') {
         iframe.remove();
       }
-      assert_equals(await getTokenFromMessage(), token1);
 
       assertStashedTokenAsync(desc, token1);
     }, `${desc}; setting up`);

@@ -531,7 +531,7 @@ add_task(async function test_disconnect() {
       );
       browser.test.sendMessage("message", msg);
     });
-    port.onDisconnect.addListener(msgPort => {
+    port.onDisconnect.addListener(() => {
       browser.test.fail("onDisconnect should not be called for disconnect()");
     });
     browser.test.onMessage.addListener((what, payload) => {
@@ -660,7 +660,7 @@ add_task(async function test_read_limit() {
       );
       browser.test.sendMessage("result", "disconnected");
     });
-    port.onMessage.addListener(msg => {
+    port.onMessage.addListener(() => {
       browser.test.sendMessage("result", "message");
     });
     port.postMessage(PAYLOAD);
@@ -881,7 +881,7 @@ add_task(async function test_connect_native_from_content_script() {
       );
       browser.test.sendMessage("result", "disconnected");
     });
-    port.onMessage.addListener(msg => {
+    port.onMessage.addListener(() => {
       browser.test.sendMessage("result", "message");
     });
     port.postMessage({ test: "test" });
@@ -1012,7 +1012,7 @@ async function expectTerminateBackgroundToResetIdle({ extension, contextId }) {
     extension,
     "background-script-reset-idle"
   );
-  await extension.terminateBackground();
+  await extension.terminateBackground({ expectStopped: false });
   info("Wait for 'background-script-reset-idle' event to be emitted");
   await promiseResetIdle;
   equal(

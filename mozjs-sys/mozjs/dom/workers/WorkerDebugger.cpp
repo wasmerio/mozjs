@@ -31,13 +31,14 @@ namespace mozilla::dom {
 
 namespace {
 
-class DebuggerMessageEventRunnable : public WorkerDebuggerRunnable {
+class DebuggerMessageEventRunnable final : public WorkerDebuggerRunnable {
   nsString mMessage;
 
  public:
   DebuggerMessageEventRunnable(WorkerPrivate* aWorkerPrivate,
                                const nsAString& aMessage)
-      : WorkerDebuggerRunnable(aWorkerPrivate), mMessage(aMessage) {}
+      : WorkerDebuggerRunnable("DebuggerMessageEventRunnable"),
+        mMessage(aMessage) {}
 
  private:
   virtual bool WorkerRun(JSContext* aCx,
@@ -73,7 +74,7 @@ class CompileDebuggerScriptRunnable final : public WorkerDebuggerRunnable {
   CompileDebuggerScriptRunnable(WorkerPrivate* aWorkerPrivate,
                                 const nsAString& aScriptURL,
                                 const mozilla::Encoding* aDocumentEncoding)
-      : WorkerDebuggerRunnable(aWorkerPrivate),
+      : WorkerDebuggerRunnable("CompileDebuggerScriptRunnable"),
         mScriptURL(aScriptURL),
         mDocumentEncoding(aDocumentEncoding) {}
 
@@ -191,7 +192,7 @@ NS_IMETHODIMP
 WorkerDebugger::GetIsClosed(bool* aResult) {
   AssertIsOnMainThread();
 
-  *aResult = !mWorkerPrivate;
+  *aResult = !mWorkerPrivate || mWorkerPrivate->IsDead();
   return NS_OK;
 }
 
@@ -375,7 +376,7 @@ WorkerDebugger::Initialize(const nsAString& aURL) {
     RefPtr<CompileDebuggerScriptRunnable> runnable =
         new CompileDebuggerScriptRunnable(mWorkerPrivate, aURL,
                                           aDocumentEncoding);
-    if (!runnable->Dispatch()) {
+    if (!runnable->Dispatch(mWorkerPrivate)) {
       return NS_ERROR_FAILURE;
     }
 
@@ -395,7 +396,7 @@ WorkerDebugger::PostMessageMoz(const nsAString& aMessage) {
 
   RefPtr<DebuggerMessageEventRunnable> runnable =
       new DebuggerMessageEventRunnable(mWorkerPrivate, aMessage);
-  if (!runnable->Dispatch()) {
+  if (!runnable->Dispatch(mWorkerPrivate)) {
     return NS_ERROR_FAILURE;
   }
 

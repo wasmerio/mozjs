@@ -3,9 +3,7 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 import { isConsole } from "../utils/preview";
-import { findBestMatchExpression } from "../utils/ast";
 import { getGrip, getFront } from "../utils/evaluation-result";
-import { getExpressionFromCoords } from "../utils/editor/get-expression";
 
 import {
   isLineInScope,
@@ -13,33 +11,33 @@ import {
   getSelectedSource,
   getSelectedLocation,
   getSelectedFrame,
-  getSymbols,
   getCurrentThread,
   getSelectedException,
-} from "../selectors";
+} from "../selectors/index";
 
 import { getMappedExpression } from "./expressions";
 
-function findExpressionMatch(state, codeMirror, tokenPos) {
+async function findExpressionMatch(state, parserWorker, editor, tokenPos) {
   const location = getSelectedLocation(state);
   if (!location) {
     return null;
   }
 
-  const symbols = getSymbols(state, location);
-
-  let match;
-  if (!symbols) {
-    match = getExpressionFromCoords(codeMirror, tokenPos);
-  } else {
-    match = findBestMatchExpression(symbols, tokenPos);
+  // Fallback on expression from codemirror cursor if parser worker misses symbols
+  // or is unable to find a match.
+  const match = await parserWorker.findBestMatchExpression(
+    location.source.id,
+    tokenPos
+  );
+  if (match) {
+    return match;
   }
-  return match;
+  return editor.getExpressionFromCoords(tokenPos);
 }
 
-export function getPreview(cx, target, tokenPos, codeMirror) {
+export function getPreview(target, tokenPos, editor) {
   return async thunkArgs => {
-    const { getState, client } = thunkArgs;
+    const { getState, client, parserWorker } = thunkArgs;
     if (
       !isSelectedFrameVisible(getState()) ||
       !isLineInScope(getState(), tokenPos.line)
@@ -57,7 +55,12 @@ export function getPreview(cx, target, tokenPos, codeMirror) {
       return null;
     }
 
-    const match = findExpressionMatch(getState(), codeMirror, tokenPos);
+    const match = await findExpressionMatch(
+      getState(),
+      parserWorker,
+      editor,
+      tokenPos
+    );
     if (!match) {
       return null;
     }
@@ -79,9 +82,20 @@ export function getPreview(cx, target, tokenPos, codeMirror) {
       }
     }
 
-    const { result } = await client.evaluate(expression, {
-      frameId: selectedFrame.id,
-    });
+    const { result, hasException, exception } = await client.evaluate(
+      expression,
+      {
+        frameId: selectedFrame.id,
+      }
+    );
+
+    // The evaluation shouldn't return an exception.
+    if (hasException) {
+      const errorClass = exception?.getGrip()?.class || "Error";
+      throw new Error(
+        `Debugger internal exception: Preview for <${expression}> threw a ${errorClass}`
+      );
+    }
 
     const resultGrip = getGrip(result);
 
@@ -111,7 +125,6 @@ export function getPreview(cx, target, tokenPos, codeMirror) {
         front: getFront(result),
       },
     };
-    const properties = await client.loadObjectProperties(root, thread);
 
     return {
       target,
@@ -120,14 +133,18 @@ export function getPreview(cx, target, tokenPos, codeMirror) {
       expression,
       root,
       resultGrip,
-      properties,
     };
   };
 }
 
-export function getExceptionPreview(cx, target, tokenPos, codeMirror) {
-  return async ({ dispatch, getState }) => {
-    const match = findExpressionMatch(getState(), codeMirror, tokenPos);
+export function getExceptionPreview(target, tokenPos, editor) {
+  return async ({ getState, parserWorker }) => {
+    const match = await findExpressionMatch(
+      getState(),
+      parserWorker,
+      editor,
+      tokenPos
+    );
     if (!match) {
       return null;
     }

@@ -1,0 +1,1 @@
+BinaryArith, 2, 4, 6, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(RawInt32) , LASTUSED(0) LASTUSED(3) LASTUSED(4) LASTUSED(4) , OP(GuardIsNullOrUndefined) ID(0) OP(LoadInt32Constant) OFFSET(0) ID(2) OP(GuardIsNumber) ID(1) OP(TruncateDoubleToUInt32) ID(1) ID(3) OP(Int32BitAndResult) ID(2) ID(3) OP(ReturnFromIC)  

@@ -23,6 +23,11 @@ struct Circle {
   bool closed = false;
 };
 
+struct Line {
+  Point origin;
+  Point destination;
+};
+
 class PathOps {
  public:
   PathOps() = default;
@@ -40,6 +45,8 @@ class PathOps {
   void Record(S& aStream) const;
 
   bool StreamToSink(PathSink& aPathSink) const;
+
+  bool CheckedStreamToSink(PathSink& aPathSink) const;
 
   PathOps TransformedCopy(const Matrix& aTransform) const;
 
@@ -70,6 +77,11 @@ class PathOps {
   }
 
   Maybe<Circle> AsCircle() const;
+  Maybe<Line> AsLine() const;
+
+  bool IsActive() const { return !mPathData.empty(); }
+
+  bool IsEmpty() const;
 
  private:
   enum class OpType : uint32_t {
@@ -167,6 +179,8 @@ class PathBuilderRecording final : public PathBuilder {
 
   BackendType GetBackendType() const final { return BackendType::RECORDING; }
 
+  bool IsActive() const final { return mPathOps.IsActive(); }
+
  private:
   BackendType mBackendType;
   FillRule mFillRule;
@@ -215,12 +229,15 @@ class PathRecording final : public Path {
   }
 
   Maybe<Circle> AsCircle() const { return mPathOps.AsCircle(); }
+  Maybe<Line> AsLine() const { return mPathOps.AsLine(); }
 
   void StreamToSink(PathSink* aSink) const final {
     mPathOps.StreamToSink(*aSink);
   }
 
   FillRule GetFillRule() const final { return mFillRule; }
+
+  bool IsEmpty() const final { return mPathOps.IsEmpty(); }
 
  private:
   friend class DrawTargetWrapAndRecord;

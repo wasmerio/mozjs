@@ -75,7 +75,7 @@ class AHostResolver {
                                       mozilla::net::TRR*) = 0;
   virtual LookupStatus CompleteLookupByType(
       nsHostRecord*, nsresult, mozilla::net::TypeRecordResultType& aResult,
-      uint32_t aTtl, bool pb) = 0;
+      mozilla::net::TRRSkippedReason aReason, uint32_t aTtl, bool pb) = 0;
   virtual nsresult GetHostRecord(const nsACString& host,
                                  const nsACString& aTrrServer, uint16_t type,
                                  nsIDNSService::DNSFlags flags, uint16_t af,
@@ -146,6 +146,11 @@ class nsHostResolver : public nsISupports, public AHostResolver {
                                                     nsresult* aRv);
 
   /**
+   * return a mock HTTPS record
+   */
+  already_AddRefed<nsHostRecord> InitMockHTTPSRecord(const nsHostKey& key);
+
+  /**
    * removes the specified callback from the nsHostRecord for the given
    * hostname, originAttributes, flags, and address family.  these parameters
    * should correspond to the parameters passed to ResolveHost.  this function
@@ -205,6 +210,7 @@ class nsHostResolver : public nsISupports, public AHostResolver {
                               mozilla::net::TRR* aTRRRequest) override;
   LookupStatus CompleteLookupByType(nsHostRecord*, nsresult,
                                     mozilla::net::TypeRecordResultType& aResult,
+                                    mozilla::net::TRRSkippedReason aReason,
                                     uint32_t aTtl, bool pb) override;
   nsresult GetHostRecord(const nsACString& host, const nsACString& trrServer,
                          uint16_t type, nsIDNSService::DNSFlags flags,
@@ -243,8 +249,8 @@ class nsHostResolver : public nsISupports, public AHostResolver {
       MOZ_REQUIRES(mLock);
   LookupStatus CompleteLookupByTypeLocked(
       nsHostRecord*, nsresult, mozilla::net::TypeRecordResultType& aResult,
-      uint32_t aTtl, bool pb, const mozilla::MutexAutoLock& aLock)
-      MOZ_REQUIRES(mLock);
+      mozilla::net::TRRSkippedReason aReason, uint32_t aTtl, bool pb,
+      const mozilla::MutexAutoLock& aLock) MOZ_REQUIRES(mLock);
   nsresult Init();
   static void ComputeEffectiveTRRMode(nsHostRecord* aRec);
   nsresult NativeLookup(nsHostRecord* aRec,
@@ -254,7 +260,7 @@ class nsHostResolver : public nsISupports, public AHostResolver {
 
   // Kick-off a name resolve operation, using native resolver and/or TRR
   nsresult NameLookup(nsHostRecord* aRec, const mozilla::MutexAutoLock& aLock);
-  bool GetHostToLookup(AddrHostRecord** result);
+  bool GetHostToLookup(nsHostRecord** result);
   void MaybeRenewHostRecordLocked(nsHostRecord* aRec,
                                   const mozilla::MutexAutoLock& aLock)
       MOZ_REQUIRES(mLock);
@@ -270,6 +276,10 @@ class nsHostResolver : public nsISupports, public AHostResolver {
    */
   nsresult ConditionallyRefreshRecord(nsHostRecord* rec, const nsACString& host,
                                       const mozilla::MutexAutoLock& aLock)
+      MOZ_REQUIRES(mLock);
+
+  void OnResolveComplete(nsHostRecord* aRec,
+                         const mozilla::MutexAutoLock& aLock)
       MOZ_REQUIRES(mLock);
 
   void AddToEvictionQ(nsHostRecord* rec, const mozilla::MutexAutoLock& aLock)
@@ -334,6 +344,8 @@ class nsHostResolver : public nsISupports, public AHostResolver {
    * Called by the networking dashboard via the DnsService2
    */
   void GetDNSCacheEntries(nsTArray<mozilla::net::DNSCacheEntries>*);
+
+  static bool IsNativeHTTPSEnabled();
 };
 
 #endif  // nsHostResolver_h__

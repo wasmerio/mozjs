@@ -1,0 +1,1 @@
+UnaryArith, 1, 2, 4, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(1) LASTUSED(2) , OP(GuardIsNumber) ID(0) OP(TruncateDoubleToUInt32) ID(0) ID(1) OP(Int32NotResult) ID(1) OP(ReturnFromIC)  

@@ -24,9 +24,16 @@
 }
 
 main {
-  margin: auto;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   width: $wrapper-default-width;
   padding: 0;
+
+  .vertical-center-wrapper {
+    margin: auto 0;
+  }
 
   section {
     margin-bottom: $section-spacing;
@@ -48,17 +55,6 @@ main {
   @media (min-width: $break-point-widest) {
     width: $wrapper-max-width-widest;
   }
-
-  &.has-snippet {
-    // Offset the snippets container so things at the bottom of the page are still
-    // visible when snippets are visible. Adjust for other spacing.
-    padding-bottom: $snippets-container-height - $section-spacing - $base-gutter;
-  }
-}
-
-.below-search-snippet.withButton {
-  margin: auto;
-  width: 100%;
 }
 
 .ds-outer-wrapper-search-alignment {
@@ -84,12 +80,6 @@ main {
 
     @media (min-width: $break-point-widest) {
       width: 986px;
-    }
-
-    &.has-snippet {
-      // Offset the snippets container so things at the bottom of the page are still
-      // visible when snippets are visible. Adjust for other spacing.
-      padding-bottom: $snippets-container-height - $section-spacing - $base-gutter;
     }
   }
 }
@@ -138,6 +128,39 @@ main {
 
     &:active {
       background-color: var(--newtab-element-active-color);
+    }
+  }
+}
+
+.wallpaper-attribution {
+  padding: 0 $section-horizontal-padding;
+  font-size: 14px;
+  color: var(--newtab-contextual-text-primary-color);
+
+  // Contrast fix for users who have wallpapers set
+  @include wallpaper-contrast-fix;
+
+  &.theme-light {
+    display: inline-block;
+
+    @include dark-theme-only {
+      display: none;
+    }
+  }
+
+  &.theme-dark {
+    display: none;
+
+    @include dark-theme-only {
+      display: inline-block;
+    }
+  }
+
+  a {
+    color: inherit;
+
+    &:hover {
+      text-decoration: none;
     }
   }
 }

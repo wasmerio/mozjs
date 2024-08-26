@@ -28,7 +28,7 @@ And used as follows:
 With context menu:
 ```html
 <fxview-tab-list
-    class="with-context-menu"
+    secondaryActionClass="options-button"
     .dateTimeFormat=${"relative"}
     .hasPopup=${"menu"}
     .maxTabsLength=${this.maxTabsLength}
@@ -74,25 +74,35 @@ You'll need to pass along some of the following properties:
 * `hasPopup` (**Optional**): The optional aria-haspopup attribute for the secondary action, if required
 * `maxTabsLength` (**Optional**): The max number of tabs you want to display in the tabs list. The default value will be `25` if no max value is given. You may use any negative number such as `-1` to indicate no max.
 * `tabItems` (**Required**): An array of tab data such as History nodes, Bookmark nodes, Synced Tabs, etc.
-    * The component is expecting to receive the following properties within each `tabItems` object (you may need to do some normalizing for this):
+    * The component is expecting to receive the following properties within each `tabItems` object (you may need to do some normalizing for this). If you just pass a title and an icon, it creates a header row that is not clickable.
+        * `closedId` (**Optional**) - For a closed tab, this ID is used by SessionStore to retrieve the tab data for forgetting/re-opening the tab.
         * `icon` (**Required**) - The location string for the favicon. Will fallback to default favicon if none is found.
-        * `primaryL10nId` (**Required**) - The l10n id to be used for the primary action element. This fluent string should ONLY define a `.title` attribute to describe the link element in each row.
+        * `primaryL10nId` (**Optional**) - The l10n id to be used for the primary action element. This fluent string should ONLY define a `.title` attribute to describe the link element in each row.
         * `primaryL10nArgs` (**Optional**) - The l10n args you can optionally pass for the primary action element
         * `secondaryL10nId` (**Optional**) -  The l10n id to be used for the secondary action button. This fluent string should ONLY define a `.title` attribute to describe the secondary button in each row.
+        * `tertiaryL10nId` (**Optional**) -  The l10n id to be used for the tertiary action button. This fluent string should ONLY define a `.title` attribute to describe the secondary button in each row.
         * `secondaryL10nArgs` (**Optional**) - The l10n args you can optionally pass for the secondary action button
+        * `tertiaryL10nArgs` (**Optional**) - The l10n args you can optionally pass for the tertiary action button
+        * `secondaryActionClass` (**Optional**) - The class used to style the secondary action button. `options-button` or `dismiss-button`
+        * `tertiaryActionClass` (**Optional**) - The class used to style the tertiary action button. `options-button` or `dismiss-button`
         * `tabElement` (**Optional**) - The MozTabbrowserTab element for the tab item.
+        * `sourceClosedId` (**Optional**) - The closedId of the closed window the tab is from if applicable.
+        * `sourceWindowId` (**Optional**) - The SessionStore id of the window the tab is from if applicable.
         * `tabid` (**Optional**) - Optional property expected for Recently Closed tab data
-        * `time` (**Required**) - The time in milliseconds for expected last interaction with the tab (Ex: `lastUsed` for SyncedTabs tabs, `closedAt` for RecentlyClosed tabs, etc.)
+        * `time` (**Optional**) - The time in milliseconds for expected last interaction with the tab (Ex: `lastUsed` for SyncedTabs tabs, `closedAt` for RecentlyClosed tabs, etc.)
         * `title` (**Required**) - The title for the tab
-        * `url` (**Required**) - The full URL for the tab
+        * `url` (**Optional**) - The full URL for the tab
+* `searchQuery` (**Optional**) - Highlights matches of the query string for titles of each row.
 
 
 ### Notes
 
-* In order to keep this as generic as possible, the icon for the secondary action button will NOT have a default. You can supply a `class` attribute to an instance of `fxview-tab-list` in order to apply styles to things like the icon for the secondary action button. In the above example, I added a class `"with-context-menu"` to `fxview-tab-list`, so I can update the button's icon by using:
+* In order to keep this as generic as possible, the icon for the secondary action button will NOT have a default. You can supply a `class` attribute to an instance of `fxview-tab-list` in order to apply styles to things like the icon for the secondary action button. In the above example, I added a `secondaryActionClass` `"options-button"` to `fxview-tab-list`, so I can update the button's icon by using:
 ```css
-    fxview-tab-list.with-context-menu::part(secondary-button) {
-      background-image: url("chrome://global/skin/icons/more.svg");
+    .fxview-tab-row-button {
+        &.options-button {
+            background-image: url("chrome://global/skin/icons/more.svg");
+        }
     }
 ```
 * You'll also need to define functions for the `fxview-tab-list-primary-action` and `fxview-tab-list-secondary-action` listeners in order to add functionality to the primary element and the secondary button.

@@ -52,6 +52,7 @@ class ExtendableEvent;
 class KeyboardEvent;
 class MouseEvent;
 class MessageEvent;
+class PointerEvent;
 class TimeEvent;
 class UIEvent;
 class WantsPopupControlCheck;
@@ -83,6 +84,8 @@ class Event : public nsISupports, public nsWrapperCache {
  private:
   void ConstructorInit(EventTarget* aOwner, nsPresContext* aPresContext,
                        WidgetEvent* aEvent);
+
+  void UpdateDefaultPreventedOnContentForDragEvent();
 
  public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -121,6 +124,8 @@ class Event : public nsISupports, public nsWrapperCache {
   // MouseEvent has a non-autogeneratable initMouseEvent and other
   // non-autogeneratable methods.
   virtual MouseEvent* AsMouseEvent() { return nullptr; }
+
+  virtual PointerEvent* AsPointerEvent() { return nullptr; }
 
   // UIEvent has a non-autogeneratable initUIEvent.
   virtual UIEvent* AsUIEvent() { return nullptr; }

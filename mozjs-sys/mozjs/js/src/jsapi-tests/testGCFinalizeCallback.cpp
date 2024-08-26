@@ -6,6 +6,7 @@
 #include "jsapi-tests/tests.h"
 
 using namespace js;
+using namespace JS;
 
 static const unsigned BufSize = 20;
 static unsigned FinalizeCalls = 0;
@@ -41,7 +42,7 @@ BEGIN_TEST(testGCFinalizeCallback) {
 #ifdef JS_GC_ZEAL
   // Bug 1377593 - the below tests want to control how many zones are GC'ing,
   // and some zeal modes will convert them into all-zones GCs.
-  JS_SetGCZeal(cx, 0, 0);
+  JS::SetGCZeal(cx, 0, 0);
 #endif
 
   JS::RootedObject global1(cx, createTestGlobal());
@@ -108,7 +109,7 @@ BEGIN_TEST(testGCFinalizeCallback) {
   /* Full GC with reset due to new zone, becoming zone GC. */
 
   FinalizeCalls = 0;
-  JS_SetGCZeal(cx, 9, 1000000);
+  JS::SetGCZeal(cx, 9, 1000000);
   JS::PrepareForFullGC(cx);
   budget = SliceBudget(WorkBudget(1));
   cx->runtime()->gc.startDebugGC(JS::GCOptions::Normal, budget);
@@ -125,7 +126,7 @@ BEGIN_TEST(testGCFinalizeCallback) {
   CHECK(checkSingleGroup());
   CHECK(checkFinalizeStatus());
 
-  JS_SetGCZeal(cx, 0, 0);
+  JS::SetGCZeal(cx, 0, 0);
 
 #endif
 

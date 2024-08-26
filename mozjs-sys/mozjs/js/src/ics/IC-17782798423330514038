@@ -1,0 +1,1 @@
+ToPropertyKey, 1, 2, 3, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(0) LASTUSED(1) , OP(GuardToInt32Index) ID(0) ID(1) OP(LoadInt32Result) ID(1) OP(ReturnFromIC)  

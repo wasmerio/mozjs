@@ -30,7 +30,7 @@ add_task(async () => {
 
       // Remove other page elements before reading PiP toggle's client rect.
       // Otherwise, we will provide the wrong coordinates when simulating the touch event.
-      await SpecialPowers.spawn(browser, [], async args => {
+      await SpecialPowers.spawn(browser, [], async () => {
         info(
           "Removing other elements first to make the PiP toggle more visible"
         );
@@ -57,7 +57,7 @@ add_task(async () => {
             for (let hiddenElement of toggleStylesForStage.hidden) {
               let el = shadowRoot.querySelector(hiddenElement);
               ok(
-                ContentTaskUtils.is_hidden(el),
+                ContentTaskUtils.isHidden(el),
                 `Expected ${hiddenElement} to be hidden.`
               );
             }

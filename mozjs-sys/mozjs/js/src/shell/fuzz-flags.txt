@@ -9,6 +9,7 @@
 --blinterp-eager
 --cache-ir-stubs=off
 --cache-ir-stubs=on
+--enable-json-parse-with-source
 --ion-check-range-analysis
 --ion-eager
 --ion-edgecase-analysis=off
@@ -55,8 +56,9 @@
 --more-compartments
 --fast-warmup
 --no-jit-backend
---enable-watchtower
---disable-watchtower
+--monomorphic-inlining=default
+--monomorphic-inlining=always
+--monomorphic-inlining=never
 
 # GC-related
 # These 2 flags can cause the shell to slow down
@@ -92,11 +94,8 @@
 # Shadow Realms
 --enable-shadow-realms
 
-# Array.fromAsync
---enable-array-from-async
-
-# Change Array By Copy
---enable-change-array-by-copy
-
 # Well-Formed Unicode Strings
 --enable-well-formed-unicode-strings
+
+# Resizable ArrayBuffers and Growable SharedArrayBuffers
+--enable-arraybuffer-resizable

@@ -8,7 +8,7 @@ import {
   MAIN_MESSAGE_TYPE,
   PRELOAD_MESSAGE_TYPE,
   UI_CODE,
-} from "common/Actions.sys.mjs";
+} from "common/Actions.mjs";
 
 describe("Actions", () => {
   it("should set globalImportContext to UI_CODE", () => {
@@ -173,16 +173,6 @@ describe("ActionCreators", () => {
     });
     it("should wrap with AlsoToMain", () => {
       const action = ac.UserEvent({ action: "foo" });
-      assert.isTrue(au.isSendToMain(action), "isSendToMain");
-    });
-  });
-  describe("ASRouterUserEvent", () => {
-    it("should include the given data", () => {
-      const data = { action: "foo" };
-      assert.equal(ac.ASRouterUserEvent(data).data, data);
-    });
-    it("should wrap with AlsoToMain", () => {
-      const action = ac.ASRouterUserEvent({ action: "foo" });
       assert.isTrue(au.isSendToMain(action), "isSendToMain");
     });
   });

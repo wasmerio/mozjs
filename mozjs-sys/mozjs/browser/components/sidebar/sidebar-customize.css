@@ -1,0 +1,61 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+.container {
+  padding-inline: var(--space-small);
+  font: menu;
+
+  > * + * {
+    margin-top: var(--space-xlarge);
+  }
+
+  > sidebar-panel-header + * {
+    margin-top: var(--space-medium);
+  }
+}
+
+.customize-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  -moz-context-properties: fill;
+  fill: currentColor;
+  color: currentColor;
+
+  .customize-close-button::part(button) {
+    background-image: url("chrome://global/skin/icons/close-12.svg");
+  }
+}
+
+.icon {
+  -moz-context-properties: fill;
+  fill: currentColor;
+  width: var(--icon-size-default);
+  height: var(--icon-size-default);
+}
+
+.customize-extensions {
+  .extensions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-large);
+    margin-top: var(--space-small);
+  }
+
+  .extension-item {
+    display: flex;
+    gap: var(--space-small);
+    align-items: center;
+  }
+}
+
+.customize-extensions-heading {
+  margin: 0;
+}
+
+#manage-settings {
+  display: flex;
+  align-items: center;
+  gap: var(--space-small);
+}

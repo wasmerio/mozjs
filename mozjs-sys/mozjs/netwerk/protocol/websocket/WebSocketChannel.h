@@ -20,6 +20,7 @@
 #include "nsIChannelEventSink.h"
 #include "nsIHttpChannelInternal.h"
 #include "mozilla/net/WebSocketConnectionListener.h"
+#include "mozilla/Mutex.h"
 #include "BaseWebSocketChannel.h"
 
 #include "nsCOMPtr.h"
@@ -228,6 +229,7 @@ class WebSocketChannel : public BaseWebSocketChannel,
   // then to IP address (unless we're leaving DNS resolution to a proxy server)
   // MainThread only
   nsCString mAddress;
+  nsCString mPath;
   int32_t mPort;  // WS server port
   // Secondary key for the connection queue. Used by nsWSAdmissionManager.
   nsCString mOriginSuffix;  // MainThread only
@@ -280,7 +282,6 @@ class WebSocketChannel : public BaseWebSocketChannel,
   // following members are accessed only on the main thread
   uint32_t mGotUpgradeOK : 1;
   uint32_t mRecvdHttpUpgradeTransport : 1;
-  uint32_t mAutoFollowRedirects : 1;
   uint32_t mAllowPMCE : 1;
   uint32_t : 0;  // ensure these aren't mixed with the next set
 
@@ -343,10 +344,12 @@ class WebSocketChannel : public BaseWebSocketChannel,
   uint8_t* mHdrOut;
   uint8_t mOutHeader[kCopyBreak + 16]{0};
 
-  // Set on MainThread in OnStartRequest (before mDataStarted), used on IO
-  // Thread (after mDataStarted), cleared in DoStopSession on IOThread or
-  // on MainThread (if mDataStarted == false)
-  UniquePtr<PMCECompression> mPMCECompressor;
+  // Set on MainThread in OnStartRequest (before mDataStarted), or in
+  // HandleExtensions() or OnTransportAvailableInternal(),used on IO Thread
+  // (after mDataStarted), cleared in DoStopSession on IOThread or on
+  // MainThread (if mDataStarted == false).
+  Mutex mCompressorMutex;
+  UniquePtr<PMCECompression> mPMCECompressor MOZ_GUARDED_BY(mCompressorMutex);
 
   // Used by EnsureHdrOut, which isn't called anywhere
   uint32_t mDynamicOutputSize;

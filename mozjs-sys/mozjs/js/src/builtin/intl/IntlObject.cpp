@@ -37,39 +37,13 @@
 #include "js/Result.h"
 #include "js/StableStringChars.h"
 #include "vm/GlobalObject.h"
-#include "vm/JSAtom.h"
+#include "vm/JSAtomUtils.h"  // ClassName
 #include "vm/JSContext.h"
 #include "vm/PlainObject.h"  // js::PlainObject
 #include "vm/StringType.h"
-#include "vm/WellKnownAtom.h"  // js_*_str
 
 #include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
-
-#ifdef __wasi__
-namespace mozilla::intl {
-SpanResult<char> KeywordValueToBcp47Extension3(const char* aKeyword,
-                                               int32_t aLength) {
-  if (aKeyword == nullptr) {
-    return Err(InternalError{});
-  }
-  return MakeStringSpan(uloc_toUnicodeLocaleType("co", aKeyword));
-}
-using Bcp47ExtEnumeration3 =
-    Enumeration<char, SpanResult<char>, KeywordValueToBcp47Extension3>;
-
-static Result<Bcp47ExtEnumeration3, ICUError> GetBcp47KeywordValues() {
-  UErrorCode status = U_ZERO_ERROR;
-  UEnumeration* enumeration = ucol_getKeywordValues("collation", &status);
-
-  if (U_SUCCESS(status)) {
-    return Bcp47ExtEnumeration3(enumeration);
-  }
-
-  return Err(ToICUError(status));
-}
-}  // namespace mozilla::intl
-#endif
 
 using namespace js;
 
@@ -142,8 +116,8 @@ static void ReportBadKey(JSContext* cx, JSString* key) {
   }
 }
 
-static bool SameOrParentLocale(JSLinearString* locale,
-                               JSLinearString* otherLocale) {
+static bool SameOrParentLocale(const JSLinearString* locale,
+                               const JSLinearString* otherLocale) {
   // Return true if |locale| is the same locale as |otherLocale|.
   if (locale->length() == otherLocale->length()) {
     return EqualStrings(locale, otherLocale);
@@ -266,9 +240,11 @@ bool js::intl_BestAvailableLocale(JSContext* cx, unsigned argc, Value* vp) {
       kind = SupportedLocaleKind::NumberFormat;
     } else if (StringEqualsLiteral(typeStr, "PluralRules")) {
       kind = SupportedLocaleKind::PluralRules;
-    } else {
-      MOZ_ASSERT(StringEqualsLiteral(typeStr, "RelativeTimeFormat"));
+    } else if (StringEqualsLiteral(typeStr, "RelativeTimeFormat")) {
       kind = SupportedLocaleKind::RelativeTimeFormat;
+    } else {
+      MOZ_ASSERT(StringEqualsLiteral(typeStr, "Segmenter"));
+      kind = SupportedLocaleKind::Segmenter;
     }
   }
 
@@ -441,10 +417,14 @@ bool js::intl_supportedLocaleOrFallback(JSContext* cx, unsigned argc,
   // Note: We don't test the supported locales of the remaining Intl service
   // constructors, because the set of supported locales is exactly equal to
   // the set of supported locales of Intl.DateTimeFormat.
-  for (auto kind :
-       {SupportedLocaleKind::DisplayNames, SupportedLocaleKind::ListFormat,
-        SupportedLocaleKind::NumberFormat, SupportedLocaleKind::PluralRules,
-        SupportedLocaleKind::RelativeTimeFormat}) {
+  for (auto kind : {
+           SupportedLocaleKind::DisplayNames,
+           SupportedLocaleKind::ListFormat,
+           SupportedLocaleKind::NumberFormat,
+           SupportedLocaleKind::PluralRules,
+           SupportedLocaleKind::RelativeTimeFormat,
+           SupportedLocaleKind::Segmenter,
+       }) {
     JSLinearString* supported;
     JS_TRY_VAR_OR_RETURN_FALSE(
         cx, supported, BestAvailableLocale(cx, kind, candidate, nullptr));
@@ -656,12 +636,7 @@ static ArrayObject* AvailableCollations(JSContext* cx) {
     // GC function, which is unsound when returning an unrooted value. Work
     // around this issue by restricting the lifetime of |keywords| to a
     // separate block.
-    auto keywords =
-#ifdef __wasi__
-        mozilla::intl::GetBcp47KeywordValues();
-#else
-        mozilla::intl::Collator::GetBcp47KeywordValues();
-#endif
+    auto keywords = mozilla::intl::Collator::GetBcp47KeywordValues();
     if (keywords.isErr()) {
       intl::ReportInternalError(cx, keywords.unwrapErr());
       return nullptr;
@@ -888,7 +863,7 @@ static bool intl_toSource(JSContext* cx, unsigned argc, Value* vp) {
 }
 
 static const JSFunctionSpec intl_static_methods[] = {
-    JS_FN(js_toSource_str, intl_toSource, 0, 0),
+    JS_FN("toSource", intl_toSource, 0, 0),
     JS_SELF_HOSTED_FN("getCanonicalLocales", "Intl_getCanonicalLocales", 1, 0),
     JS_SELF_HOSTED_FN("supportedValuesOf", "Intl_supportedValuesOf", 1, 0),
     JS_FS_END};
@@ -913,10 +888,21 @@ static bool IntlClassFinish(JSContext* cx, HandleObject intl,
   // Add the constructor properties.
   RootedId ctorId(cx);
   RootedValue ctorValue(cx);
-  for (const auto& protoKey :
-       {JSProto_Collator, JSProto_DateTimeFormat, JSProto_DisplayNames,
-        JSProto_ListFormat, JSProto_Locale, JSProto_NumberFormat,
-        JSProto_PluralRules, JSProto_RelativeTimeFormat}) {
+  for (const auto& protoKey : {
+           JSProto_Collator,
+           JSProto_DateTimeFormat,
+           JSProto_DisplayNames,
+           JSProto_ListFormat,
+           JSProto_Locale,
+           JSProto_NumberFormat,
+           JSProto_PluralRules,
+           JSProto_RelativeTimeFormat,
+           JSProto_Segmenter,
+       }) {
+    if (GlobalObject::skipDeselectedConstructor(cx, protoKey)) {
+      continue;
+    }
+
     JSObject* ctor = GlobalObject::getOrCreateConstructor(cx, protoKey);
     if (!ctor) {
       return false;

@@ -26,13 +26,9 @@
 #include "mozilla/dom/RefMessageBodyService.h"
 #include "mozilla/dom/SharedMessageBody.h"
 #include "mozilla/ipc/PBackgroundChild.h"
-#include "mozilla/MessagePortTimelineMarker.h"
 #include "mozilla/ScopeExit.h"
-#include "mozilla/TimelineConsumers.h"
-#include "mozilla/TimelineMarker.h"
 #include "mozilla/Unused.h"
 #include "nsContentUtils.h"
-#include "nsGlobalWindow.h"
 #include "nsPresContext.h"
 
 #ifdef XP_WIN
@@ -113,26 +109,8 @@ class PostMessageRunnable final : public CancelableRunnable {
     IgnoredErrorResult rv;
     JS::Rooted<JS::Value> value(cx);
 
-    UniquePtr<AbstractTimelineMarker> start;
-    UniquePtr<AbstractTimelineMarker> end;
-    bool isTimelineRecording = !TimelineConsumers::IsEmpty();
-
-    if (isTimelineRecording) {
-      start = MakeUnique<MessagePortTimelineMarker>(
-          ProfileTimelineMessagePortOperationType::DeserializeData,
-          MarkerTracingType::START);
-    }
-
     mData->Read(cx, &value, mPort->mRefMessageBodyService,
                 SharedMessageBody::ReadMethod::StealRefMessageBody, rv);
-
-    if (isTimelineRecording) {
-      end = MakeUnique<MessagePortTimelineMarker>(
-          ProfileTimelineMessagePortOperationType::DeserializeData,
-          MarkerTracingType::END);
-      TimelineConsumers::AddMarkerForAllObservedDocShells(start);
-      TimelineConsumers::AddMarkerForAllObservedDocShells(end);
-    }
 
     if (NS_WARN_IF(rv.Failed())) {
       JS_ClearPendingException(cx);
@@ -211,6 +189,11 @@ MessagePort::MessagePort(nsIGlobalObject* aGlobal, State aState)
 
 MessagePort::~MessagePort() {
   CloseForced();
+  MOZ_ASSERT(!mActor);
+  if (mActor) {
+    mActor->SetPort(nullptr);
+    mActor = nullptr;
+  }
   MOZ_ASSERT(!mWorkerRef);
 }
 
@@ -221,7 +204,8 @@ already_AddRefed<MessagePort> MessagePort::Create(nsIGlobalObject* aGlobal,
                                                   ErrorResult& aRv) {
   MOZ_ASSERT(aGlobal);
 
-  RefPtr<MessagePort> mp = new MessagePort(aGlobal, eStateUnshippedEntangled);
+  RefPtr<MessagePort> mp =
+      new MessagePort(aGlobal, eStateInitializingUnshippedEntangled);
   mp->Initialize(aUUID, aDestinationUUID, 1 /* 0 is an invalid sequence ID */,
                  false /* Neutered */, aRv);
   return mp.forget();
@@ -240,11 +224,16 @@ already_AddRefed<MessagePort> MessagePort::Create(
   return mp.forget();
 }
 
-void MessagePort::UnshippedEntangle(MessagePort* aEntangledPort) {
+void MessagePort::UnshippedEntangle(RefPtr<MessagePort>& aEntangledPort) {
   MOZ_DIAGNOSTIC_ASSERT(aEntangledPort);
   MOZ_DIAGNOSTIC_ASSERT(!mUnshippedEntangledPort);
 
-  mUnshippedEntangledPort = aEntangledPort;
+  if (mState == eStateInitializingUnshippedEntangled) {
+    mUnshippedEntangledPort = aEntangledPort;
+    mState = eStateUnshippedEntangled;
+  } else {
+    MOZ_ASSERT_UNREACHABLE("Should not have been called.");
+  }
 }
 
 void MessagePort::Initialize(const nsID& aUUID, const nsID& aDestinationUUID,
@@ -268,7 +257,7 @@ void MessagePort::Initialize(const nsID& aUUID, const nsID& aDestinationUUID,
       return;
     }
   } else {
-    MOZ_ASSERT(mState == eStateUnshippedEntangled);
+    MOZ_ASSERT(mState == eStateInitializingUnshippedEntangled);
   }
 
   // The port has to keep itself alive until it's entangled.
@@ -283,8 +272,7 @@ void MessagePort::Initialize(const nsID& aUUID, const nsID& aDestinationUUID,
         workerPrivate, "MessagePort", [self]() { self->CloseForced(); });
     if (NS_WARN_IF(!strongWorkerRef)) {
       // The worker is shutting down.
-      mState = eStateDisentangled;
-      UpdateMustKeepAlive();
+      CloseForced();
       aRv.Throw(NS_ERROR_FAILURE);
       return;
     }
@@ -338,26 +326,8 @@ void MessagePort::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
   RefPtr<SharedMessageBody> data = new SharedMessageBody(
       StructuredCloneHolder::TransferringSupported, agentClusterId);
 
-  UniquePtr<AbstractTimelineMarker> start;
-  UniquePtr<AbstractTimelineMarker> end;
-  bool isTimelineRecording = !TimelineConsumers::IsEmpty();
-
-  if (isTimelineRecording) {
-    start = MakeUnique<MessagePortTimelineMarker>(
-        ProfileTimelineMessagePortOperationType::SerializeData,
-        MarkerTracingType::START);
-  }
-
   data->Write(aCx, aMessage, transferable, mIdentifier->uuid(),
               mRefMessageBodyService, aRv);
-
-  if (isTimelineRecording) {
-    end = MakeUnique<MessagePortTimelineMarker>(
-        ProfileTimelineMessagePortOperationType::SerializeData,
-        MarkerTracingType::END);
-    TimelineConsumers::AddMarkerForAllObservedDocShells(start);
-    TimelineConsumers::AddMarkerForAllObservedDocShells(end);
-  }
 
   if (NS_WARN_IF(aRv.Failed())) {
     return;
@@ -365,6 +335,12 @@ void MessagePort::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
 
   // This message has to be ignored.
   if (mState > eStateEntangled) {
+    return;
+  }
+
+  if (mState == eStateInitializingUnshippedEntangled) {
+    MOZ_ASSERT_UNREACHABLE(
+        "Should be eStateUnshippedEntangled or eStateDisentangled by now.");
     return;
   }
 
@@ -426,6 +402,11 @@ void MessagePort::Dispatch() {
   }
 
   switch (mState) {
+    case eStateInitializingUnshippedEntangled:
+      MOZ_ASSERT_UNREACHABLE(
+          "Should be eStateUnshippedEntangled or eStateDisentangled by now.");
+      break;
+
     case eStateUnshippedEntangled:
       // Everything is fine here. We have messages because the other
       // port populates our queue directly.
@@ -474,14 +455,6 @@ void MessagePort::Dispatch() {
   mMessages.RemoveElementAt(0);
 
   mPostMessageRunnable = new PostMessageRunnable(this, data);
-
-  nsCOMPtr<nsIGlobalObject> global = GetOwnerGlobal();
-  if (NS_IsMainThread() && global) {
-    MOZ_ALWAYS_SUCCEEDS(
-        global->Dispatch(TaskCategory::Other, do_AddRef(mPostMessageRunnable)));
-    return;
-  }
-
   MOZ_ALWAYS_SUCCEEDS(NS_DispatchToCurrentThread(mPostMessageRunnable));
 }
 
@@ -502,6 +475,17 @@ void MessagePort::CloseInternal(bool aSoftly) {
   // Let's inform the RefMessageBodyService that any our shared messages are
   // now invalid.
   mRefMessageBodyService->ForgetPort(mIdentifier->uuid());
+
+  if (mState == eStateInitializingUnshippedEntangled) {
+    // We can end up here if we failed to create our WorkerRef.  Our Create
+    // method will end up returning an error and MessageChannel will not bother
+    // creating our counterpart port or calling UnshippedEntangle (and we
+    // assert on this).
+    mState = eStateDisentangledForClose;
+
+    UpdateMustKeepAlive();
+    return;
+  }
 
   if (mState == eStateUnshippedEntangled) {
     MOZ_DIAGNOSTIC_ASSERT(mUnshippedEntangledPort);

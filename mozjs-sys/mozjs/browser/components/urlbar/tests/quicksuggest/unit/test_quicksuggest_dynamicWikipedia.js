@@ -24,15 +24,12 @@ const MERINO_SUGGESTIONS = [
 ];
 
 add_setup(async function init() {
-  UrlbarPrefs.set("quicksuggest.enabled", true);
-  UrlbarPrefs.set("bestMatch.enabled", true);
-  UrlbarPrefs.set("suggest.quicksuggest.nonsponsored", true);
-
   // Disable search suggestions so we don't hit the network.
   Services.prefs.setBoolPref("browser.search.suggest.enabled", false);
 
   await QuickSuggestTestUtils.ensureQuickSuggestInit({
     merinoSuggestions: MERINO_SUGGESTIONS,
+    prefs: [["suggest.quicksuggest.nonsponsored", true]],
   });
 });
 
@@ -67,12 +64,22 @@ add_task(async function nonsponsoredDisabled() {
   UrlbarPrefs.clear("suggest.quicksuggest.sponsored");
 });
 
+add_task(async function mixedCaseQuery() {
+  await check_results({
+    context: createContext("TeSt", {
+      providers: [UrlbarProviderQuickSuggest.name],
+      isPrivate: false,
+    }),
+    matches: [makeExpectedResult()],
+  });
+});
+
 function makeExpectedResult() {
   return {
     type: UrlbarUtils.RESULT_TYPE.URL,
     source: UrlbarUtils.RESULT_SOURCE.SEARCH,
     heuristic: false,
-    suggestedIndex: -1,
+    suggestedIndex: 0,
     payload: {
       telemetryType: "wikipedia",
       title: "title",
@@ -83,14 +90,11 @@ function makeExpectedResult() {
       qsSuggestion: "full_keyword",
       source: "merino",
       provider: "wikipedia",
-      helpUrl: QuickSuggest.HELP_URL,
-      helpL10n: {
-        id: "urlbar-result-menu-learn-more-about-firefox-suggest",
-      },
       isBlockable: true,
       blockL10n: {
         id: "urlbar-result-menu-dismiss-firefox-suggest",
       },
+      isManageable: true,
     },
   };
 }

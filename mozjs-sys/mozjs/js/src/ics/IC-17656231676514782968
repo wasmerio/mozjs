@@ -1,0 +1,1 @@
+Call, 1, 1, 2, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(JSObject) , LASTUSED(2) , OP(NewStringIteratorResult) OFFSET(0) OP(ReturnFromIC)  

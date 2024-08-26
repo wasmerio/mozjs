@@ -98,6 +98,8 @@ class Linter(visitor.Visitor):
             "searchbuttonlabel",
             # Used in toolbar customization.
             "toolbarname",
+            # Used in moz-message-bar.
+            "message",
             # Used in dialogs (should be moved to using fluent IDs though)
             "buttonlabelaccept",
             "buttonaccesskeyaccept",
@@ -110,6 +112,9 @@ class Linter(visitor.Visitor):
             "buttonaccesskey",
             "secondarybuttonlabel",
             "secondarybuttonaccesskey",
+            # Commonly used in Lit-based web components
+            "heading",
+            "description",
         ]
         self.known_attribute_list = [a.lower() for a in attributes]
 

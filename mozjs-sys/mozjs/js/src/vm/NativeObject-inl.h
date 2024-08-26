@@ -13,13 +13,12 @@
 
 #include <type_traits>
 
-#include "gc/Allocator.h"
+#include "gc/GCEnum.h"
 #include "gc/GCProbes.h"
 #include "gc/MaybeRooted.h"
 #include "js/friend/ErrorMessages.h"  // js::GetErrorMessage, JSMSG_*
 #include "vm/Compartment.h"
 #include "vm/Iteration.h"
-#include "vm/JSContext.h"
 #include "vm/PlainObject.h"
 #include "vm/PropertyResult.h"
 #include "vm/StringType.h"
@@ -29,6 +28,7 @@
 #include "gc/Marking-inl.h"
 #include "gc/ObjectKind-inl.h"
 #include "vm/Compartment-inl.h"
+#include "vm/JSContext-inl.h"
 #include "vm/JSObject-inl.h"
 #include "vm/Realm-inl.h"
 #include "vm/Shape-inl.h"
@@ -668,8 +668,6 @@ static MOZ_ALWAYS_INLINE bool CallResolveOp(JSContext* cx,
                                             Handle<NativeObject*> obj,
                                             HandleId id,
                                             PropertyResult* propp) {
-  MOZ_ASSERT(!cx->isHelperThreadContext());
-
   // Avoid recursion on (obj, id) already being resolved on cx.
   AutoResolving resolving(cx, obj, id);
   if (resolving.alreadyStarted()) {
@@ -749,7 +747,7 @@ static MOZ_ALWAYS_INLINE bool NativeLookupOwnPropertyInline(
   if (obj->template is<TypedArrayObject>()) {
     if (mozilla::Maybe<uint64_t> index = ToTypedArrayIndex(id)) {
       uint64_t idx = index.value();
-      if (idx < obj->template as<TypedArrayObject>().length()) {
+      if (idx < obj->template as<TypedArrayObject>().length().valueOr(0)) {
         propp->setTypedArrayElement(idx);
       } else {
         propp->setTypedArrayOutOfRange();
@@ -846,7 +844,6 @@ static MOZ_ALWAYS_INLINE bool NativeLookupPropertyInline(
     // we can simply loop within this call frame.
     if (proto->getOpsLookupProperty()) {
       if constexpr (allowGC) {
-        MOZ_ASSERT(!cx->isHelperThreadContext());
         RootedObject protoRoot(cx, proto);
         return LookupProperty(cx, protoRoot, id, objp, propp);
       } else {

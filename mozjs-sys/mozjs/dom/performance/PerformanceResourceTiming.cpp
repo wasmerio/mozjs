@@ -85,6 +85,8 @@ size_t PerformanceResourceTiming::SizeOfExcludingThis(
     mozilla::MallocSizeOf aMallocSizeOf) const {
   return PerformanceEntry::SizeOfExcludingThis(aMallocSizeOf) +
          mInitiatorType.SizeOfExcludingThisIfUnshared(aMallocSizeOf) +
+         mTimingData->ContentType().SizeOfExcludingThisIfUnshared(
+             aMallocSizeOf) +
          mTimingData->NextHopProtocol().SizeOfExcludingThisIfUnshared(
              aMallocSizeOf);
 }
@@ -109,6 +111,19 @@ void PerformanceResourceTiming::GetServerTiming(
   }
 }
 
+nsITimedChannel::BodyInfoAccess
+PerformanceResourceTiming::BodyInfoAccessAllowedForCaller(
+    nsIPrincipal& aCaller) const {
+  // If the addon has permission to access the cross-origin resource,
+  // allow it full access to the bodyInfo.
+  if (mOriginalURI &&
+      BasePrincipal::Cast(&aCaller)->AddonAllowsLoad(mOriginalURI)) {
+    return nsITimedChannel::BodyInfoAccess::ALLOW_ALL;
+  }
+
+  return mTimingData->BodyInfoAccessAllowed();
+}
+
 bool PerformanceResourceTiming::TimingAllowedForCaller(
     nsIPrincipal& aCaller) const {
   if (mTimingData->TimingAllowed()) {
@@ -130,4 +145,9 @@ bool PerformanceResourceTiming::ReportRedirectForCaller(
   // Only report cross-origin redirect if the addon has <all_urls> permission.
   return BasePrincipal::Cast(&aCaller)->AddonHasPermission(
       nsGkAtoms::all_urlsPermission);
+}
+
+RenderBlockingStatusType PerformanceResourceTiming::RenderBlockingStatus()
+    const {
+  return mTimingData->RenderBlockingStatus();
 }

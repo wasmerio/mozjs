@@ -13,8 +13,10 @@
 
 #include "jstypes.h"
 
+#include "builtin/temporal/Int128.h"
 #include "builtin/temporal/TemporalRoundingMode.h"
 #include "builtin/temporal/TemporalUnit.h"
+#include "js/RootingAPI.h"
 #include "js/TypeDecls.h"
 #include "vm/NativeObject.h"
 
@@ -22,7 +24,6 @@ namespace js {
 struct ClassSpec;
 class PlainObject;
 class PropertyName;
-class JSStringBuilder;
 }  // namespace js
 
 namespace js::temporal {
@@ -34,9 +35,6 @@ class TemporalObject : public NativeObject {
  private:
   static const ClassSpec classSpec_;
 };
-
-struct Instant;
-struct PlainTime;
 
 /**
  * Rounding increment, which is an integer in the range [1, 1'000'000'000].
@@ -80,10 +78,10 @@ class Increment final {
 };
 
 /**
- * ToTemporalRoundingIncrement ( normalizedOptions, dividend, inclusive )
+ * GetRoundingIncrementOption ( normalizedOptions, dividend, inclusive )
  */
-bool ToTemporalRoundingIncrement(JSContext* cx, JS::Handle<JSObject*> options,
-                                 Increment* increment);
+bool GetRoundingIncrementOption(JSContext* cx, JS::Handle<JSObject*> options,
+                                Increment* increment);
 
 /**
  * ValidateTemporalRoundingIncrement ( increment, dividend, inclusive )
@@ -147,81 +145,76 @@ enum class TemporalUnitKey {
 };
 
 /**
- * GetTemporalUnit ( normalizedOptions, key, unitGroup, default [ , extraValues
- * ] )
+ * GetTemporalUnitValuedOption ( normalizedOptions, key, unitGroup, default [ ,
+ * extraValues ] )
  */
-bool GetTemporalUnit(JSContext* cx, JS::Handle<JSObject*> options,
-                     TemporalUnitKey key, TemporalUnitGroup unitGroup,
-                     TemporalUnit* unit);
+bool GetTemporalUnitValuedOption(JSContext* cx, JS::Handle<JSObject*> options,
+                                 TemporalUnitKey key,
+                                 TemporalUnitGroup unitGroup,
+                                 TemporalUnit* unit);
 
 /**
- * GetTemporalUnit ( normalizedOptions, key, unitGroup, default [ , extraValues
- * ] )
+ * GetTemporalUnitValuedOption ( normalizedOptions, key, unitGroup, default [ ,
+ * extraValues ] )
  */
-bool GetTemporalUnit(JSContext* cx, JS::Handle<JSString*> value,
-                     TemporalUnitKey key, TemporalUnitGroup unitGroup,
-                     TemporalUnit* unit);
+bool GetTemporalUnitValuedOption(JSContext* cx, JS::Handle<JSString*> value,
+                                 TemporalUnitKey key,
+                                 TemporalUnitGroup unitGroup,
+                                 TemporalUnit* unit);
 
 /**
- * ToTemporalRoundingMode ( normalizedOptions, fallback )
+ * GetRoundingModeOption ( normalizedOptions, fallback )
  */
-bool ToTemporalRoundingMode(JSContext* cx, JS::Handle<JSObject*> options,
-                            TemporalRoundingMode* mode);
-
-/**
- * RoundNumberToIncrement ( x, increment, roundingMode )
- */
-JS::BigInt* RoundNumberToIncrement(JSContext* cx, JS::Handle<JS::BigInt*> x,
-                                   int64_t increment,
-                                   TemporalRoundingMode roundingMode);
+bool GetRoundingModeOption(JSContext* cx, JS::Handle<JSObject*> options,
+                           TemporalRoundingMode* mode);
 
 /**
  * RoundNumberToIncrement ( x, increment, roundingMode )
  */
-bool RoundNumberToIncrement(JSContext* cx, const Instant& x, int64_t increment,
-                            TemporalRoundingMode roundingMode, Instant* result);
+Int128 RoundNumberToIncrement(int64_t numerator, int64_t denominator,
+                              Increment increment,
+                              TemporalRoundingMode roundingMode);
 
 /**
  * RoundNumberToIncrement ( x, increment, roundingMode )
  */
-bool RoundNumberToIncrement(JSContext* cx, int64_t numerator, TemporalUnit unit,
-                            Increment increment,
-                            TemporalRoundingMode roundingMode, double* result);
+Int128 RoundNumberToIncrement(const Int128& numerator,
+                              const Int128& denominator, Increment increment,
+                              TemporalRoundingMode roundingMode);
 
 /**
  * RoundNumberToIncrement ( x, increment, roundingMode )
  */
-bool RoundNumberToIncrement(JSContext* cx, JS::Handle<JS::BigInt*> numerator,
-                            TemporalUnit unit, Increment increment,
-                            TemporalRoundingMode roundingMode, double* result);
+int64_t RoundNumberToIncrement(int64_t x, int64_t increment,
+                               TemporalRoundingMode roundingMode);
 
 /**
  * RoundNumberToIncrement ( x, increment, roundingMode )
  */
-bool RoundNumberToIncrement(JSContext* cx, int64_t numerator,
-                            int64_t denominator, Increment increment,
-                            TemporalRoundingMode roundingMode, double* result);
+Int128 RoundNumberToIncrement(const Int128& x, const Int128& increment,
+                              TemporalRoundingMode roundingMode);
 
 /**
- * RoundNumberToIncrement ( x, increment, roundingMode )
+ * Return the double value of the fractional number `numerator / denominator`.
  */
-bool RoundNumberToIncrement(JSContext* cx, JS::Handle<JS::BigInt*> numerator,
-                            JS::Handle<JS::BigInt*> denominator,
-                            Increment increment,
-                            TemporalRoundingMode roundingMode, double* result);
-
-enum class CalendarOption { Auto, Always, Never, Critical };
+double FractionToDouble(int64_t numerator, int64_t denominator);
 
 /**
- * ToCalendarNameOption ( normalizedOptions )
+ * Return the double value of the fractional number `numerator / denominator`.
  */
-bool ToCalendarNameOption(JSContext* cx, JS::Handle<JSObject*> options,
-                          CalendarOption* result);
+double FractionToDouble(const Int128& numerator, const Int128& denominator);
+
+enum class ShowCalendar { Auto, Always, Never, Critical };
+
+/**
+ * GetTemporalShowCalendarNameOption ( normalizedOptions )
+ */
+bool GetTemporalShowCalendarNameOption(JSContext* cx,
+                                       JS::Handle<JSObject*> options,
+                                       ShowCalendar* result);
 
 /**
  * Precision when displaying fractional seconds.
- *
- *
  */
 class Precision final {
   int8_t value_;
@@ -230,9 +223,15 @@ class Precision final {
   constexpr Precision(int8_t value, Tag) : value_(value) {}
 
  public:
-  constexpr explicit Precision(uint8_t value) : value_(value) {
+  constexpr explicit Precision(uint8_t value) : value_(int8_t(value)) {
     MOZ_ASSERT(value < 10);
   }
+
+  bool operator==(const Precision& other) const {
+    return value_ == other.value_;
+  }
+
+  bool operator!=(const Precision& other) const { return !(*this == other); }
 
   /**
    * Return the number of fractional second digits.
@@ -241,16 +240,6 @@ class Precision final {
     MOZ_ASSERT(value_ >= 0, "auto and minute precision don't have a value");
     return uint8_t(value_);
   }
-
-  /**
-   * Limit the precision to trim off any trailing zeros.
-   */
-  bool isAuto() const { return value_ == -1; }
-
-  /**
-   * Limit the precision to minutes, i.e. don't display seconds and sub-seconds.
-   */
-  bool isMinute() const { return value_ == -2; }
 
   /**
    * Limit the precision to trim off any trailing zeros.
@@ -264,10 +253,11 @@ class Precision final {
 };
 
 /**
- * ToFractionalSecondDigits ( normalizedOptions )
+ * GetTemporalFractionalSecondDigitsOption ( normalizedOptions )
  */
-bool ToFractionalSecondDigits(JSContext* cx, JS::Handle<JSObject*> options,
-                              Precision* precision);
+bool GetTemporalFractionalSecondDigitsOption(JSContext* cx,
+                                             JS::Handle<JSObject*> options,
+                                             Precision* precision);
 
 struct SecondsStringPrecision final {
   Precision precision = Precision{0};
@@ -281,55 +271,52 @@ struct SecondsStringPrecision final {
 SecondsStringPrecision ToSecondsStringPrecision(TemporalUnit smallestUnit,
                                                 Precision fractionalDigitCount);
 
-/**
- * FormatSecondsStringPart ( second, millisecond, microsecond, nanosecond,
- * precision )
- */
-void FormatSecondsStringPart(JSStringBuilder& result, const PlainTime& time,
-                             Precision precision);
-
 enum class TemporalOverflow { Constrain, Reject };
 
 /**
- * ToTemporalOverflow ( normalizedOptions )
+ * GetTemporalOverflowOption ( normalizedOptions )
  */
-bool ToTemporalOverflow(JSContext* cx, JS::Handle<JSObject*> options,
-                        TemporalOverflow* result);
+bool GetTemporalOverflowOption(JSContext* cx, JS::Handle<JSObject*> options,
+                               TemporalOverflow* result);
 
 enum class TemporalDisambiguation { Compatible, Earlier, Later, Reject };
 
 /**
- * ToTemporalDisambiguation ( options )
+ * GetTemporalDisambiguationOption ( options )
  */
-bool ToTemporalDisambiguation(JSContext* cx, JS::Handle<JSObject*> options,
-                              TemporalDisambiguation* disambiguation);
+bool GetTemporalDisambiguationOption(JSContext* cx,
+                                     JS::Handle<JSObject*> options,
+                                     TemporalDisambiguation* disambiguation);
 
 enum class TemporalOffset { Prefer, Use, Ignore, Reject };
 
 /**
- * ToTemporalOffset ( options, fallback )
+ * GetTemporalOffsetOption ( options, fallback )
  */
-bool ToTemporalOffset(JSContext* cx, JS::Handle<JSObject*> options,
-                      TemporalOffset* offset);
+bool GetTemporalOffsetOption(JSContext* cx, JS::Handle<JSObject*> options,
+                             TemporalOffset* offset);
 
-enum class TimeZoneNameOption { Auto, Never, Critical };
+enum class ShowTimeZoneName { Auto, Never, Critical };
 
-bool ToTimeZoneNameOption(JSContext* cx, JS::Handle<JSObject*> options,
-                          TimeZoneNameOption* result);
+bool GetTemporalShowTimeZoneNameOption(JSContext* cx,
+                                       JS::Handle<JSObject*> options,
+                                       ShowTimeZoneName* result);
 
-enum class ShowOffsetOption { Auto, Never };
+enum class ShowOffset { Auto, Never };
 
 /**
- * ToShowOffsetOption ( normalizedOptions )
+ * GetTemporalShowOffsetOption ( normalizedOptions )
  */
-bool ToShowOffsetOption(JSContext* cx, JS::Handle<JSObject*> options,
-                        ShowOffsetOption* result);
+bool GetTemporalShowOffsetOption(JSContext* cx, JS::Handle<JSObject*> options,
+                                 ShowOffset* result);
 
 /**
- * RejectObjectWithCalendarOrTimeZone ( object )
+ * IsPartialTemporalObject ( object )
+ *
+ * Our implementation performs error reporting in this function instead of in
+ * the caller to provide better error messages.
  */
-bool RejectObjectWithCalendarOrTimeZone(JSContext* cx,
-                                        JS::Handle<JSObject*> object);
+bool ThrowIfTemporalLikeObject(JSContext* cx, JS::Handle<JSObject*> object);
 
 /**
  * ToPositiveIntegerWithTruncation ( argument )
@@ -346,29 +333,27 @@ bool ToIntegerWithTruncation(JSContext* cx, JS::Handle<JS::Value> value,
 /**
  * GetMethod ( V, P )
  */
-bool GetMethod(JSContext* cx, JS::Handle<JSObject*> object,
-               JS::Handle<PropertyName*> name,
-               JS::MutableHandle<JS::Value> result);
+JSObject* GetMethod(JSContext* cx, JS::Handle<JSObject*> object,
+                    JS::Handle<PropertyName*> name);
 
 /**
- * GetMethod ( V, P )
+ * SnapshotOwnProperties ( source, proto [ , excludedKeys [ , excludedValues ] ]
+ * )
  */
-bool GetMethodForCall(JSContext* cx, JS::Handle<JSObject*> object,
-                      JS::Handle<PropertyName*> name,
-                      JS::MutableHandle<JS::Value> result);
+PlainObject* SnapshotOwnProperties(JSContext* cx, JS::Handle<JSObject*> source);
+
+/**
+ * SnapshotOwnProperties ( source, proto [ , excludedKeys [ , excludedValues ] ]
+ * )
+ */
+PlainObject* SnapshotOwnPropertiesIgnoreUndefined(JSContext* cx,
+                                                  JS::Handle<JSObject*> source);
 
 /**
  * CopyDataProperties ( target, source, excludedKeys [ , excludedValues ] )
  */
 bool CopyDataProperties(JSContext* cx, JS::Handle<PlainObject*> target,
                         JS::Handle<JSObject*> source);
-
-/**
- * CopyDataProperties ( target, source, excludedKeys [ , excludedValues ] )
- */
-bool CopyDataPropertiesIgnoreUndefined(JSContext* cx,
-                                       JS::Handle<PlainObject*> target,
-                                       JS::Handle<JSObject*> source);
 
 enum class TemporalDifference { Since, Until };
 
@@ -388,7 +373,7 @@ struct DifferenceSettings final {
  * fallbackSmallestUnit, smallestLargestDefaultUnit )
  */
 bool GetDifferenceSettings(JSContext* cx, TemporalDifference operation,
-                           JS::Handle<JSObject*> options,
+                           JS::Handle<PlainObject*> options,
                            TemporalUnitGroup unitGroup,
                            TemporalUnit smallestAllowedUnit,
                            TemporalUnit fallbackSmallestUnit,
@@ -400,7 +385,7 @@ bool GetDifferenceSettings(JSContext* cx, TemporalDifference operation,
  * fallbackSmallestUnit, smallestLargestDefaultUnit )
  */
 inline bool GetDifferenceSettings(JSContext* cx, TemporalDifference operation,
-                                  JS::Handle<JSObject*> options,
+                                  JS::Handle<PlainObject*> options,
                                   TemporalUnitGroup unitGroup,
                                   TemporalUnit fallbackSmallestUnit,
                                   TemporalUnit smallestLargestDefaultUnit,
@@ -409,6 +394,11 @@ inline bool GetDifferenceSettings(JSContext* cx, TemporalDifference operation,
                                TemporalUnit::Nanosecond, fallbackSmallestUnit,
                                smallestLargestDefaultUnit, result);
 }
+
+/**
+ * Sets |result| to `true` when array iteration is still in its initial state.
+ */
+bool IsArrayIterationSane(JSContext* cx, bool* result);
 
 } /* namespace js::temporal */
 

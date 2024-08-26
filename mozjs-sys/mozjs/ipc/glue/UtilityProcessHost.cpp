@@ -28,6 +28,20 @@
 #  include "mozilla/WinDllServices.h"
 #endif  // defined(XP_WIN)
 
+#if defined(MOZ_WMF_CDM) && defined(MOZ_SANDBOX) && !defined(MOZ_ASAN)
+#  define MOZ_WMF_CDM_LPAC_SANDBOX true
+#endif
+
+#ifdef MOZ_WMF_CDM_LPAC_SANDBOX
+#  include "GMPServiceParent.h"
+#  include "mozilla/dom/KeySystemNames.h"
+#  include "mozilla/GeckoArgs.h"
+#  include "mozilla/MFMediaEngineUtils.h"
+#  include "mozilla/StaticPrefs_media.h"
+#  include "nsIFile.h"
+#  include "sandboxBroker.h"
+#endif
+
 #include "ProfilerParent.h"
 #include "mozilla/PProfilerChild.h"
 
@@ -35,6 +49,12 @@ namespace mozilla::ipc {
 
 LazyLogModule gUtilityProcessLog("utilityproc");
 #define LOGD(...) MOZ_LOG(gUtilityProcessLog, LogLevel::Debug, (__VA_ARGS__))
+
+#ifdef MOZ_WMF_CDM_LPAC_SANDBOX
+#  define WMF_LOG(msg, ...)                     \
+    MOZ_LOG(gMFMediaEngineLog, LogLevel::Debug, \
+            ("UtilityProcessHost=%p, " msg, this, ##__VA_ARGS__))
+#endif
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
 bool UtilityProcessHost::sLaunchWithMacSandbox = false;
@@ -45,8 +65,7 @@ UtilityProcessHost::UtilityProcessHost(SandboxingKind aSandbox,
     : GeckoChildProcessHost(GeckoProcessType_Utility),
       mListener(std::move(aListener)),
       mLiveToken(new media::Refcountable<bool>(true)),
-      mLaunchPromise(
-          MakeRefPtr<GenericNonExclusivePromise::Private>(__func__)) {
+      mLaunchPromise(MakeRefPtr<LaunchPromiseType::Private>(__func__)) {
   MOZ_COUNT_CTOR(UtilityProcessHost);
   LOGD("[%p] UtilityProcessHost::UtilityProcessHost sandboxingKind=%" PRIu64,
        this, aSandbox);
@@ -87,8 +106,12 @@ bool UtilityProcessHost::Launch(StringVector aExtraOpts) {
   }
   mPrefSerializer->AddSharedPrefCmdLineArgs(*this, aExtraOpts);
 
-#if defined(XP_WIN) && defined(MOZ_SANDBOX)
-  mSandboxLevel = Preferences::GetInt("security.sandbox.utility.level");
+#ifdef MOZ_WMF_CDM_LPAC_SANDBOX
+  EnsureWidevineL1PathForSandbox(aExtraOpts);
+#endif
+
+#if defined(MOZ_WMF_CDM) && defined(MOZ_SANDBOX)
+  EnanbleMFCDMTelemetryEventIfNeeded();
 #endif
 
   mLaunchPhase = LaunchPhase::Waiting;
@@ -103,7 +126,8 @@ bool UtilityProcessHost::Launch(StringVector aExtraOpts) {
   return true;
 }
 
-RefPtr<GenericNonExclusivePromise> UtilityProcessHost::LaunchPromise() {
+RefPtr<UtilityProcessHost::LaunchPromiseType>
+UtilityProcessHost::LaunchPromise() {
   MOZ_ASSERT(NS_IsMainThread());
 
   if (mLaunchPromiseLaunched) {
@@ -124,7 +148,7 @@ RefPtr<GenericNonExclusivePromise> UtilityProcessHost::LaunchPromise() {
         }
         mLaunchCompleted = true;
         if (aResult.IsReject()) {
-          RejectPromise();
+          RejectPromise(aResult.RejectValue());
         }
         // If aResult.IsResolve() then we have succeeded in launching the
         // Utility process. The promise will be resolved once the channel has
@@ -156,12 +180,11 @@ void UtilityProcessHost::InitAfterConnect(bool aSucceeded) {
   MOZ_ASSERT(mLaunchPhase == LaunchPhase::Waiting);
   MOZ_ASSERT(!mUtilityProcessParent);
 
-  mLaunchPhase = LaunchPhase::Complete;
+  // This function is patterned after other `FooProcessHost` functions, but we
+  // never actually call it with `false`.
+  MOZ_ASSERT(aSucceeded);
 
-  if (!aSucceeded) {
-    RejectPromise();
-    return;
-  }
+  mLaunchPhase = LaunchPhase::Complete;
 
   mUtilityProcessParent = MakeRefPtr<UtilityProcessParent>(this);
   DebugOnly<bool> rv = TakeInitialEndpoint().Bind(mUtilityProcessParent.get());
@@ -221,7 +244,7 @@ void UtilityProcessHost::Shutdown() {
   MOZ_ASSERT(!mShutdownRequested);
   LOGD("[%p] UtilityProcessHost::Shutdown", this);
 
-  RejectPromise();
+  RejectPromise(LaunchError("aborted by UtilityProcessHost::Shutdown"));
 
   if (mUtilityProcessParent) {
     LOGD("[%p] UtilityProcessHost::Shutdown not destroying utility process.",
@@ -258,7 +281,7 @@ void UtilityProcessHost::OnChannelClosed() {
   MOZ_ASSERT(NS_IsMainThread());
   LOGD("[%p] UtilityProcessHost::OnChannelClosed", this);
 
-  RejectPromise();
+  RejectPromise(LaunchError("UtilityProcessHost::OnChannelClosed"));
 
   if (!mShutdownRequested && mListener) {
     // This is an unclean shutdown. Notify our listener that we're going away.
@@ -287,7 +310,7 @@ void UtilityProcessHost::DestroyProcess() {
   MOZ_ASSERT(NS_IsMainThread());
   LOGD("[%p] UtilityProcessHost::DestroyProcess", this);
 
-  RejectPromise();
+  RejectPromise(LaunchError("UtilityProcessHost::DestroyProcess"));
 
   // Any pending tasks will be cancelled from now on.
   *mLiveToken = false;
@@ -301,20 +324,20 @@ void UtilityProcessHost::ResolvePromise() {
   LOGD("[%p] UtilityProcessHost connected - resolving launch promise", this);
 
   if (!mLaunchPromiseSettled) {
-    mLaunchPromise->Resolve(true, __func__);
+    mLaunchPromise->Resolve(Ok{}, __func__);
     mLaunchPromiseSettled = true;
   }
 
   mLaunchCompleted = true;
 }
 
-void UtilityProcessHost::RejectPromise() {
+void UtilityProcessHost::RejectPromise(LaunchError err) {
   MOZ_ASSERT(NS_IsMainThread());
   LOGD("[%p] UtilityProcessHost connection failed - rejecting launch promise",
        this);
 
   if (!mLaunchPromiseSettled) {
-    mLaunchPromise->Reject(NS_ERROR_FAILURE, __func__);
+    mLaunchPromise->Reject(std::move(err), __func__);
     mLaunchPromiseSettled = true;
   }
 
@@ -333,6 +356,70 @@ bool UtilityProcessHost::FillMacSandboxInfo(MacSandboxInfo& aInfo) {
 /* static */
 MacSandboxType UtilityProcessHost::GetMacSandboxType() {
   return MacSandboxType_Utility;
+}
+#endif
+
+#ifdef MOZ_WMF_CDM_LPAC_SANDBOX
+void UtilityProcessHost::EnsureWidevineL1PathForSandbox(
+    StringVector& aExtraOpts) {
+  if (mSandbox != SandboxingKind::MF_MEDIA_ENGINE_CDM) {
+    return;
+  }
+
+  RefPtr<mozilla::gmp::GeckoMediaPluginServiceParent> gmps =
+      mozilla::gmp::GeckoMediaPluginServiceParent::GetSingleton();
+  if (NS_WARN_IF(!gmps)) {
+    WMF_LOG("Failed to get GeckoMediaPluginServiceParent!");
+    return;
+  }
+
+  if (!StaticPrefs::media_eme_widevine_experiment_enabled()) {
+    return;
+  }
+
+  // If Widevine L1 is installed after the MFCDM process starts, we will set it
+  // path later via MFCDMService::UpdateWideivineL1Path().
+  nsString widevineL1Path;
+  nsCOMPtr<nsIFile> pluginFile;
+  if (NS_WARN_IF(NS_FAILED(gmps->FindPluginDirectoryForAPI(
+          nsCString(kWidevineExperimentAPIName),
+          {nsCString(kWidevineExperimentKeySystemName)},
+          getter_AddRefs(pluginFile))))) {
+    WMF_LOG("Widevine L1 is not installed yet");
+    return;
+  }
+
+  if (!pluginFile) {
+    WMF_LOG("No plugin file found!");
+    return;
+  }
+
+  if (NS_WARN_IF(NS_FAILED(pluginFile->GetTarget(widevineL1Path)))) {
+    WMF_LOG("Failed to get L1 path!");
+    return;
+  }
+
+  WMF_LOG("Set Widevine L1 path=%s",
+          NS_ConvertUTF16toUTF8(widevineL1Path).get());
+  geckoargs::sPluginPath.Put(NS_ConvertUTF16toUTF8(widevineL1Path).get(),
+                             aExtraOpts);
+  SandboxBroker::EnsureLpacPermsissionsOnDir(widevineL1Path);
+}
+
+#  undef WMF_LOG
+
+#endif
+
+#if defined(MOZ_WMF_CDM) && defined(MOZ_SANDBOX)
+void UtilityProcessHost::EnanbleMFCDMTelemetryEventIfNeeded() const {
+  if (mSandbox != SandboxingKind::MF_MEDIA_ENGINE_CDM) {
+    return;
+  }
+  static bool sTelemetryEventEnabled = false;
+  if (!sTelemetryEventEnabled) {
+    sTelemetryEventEnabled = true;
+    Telemetry::SetEventRecordingEnabled("mfcdm"_ns, true);
+  }
 }
 #endif
 

@@ -28,7 +28,9 @@ DIRS += [
     "clearsitedata",
     "cookiebanners",
     "commandlines",
+    "contentanalysis",
     "contentprefs",
+    "contentrelevancy",
     "contextualidentity",
     "crashes",
     "crashmonitor",
@@ -36,7 +38,6 @@ DIRS += [
     "downloads",
     "enterprisepolicies",
     "extensions",
-    "featuregates",
     "formautofill",
     "finalizationwitness",
     "find",
@@ -46,6 +47,7 @@ DIRS += [
     "jsoncpp/src/lib_json",
     "kvstore",
     "mediasniffer",
+    "ml",
     "mozintl",
     "mozprotocol",
     "parentalcontrols",
@@ -61,10 +63,12 @@ DIRS += [
     "remotebrowserutils",
     "reflect",
     "reputationservice",
+    "reportbrokensite",
     "resistfingerprinting",
     "search",
     "sessionstore",
     "shell",
+    "shopping",
     "startup",
     "statusfilter",
     "telemetry",
@@ -110,9 +114,6 @@ if CONFIG["MOZ_UPDATE_AGENT"]:
 
 DIRS += ["build"]
 
-if CONFIG["NIGHTLY_BUILD"]:
-    DIRS += ["shopping"]
-
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
     DIRS += ["aboutthirdparty", "aboutwindowsmessages", "gfx"]
 
@@ -125,17 +126,16 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] != "android":
         "components.conf",
     ]
 
+if CONFIG["MOZ_WIDGET_TOOLKIT"] not in ("android", "windows"):
+    DIRS += ["aboutwebauthn"]
+
 if CONFIG["MOZ_BUILD_APP"] == "browser":
-    DIRS += ["normandy", "messaging-system"]
+    DIRS += ["featuregates", "messaging-system", "normandy"]
 
 DIRS += ["nimbus"]
 
 if CONFIG["MOZ_BACKGROUNDTASKS"]:
     DIRS += ["backgroundtasks"]
-
-# This is only packaged for browser since corrupt JAR and XPI files tend to be a desktop-OS problem.
-if CONFIG["MOZ_BUILD_APP"] == "browser":
-    DIRS += ["corroborator"]
 
 if CONFIG["MOZ_UNIFFI_FIXTURES"]:
     DIRS += ["uniffi-bindgen-gecko-js/fixtures"]

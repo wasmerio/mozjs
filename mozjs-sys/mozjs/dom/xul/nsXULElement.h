@@ -374,7 +374,7 @@ class nsXULElement : public nsStyledElement {
       mozilla::EventChainVisitor& aVisitor) override;
   // nsIContent
   virtual nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  virtual void UnbindFromTree(bool aNullParent) override;
+  virtual void UnbindFromTree(UnbindContext&) override;
   virtual void DestroyContent() override;
   virtual void DoneAddingChildren(bool aHaveNotified) override;
 
@@ -392,8 +392,17 @@ class nsXULElement : public nsStyledElement {
       bool aKeyCausesActivation, bool aIsTrustedEvent) override;
   MOZ_CAN_RUN_SCRIPT void ClickWithInputSource(uint16_t aInputSource,
                                                bool aIsTrustedEvent);
+  struct XULFocusability {
+    bool mDefaultFocusable = false;
+    mozilla::Maybe<bool> mForcedFocusable;
+    mozilla::Maybe<int32_t> mForcedTabIndexIfFocusable;
 
-  bool IsFocusableInternal(int32_t* aTabIndex, bool aWithMouse) override;
+    static XULFocusability NeverFocusable() {
+      return {false, mozilla::Some(false), mozilla::Some(-1)};
+    }
+  };
+  XULFocusability GetXULFocusability(mozilla::IsFocusableFlags);
+  Focusable IsFocusableWithoutStyle(mozilla::IsFocusableFlags) override;
 
   NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
 
@@ -503,8 +512,6 @@ class nsXULElement : public nsStyledElement {
   void AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                     const nsAttrValue* aValue, const nsAttrValue* aOldValue,
                     nsIPrincipal* aSubjectPrincipal, bool aNotify) override;
-
-  void UpdateEditableState(bool aNotify) override;
 
   bool ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                       const nsAString& aValue,

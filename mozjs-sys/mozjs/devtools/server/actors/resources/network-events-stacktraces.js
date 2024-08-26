@@ -4,10 +4,6 @@
 
 "use strict";
 
-const {
-  TYPES: { NETWORK_EVENT_STACKTRACE },
-} = require("resource://devtools/server/actors/resources/index.js");
-
 loader.lazyRequireGetter(
   this,
   "ChannelEventSinkFactory",
@@ -17,10 +13,14 @@ loader.lazyRequireGetter(
 
 const lazy = {};
 
-ChromeUtils.defineESModuleGetters(lazy, {
-  NetworkUtils:
-    "resource://devtools/shared/network-observer/NetworkUtils.sys.mjs",
-});
+ChromeUtils.defineESModuleGetters(
+  lazy,
+  {
+    NetworkUtils:
+      "resource://devtools/shared/network-observer/NetworkUtils.sys.mjs",
+  },
+  { global: "contextual" }
+);
 
 class NetworkEventStackTracesWatcher {
   /**
@@ -53,11 +53,8 @@ class NetworkEventStackTracesWatcher {
 
   /**
    * Stop watching for network event's strack traces related to a given Target Actor.
-   *
-   * @param TargetActor targetActor
-   *        The target actor from which we should stop observing the strack traces
    */
-  destroy(targetActor) {
+  destroy() {
     this.clear();
     Services.obs.removeObserver(this, "http-on-opening-request");
     Services.obs.removeObserver(this, "document-on-opening-request");
@@ -65,7 +62,7 @@ class NetworkEventStackTracesWatcher {
     ChannelEventSinkFactory.getService().unregisterCollector(this);
   }
 
-  onChannelRedirect(oldChannel, newChannel, flags) {
+  onChannelRedirect(oldChannel, newChannel) {
     // We can be called with any nsIChannel, but are interested only in HTTP channels
     try {
       oldChannel.QueryInterface(Ci.nsIHttpChannel);
@@ -195,7 +192,6 @@ class NetworkEventStackTracesWatcher {
     this.stacktraces.set(resourceId, stacktrace);
     this.onStackTraceAvailable([
       {
-        resourceType: NETWORK_EVENT_STACKTRACE,
         resourceId,
         stacktraceAvailable: stacktrace && !!stacktrace.length,
         lastFrame: stacktrace && stacktrace.length ? stacktrace[0] : undefined,

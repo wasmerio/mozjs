@@ -10,6 +10,8 @@
  * liability, trademark and document use rules apply.
  */
 
+enum RenderBlockingStatusType { "blocking", "non-blocking" };
+
 [Exposed=(Window,Worker)]
 interface PerformanceResourceTiming : PerformanceEntry
 {
@@ -49,10 +51,21 @@ interface PerformanceResourceTiming : PerformanceEntry
   [NeedsSubjectPrincipal]
   readonly attribute unsigned long long decodedBodySize;
 
+  // https://w3c.github.io/resource-timing/#dom-performanceresourcetiming-responsestatus
+  [NeedsSubjectPrincipal]
+  readonly attribute unsigned short responseStatus;
+
+  // https://w3c.github.io/server-timing/#extension-to-the-performanceresourcetiming-interface
+  [NeedsSubjectPrincipal]
+  readonly attribute DOMString contentType;
+
   // TODO: Use FrozenArray once available. (Bug 1236777)
   // readonly attribute FrozenArray<PerformanceServerTiming> serverTiming;
   [SecureContext, Frozen, Cached, Pure, NeedsSubjectPrincipal]
   readonly attribute sequence<PerformanceServerTiming> serverTiming;
+
+  [Pref="dom.element.blocking.enabled"]
+  readonly attribute RenderBlockingStatusType renderBlockingStatus;
 
   [Default] object toJSON();
 };

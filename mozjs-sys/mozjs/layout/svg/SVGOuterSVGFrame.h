@@ -74,12 +74,6 @@ class SVGOuterSVGFrame final : public SVGDisplayContainerFrame,
   void Init(nsIContent* aContent, nsContainerFrame* aParent,
             nsIFrame* aPrevInFlow) override;
 
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    return SVGDisplayContainerFrame::IsFrameOfType(
-        aFlags &
-        ~(eSupportsContainLayoutAndPaint | eReplaced | eReplacedSizing));
-  }
-
 #ifdef DEBUG_FRAME_DUMP
   nsresult GetFrameName(nsAString& aResult) const override {
     return MakeFrameName(u"SVGOuterSVG"_ns, aResult);
@@ -88,8 +82,7 @@ class SVGOuterSVGFrame final : public SVGDisplayContainerFrame,
 
   void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
-  void DestroyFrom(nsIFrame* aDestructRoot,
-                   PostDestroyData& aPostDestroyData) override;
+  void Destroy(DestroyContext&) override;
 
   nsresult AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
                             int32_t aModType) override;

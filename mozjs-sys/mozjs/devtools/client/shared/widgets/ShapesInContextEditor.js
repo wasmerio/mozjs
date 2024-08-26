@@ -106,7 +106,7 @@ class ShapesInContextEditor {
       options.transformMode = !this.state.shapes.options.transformMode;
     }
 
-    // Same target node, dfferent modes -> toggle between shape-outside and clip-path.
+    // Same target node, dfferent modes -> toggle between shape-outside, clip-path and offset-path.
     // Hide highlighter for previous property, but continue and show for other property.
     if (node == this.highlighterTargetNode && this.mode !== options.mode) {
       await this.hide();
@@ -160,7 +160,7 @@ class ShapesInContextEditor {
     }
 
     if (this.swatch) {
-      this.swatch.classList.remove("active");
+      this.swatch.setAttribute("aria-pressed", false);
     }
     this.swatch = null;
     this.rule = null;
@@ -188,7 +188,7 @@ class ShapesInContextEditor {
     const valueSpan = this.textProperty.editor.valueSpan;
     this.swatch = valueSpan.querySelector(".ruleview-shapeswatch");
     if (this.swatch) {
-      this.swatch.classList.add("active");
+      this.swatch.setAttribute("aria-pressed", true);
     }
   }
 

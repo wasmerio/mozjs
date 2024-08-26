@@ -31,6 +31,7 @@ assertSubtype('i64', 'i64');
 assertSubtype('f32', 'f32');
 assertSubtype('f64', 'f64');
 assertSubtype('eqref', 'eqref');
+assertSubtype('i31ref', 'i31ref');
 assertSubtype('funcref', 'funcref');
 
 // No subtyping relation between funcref, anyref, externref. These are our top
@@ -44,6 +45,10 @@ assertNotSubtype('anyref', 'externref');
 
 // eqref is a subtype of anyref
 assertSubtype('anyref', 'eqref');
+
+// i31ref is a subtype of eqref
+assertSubtype('anyref', 'i31ref');
+assertSubtype('eqref', 'i31ref');
 
 // structref is a subtype of eqref and anyref
 assertSubtype('anyref', 'structref');
@@ -81,19 +86,19 @@ assertSubtype(
 assertSubtype(
  '(ref 1)',
  '(ref 0)',
- simpleTypeSection(['(struct (ref 0))', '(struct (ref 1))']));
+ simpleTypeSection(['(struct (field (ref 0)))', '(struct (field (ref 1)))']));
 
 // Mutually referential structs
 assertSubtype(
  '(ref 2)',
  '(ref 0)',
  `(rec
-    (type (struct (ref 1)))
-    (type (struct (ref 0)))
+    (type (struct (field (ref 1))))
+    (type (struct (field (ref 0))))
   )
   (rec
-    (type (struct (ref 3)))
-    (type (struct (ref 2)))
+    (type (struct (field (ref 3))))
+    (type (struct (field (ref 2))))
   )`);
 
 // Struct subtypes can have extra fields

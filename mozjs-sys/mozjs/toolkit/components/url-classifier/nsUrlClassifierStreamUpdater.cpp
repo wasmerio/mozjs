@@ -11,6 +11,7 @@
 #include "nsIUploadChannel.h"
 #include "nsIURI.h"
 #include "nsIUrlClassifierDBService.h"
+#include "nsUrlClassifierDBService.h"
 #include "nsIUrlClassifierRemoteSettingsService.h"
 #include "nsUrlClassifierUtils.h"
 #include "nsNetUtil.h"
@@ -21,6 +22,7 @@
 #include "mozilla/Logging.h"
 #include "nsIInterfaceRequestor.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/Try.h"
 #include "nsContentUtils.h"
 #include "nsIURLFormatter.h"
 #include "Classifier.h"
@@ -577,6 +579,11 @@ nsUrlClassifierStreamUpdater::OnStartRequest(nsIRequest* request) {
   nsAutoCString strStatus;
   nsresult status = NS_OK;
 
+  if (nsUrlClassifierDBService::ShutdownHasStarted()) {
+    LOG(("Aborting since the DB service is shutting down"));
+    return NS_ERROR_ABORT;
+  }
+
   // Only update if we got http success header
   nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(request);
   if (httpChannel) {
@@ -673,6 +680,11 @@ nsUrlClassifierStreamUpdater::OnDataAvailable(nsIRequest* request,
 
   LOG(("OnDataAvailable (%d bytes)", aLength));
 
+  if (nsUrlClassifierDBService::ShutdownHasStarted()) {
+    LOG(("Aborting since the DB service is shutting down"));
+    return NS_ERROR_ABORT;
+  }
+
   if (aSourceOffset > MAX_FILE_SIZE) {
     LOG((
         "OnDataAvailable::Abort because exceeded the maximum file size(%" PRIu64
@@ -708,6 +720,11 @@ nsUrlClassifierStreamUpdater::OnStopRequest(nsIRequest* request,
   }
 
   nsresult rv;
+
+  if (nsUrlClassifierDBService::ShutdownHasStarted()) {
+    LOG(("Aborting since the DB service is shutting down"));
+    return NS_ERROR_ABORT;
+  }
 
   if (NS_SUCCEEDED(aStatus)) {
     // Success, finish this stream and move on to the next.

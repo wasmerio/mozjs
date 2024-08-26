@@ -26,12 +26,14 @@ class nsIFrame;
 class nsPresContext;
 
 namespace mozilla {
+
+struct FrameDestroyContext;
+
 class PresShell;
 class FrameChildList;
 enum class FrameChildListID {
   // The individual concrete child lists.
   Principal,
-  Popup,
   Caption,
   ColGroup,
   Absolute,
@@ -49,17 +51,6 @@ enum class FrameChildListID {
   NoReflowPrincipal,
 };
 
-// A helper class for nsIFrame::Destroy[From].  It's defined here because
-// nsFrameList needs it and we can't use nsIFrame here.
-struct PostFrameDestroyData {
-  PostFrameDestroyData(const PostFrameDestroyData&) = delete;
-  PostFrameDestroyData() = default;
-
-  AutoTArray<RefPtr<nsIContent>, 100> mAnonymousContent;
-  void AddAnonymousContent(already_AddRefed<nsIContent>&& aContent) {
-    mAnonymousContent.AppendElement(aContent);
-  }
-};
 }  // namespace mozilla
 
 // Uncomment this to enable expensive frame-list integrity checking
@@ -90,7 +81,7 @@ class nsFrameList {
   using reverse_iterator = Iterator<BackwardFrameTraversal>;
   using const_reverse_iterator = Iterator<BackwardFrameTraversal>;
 
-  nsFrameList() : mFirstChild(nullptr), mLastChild(nullptr) {}
+  constexpr nsFrameList() : mFirstChild(nullptr), mLastChild(nullptr) {}
 
   nsFrameList(nsIFrame* aFirstFrame, nsIFrame* aLastFrame)
       : mFirstChild(aFirstFrame), mLastChild(aLastFrame) {
@@ -135,16 +126,9 @@ class nsFrameList {
 
   /**
    * For each frame in this list: remove it from the list then call
-   * Destroy() on it.
+   * Destroy() on it with the passed context as an argument.
    */
-  void DestroyFrames();
-
-  /**
-   * For each frame in this list: remove it from the list then call
-   * DestroyFrom(aDestructRoot, aPostDestroyData) on it.
-   */
-  void DestroyFramesFrom(nsIFrame* aDestructRoot,
-                         mozilla::PostFrameDestroyData& aPostDestroyData);
+  void DestroyFrames(mozilla::FrameDestroyContext&);
 
   void Clear() { mFirstChild = mLastChild = nullptr; }
 
@@ -191,10 +175,11 @@ class nsFrameList {
   [[nodiscard]] nsFrameList TakeFramesAfter(nsIFrame* aFrame);
 
   /**
-   * Take the first frame (if any) out of the frame list.
-   * @return the first child, or nullptr if the list is empty
+   * Take the first (or last) child (if any) out of the frame list.
+   * @return the first (or last) child, or nullptr if the list is empty
    */
   nsIFrame* RemoveFirstChild();
+  nsIFrame* RemoveLastChild();
 
   /**
    * The following two functions are intended to be used in concert for
@@ -227,10 +212,10 @@ class nsFrameList {
   inline bool ContinueRemoveFrame(nsIFrame* aFrame);
 
   /**
-   * Take aFrame out of the frame list and then destroy it.
+   * Take a frame out of the frame list and then destroy it.
    * The frame must be non-null and present on this list.
    */
-  void DestroyFrame(nsIFrame* aFrame);
+  void DestroyFrame(mozilla::FrameDestroyContext&, nsIFrame*);
 
   /**
    * Insert aFrame right after aPrevSibling, or prepend it to this
@@ -351,7 +336,7 @@ class nsFrameList {
   void List(FILE* out) const;
 #endif
 
-  static inline const nsFrameList& EmptyList();
+  static inline const nsFrameList& EmptyList() { return sEmptyList; };
 
   /**
    * A class representing a slice of a frame list.
@@ -440,6 +425,8 @@ class nsFrameList {
  private:
   void operator delete(void*) = delete;
 
+  static const nsFrameList sEmptyList;
+
 #ifdef DEBUG_FRAME_LIST
   void VerifyList() const;
 #else
@@ -493,19 +480,6 @@ class MOZ_RAII AutoFrameListPtr final {
   nsFrameList* mFrameList;
 };
 
-namespace detail {
-union AlignedFrameListBytes {
-  void* ptr;
-  char bytes[sizeof(nsFrameList)];
-};
-extern const AlignedFrameListBytes gEmptyFrameListBytes;
-}  // namespace detail
-
 }  // namespace mozilla
-
-/* static */ inline const nsFrameList& nsFrameList::EmptyList() {
-  return *reinterpret_cast<const nsFrameList*>(
-      &mozilla::detail::gEmptyFrameListBytes);
-}
 
 #endif /* nsFrameList_h___ */

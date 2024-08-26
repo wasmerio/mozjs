@@ -36,8 +36,6 @@ void nsIWidgetListener::SizeModeChanged(nsSizeMode aSizeMode) {}
 void nsIWidgetListener::SafeAreaInsetsChanged(const mozilla::ScreenIntMargin&) {
 }
 
-void nsIWidgetListener::UIResolutionChanged() {}
-
 #if defined(MOZ_WIDGET_ANDROID)
 void nsIWidgetListener::DynamicToolbarMaxHeightChanged(ScreenIntCoord aHeight) {
 }
@@ -46,12 +44,6 @@ void nsIWidgetListener::DynamicToolbarOffsetChanged(ScreenIntCoord aOffset) {}
 
 void nsIWidgetListener::MacFullscreenMenubarOverlapChanged(
     mozilla::DesktopCoord aOverlapAmount) {}
-
-bool nsIWidgetListener::ZLevelChanged(bool aImmediate, nsWindowZ* aPlacement,
-                                      nsIWidget* aRequestBelow,
-                                      nsIWidget** aActualBelow) {
-  return false;
-}
 
 void nsIWidgetListener::OcclusionStateChanged(bool aIsFullyOccluded) {}
 

@@ -33,7 +33,7 @@ Cu.importGlobalProperties(["IOUtils", "PathUtils"]);
 const Cm = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
 
 let frameScriptURL;
-let profilerStartTime;
+let profilerSubtestStartTime;
 
 function TalosPowersService() {
   this.wrappedJSObject = this;
@@ -103,7 +103,7 @@ TalosPowersService.prototype = {
   },
 
   /**
-   * Enable the Gecko Profiler with some settings and then pause immediately.
+   * Enable the Gecko Profiler with some settings.
    *
    * @param data (object)
    *        A JavaScript object with the following properties:
@@ -124,8 +124,6 @@ TalosPowersService.prototype = {
       data.featuresArray,
       data.threadsArray
     );
-
-    Services.profiler.PauseSampling();
   },
 
   /**
@@ -165,30 +163,25 @@ TalosPowersService.prototype = {
   },
 
   /**
-   * Pauses the Profiler, optionally setting a parent process marker before
-   * doing so.
+   * Add a parent process marker to the profiler to indicate the subtest duration.
    *
    * @param marker (string, optional)
-   *        A marker to set before pausing.
+   *        Marker name.
    */
-  profilerPause(marker = null) {
+  profilerSubtestEnd(marker = null, startTime = undefined) {
     if (marker) {
-      this.addIntervalMarker(marker, profilerStartTime);
+      this.addIntervalMarker(marker, startTime ?? profilerSubtestStartTime);
     }
-    Services.profiler.PauseSampling();
   },
 
   /**
-   * Resumes a pausedProfiler, optionally setting a parent process marker
-   * after doing so.
+   * * Add a parent process marker to the profiler to indicate the start of the subtest.
    *
    * @param marker (string, optional)
-   *        A marker to set after resuming.
+   *        Marker name.
    */
-  profilerResume(marker = null) {
-    Services.profiler.ResumeSampling();
-
-    profilerStartTime = Cu.now();
+  profilerSubtestStart(marker = null) {
+    profilerSubtestStartTime = Cu.now();
 
     if (marker) {
       this.addInstantMarker(marker);
@@ -209,7 +202,7 @@ TalosPowersService.prototype = {
    * Adds a marker to the Profile in the parent process.
    *
    * @param marker (string)
-   *        A marker to set before pausing.
+   *        A marker to set.
    *
    * @param startTime (number)
    *        Start time, used to create an interval profile marker. If
@@ -248,14 +241,14 @@ TalosPowersService.prototype = {
         break;
       }
 
-      case "Profiler:Pause": {
-        this.profilerPause(data.marker, data.startTime);
+      case "Profiler:SubtestEnd": {
+        this.profilerSubtestEnd(data.marker, data.startTime);
         mm.sendAsyncMessage(ACK_NAME, { name });
         break;
       }
 
-      case "Profiler:Resume": {
-        this.profilerResume(data.marker);
+      case "Profiler:SubtestStart": {
+        this.profilerSubtestStart(data.marker);
         mm.sendAsyncMessage(ACK_NAME, { name });
         break;
       }
@@ -321,7 +314,7 @@ TalosPowersService.prototype = {
     // keys off of that notification.
     let topWin = BrowserWindowTracker.getTopWindow();
     if (topWin && topWin.gBrowserInit) {
-      await topWin.gBrowserInit.idleTasksFinishedPromise;
+      await topWin.gBrowserInit.idleTasksFinished.promise;
     }
 
     for (let domWindow of Services.wm.getEnumerator(null)) {
@@ -339,9 +332,9 @@ TalosPowersService.prototype = {
     let mm = message.target.messageManager;
     let startupInfo = Services.startup.getStartupInfo();
 
-    if (!startupInfo.firstPaint) {
+    if (!startupInfo.firstPaint2) {
       // It's possible that we were called early enough that
-      // the firstPaint measurement hasn't been set yet. In
+      // the firstPaint2 measurement hasn't been set yet. In
       // that case, we set up an observer for the next time
       // a window is painted and re-retrieve the startup info.
       let obs = function (subject, topic) {
@@ -378,7 +371,7 @@ TalosPowersService.prototype = {
     },
   */
   ParentExecServices: {
-    ping(arg, callback, win) {
+    ping(arg, callback) {
       callback();
     },
 
@@ -394,15 +387,15 @@ TalosPowersService.prototype = {
       callback(rv);
     },
 
-    requestDumpCoverageCounters(arg, callback, win) {
+    requestDumpCoverageCounters(arg, callback) {
       PerTestCoverageUtils.afterTest().then(callback);
     },
 
-    requestResetCoverageCounters(arg, callback, win) {
+    requestResetCoverageCounters(arg, callback) {
       PerTestCoverageUtils.beforeTest().then(callback);
     },
 
-    dumpAboutSupport(arg, callback, win) {
+    dumpAboutSupport(arg, callback) {
       const { Troubleshoot } = ChromeUtils.importESModule(
         "resource://gre/modules/Troubleshoot.sys.mjs"
       );

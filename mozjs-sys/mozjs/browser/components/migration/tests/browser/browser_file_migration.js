@@ -68,7 +68,7 @@ add_setup(async () => {
   // We use MockFilePicker to simulate a native file picker, and prepare it
   // to return a dummy file pointed at TEST_FILE_PATH. The file at
   // TEST_FILE_PATH is not required (nor expected) to exist.
-  MockFilePicker.init(window);
+  MockFilePicker.init(window.browsingContext);
   registerCleanupFunction(() => {
     MockFilePicker.cleanup();
   });
@@ -132,17 +132,17 @@ add_task(async function test_file_migration() {
 
     // Now select our DummyFileMigrator from the list.
     let selector = shadow.querySelector("#browser-profile-selector");
-    selector.click();
+    EventUtils.synthesizeMouseAtCenter(selector, {}, prefsWin);
 
     info("Waiting for panel-list shown");
     await new Promise(resolve => {
-      wizard
+      shadow
         .querySelector("panel-list")
         .addEventListener("shown", resolve, { once: true });
     });
 
     info("Panel list shown. Clicking on panel-item");
-    let panelItem = wizard.querySelector(
+    let panelItem = shadow.querySelector(
       `panel-item[key="${DUMMY_FILEMIGRATOR_KEY}"]`
     );
     panelItem.click();
@@ -185,7 +185,7 @@ add_task(async function test_file_migration() {
         Assert.equal(messageText, expectedMessageText);
       } else {
         Assert.ok(
-          BrowserTestUtils.is_hidden(progressGroup),
+          BrowserTestUtils.isHidden(progressGroup),
           `Resource progress group for ${progressGroup.dataset.resourceType}` +
             ` should be hidden.`
         );
@@ -246,17 +246,17 @@ add_task(async function test_file_migration_error() {
 
     // Now select our DummyFileMigrator from the list.
     let selector = shadow.querySelector("#browser-profile-selector");
-    selector.click();
+    EventUtils.synthesizeMouseAtCenter(selector, {}, prefsWin);
 
     info("Waiting for panel-list shown");
     await new Promise(resolve => {
-      wizard
+      shadow
         .querySelector("panel-list")
         .addEventListener("shown", resolve, { once: true });
     });
 
     info("Panel list shown. Clicking on panel-item");
-    let panelItem = wizard.querySelector(
+    let panelItem = shadow.querySelector(
       `panel-item[key="${DUMMY_FILEMIGRATOR_KEY}"]`
     );
     panelItem.click();
@@ -291,14 +291,8 @@ add_task(async function test_file_migration_error() {
     );
 
     let errorMessageContainer = shadow.querySelector(".file-import-error");
-
-    // Using BrowserTestUtils.is_visible to check for the visibility of the
-    // message seems to throw as it works its way up the ancestry and hits
-    // the shadowRoot. We'll work around this by making sure that the
-    // boundingClientRect has a width and height.
-    let errorRect = errorMessageContainer.getBoundingClientRect();
     Assert.ok(
-      errorRect.width && errorRect.height,
+      BrowserTestUtils.isVisible(errorMessageContainer),
       "Should be showing the error message container"
     );
 

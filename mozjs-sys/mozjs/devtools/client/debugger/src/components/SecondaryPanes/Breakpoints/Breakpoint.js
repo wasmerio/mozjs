@@ -2,15 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { PureComponent } from "react";
-import PropTypes from "prop-types";
-import { connect } from "../../../utils/connect";
-import { createSelector } from "reselect";
-import actions from "../../../actions";
+import React, { PureComponent } from "devtools/client/shared/vendor/react";
+import {
+  div,
+  input,
+  span,
+} from "devtools/client/shared/vendor/react-dom-factories";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
+import { connect } from "devtools/client/shared/vendor/react-redux";
+import { createSelector } from "devtools/client/shared/vendor/reselect";
+import actions from "../../../actions/index";
 
-import { CloseButton } from "../../shared/Button";
+import { CloseButton } from "../../shared/Button/index";
 
-import { getSelectedText, makeBreakpointId } from "../../../utils/breakpoint";
+import {
+  getSelectedText,
+  makeBreakpointId,
+} from "../../../utils/breakpoint/index";
 import { getSelectedLocation } from "../../../utils/selected-location";
 import { isLineBlackboxed } from "../../../utils/source";
 
@@ -18,19 +26,17 @@ import {
   getSelectedFrame,
   getSelectedSource,
   getCurrentThread,
-  getContext,
   isSourceMapIgnoreListEnabled,
   isSourceOnSourceMapIgnoreList,
   getBlackBoxRanges,
-} from "../../../selectors";
+} from "../../../selectors/index";
 
-const classnames = require("devtools/client/shared/classnames.js");
+const classnames = require("resource://devtools/client/shared/classnames.js");
 
 class Breakpoint extends PureComponent {
   static get propTypes() {
     return {
       breakpoint: PropTypes.object.isRequired,
-      cx: PropTypes.object.isRequired,
       disableBreakpoint: PropTypes.func.isRequired,
       editor: PropTypes.object.isRequired,
       enableBreakpoint: PropTypes.func.isRequired,
@@ -42,6 +48,8 @@ class Breakpoint extends PureComponent {
       source: PropTypes.object.isRequired,
       blackboxedRangesForSource: PropTypes.array.isRequired,
       checkSourceOnIgnoreList: PropTypes.func.isRequired,
+      isBreakpointLineBlackboxed: PropTypes.bool,
+      showBreakpointContextMenu: PropTypes.func.isRequired,
     };
   }
 
@@ -73,22 +81,22 @@ class Breakpoint extends PureComponent {
 
   selectBreakpoint = event => {
     event.preventDefault();
-    const { cx, selectSpecificLocation } = this.props;
-    selectSpecificLocation(cx, this.selectedLocation);
+    const { selectSpecificLocation } = this.props;
+    selectSpecificLocation(this.selectedLocation);
   };
 
   removeBreakpoint = event => {
-    const { cx, removeBreakpoint, breakpoint } = this.props;
+    const { removeBreakpoint, breakpoint } = this.props;
     event.stopPropagation();
-    removeBreakpoint(cx, breakpoint);
+    removeBreakpoint(breakpoint);
   };
 
   handleBreakpointCheckbox = () => {
-    const { cx, breakpoint, enableBreakpoint, disableBreakpoint } = this.props;
+    const { breakpoint, enableBreakpoint, disableBreakpoint } = this.props;
     if (breakpoint.disabled) {
-      enableBreakpoint(cx, breakpoint);
+      enableBreakpoint(breakpoint);
     } else {
-      disableBreakpoint(cx, breakpoint);
+      disableBreakpoint(breakpoint);
     }
   };
 
@@ -108,7 +116,8 @@ class Breakpoint extends PureComponent {
     const { column, line } = this.selectedLocation;
 
     const isWasm = source?.isWasm;
-    const columnVal = column ? `:${column}` : "";
+    // column is 0-based everywhere, but we want to display 1-based to the user.
+    const columnVal = column ? `:${column + 1}` : "";
     const bpLocation = isWasm
       ? `0x${line.toString(16).toUpperCase()}`
       : `${line}${columnVal}`;
@@ -132,48 +141,55 @@ class Breakpoint extends PureComponent {
     const { breakpoint, editor, isBreakpointLineBlackboxed } = this.props;
     const text = this.getBreakpointText();
     const labelId = `${breakpoint.id}-label`;
-
-    return (
-      <div
-        className={classnames({
+    return div(
+      {
+        className: classnames({
           breakpoint,
           paused: this.isCurrentlyPausedAtBreakpoint(),
           disabled: breakpoint.disabled,
           "is-conditional": !!breakpoint.options.condition,
           "is-log": !!breakpoint.options.logValue,
-        })}
-        onClick={this.selectBreakpoint}
-        onDoubleClick={this.onDoubleClick}
-        onContextMenu={this.onContextMenu}
-      >
-        <input
-          id={breakpoint.id}
-          type="checkbox"
-          className="breakpoint-checkbox"
-          checked={!breakpoint.disabled}
-          disabled={isBreakpointLineBlackboxed}
-          onChange={this.handleBreakpointCheckbox}
-          onClick={this.stopClicks}
-          aria-labelledby={labelId}
-        />
-        <span
-          id={labelId}
-          className="breakpoint-label cm-s-mozilla devtools-monospace"
-          onClick={this.selectBreakpoint}
-          title={text}
-        >
-          <span dangerouslySetInnerHTML={this.highlightText(text, editor)} />
-        </span>
-        <div className="breakpoint-line-close">
-          <div className="breakpoint-line devtools-monospace">
-            {this.getBreakpointLocation()}
-          </div>
-          <CloseButton
-            handleClick={this.removeBreakpoint}
-            tooltip={L10N.getStr("breakpoints.removeBreakpointTooltip")}
-          />
-        </div>
-      </div>
+        }),
+        onClick: this.selectBreakpoint,
+        onDoubleClick: this.onDoubleClick,
+        onContextMenu: this.onContextMenu,
+      },
+      input({
+        id: breakpoint.id,
+        type: "checkbox",
+        className: "breakpoint-checkbox",
+        checked: !breakpoint.disabled,
+        disabled: isBreakpointLineBlackboxed,
+        onChange: this.handleBreakpointCheckbox,
+        onClick: this.stopClicks,
+        "aria-labelledby": labelId,
+      }),
+      span(
+        {
+          id: labelId,
+          className: "breakpoint-label cm-s-mozilla devtools-monospace",
+          onClick: this.selectBreakpoint,
+          title: text,
+        },
+        span({
+          dangerouslySetInnerHTML: this.highlightText(text, editor),
+        })
+      ),
+      div(
+        {
+          className: "breakpoint-line-close",
+        },
+        div(
+          {
+            className: "breakpoint-line devtools-monospace",
+          },
+          this.getBreakpointLocation()
+        ),
+        React.createElement(CloseButton, {
+          handleClick: this.removeBreakpoint,
+          tooltip: L10N.getStr("breakpoints.removeBreakpointTooltip"),
+        })
+      )
     );
   }
 }
@@ -199,7 +215,6 @@ const mapStateToProps = (state, props) => {
     isSourceMapIgnoreListEnabled(state) &&
     isSourceOnSourceMapIgnoreList(state, props.source);
   return {
-    cx: getContext(state),
     selectedSource: getSelectedSource(state),
     isBreakpointLineBlackboxed: isLineBlackboxed(
       blackboxedRangesForSource,

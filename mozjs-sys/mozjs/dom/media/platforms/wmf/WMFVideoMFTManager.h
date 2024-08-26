@@ -49,7 +49,8 @@ class WMFVideoMFTManager : public MFTManager {
   nsCString GetCodecName() const override;
 
   MediaDataDecoder::ConversionRequired NeedsConversion() const override {
-    return mStreamType == WMFStreamType::H264
+    return mStreamType == WMFStreamType::H264 ||
+                   mStreamType == WMFStreamType::HEVC
                ? MediaDataDecoder::ConversionRequired::kNeedAnnexB
                : MediaDataDecoder::ConversionRequired::kNeedNone;
   }
@@ -122,9 +123,13 @@ class WMFVideoMFTManager : public MFTManager {
   bool mIMFUsable = false;
   const float mFramerate;
   const bool mLowLatency;
+  const bool mKeepOriginalPts;
 
   PerformanceRecorderMulti<DecodeStage> mPerformanceRecorder;
   const Maybe<TrackingId> mTrackingId;
+  // Sorted array of pts of input frames, from the encoded input packets, for
+  // error recovery.
+  nsTArray<int64_t> mPTSQueue;
 };
 
 }  // namespace mozilla

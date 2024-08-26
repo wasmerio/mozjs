@@ -41,6 +41,8 @@ namespace jit {
   _(Range)                                 \
   /* Information during LICM */            \
   _(LICM)                                  \
+  /* Information during Branch Hinting */  \
+  _(BranchHint)                            \
   /* Info about fold linear constants */   \
   _(FLAC)                                  \
   /* Effective address analysis info */    \
@@ -65,10 +67,12 @@ namespace jit {
   _(RedundantShapeGuards)                  \
   /* Info about redundant GC barriers */   \
   _(RedundantGCBarriers)                   \
+  /* Info about loads used as keys */      \
+  _(MarkLoadsUsedAsPropertyKeys)           \
   /* Output a list of MIR expressions */   \
   _(MIRExpressions)                        \
-  /* Spew Tracelogger summary stats */     \
-  _(ScriptStats)                           \
+  /* Information about stub folding */     \
+  _(StubFolding)                           \
                                            \
   /* BASELINE COMPILER SPEW */             \
                                            \
@@ -129,6 +133,8 @@ class MDefinition;
 class MIRGenerator;
 class MIRGraph;
 class TempAllocator;
+
+const char* ValTypeToString(JSValueType type);
 
 // The JitSpewer is only available on debug builds.
 // None of the global functions have effect on non-debug builds.
@@ -199,8 +205,6 @@ void EnableChannel(JitSpewChannel channel);
 void DisableChannel(JitSpewChannel channel);
 void EnableIonDebugSyncLogging();
 void EnableIonDebugAsyncLogging();
-
-const char* ValTypeToString(JSValueType type);
 
 #  define JitSpewIfEnabled(channel, fmt, ...) \
     do {                                      \

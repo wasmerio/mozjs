@@ -42,8 +42,8 @@ class nsTableColFrame final : public nsSplittableFrame {
                                               ComputedStyle* aContext);
 
   // nsIFrame overrides
-  virtual void Init(nsIContent* aContent, nsContainerFrame* aParent,
-                    nsIFrame* aPrevInFlow) override {
+  void Init(nsIContent* aContent, nsContainerFrame* aParent,
+            nsIFrame* aPrevInFlow) override {
     nsSplittableFrame::Init(aContent, aParent, aPrevInFlow);
     if (!aPrevInFlow) {
       mWritingMode = GetTableFrame()->GetWritingMode();
@@ -51,17 +51,17 @@ class nsTableColFrame final : public nsSplittableFrame {
   }
 
   /** @see nsIFrame::DidSetComputedStyle */
-  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
+  void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
-  virtual void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
-                      const ReflowInput& aReflowInput,
-                      nsReflowStatus& aStatus) override;
+  void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
+              const ReflowInput& aReflowInput,
+              nsReflowStatus& aStatus) override;
 
-  virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
-                                const nsDisplayListSet& aLists) override;
+  void BuildDisplayList(nsDisplayListBuilder* aBuilder,
+                        const nsDisplayListSet& aLists) override;
 
 #ifdef DEBUG_FRAME_DUMP
-  virtual nsresult GetFrameName(nsAString& aResult) const override;
+  nsresult GetFrameName(nsAString& aResult) const override;
 #endif
 
   nsTableColGroupFrame* GetTableColGroupFrame() const {
@@ -86,27 +86,11 @@ class nsTableColFrame final : public nsSplittableFrame {
   /** convenience method, calls into cellmap */
   int32_t Count() const;
 
-  BCPixelSize GetIStartBorderWidth() const { return mIStartBorderWidth; }
-  BCPixelSize GetIEndBorderWidth() const { return mIEndBorderWidth; }
-  void SetIStartBorderWidth(BCPixelSize aWidth) { mIStartBorderWidth = aWidth; }
-  void SetIEndBorderWidth(BCPixelSize aWidth) { mIEndBorderWidth = aWidth; }
+  nscoord GetIStartBorderWidth() const { return mIStartBorderWidth; }
+  nscoord GetIEndBorderWidth() const { return mIEndBorderWidth; }
+  void SetIStartBorderWidth(nscoord aWidth) { mIStartBorderWidth = aWidth; }
+  void SetIEndBorderWidth(nscoord aWidth) { mIEndBorderWidth = aWidth; }
 
-  /**
-   * Gets inner border widths before collapsing with cell borders
-   * Caller must get istart border from previous column or from table
-   * GetContinuousBCBorderWidth will not overwrite aBorder.IStart
-   * see nsTablePainter about continuous borders
-   *
-   * @return outer iend border width (istart inner for next column)
-   */
-  nscoord GetContinuousBCBorderWidth(mozilla::WritingMode aWM,
-                                     mozilla::LogicalMargin& aBorder);
-  /**
-   * Set full border widths before collapsing with cell borders
-   * @param aForSide - side to set; only valid for bstart, iend, and bend
-   */
-  void SetContinuousBCBorderWidth(mozilla::LogicalSide aForSide,
-                                  BCPixelSize aPixelValue);
 #ifdef DEBUG
   void Dump(int32_t aIndent);
 #endif
@@ -260,22 +244,12 @@ class nsTableColFrame final : public nsSplittableFrame {
   void SetFinalISize(nscoord aFinalISize) { mFinalISize = aFinalISize; }
   nscoord GetFinalISize() { return mFinalISize; }
 
-  virtual bool IsFrameOfType(uint32_t aFlags) const override {
-    if (aFlags & (eSupportsContainLayoutAndPaint | eSupportsAspectRatio)) {
-      return false;
-    }
-
-    return nsSplittableFrame::IsFrameOfType(aFlags & ~(nsIFrame::eTablePart));
-  }
-
-  virtual void InvalidateFrame(uint32_t aDisplayItemKey = 0,
+  void InvalidateFrame(uint32_t aDisplayItemKey = 0,
+                       bool aRebuildDisplayItems = true) override;
+  void InvalidateFrameWithRect(const nsRect& aRect,
+                               uint32_t aDisplayItemKey = 0,
                                bool aRebuildDisplayItems = true) override;
-  virtual void InvalidateFrameWithRect(
-      const nsRect& aRect, uint32_t aDisplayItemKey = 0,
-      bool aRebuildDisplayItems = true) override;
-  virtual void InvalidateFrameForRemoval() override {
-    InvalidateFrameSubtree();
-  }
+  void InvalidateFrameForRemoval() override { InvalidateFrameSubtree(); }
 
  protected:
   explicit nsTableColFrame(ComputedStyle* aStyle, nsPresContext* aPresContext);
@@ -298,12 +272,9 @@ class nsTableColFrame final : public nsSplittableFrame {
   // colgroup
   uint32_t mColIndex;
 
-  // border width in pixels of the inner half of the border only
-  BCPixelSize mIStartBorderWidth;
-  BCPixelSize mIEndBorderWidth;
-  BCPixelSize mBStartContBorderWidth;
-  BCPixelSize mIEndContBorderWidth;
-  BCPixelSize mBEndContBorderWidth;
+  // border widths of the inner half of the border only
+  nscoord mIStartBorderWidth;
+  nscoord mIEndBorderWidth;
 
   bool mHasSpecifiedCoord;
 };
@@ -312,15 +283,6 @@ inline int32_t nsTableColFrame::GetColIndex() const { return mColIndex; }
 
 inline void nsTableColFrame::SetColIndex(int32_t aColIndex) {
   mColIndex = aColIndex;
-}
-
-inline nscoord nsTableColFrame::GetContinuousBCBorderWidth(
-    mozilla::WritingMode aWM, mozilla::LogicalMargin& aBorder) {
-  int32_t d2a = PresContext()->AppUnitsPerDevPixel();
-  aBorder.BStart(aWM) = BC_BORDER_END_HALF_COORD(d2a, mBStartContBorderWidth);
-  aBorder.IEnd(aWM) = BC_BORDER_START_HALF_COORD(d2a, mIEndContBorderWidth);
-  aBorder.BEnd(aWM) = BC_BORDER_START_HALF_COORD(d2a, mBEndContBorderWidth);
-  return BC_BORDER_END_HALF_COORD(d2a, mIEndContBorderWidth);
 }
 
 #endif

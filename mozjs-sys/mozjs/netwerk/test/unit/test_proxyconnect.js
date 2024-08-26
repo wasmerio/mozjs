@@ -72,7 +72,7 @@ var proxiedChannel;
 var listener = {
   expectedCode: -1, // uninitialized
 
-  onStartRequest: function test_onStartR(request) {},
+  onStartRequest: function test_onStartR() {},
 
   onDataAvailable: function test_ODA() {
     do_throw("Should not get any data!");
@@ -229,12 +229,12 @@ function makeChan(url) {
 
   var internal = chan.QueryInterface(Ci.nsIHttpChannelInternal);
   internal.HTTPUpgrade(ALPN, upgradeListener);
-  internal.setConnectOnly();
+  internal.setConnectOnly(false);
 
   return chan;
 }
 
-function socketAccepted(socket, transport) {
+function socketAccepted(socket1, transport) {
   accepted = true;
 
   // copied from httpd.js
@@ -266,7 +266,7 @@ function socketAccepted(socket, transport) {
   }
 }
 
-function stopListening(socket, status) {
+function stopListening() {
   if (tests && tests.length !== 0 && do_throw) {
     do_throw("should never stop");
   }

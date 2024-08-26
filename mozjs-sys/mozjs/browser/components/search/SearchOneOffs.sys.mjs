@@ -14,7 +14,7 @@ const EMPTY_ADD_ENGINES = [];
 /**
  * Defines the search one-off button elements. These are displayed at the bottom
  * of the address bar and search bar. The address bar buttons are a subclass in
- * browser/components/urlbar/UrlbarSearchOneOffs.jsm. If you are adding a new
+ * browser/components/urlbar/UrlbarSearchOneOffs.sys.mjs. If you are adding a new
  * subclass, see "Methods for subclasses to override" below.
  */
 export class SearchOneOffs {
@@ -273,7 +273,7 @@ export class SearchOneOffs {
   }
 
   /**
-   * The selected one-off, a xul:button, including the add-engine button
+   * The selected one-off including the add-engine button
    * and the search-settings button.
    *
    * @param {DOMElement|null} val
@@ -285,7 +285,7 @@ export class SearchOneOffs {
       previousButton.removeAttribute("selected");
     }
     if (val) {
-      val.setAttribute("selected", "true");
+      val.toggleAttribute("selected", true);
     }
     this._selectedButton = val;
 
@@ -365,11 +365,7 @@ export class SearchOneOffs {
   observe(aEngine, aTopic, aData) {
     // For the "browser-search-service" topic, we only need to invalidate
     // the cache on initialization complete or when the engines are reloaded.
-    if (
-      aTopic != "browser-search-service" ||
-      aData == "init-complete" ||
-      aData == "engines-reloaded"
-    ) {
+    if (aTopic != "browser-search-service" || aData == "engines-reloaded") {
       // Make sure the engine list was updated.
       this.invalidateCache();
     }
@@ -398,6 +394,7 @@ export class SearchOneOffs {
       console.error("Search-one-offs::_rebuild() error:", ex);
     } finally {
       this._rebuilding = false;
+      this.dispatchEvent(new Event("rebuild"));
     }
   }
 
@@ -469,9 +466,7 @@ export class SearchOneOffs {
     this.settingsButton.id = origin + "-anon-search-settings";
 
     let engines = (await this.getEngineInfo()).engines;
-    this._rebuildEngineList(engines, addEngines);
-
-    this.dispatchEvent(new Event("rebuild"));
+    await this._rebuildEngineList(engines, addEngines);
   }
 
   /**
@@ -482,16 +477,16 @@ export class SearchOneOffs {
    * @param {Array} addEngines
    *        The engines that can be added.
    */
-  _rebuildEngineList(engines, addEngines) {
+  async _rebuildEngineList(engines, addEngines) {
     for (let i = 0; i < engines.length; ++i) {
       let engine = engines[i];
       let button = this.document.createXULElement("button");
       button.engine = engine;
       button.id = this._buttonIDForEngine(engine);
-      let iconURI =
-        engine.iconURI?.spec ||
+      let iconURL =
+        (await engine.getIconURL()) ||
         "chrome://browser/skin/search-engine-placeholder.png";
-      button.setAttribute("image", iconURI);
+      button.setAttribute("image", iconURL);
       button.setAttribute("class", "searchbar-engine-one-off-item");
       button.setAttribute("tabindex", "-1");
       this.setTooltipForEngineButton(button);
@@ -986,7 +981,7 @@ export class SearchOneOffs {
     this.handleSearchCommand(event, engine);
   }
 
-  _on_command(event) {
+  async _on_command(event) {
     let target = event.target;
 
     if (target == this.settingsButton) {
@@ -1047,11 +1042,10 @@ export class SearchOneOffs {
         // Make the target button of the context menu reflect the current
         // search engine first. Doing this as opposed to rebuilding all the
         // one-off buttons avoids flicker.
-        let uri = "chrome://browser/skin/search-engine-placeholder.png";
-        if (currentEngine.iconURI) {
-          uri = currentEngine.iconURI.spec;
-        }
-        button.setAttribute("image", uri);
+        let iconURL =
+          (await currentEngine.getIconURL()) ||
+          "chrome://browser/skin/search-engine-placeholder.png";
+        button.setAttribute("image", iconURL);
         button.setAttribute("tooltiptext", currentEngine.name);
         button.engine = currentEngine;
       }

@@ -16,7 +16,6 @@
 #include <algorithm>
 
 #include "absl/strings/match.h"
-#include "api/transport/field_trial_based_config.h"
 #include "api/video/color_space.h"
 #include "api/video/i010_buffer.h"
 #include "common_video/include/video_frame_buffer.h"
@@ -188,7 +187,6 @@ bool LibvpxVp9Decoder::Configure(const Settings& settings) {
 }
 
 int LibvpxVp9Decoder::Decode(const EncodedImage& input_image,
-                             bool missing_frames,
                              int64_t /*render_time_ms*/) {
   if (!inited_) {
     return WEBRTC_VIDEO_CODEC_UNINITIALIZED;
@@ -247,8 +245,8 @@ int LibvpxVp9Decoder::Decode(const EncodedImage& input_image,
   vpx_codec_err_t vpx_ret =
       vpx_codec_control(decoder_, VPXD_GET_LAST_QUANTIZER, &qp);
   RTC_DCHECK_EQ(vpx_ret, VPX_CODEC_OK);
-  int ret =
-      ReturnFrame(img, input_image.Timestamp(), qp, input_image.ColorSpace());
+  int ret = ReturnFrame(img, input_image.RtpTimestamp(), qp,
+                        input_image.ColorSpace());
   if (ret != 0) {
     return ret;
   }
@@ -346,7 +344,7 @@ int LibvpxVp9Decoder::ReturnFrame(
 
   auto builder = VideoFrame::Builder()
                      .set_video_frame_buffer(img_wrapped_buffer)
-                     .set_timestamp_rtp(timestamp);
+                     .set_rtp_timestamp(timestamp);
   if (explicit_color_space) {
     builder.set_color_space(*explicit_color_space);
   } else {

@@ -6,8 +6,10 @@
 
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 
+#include "ContentAnalysis.h"
 #include "ErrorList.h"
 #include "mozilla/CheckedInt.h"
+#include "mozilla/Components.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/AsyncEventDispatcher.h"
@@ -19,6 +21,8 @@
 #include "mozilla/dom/PBrowserParent.h"
 #include "mozilla/dom/PBackgroundSessionStorageCache.h"
 #include "mozilla/dom/PWindowGlobalParent.h"
+#include "mozilla/dom/Promise.h"
+#include "mozilla/dom/Promise-inl.h"
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "mozilla/dom/ContentProcessManager.h"
 #include "mozilla/dom/MediaController.h"
@@ -41,11 +45,11 @@
 #include "nsIPrintSettingsService.h"
 #include "nsISupports.h"
 #include "nsIWebNavigation.h"
-#include "mozilla/MozPromiseInlines.h"
 #include "nsDocShell.h"
 #include "nsFrameLoader.h"
 #include "nsFrameLoaderOwner.h"
 #include "nsGlobalWindowOuter.h"
+#include "nsIContentAnalysis.h"
 #include "nsIWebBrowserChrome.h"
 #include "nsIXULRuntime.h"
 #include "nsNetUtil.h"
@@ -55,7 +59,7 @@
 #include "nsBrowserStatusFilter.h"
 #include "nsIBrowser.h"
 #include "nsTHashSet.h"
-#include "SessionStoreFunctions.h"
+#include "nsISessionStoreFunctions.h"
 #include "nsIXPConnect.h"
 #include "nsImportModule.h"
 #include "UnitTransforms.h"
@@ -115,8 +119,7 @@ static void DecreasePrivateCount() {
   }
 }
 
-namespace mozilla {
-namespace dom {
+namespace mozilla::dom {
 
 extern mozilla::LazyLogModule gUserInteractionPRLog;
 
@@ -314,11 +317,13 @@ void CanonicalBrowsingContext::ReplacedBy(
   txn.SetBrowserId(GetBrowserId());
   txn.SetIsAppTab(GetIsAppTab());
   txn.SetHasSiblings(GetHasSiblings());
+  txn.SetTopLevelCreatedByWebContent(GetTopLevelCreatedByWebContent());
   txn.SetHistoryID(GetHistoryID());
   txn.SetExplicitActive(GetExplicitActive());
   txn.SetEmbedderColorSchemes(GetEmbedderColorSchemes());
   txn.SetHasRestoreData(GetHasRestoreData());
   txn.SetShouldDelayMediaFromStart(GetShouldDelayMediaFromStart());
+  txn.SetForceOffline(GetForceOffline());
 
   // Propagate some settings on BrowsingContext replacement so they're not lost
   // on bfcached navigations. These are important for GeckoView (see bug
@@ -330,8 +335,13 @@ void CanonicalBrowsingContext::ReplacedBy(
   txn.SetDisplayMode(GetDisplayMode());
   txn.SetForceDesktopViewport(GetForceDesktopViewport());
   txn.SetIsUnderHiddenEmbedderElement(GetIsUnderHiddenEmbedderElement());
-  txn.SetFullZoom(GetFullZoom());
-  txn.SetTextZoom(GetTextZoom());
+
+  // When using site-specific zoom, we let the front-end manage it, otherwise it
+  // can cause weirdness like bug 1846141.
+  if (!StaticPrefs::browser_zoom_siteSpecific()) {
+    txn.SetFullZoom(GetFullZoom());
+    txn.SetTextZoom(GetTextZoom());
+  }
 
   // Propagate the default load flags so that the TRR mode flags are forwarded
   // to the new browsing context. See bug 1828643.
@@ -375,9 +385,7 @@ void CanonicalBrowsingContext::ReplacedBy(
     aNewContext->SetChildSHistory(childSHistory);
   }
 
-  if (mozilla::SessionHistoryInParent()) {
-    BackgroundSessionStorageManager::PropagateManager(Id(), aNewContext->Id());
-  }
+  BackgroundSessionStorageManager::PropagateManager(Id(), aNewContext->Id());
 
   // Transfer the ownership of the priority active status from the old context
   // to the new context.
@@ -464,26 +472,23 @@ CanonicalBrowsingContext::GetEmbedderWindowGlobal() const {
   return WindowGlobalParent::GetByInnerWindowId(windowId);
 }
 
-already_AddRefed<CanonicalBrowsingContext>
+CanonicalBrowsingContext*
 CanonicalBrowsingContext::GetParentCrossChromeBoundary() {
   if (GetParent()) {
-    return do_AddRef(Cast(GetParent()));
+    return Cast(GetParent());
   }
-  if (GetEmbedderElement()) {
-    return do_AddRef(
-        Cast(GetEmbedderElement()->OwnerDoc()->GetBrowsingContext()));
+  if (auto* embedder = GetEmbedderElement()) {
+    return Cast(embedder->OwnerDoc()->GetBrowsingContext());
   }
   return nullptr;
 }
 
-already_AddRefed<CanonicalBrowsingContext>
-CanonicalBrowsingContext::TopCrossChromeBoundary() {
-  RefPtr<CanonicalBrowsingContext> bc(this);
-  while (RefPtr<CanonicalBrowsingContext> parent =
-             bc->GetParentCrossChromeBoundary()) {
-    bc = parent.forget();
+CanonicalBrowsingContext* CanonicalBrowsingContext::TopCrossChromeBoundary() {
+  CanonicalBrowsingContext* bc = this;
+  while (auto* parent = bc->GetParentCrossChromeBoundary()) {
+    bc = parent;
   }
-  return bc.forget();
+  return bc;
 }
 
 Nullable<WindowProxyHolder> CanonicalBrowsingContext::GetTopChromeWindow() {
@@ -667,6 +672,9 @@ CanonicalBrowsingContext::ReplaceLoadingSessionHistoryEntryForLoad(
 
 using PrintPromise = CanonicalBrowsingContext::PrintPromise;
 #ifdef NS_PRINTING
+// Clients must call StaticCloneForPrintingCreated or
+// NoStaticCloneForPrintingWillBeCreated before the underlying promise can
+// resolve.
 class PrintListenerAdapter final : public nsIWebProgressListener {
  public:
   explicit PrintListenerAdapter(PrintPromise::Private* aPromise)
@@ -677,10 +685,14 @@ class PrintListenerAdapter final : public nsIWebProgressListener {
   // NS_DECL_NSIWEBPROGRESSLISTENER
   NS_IMETHOD OnStateChange(nsIWebProgress* aWebProgress, nsIRequest* aRequest,
                            uint32_t aStateFlags, nsresult aStatus) override {
+    MOZ_ASSERT(NS_IsMainThread());
     if (aStateFlags & nsIWebProgressListener::STATE_STOP &&
         aStateFlags & nsIWebProgressListener::STATE_IS_DOCUMENT && mPromise) {
-      mPromise->Resolve(true, __func__);
-      mPromise = nullptr;
+      mPrintJobFinished = true;
+      if (mHaveSetBrowsingContext) {
+        mPromise->Resolve(mClonedStaticBrowsingContext, __func__);
+        mPromise = nullptr;
+      }
     }
     return NS_OK;
   }
@@ -715,10 +727,28 @@ class PrintListenerAdapter final : public nsIWebProgressListener {
     return NS_OK;
   }
 
+  void StaticCloneForPrintingCreated(
+      MaybeDiscardedBrowsingContext&& aClonedStaticBrowsingContext) {
+    MOZ_ASSERT(NS_IsMainThread());
+    mClonedStaticBrowsingContext = std::move(aClonedStaticBrowsingContext);
+    mHaveSetBrowsingContext = true;
+    if (mPrintJobFinished && mPromise) {
+      mPromise->Resolve(mClonedStaticBrowsingContext, __func__);
+      mPromise = nullptr;
+    }
+  }
+
+  void NoStaticCloneForPrintingWillBeCreated() {
+    StaticCloneForPrintingCreated(nullptr);
+  }
+
  private:
   ~PrintListenerAdapter() = default;
 
   RefPtr<PrintPromise::Private> mPromise;
+  MaybeDiscardedBrowsingContext mClonedStaticBrowsingContext = nullptr;
+  bool mHaveSetBrowsingContext = false;
+  bool mPrintJobFinished = false;
 };
 
 NS_IMPL_ISUPPORTS(PrintListenerAdapter, nsIWebProgressListener)
@@ -734,7 +764,9 @@ already_AddRefed<Promise> CanonicalBrowsingContext::PrintJS(
   Print(aPrintSettings)
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
-          [promise](bool) { promise->MaybeResolveWithUndefined(); },
+          [promise](MaybeDiscardedBrowsingContext) {
+            promise->MaybeResolveWithUndefined();
+          },
           [promise](nsresult aResult) { promise->MaybeReject(aResult); });
   return promise.forget();
 }
@@ -744,7 +776,72 @@ RefPtr<PrintPromise> CanonicalBrowsingContext::Print(
 #ifndef NS_PRINTING
   return PrintPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE, __func__);
 #else
+// Content analysis is not supported on non-Windows platforms.
+#  if defined(XP_WIN)
+  bool needContentAnalysis = false;
+  nsCOMPtr<nsIContentAnalysis> contentAnalysis =
+      mozilla::components::nsIContentAnalysis::Service();
+  Unused << NS_WARN_IF(!contentAnalysis);
+  if (contentAnalysis) {
+    nsresult rv = contentAnalysis->GetIsActive(&needContentAnalysis);
+    Unused << NS_WARN_IF(NS_FAILED(rv));
+  }
+  if (needContentAnalysis) {
+    auto done = MakeRefPtr<PrintPromise::Private>(__func__);
+    contentanalysis::ContentAnalysis::PrintToPDFToDetermineIfPrintAllowed(
+        this, aPrintSettings)
+        ->Then(
+            GetCurrentSerialEventTarget(), __func__,
+            [done, aPrintSettings = RefPtr{aPrintSettings},
+             self = RefPtr{this}](
+                contentanalysis::ContentAnalysis::PrintAllowedResult aResponse)
+                MOZ_CAN_RUN_SCRIPT_BOUNDARY_LAMBDA mutable {
+                  if (aResponse.mAllowed) {
+                    self->PrintWithNoContentAnalysis(
+                            aPrintSettings, false,
+                            aResponse.mCachedStaticDocumentBrowsingContext)
+                        ->ChainTo(done.forget(), __func__);
+                  } else {
+                    // Since we are not doing the second print in this case,
+                    // release the clone that is no longer needed.
+                    self->ReleaseClonedPrint(
+                        aResponse.mCachedStaticDocumentBrowsingContext);
+                    done->Reject(NS_ERROR_CONTENT_BLOCKED, __func__);
+                  }
+                },
+            [done, self = RefPtr{this}](
+                contentanalysis::ContentAnalysis::PrintAllowedError
+                    aErrorResponse) MOZ_CAN_RUN_SCRIPT_BOUNDARY_LAMBDA {
+              // Since we are not doing the second print in this case, release
+              // the clone that is no longer needed.
+              self->ReleaseClonedPrint(
+                  aErrorResponse.mCachedStaticDocumentBrowsingContext);
+              done->Reject(aErrorResponse.mError, __func__);
+            });
+    return done;
+  }
+#  endif
+  return PrintWithNoContentAnalysis(aPrintSettings, false, nullptr);
+#endif
+}
 
+void CanonicalBrowsingContext::ReleaseClonedPrint(
+    const MaybeDiscardedBrowsingContext& aClonedStaticBrowsingContext) {
+#ifdef NS_PRINTING
+  auto* browserParent = GetBrowserParent();
+  if (NS_WARN_IF(!browserParent)) {
+    return;
+  }
+  Unused << browserParent->SendDestroyPrintClone(aClonedStaticBrowsingContext);
+#endif
+}
+
+RefPtr<PrintPromise> CanonicalBrowsingContext::PrintWithNoContentAnalysis(
+    nsIPrintSettings* aPrintSettings, bool aForceStaticDocument,
+    const MaybeDiscardedBrowsingContext& aCachedStaticDocument) {
+#ifndef NS_PRINTING
+  return PrintPromise::CreateAndReject(NS_ERROR_NOT_AVAILABLE, __func__);
+#else
   auto promise = MakeRefPtr<PrintPromise::Private>(__func__);
   auto listener = MakeRefPtr<PrintListenerAdapter>(promise);
   if (IsInProcess()) {
@@ -756,12 +853,14 @@ RefPtr<PrintPromise> CanonicalBrowsingContext::Print(
     }
 
     ErrorResult rv;
+    listener->NoStaticCloneForPrintingWillBeCreated();
     outerWindow->Print(aPrintSettings,
                        /* aRemotePrintJob = */ nullptr, listener,
                        /* aDocShellToCloneInto = */ nullptr,
                        nsGlobalWindowOuter::IsPreview::No,
                        nsGlobalWindowOuter::IsForWindowDotPrint::No,
-                       /* aPrintPreviewCallback = */ nullptr, rv);
+                       /* aPrintPreviewCallback = */ nullptr,
+                       /* aCachedBrowsingContext = */ nullptr, rv);
     if (rv.Failed()) {
       promise->Reject(rv.StealNSResult(), __func__);
     }
@@ -804,26 +903,52 @@ RefPtr<PrintPromise> CanonicalBrowsingContext::Print(
   printData.remotePrintJob() =
       browserParent->Manager()->SendPRemotePrintJobConstructor(remotePrintJob);
 
-  if (listener) {
-    remotePrintJob->RegisterListener(listener);
-  }
+  remotePrintJob->RegisterListener(listener);
 
-  if (NS_WARN_IF(!browserParent->SendPrint(this, printData))) {
-    promise->Reject(NS_ERROR_FAILURE, __func__);
+  if (!aCachedStaticDocument.IsNullOrDiscarded()) {
+    // There is no cloned static browsing context that
+    // SendPrintClonedPage() will return, so indicate this
+    // so listener can resolve its promise.
+    listener->NoStaticCloneForPrintingWillBeCreated();
+    if (NS_WARN_IF(!browserParent->SendPrintClonedPage(
+            this, printData, aCachedStaticDocument))) {
+      promise->Reject(NS_ERROR_FAILURE, __func__);
+    }
+  } else {
+    RefPtr<PBrowserParent::PrintPromise> printPromise =
+        browserParent->SendPrint(this, printData, aForceStaticDocument);
+    printPromise->Then(
+        GetMainThreadSerialEventTarget(), __func__,
+        [listener](MaybeDiscardedBrowsingContext cachedStaticDocument) {
+          // promise will get resolved by the listener
+          listener->StaticCloneForPrintingCreated(
+              std::move(cachedStaticDocument));
+        },
+        [promise](ResponseRejectReason reason) {
+          NS_WARNING("SendPrint() failed");
+          promise->Reject(NS_ERROR_FAILURE, __func__);
+        });
   }
   return promise.forget();
 #endif
 }
 
 void CanonicalBrowsingContext::CallOnAllTopDescendants(
-    const std::function<mozilla::CallState(CanonicalBrowsingContext*)>&
-        aCallback) {
-#ifdef DEBUG
-  RefPtr<CanonicalBrowsingContext> parent = GetParentCrossChromeBoundary();
-  MOZ_ASSERT(!parent, "Should only call on top chrome BC");
-#endif
+    const FunctionRef<CallState(CanonicalBrowsingContext*)>& aCallback,
+    bool aIncludeNestedBrowsers) {
+  MOZ_ASSERT(IsTop(), "Should only call on top BC");
+  MOZ_ASSERT(
+      !aIncludeNestedBrowsers ||
+          (IsChrome() && !GetParentCrossChromeBoundary()),
+      "If aIncludeNestedBrowsers is set, should only call on top chrome BC");
 
-  nsTArray<RefPtr<BrowsingContextGroup>> groups;
+  if (!IsInProcess()) {
+    // We rely on top levels having to be embedded in the parent process, so
+    // we can only have top level descendants if embedded here..
+    return;
+  }
+
+  AutoTArray<RefPtr<BrowsingContextGroup>, 32> groups;
   BrowsingContextGroup::GetAllGroups(groups);
   for (auto& browsingContextGroup : groups) {
     for (auto& bc : browsingContextGroup->Toplevels()) {
@@ -832,12 +957,19 @@ void CanonicalBrowsingContext::CallOnAllTopDescendants(
         continue;
       }
 
-      RefPtr<CanonicalBrowsingContext> top =
-          bc->Canonical()->TopCrossChromeBoundary();
-      if (top == this) {
-        if (aCallback(bc->Canonical()) == CallState::Stop) {
-          return;
+      if (aIncludeNestedBrowsers) {
+        if (this != bc->Canonical()->TopCrossChromeBoundary()) {
+          continue;
         }
+      } else {
+        auto* parent = bc->Canonical()->GetParentCrossChromeBoundary();
+        if (!parent || this != parent->Top()) {
+          continue;
+        }
+      }
+
+      if (aCallback(bc->Canonical()) == CallState::Stop) {
+        return;
       }
     }
   }
@@ -1111,7 +1243,7 @@ void CanonicalBrowsingContext::SetActiveSessionHistoryEntry(
 
   shistory->InternalSetRequestedIndex(-1);
 
-  // FIXME Need to do the equivalent of EvictContentViewersOrReplaceEntry.
+  // FIXME Need to do the equivalent of EvictDocumentViewersOrReplaceEntry.
   HistoryCommitIndexAndLength(aChangeID, caller);
 
   static_cast<nsSHistory*>(shistory)->LogHistory();
@@ -1137,7 +1269,7 @@ void CanonicalBrowsingContext::ReplaceActiveSessionHistoryEntry(
     mActiveEntry->SetWireframe(Nothing());
   }
 
-  // FIXME Need to do the equivalent of EvictContentViewersOrReplaceEntry.
+  // FIXME Need to do the equivalent of EvictDocumentViewersOrReplaceEntry.
 }
 
 void CanonicalBrowsingContext::RemoveDynEntriesFromActiveSessionHistoryEntry() {
@@ -1205,7 +1337,8 @@ Maybe<int32_t> CanonicalBrowsingContext::HistoryGo(
     // Check for user interaction if desired, except for the first and last
     // history entries. We compare with >= to account for the case where
     // aOffset >= length.
-    if (!aRequireUserInteraction || index.value() >= shistory->Length() - 1 ||
+    if (!StaticPrefs::browser_navigation_requireUserInteraction() ||
+        !aRequireUserInteraction || index.value() >= shistory->Length() - 1 ||
         index.value() <= 0) {
       break;
     }
@@ -1357,7 +1490,7 @@ void CanonicalBrowsingContext::RecomputeAppWindowVisibility() {
     return;
   }
 
-  SetIsActive(isNowActive, IgnoreErrors());
+  SetIsActiveInternal(isNowActive, IgnoreErrors());
   if (widget) {
     // Pause if we are not active, resume if we are active.
     widget->PauseOrResumeCompositor(!isNowActive);
@@ -1432,6 +1565,11 @@ uint32_t CanonicalBrowsingContext::CountSiteOrigins(
   return uniqueSiteOrigins.Count();
 }
 
+/* static */
+bool CanonicalBrowsingContext::IsPrivateBrowsingActive() {
+  return gNumberOfPrivateContexts > 0;
+}
+
 void CanonicalBrowsingContext::UpdateMediaControlAction(
     const MediaControlAction& aAction) {
   if (IsDiscarded()) {
@@ -1491,7 +1629,7 @@ void CanonicalBrowsingContext::GoBack(
     mCurrentLoad->Cancel(NS_BINDING_CANCELLED_OLD_LOAD, ""_ns);
   }
 
-  if (nsDocShell* docShell = nsDocShell::Cast(GetDocShell())) {
+  if (RefPtr<nsDocShell> docShell = nsDocShell::Cast(GetDocShell())) {
     if (aCancelContentJSEpoch.WasPassed()) {
       docShell->SetCancelContentJSEpoch(aCancelContentJSEpoch.Value());
     }
@@ -1517,7 +1655,7 @@ void CanonicalBrowsingContext::GoForward(
     mCurrentLoad->Cancel(NS_BINDING_CANCELLED_OLD_LOAD, ""_ns);
   }
 
-  if (auto* docShell = nsDocShell::Cast(GetDocShell())) {
+  if (RefPtr<nsDocShell> docShell = nsDocShell::Cast(GetDocShell())) {
     if (aCancelContentJSEpoch.WasPassed()) {
       docShell->SetCancelContentJSEpoch(aCancelContentJSEpoch.Value());
     }
@@ -1543,7 +1681,7 @@ void CanonicalBrowsingContext::GoToIndex(
     mCurrentLoad->Cancel(NS_BINDING_CANCELLED_OLD_LOAD, ""_ns);
   }
 
-  if (auto* docShell = nsDocShell::Cast(GetDocShell())) {
+  if (RefPtr<nsDocShell> docShell = nsDocShell::Cast(GetDocShell())) {
     if (aCancelContentJSEpoch.WasPassed()) {
       docShell->SetCancelContentJSEpoch(aCancelContentJSEpoch.Value());
     }
@@ -1557,6 +1695,7 @@ void CanonicalBrowsingContext::GoToIndex(
                                 aUserActivation);
   }
 }
+
 void CanonicalBrowsingContext::Reload(uint32_t aReloadFlags) {
   if (IsDiscarded()) {
     return;
@@ -1567,7 +1706,7 @@ void CanonicalBrowsingContext::Reload(uint32_t aReloadFlags) {
     mCurrentLoad->Cancel(NS_BINDING_CANCELLED_OLD_LOAD, ""_ns);
   }
 
-  if (auto* docShell = nsDocShell::Cast(GetDocShell())) {
+  if (RefPtr<nsDocShell> docShell = nsDocShell::Cast(GetDocShell())) {
     docShell->Reload(aReloadFlags);
   } else if (ContentParent* cp = GetContentParent()) {
     Unused << cp->SendReload(this, aReloadFlags);
@@ -1962,7 +2101,16 @@ void CanonicalBrowsingContext::SetCurrentBrowserParent(
       GetParentWindowContext() &&
           GetParentWindowContext()->Manager() == aBrowserParent);
 
+  if (aBrowserParent && IsTopContent() && !ManuallyManagesActiveness()) {
+    aBrowserParent->SetRenderLayers(IsActive());
+  }
+
   mCurrentBrowserParent = aBrowserParent;
+}
+
+bool CanonicalBrowsingContext::ManuallyManagesActiveness() const {
+  auto* el = GetEmbedderElement();
+  return el && el->IsXULElement() && el->HasAttr(nsGkAtoms::manualactiveness);
 }
 
 RefPtr<CanonicalBrowsingContext::RemotenessPromise>
@@ -2051,13 +2199,15 @@ CanonicalBrowsingContext::ChangeRemoteness(
     // Mark prepareToChange as unresolved, and wait for it to become resolved.
     if (blocker && blocker->State() != Promise::PromiseState::Resolved) {
       change->mWaitingForPrepareToChange = true;
-      RefPtr<DomPromiseListener> listener = new DomPromiseListener(
-          [change](JSContext* aCx, JS::Handle<JS::Value> aValue) {
+      blocker->AddCallbacksWithCycleCollectedArgs(
+          [change](JSContext*, JS::Handle<JS::Value>, ErrorResult&) {
             change->mWaitingForPrepareToChange = false;
             change->MaybeFinish();
           },
-          [change](nsresult aRv) { change->Cancel(aRv); });
-      blocker->AppendNativeHandler(listener);
+          [change](JSContext*, JS::Handle<JS::Value> aValue, ErrorResult&) {
+            change->Cancel(
+                Promise::TryExtractNSResultFromRejectionValue(aValue));
+          });
     }
   }
 
@@ -2213,9 +2363,19 @@ bool CanonicalBrowsingContext::SupportsLoadingInParent(
         return false;
       }
     }
-    // If the current document has a beforeunload listener, then we need to
-    // start the load in that process after we fire the event.
-    if (global->HasBeforeUnload()) {
+
+    // If unloading the current document will cause a beforeunload listener to
+    // run, then we need to start the load in that process after we fire the
+    // event.
+    if (PreOrderWalkFlag([&](BrowsingContext* aBC) {
+          WindowContext* wc = aBC->GetCurrentWindowContext();
+          if (wc && wc->HasBeforeUnload()) {
+            // We can stop as soon as we know at least one beforeunload listener
+            // exists.
+            return WalkFlag::Stop;
+          }
+          return WalkFlag::Next;
+        }) == WalkFlag::Stop) {
       return false;
     }
 
@@ -2354,7 +2514,7 @@ void CanonicalBrowsingContext::HistoryCommitIndexAndLength(
 
   GetChildSessionHistory()->SetIndexAndLength(index, length, aChangeID);
 
-  shistory->EvictOutOfRangeContentViewers(index);
+  shistory->EvictOutOfRangeDocumentViewers(index);
 
   Group()->EachParent([&](ContentParent* aParent) {
     Unused << aParent->SendHistoryCommitIndexAndLength(this, index, length,
@@ -2515,13 +2675,14 @@ void CanonicalBrowsingContext::RestoreState::Resolve() {
 
 nsresult CanonicalBrowsingContext::WriteSessionStorageToSessionStore(
     const nsTArray<SSCacheCopy>& aSesssionStorage, uint32_t aEpoch) {
-  nsCOMPtr<nsISessionStoreFunctions> funcs = do_ImportESModule(
-      "resource://gre/modules/SessionStoreFunctions.sys.mjs", fallible);
-  if (!funcs) {
+  nsCOMPtr<nsISessionStoreFunctions> sessionStoreFuncs =
+      do_GetService("@mozilla.org/toolkit/sessionstore-functions;1");
+  if (!sessionStoreFuncs) {
     return NS_ERROR_FAILURE;
   }
 
-  nsCOMPtr<nsIXPConnectWrappedJS> wrapped = do_QueryInterface(funcs);
+  nsCOMPtr<nsIXPConnectWrappedJS> wrapped =
+      do_QueryInterface(sessionStoreFuncs);
   AutoJSAPI jsapi;
   if (!jsapi.Init(wrapped->GetJSObjectGlobal())) {
     return NS_ERROR_FAILURE;
@@ -2542,17 +2703,12 @@ nsresult CanonicalBrowsingContext::WriteSessionStorageToSessionStore(
     update.setNull();
   }
 
-  return funcs->UpdateSessionStoreForStorage(Top()->GetEmbedderElement(), this,
-                                             key, aEpoch, update);
+  return sessionStoreFuncs->UpdateSessionStoreForStorage(
+      Top()->GetEmbedderElement(), this, key, aEpoch, update);
 }
 
 void CanonicalBrowsingContext::UpdateSessionStoreSessionStorage(
     const std::function<void()>& aDone) {
-  if (!StaticPrefs::browser_sessionstore_collect_session_storage_AtStartup()) {
-    aDone();
-    return;
-  }
-
   using DataPromise = BackgroundSessionStorageManager::DataPromise;
   BackgroundSessionStorageManager::GetData(
       this, StaticPrefs::browser_sessionstore_dom_storage_limit(),
@@ -2581,7 +2737,7 @@ void CanonicalBrowsingContext::UpdateSessionStoreForStorage(
 }
 
 void CanonicalBrowsingContext::MaybeScheduleSessionStoreUpdate() {
-  if (!StaticPrefs::browser_sessionstore_platform_collection_AtStartup()) {
+  if (!SessionStorePlatformCollection()) {
     return;
   }
 
@@ -2624,12 +2780,13 @@ void CanonicalBrowsingContext::CancelSessionStoreUpdate() {
 }
 
 void CanonicalBrowsingContext::SetContainerFeaturePolicy(
-    FeaturePolicy* aContainerFeaturePolicy) {
-  mContainerFeaturePolicy = aContainerFeaturePolicy;
+    Maybe<FeaturePolicyInfo>&& aContainerFeaturePolicyInfo) {
+  mContainerFeaturePolicyInfo = std::move(aContainerFeaturePolicyInfo);
+}
 
-  if (WindowGlobalParent* current = GetCurrentWindowGlobal()) {
-    Unused << current->SendSetContainerFeaturePolicy(mContainerFeaturePolicy);
-  }
+already_AddRefed<CanonicalBrowsingContext>
+CanonicalBrowsingContext::GetCrossGroupOpener() const {
+  return Get(mCrossGroupOpenerId);
 }
 
 void CanonicalBrowsingContext::SetCrossGroupOpenerId(uint64_t aOpenerId) {
@@ -2640,7 +2797,7 @@ void CanonicalBrowsingContext::SetCrossGroupOpenerId(uint64_t aOpenerId) {
 }
 
 void CanonicalBrowsingContext::SetCrossGroupOpener(
-    CanonicalBrowsingContext& aCrossGroupOpener, ErrorResult& aRv) {
+    CanonicalBrowsingContext* aCrossGroupOpener, ErrorResult& aRv) {
   if (!IsTopContent()) {
     aRv.ThrowNotAllowedError(
         "Can only set crossGroupOpener on toplevel content");
@@ -2650,8 +2807,12 @@ void CanonicalBrowsingContext::SetCrossGroupOpener(
     aRv.ThrowNotAllowedError("Can only set crossGroupOpener once");
     return;
   }
+  if (!aCrossGroupOpener) {
+    aRv.ThrowNotAllowedError("Can't set crossGroupOpener to null");
+    return;
+  }
 
-  SetCrossGroupOpenerId(aCrossGroupOpener.Id());
+  SetCrossGroupOpenerId(aCrossGroupOpener->Id());
 }
 
 auto CanonicalBrowsingContext::FindUnloadingHost(uint64_t aChildID)
@@ -3031,6 +3192,14 @@ CanonicalBrowsingContext::GetMostRecentLoadingSessionHistoryEntry() {
   return entry.forget();
 }
 
+already_AddRefed<BounceTrackingState>
+CanonicalBrowsingContext::GetBounceTrackingState() {
+  if (!mWebProgress) {
+    return nullptr;
+  }
+  return mWebProgress->GetBounceTrackingState();
+}
+
 NS_IMPL_CYCLE_COLLECTION_CLASS(CanonicalBrowsingContext)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(CanonicalBrowsingContext,
@@ -3039,15 +3208,15 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(CanonicalBrowsingContext,
   if (tmp->mSessionHistory) {
     tmp->mSessionHistory->SetBrowsingContext(nullptr);
   }
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mSessionHistory, mContainerFeaturePolicy,
-                                  mCurrentBrowserParent, mWebProgress,
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mSessionHistory, mCurrentBrowserParent,
+                                  mWebProgress,
                                   mSessionStoreSessionStorageUpdateTimer)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(CanonicalBrowsingContext,
                                                   BrowsingContext)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSessionHistory, mContainerFeaturePolicy,
-                                    mCurrentBrowserParent, mWebProgress,
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSessionHistory, mCurrentBrowserParent,
+                                    mWebProgress,
                                     mSessionStoreSessionStorageUpdateTimer)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
@@ -3062,5 +3231,4 @@ NS_IMPL_RELEASE_INHERITED(CanonicalBrowsingContext, BrowsingContext)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(CanonicalBrowsingContext)
 NS_INTERFACE_MAP_END_INHERITING(BrowsingContext)
 
-}  // namespace dom
-}  // namespace mozilla
+}  // namespace mozilla::dom

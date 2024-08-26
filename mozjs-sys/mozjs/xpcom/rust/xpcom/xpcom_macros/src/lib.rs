@@ -183,6 +183,7 @@ struct Method {
 struct Interface {
     name: &'static str,
     base: Option<&'static str>,
+    sync: bool,
     methods: Result<&'static [Method], &'static str>,
 }
 
@@ -196,7 +197,7 @@ impl Interface {
             Ok(methods) => Ok(methods),
             Err(reason) => Err(syn::Error::new(
                 Span::call_site(),
-                &format!(
+                format!(
                     "Interface {} cannot be implemented in rust \
                      because {} is not supported yet",
                     self.name, reason
@@ -263,7 +264,7 @@ fn gen_structs(
     let bases = bases.iter().map(|base| {
         let ident = format_ident!("__base_{}", base.name);
         let vtable = format_ident!("{}VTable", base.name);
-        quote!(#ident : *const xpcom::interfaces::#vtable)
+        quote!(#ident : &'static xpcom::interfaces::#vtable)
     });
 
     let fields = get_fields(template)?;
@@ -357,7 +358,7 @@ fn gen_inner_vtable(real: &ItemStruct, iface: &Interface) -> Result<TokenStream,
     let turbofish = ty_generics.as_turbofish();
     let vtable_init = iface
         .methods()?
-        .into_iter()
+        .iter()
         .map(|method| {
             let name = format_ident!("{}", method.name);
             quote! { #name : #name #turbofish, }
@@ -463,7 +464,7 @@ fn gen_casts(
                     // pointer to a pointer to a vtable, which we can then cast
                     // into a pointer to our interface.
                     &*(&(v.#vtable_field)
-                        as *const *const _
+                        as *const &'static _
                         as *const ::xpcom::interfaces::#base_name)
                 }
             }
@@ -632,6 +633,17 @@ fn xpcom_impl(options: Options, template: ItemStruct) -> Result<TokenStream, syn
         coerce_impl.push(coerce);
     }
 
+    let assert_sync = if bases.iter().any(|iface| iface.sync) {
+        quote! {
+            // Helper for asserting that for all instantiations, this
+            // object implements Send + Sync.
+            fn xpcom_type_must_be_send_sync<T: Send + Sync>(t: &T) {}
+            xpcom_type_must_be_send_sync(&*boxed);
+        }
+    } else {
+        quote! {}
+    };
+
     let size_for_logs = if real.generics.params.is_empty() {
         quote!(::std::mem::size_of::<Self>() as u32)
     } else {
@@ -680,6 +692,7 @@ fn xpcom_impl(options: Options, template: ItemStruct) -> Result<TokenStream, syn
                     };
                     let boxed = ::std::boxed::Box::new(value);
                     xpcom_types_must_be_static(&*boxed);
+                    #assert_sync
                     let raw = ::std::boxed::Box::into_raw(boxed);
                     ::xpcom::RefPtr::from_raw(raw).unwrap()
                 }

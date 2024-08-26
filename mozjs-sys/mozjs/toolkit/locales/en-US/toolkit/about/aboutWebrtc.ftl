@@ -23,6 +23,7 @@ about-webrtc-aec-logging-msg-label = AEC Logging
 about-webrtc-aec-logging-off-state-label = Start AEC Logging
 about-webrtc-aec-logging-on-state-label = Stop AEC Logging
 about-webrtc-aec-logging-toggled-on-state-msg = AEC logging active (speak with the caller for a few minutes and then stop the capture)
+about-webrtc-aec-logging-unavailable-sandbox = The environment variable MOZ_DISABLE_CONTENT_SANDBOX=1 is required to export AEC logs. Only set this variable if you understand the possible risks.
 # Variables:
 #  $path (String) - The path to which the aec log file is saved.
 about-webrtc-aec-logging-toggled-off-state-msg = Captured log files can be found in: { $path }
@@ -31,9 +32,6 @@ about-webrtc-aec-logging-toggled-off-state-msg = Captured log files can be found
 
 # The autorefresh checkbox causes a stats section to autorefresh its content when checked
 about-webrtc-auto-refresh-label = Auto Refresh
-
-# Determines the default state of the Auto Refresh check boxes
-about-webrtc-auto-refresh-default-label = Auto Refresh By Default
 
 # A button which forces a refresh of displayed statistics
 about-webrtc-force-refresh-button = Refresh
@@ -101,10 +99,10 @@ about-webrtc-nominated = Nominated
 about-webrtc-selected = Selected
 
 about-webrtc-save-page-label = Save Page
-about-webrtc-debug-mode-msg-label = Debug Mode
-about-webrtc-debug-mode-off-state-label = Start Debug Mode
-about-webrtc-debug-mode-on-state-label = Stop Debug Mode
-about-webrtc-stats-heading = Session Statistics
+about-webrtc-enable-logging-label = Enable WebRTC Log Preset
+about-webrtc-peerconnections-section-heading = RTCPeerConnection Statistics
+about-webrtc-peerconnections-section-show-msg = Show RTCPeerConnection Statistics
+about-webrtc-peerconnections-section-hide-msg = Hide RTCPeerConnection Statistics
 about-webrtc-stats-clear = Clear History
 about-webrtc-log-heading = Connection Log
 about-webrtc-log-clear = Clear Log
@@ -188,7 +186,15 @@ about-webrtc-configuration-element-provided = Provided
 about-webrtc-configuration-element-not-provided = Not Provided
 
 # The options set by the user in about:config that could impact a WebRTC call
-about-webrtc-custom-webrtc-configuration-heading = User Set WebRTC Preferences
+about-webrtc-user-modified-configuration-heading = User Modified WebRTC Configuration
+
+## These are displayed on the button that shows or hides the
+## user modified configuration disclosure
+
+about-webrtc-user-modified-configuration-show-msg = Show User Modified Configuration
+about-webrtc-user-modified-configuration-hide-msg = Hide User Modified Configuration
+
+##
 
 # Section header for estimated bandwidths of WebRTC media flows
 about-webrtc-bandwidth-stats-heading = Estimated Bandwidth
@@ -218,16 +224,11 @@ about-webrtc-round-trip-time-ms = RTT ms
 #   $track-identifier (String) - The unique identifier for the MediaStreamTrack.
 about-webrtc-frame-stats-heading = Video Frame Statistics - MediaStreamTrack ID: { $track-identifier }
 
-## These are paths used for saving the about:webrtc page or log files so
-## they can be attached to bug reports.
-## Variables:
-##  $path (String) - The path to which the file is saved.
-
+# This path is used for saving the about:webrtc page so it can be attached to
+# bug reports.
+# Variables:
+#  $path (String) - The path to which the file is saved.
 about-webrtc-save-page-complete-msg = Page saved to: { $path }
-about-webrtc-debug-mode-toggled-off-state-msg = Trace log can be found at: { $path }
-about-webrtc-debug-mode-toggled-on-state-msg = Debug mode active, trace log at: { $path }
-
-##
 
 # This is the total number of frames encoded or decoded over an RTP stream.
 # Variables:

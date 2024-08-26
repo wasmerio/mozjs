@@ -6,7 +6,7 @@
 
 testEngine_setup();
 
-add_task(async function setup() {
+add_setup(async () => {
   Services.prefs.setBoolPref("browser.urlbar.suggest.searches", false);
   await PlacesTestUtils.addVisits({
     uri: Services.io.newURI("http://mozilla.org/link/"),
@@ -26,7 +26,7 @@ add_task(async function test_not_autofill_ws_1() {
     matches: [
       makeVisitResult(context, {
         uri: "http://mozilla.org/",
-        fallbackTitle: "http://mozilla.org/",
+        fallbackTitle: "mozilla.org/",
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         heuristic: true,
       }),
@@ -46,7 +46,7 @@ add_task(async function test_not_autofill_ws_2() {
     matches: [
       makeVisitResult(context, {
         uri: "http://mozilla.org/",
-        fallbackTitle: "http://mozilla.org/",
+        fallbackTitle: "mozilla.org/",
         iconUri: "page-icon:http://mozilla.org/",
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         heuristic: true,
@@ -67,7 +67,7 @@ add_task(async function test_not_autofill_ws_3() {
     matches: [
       makeVisitResult(context, {
         uri: "http://mozilla.org/link",
-        fallbackTitle: "http://mozilla.org/link",
+        fallbackTitle: "mozilla.org/link",
         iconUri: "page-icon:http://mozilla.org/",
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         heuristic: true,

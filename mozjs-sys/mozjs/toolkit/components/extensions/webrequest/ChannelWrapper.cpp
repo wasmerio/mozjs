@@ -20,6 +20,7 @@
 #include "mozilla/Components.h"
 #include "mozilla/ErrorNames.h"
 #include "mozilla/ResultExtensions.h"
+#include "mozilla/Try.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Event.h"
@@ -85,7 +86,7 @@ static const ClassificationStruct classificationArray[] = {
 namespace {
 class ChannelListHolder : public LinkedList<ChannelWrapper> {
  public:
-  ChannelListHolder() : LinkedList<ChannelWrapper>() {}
+  ChannelListHolder() = default;
 
   ~ChannelListHolder();
 };
@@ -113,7 +114,8 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(ChannelWrapper::ChannelWrapperStub)
 NS_IMPL_CYCLE_COLLECTION(ChannelWrapper::ChannelWrapperStub, mChannelWrapper)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ChannelWrapper::ChannelWrapperStub)
-  NS_INTERFACE_MAP_ENTRY_TEAROFF(ChannelWrapper, mChannelWrapper)
+  NS_INTERFACE_MAP_ENTRY_TEAROFF_AMBIGUOUS(ChannelWrapper, EventTarget,
+                                           mChannelWrapper)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
@@ -443,6 +445,16 @@ void ChannelWrapper::SetResponseHeader(const nsCString& aHeader,
 already_AddRefed<nsILoadContext> ChannelWrapper::GetLoadContext() const {
   if (nsCOMPtr<nsIChannel> chan = MaybeChannel()) {
     nsCOMPtr<nsILoadContext> ctxt;
+    // Fetch() from Workers saves BrowsingContext/LoadContext information in
+    // nsILoadInfo.workerAssociatedBrowsingContext. So we can not use
+    // NS_QueryNotificationCallbacks to get LoadContext of the channel.
+    RefPtr<BrowsingContext> bc;
+    nsCOMPtr<nsILoadInfo> loadInfo = chan->LoadInfo();
+    loadInfo->GetWorkerAssociatedBrowsingContext(getter_AddRefs(bc));
+    if (bc) {
+      ctxt = bc.forget();
+      return ctxt.forget();
+    }
     NS_QueryNotificationCallbacks(chan, ctxt);
     return ctxt.forget();
   }
@@ -676,8 +688,12 @@ bool ChannelWrapper::Matches(
 }
 
 int64_t NormalizeFrameID(nsILoadInfo* aLoadInfo, uint64_t bcID) {
-  if (RefPtr<BrowsingContext> bc = aLoadInfo->GetBrowsingContext();
-      !bc || bcID == bc->Top()->Id()) {
+  RefPtr<BrowsingContext> bc = aLoadInfo->GetWorkerAssociatedBrowsingContext();
+  if (!bc) {
+    bc = aLoadInfo->GetBrowsingContext();
+  }
+
+  if (!bc || bcID == bc->Top()->Id()) {
     return 0;
   }
   return bcID;
@@ -685,6 +701,9 @@ int64_t NormalizeFrameID(nsILoadInfo* aLoadInfo, uint64_t bcID) {
 
 uint64_t ChannelWrapper::BrowsingContextId(nsILoadInfo* aLoadInfo) const {
   auto frameID = aLoadInfo->GetFrameBrowsingContextID();
+  if (!frameID) {
+    frameID = aLoadInfo->GetWorkerAssociatedBrowsingContextID();
+  }
   if (!frameID) {
     frameID = aLoadInfo->GetBrowsingContextID();
   }
@@ -700,7 +719,11 @@ int64_t ChannelWrapper::FrameId() const {
 
 int64_t ChannelWrapper::ParentFrameId() const {
   if (nsCOMPtr<nsILoadInfo> loadInfo = GetLoadInfo()) {
-    if (RefPtr<BrowsingContext> bc = loadInfo->GetBrowsingContext()) {
+    RefPtr<BrowsingContext> bc = loadInfo->GetWorkerAssociatedBrowsingContext();
+    if (!bc) {
+      bc = loadInfo->GetBrowsingContext();
+    }
+    if (bc) {
       if (BrowsingContextId(loadInfo) == bc->Top()->Id()) {
         return -1;
       }
@@ -863,6 +886,7 @@ MozContentPolicyType GetContentPolicyType(ExtContentPolicyType aType) {
     case ExtContentPolicy::TYPE_OTHER:
     case ExtContentPolicy::TYPE_SAVEAS_DOWNLOAD:
     case ExtContentPolicy::TYPE_WEB_TRANSPORT:
+    case ExtContentPolicy::TYPE_WEB_IDENTITY:
       break;
       // Do not add default: so that compilers can catch the missing case.
   }
@@ -1175,6 +1199,18 @@ ChannelWrapper::RequestListener::CheckListenerChain() {
   return rv;
 }
 
+NS_IMETHODIMP
+ChannelWrapper::RequestListener::OnDataFinished(nsresult aStatus) {
+  MOZ_ASSERT(mOrigStreamListener, "Should have mOrigStreamListener");
+  nsCOMPtr<nsIThreadRetargetableStreamListener> retargetableListener =
+      do_QueryInterface(mOrigStreamListener);
+  if (retargetableListener) {
+    return retargetableListener->OnDataFinished(aStatus);
+  }
+
+  return NS_OK;
+}
+
 /*****************************************************************************
  * Event dispatching
  *****************************************************************************/
@@ -1222,7 +1258,7 @@ JSObject* ChannelWrapper::WrapObject(JSContext* aCx,
 NS_IMPL_CYCLE_COLLECTION_CLASS(ChannelWrapper)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ChannelWrapper)
-  NS_INTERFACE_MAP_ENTRY(ChannelWrapper)
+  NS_INTERFACE_MAP_ENTRY_CONCRETE(ChannelWrapper)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(ChannelWrapper,

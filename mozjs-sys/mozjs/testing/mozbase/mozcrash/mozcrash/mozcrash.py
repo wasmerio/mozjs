@@ -304,12 +304,22 @@ class CrashInfo(object):
         """List of tuple (path_to_dump_file, path_to_extra_file) for each dump
         file in self.dump_directory. The extra files may not exist."""
         if self._dump_files is None:
-            self._dump_files = [
-                (path, os.path.splitext(path)[0] + ".extra")
-                for path in reversed(
-                    sorted(glob.glob(os.path.join(self.dump_directory, "*.dmp")))
-                )
-            ]
+            paths = [self.dump_directory]
+            if mozinfo.isWin:
+                # Add the hard-coded paths used for minidumps recorded by
+                # Windows Error Reporting in automation
+                paths += [
+                    "C:\\error-dumps\\",
+                    "Z:\\error-dumps\\",
+                ]
+            self._dump_files = []
+            for path in paths:
+                self._dump_files += [
+                    (minidump_path, os.path.splitext(minidump_path)[0] + ".extra")
+                    for minidump_path in reversed(
+                        sorted(glob.glob(os.path.join(path, "*.dmp")))
+                    )
+                ]
             max_dumps = 10
             if len(self._dump_files) > max_dumps:
                 self.logger.warning(
@@ -376,7 +386,10 @@ class CrashInfo(object):
 
             # Fallback to the symbols server for unknown symbols on automation
             # (mostly for system libraries).
-            if "MOZ_AUTOMATION" in os.environ:
+            if (
+                "MOZ_AUTOMATION" in os.environ
+                or "MOZ_STACKWALK_SYMBOLS_SERVER" in os.environ
+            ):
                 command.append("--symbols-url=https://symbols.mozilla.org/")
 
             with tempfile.TemporaryDirectory() as json_dir:
@@ -757,7 +770,6 @@ if mozinfo.isWin:
             logger.warning(
                 "kill_pid(): unable to get handle for pid %d: %d" % (pid, err)
             )
-
 
 else:
 

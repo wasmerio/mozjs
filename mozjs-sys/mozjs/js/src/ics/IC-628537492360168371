@@ -1,0 +1,1 @@
+GetIterator, 1, 1, 3, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(RawPointer) , LASTUSED(1) , OP(GuardToObject) ID(0) OP(ObjectToIteratorResult) ID(0) OFFSET(0) OP(ReturnFromIC)  

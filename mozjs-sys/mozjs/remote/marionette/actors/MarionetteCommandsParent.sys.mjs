@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -11,10 +9,11 @@ ChromeUtils.defineESModuleGetters(lazy, {
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
   getSeenNodesForBrowsingContext:
     "chrome://remote/content/shared/webdriver/Session.sys.mjs",
+  json: "chrome://remote/content/marionette/json.sys.mjs",
   Log: "chrome://remote/content/shared/Log.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.Log.get(lazy.Log.TYPES.MARIONETTE)
 );
 
@@ -23,14 +22,10 @@ XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
 let webDriverSessionId = null;
 
 export class MarionetteCommandsParent extends JSWindowActorParent {
-  actorCreated() {
-    this._resolveDialogOpened = null;
-  }
+  #deferredDialogOpened;
 
-  dialogOpenedPromise() {
-    return new Promise(resolve => {
-      this._resolveDialogOpened = resolve;
-    });
+  actorCreated() {
+    this.#deferredDialogOpened = null;
   }
 
   async sendQuery(name, serializedValue) {
@@ -40,15 +35,17 @@ export class MarionetteCommandsParent extends JSWindowActorParent {
     );
 
     // return early if a dialog is opened
-    const {
+    this.#deferredDialogOpened = Promise.withResolvers();
+    let {
       error,
       seenNodeIds,
       serializedValue: serializedResult,
+      hasSerializedWindows,
     } = await Promise.race([
       super.sendQuery(name, serializedValue),
-      this.dialogOpenedPromise(),
+      this.#deferredDialogOpened.promise,
     ]).finally(() => {
-      this._resolveDialogOpened = null;
+      this.#deferredDialogOpened = null;
     });
 
     if (error) {
@@ -58,6 +55,12 @@ export class MarionetteCommandsParent extends JSWindowActorParent {
 
     // Update seen nodes for serialized element and shadow root nodes.
     seenNodeIds?.forEach(nodeId => seenNodes.add(nodeId));
+
+    if (hasSerializedWindows) {
+      // The serialized data contains WebWindow references that need to be
+      // converted to unique identifiers.
+      serializedResult = lazy.json.mapToNavigableIds(serializedResult);
+    }
 
     return serializedResult;
   }
@@ -98,8 +101,8 @@ export class MarionetteCommandsParent extends JSWindowActorParent {
   }
 
   notifyDialogOpened() {
-    if (this._resolveDialogOpened) {
-      this._resolveDialogOpened({ data: null });
+    if (this.#deferredDialogOpened) {
+      this.#deferredDialogOpened.resolve({ data: null });
     }
   }
 
@@ -121,7 +124,7 @@ export class MarionetteCommandsParent extends JSWindowActorParent {
   async executeScript(script, args, opts) {
     return this.sendQuery("MarionetteCommandsParent:executeScript", {
       script,
-      args,
+      args: lazy.json.mapFromNavigableIds(args),
       opts,
     });
   }

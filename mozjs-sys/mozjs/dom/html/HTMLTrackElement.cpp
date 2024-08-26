@@ -11,10 +11,9 @@
 #include "mozilla/LoadInfo.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/dom/HTMLTrackElementBinding.h"
-#include "mozilla/dom/HTMLUnknownElement.h"
+#include "mozilla/dom/UnbindContext.h"
 #include "nsAttrValueInlines.h"
 #include "nsCOMPtr.h"
-#include "nsContentPolicyUtils.h"
 #include "nsContentUtils.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsGenericHTMLElement.h"
@@ -30,7 +29,6 @@
 #include "nsNetUtil.h"
 #include "nsStyleConsts.h"
 #include "nsThreadUtils.h"
-#include "nsVideoFrame.h"
 
 extern mozilla::LazyLogModule gTextTrackLog;
 #define LOG(msg, ...)                       \
@@ -370,7 +368,7 @@ void HTMLTrackElement::LoadResource(RefPtr<WebVTTListener>&& aWebVTTListener) {
         }
         mChannel = channel;
       });
-  doc->Dispatch(TaskCategory::Other, runnable.forget());
+  doc->Dispatch(runnable.forget());
 }
 
 nsresult HTMLTrackElement::BindToTree(BindContext& aContext, nsINode& aParent) {
@@ -408,8 +406,8 @@ nsresult HTMLTrackElement::BindToTree(BindContext& aContext, nsINode& aParent) {
   return NS_OK;
 }
 
-void HTMLTrackElement::UnbindFromTree(bool aNullParent) {
-  if (mMediaParent && aNullParent) {
+void HTMLTrackElement::UnbindFromTree(UnbindContext& aContext) {
+  if (mMediaParent && aContext.IsUnbindRoot(this)) {
     // mTrack can be null if HTMLTrackElement::LoadResource has never been
     // called.
     if (mTrack) {
@@ -419,7 +417,7 @@ void HTMLTrackElement::UnbindFromTree(bool aNullParent) {
     mMediaParent = nullptr;
   }
 
-  nsGenericHTMLElement::UnbindFromTree(aNullParent);
+  nsGenericHTMLElement::UnbindFromTree(aContext);
 }
 
 TextTrackReadyState HTMLTrackElement::ReadyState() const {
@@ -460,7 +458,7 @@ void HTMLTrackElement::DispatchTrackRunnable(const nsString& aEventName) {
   nsCOMPtr<nsIRunnable> runnable = NewRunnableMethod<const nsString>(
       "dom::HTMLTrackElement::DispatchTrustedEvent", this,
       &HTMLTrackElement::DispatchTrustedEvent, aEventName);
-  doc->Dispatch(TaskCategory::Other, runnable.forget());
+  doc->Dispatch(runnable.forget());
 }
 
 void HTMLTrackElement::DispatchTrustedEvent(const nsAString& aName) {
@@ -468,8 +466,8 @@ void HTMLTrackElement::DispatchTrustedEvent(const nsAString& aName) {
   if (!doc) {
     return;
   }
-  nsContentUtils::DispatchTrustedEvent(doc, static_cast<nsIContent*>(this),
-                                       aName, CanBubble::eNo, Cancelable::eNo);
+  nsContentUtils::DispatchTrustedEvent(doc, this, aName, CanBubble::eNo,
+                                       Cancelable::eNo);
 }
 
 void HTMLTrackElement::CancelChannelAndListener() {

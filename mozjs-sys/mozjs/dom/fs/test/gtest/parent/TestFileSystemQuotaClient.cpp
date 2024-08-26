@@ -5,7 +5,6 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "FileSystemParentTypes.h"
-#include "FileSystemQuotaClient.h"
 #include "TestHelpers.h"
 #include "datamodel/FileSystemDataManager.h"
 #include "datamodel/FileSystemDatabaseManager.h"
@@ -14,6 +13,7 @@
 #include "mozIStorageService.h"
 #include "mozStorageCID.h"
 #include "mozilla/SpinEventLoopUntil.h"
+#include "mozilla/dom/FileSystemQuotaClientFactory.h"
 #include "mozilla/dom/PFileSystemManager.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/quota/FileStreams.h"
@@ -58,37 +58,6 @@ class TestFileSystemQuotaClient
     EXPECT_NO_FATAL_FAILURE(
         ClearStoragesForOrigin(GetTestQuotaOriginMetadata()));
     ASSERT_NO_FATAL_FAILURE(ShutdownFixture());
-  }
-
-  static void InitializeStorage() {
-    auto backgroundTask = []() {
-      quota::QuotaManager* quotaManager = quota::QuotaManager::Get();
-      ASSERT_TRUE(quotaManager);
-
-      NS_DispatchAndSpinEventLoopUntilComplete(
-          "TestFileSystemQuotaClient"_ns, quotaManager->IOThread(),
-          NS_NewRunnableFunction("TestFileSystemQuotaClient", []() {
-            quota::QuotaManager* qm = quota::QuotaManager::Get();
-            ASSERT_TRUE(qm);
-
-            ASSERT_NSEQ(NS_OK, qm->EnsureStorageIsInitialized());
-
-            ASSERT_NSEQ(NS_OK, qm->EnsureTemporaryStorageIsInitialized());
-
-            const quota::OriginMetadata& testOriginMeta =
-                GetTestQuotaOriginMetadata();
-
-            auto dirInfoRes = qm->EnsureTemporaryOriginIsInitialized(
-                quota::PERSISTENCE_TYPE_DEFAULT, testOriginMeta);
-            if (dirInfoRes.isErr()) {
-              ASSERT_NSEQ(NS_OK, dirInfoRes.unwrapErr());
-            }
-
-            qm->EnsureQuotaForOrigin(testOriginMeta);
-          }));
-    };
-
-    PerformOnBackgroundThread(std::move(backgroundTask));
   }
 
   static const Name& GetTestFileName() {
@@ -348,9 +317,6 @@ TEST_F(TestFileSystemQuotaClient, WritesToFilesShouldIncreaseUsage) {
     RefPtr<mozilla::dom::quota::Client> quotaClient = fs::CreateQuotaClient();
     ASSERT_TRUE(quotaClient);
 
-    // Storage initialization
-    ASSERT_NO_FATAL_FAILURE(InitializeStorage());
-
     // Initialize database
     Registered<data::FileSystemDataManager> rdm;
     ASSERT_NO_FATAL_FAILURE(CreateRegisteredDataManager(rdm));
@@ -417,9 +383,6 @@ TEST_F(TestFileSystemQuotaClient, TrackedFilesOnInitOriginShouldCauseRescan) {
 
     RefPtr<mozilla::dom::quota::Client> quotaClient = fs::CreateQuotaClient();
     ASSERT_TRUE(quotaClient);
-
-    // Storage initialization
-    ASSERT_NO_FATAL_FAILURE(InitializeStorage());
 
     // Initialize database
     Registered<data::FileSystemDataManager> rdm;
@@ -495,9 +458,6 @@ TEST_F(TestFileSystemQuotaClient, RemovingFileShouldDecreaseUsage) {
 
     RefPtr<mozilla::dom::quota::Client> quotaClient = fs::CreateQuotaClient();
     ASSERT_TRUE(quotaClient);
-
-    // Storage initialization
-    ASSERT_NO_FATAL_FAILURE(InitializeStorage());
 
     // Initialize database
     Registered<data::FileSystemDataManager> rdm;

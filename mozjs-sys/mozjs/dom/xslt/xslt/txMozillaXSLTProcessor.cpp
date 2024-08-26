@@ -4,7 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "txMozillaXSLTProcessor.h"
-#include "nsContentCID.h"
 #include "nsError.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Document.h"
@@ -331,9 +330,8 @@ class txXSLTParamContext : public txIParseContext, public txIEvalContext {
       : mResolver(aResolver), mContext(aContext), mRecycler(aRecycler) {}
 
   // txIParseContext
-  nsresult resolveNamespacePrefix(nsAtom* aPrefix, int32_t& aID) override {
-    aID = mResolver->lookupNamespace(aPrefix);
-    return aID == kNameSpaceID_Unknown ? NS_ERROR_DOM_NAMESPACE_ERR : NS_OK;
+  int32_t resolveNamespacePrefix(nsAtom* aPrefix) override {
+    return mResolver->lookupNamespace(aPrefix);
   }
   nsresult resolveFunctionCall(nsAtom* aName, int32_t aID,
                                FunctionCall** aFunction) override {
@@ -972,7 +970,7 @@ void txMozillaXSLTProcessor::reportError(nsresult aResult,
 void txMozillaXSLTProcessor::notifyError() {
   nsCOMPtr<Document> document;
   {
-    nsresult rv = NS_NewXMLDocument(getter_AddRefs(document));
+    nsresult rv = NS_NewXMLDocument(getter_AddRefs(document), nullptr, nullptr);
     NS_ENSURE_SUCCESS_VOID(rv);
   }
 

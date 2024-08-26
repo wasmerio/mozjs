@@ -89,13 +89,20 @@ function doGet(target, propertyName, receiver) {
 }
 var handler = new Proxy({}, {
     get(target, trapName, receiver) {
-        if (trapName !== "get")
+        // Under PBL, "ownKeys" is invoked as part of the error-string
+        // generation for the TypeError, because expression-stack
+        // decompilation cannot produce the variable name `proxy`.
+        if (trapName !== "get" && trapName != "ownKeys")
             throw `FAIL: system tried to access handler method: ${String(trapName)}`;
         return doGet;
     }
 });
 proxy = new Proxy(Object.create(null), handler);
 assertThrowsInstanceOf(() => proxy == 0, TypeError);
-assertDeepEq(log, [Symbol.toPrimitive, "valueOf", "toString"]);
+if (!getBuildConfiguration("pbl")) {
+    // See above: under PBL, more properties on the proxy are accessed
+    // to generate the TypeError.
+    assertDeepEq(log, [Symbol.toPrimitive, "valueOf", "toString"]);
+}
 
 reportCompare(0, 0);

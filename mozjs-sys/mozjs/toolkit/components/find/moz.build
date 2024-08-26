@@ -13,6 +13,10 @@ XPIDL_SOURCES += [
     "nsIWebBrowserFind.idl",
 ]
 
+EXPORTS += [
+    "nsFind.h",
+]
+
 XPIDL_MODULE = "mozfind"
 
 UNIFIED_SOURCES += [
@@ -24,6 +28,6 @@ SOURCES += [
     "nsFindService.cpp",
 ]
 
-MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.toml"]
 
 FINAL_LIBRARY = "xul"

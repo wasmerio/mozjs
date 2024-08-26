@@ -11,7 +11,7 @@
 
 #include "base/platform_thread.h"  // for PlatformThreadId
 #include "gfxEnv.h"
-#include "GLTypes.h"
+#include "GLContext.h"
 #include "mozilla/EnumTypeTraits.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/Maybe.h"
@@ -28,6 +28,7 @@
 
 #ifdef MOZ_WIDGET_ANDROID
 #  include "mozilla/ProfilerLabels.h"
+#  include "AndroidBuild.h"
 #endif
 
 #if defined(MOZ_X11)
@@ -264,7 +265,6 @@ class GLLibraryEGL final {
     const bool CHECK_CONTEXT_OWNERSHIP = true;
     if (CHECK_CONTEXT_OWNERSHIP) {
       const MutexAutoLock lock(mMutex);
-
       const auto tid = PlatformThread::CurrentId();
       const auto prevCtx = fGetCurrentContext();
 
@@ -286,6 +286,11 @@ class GLLibraryEGL final {
         ctxOwnerThread = tid;
       }
     }
+
+    // Always reset the TLS current context.
+    // If we're called by TLS-caching MakeCurrent, after we return true,
+    // the caller will set the TLS correctly anyway.
+    GLContext::ResetTLSCurrentContext();
 
     WRAP(fMakeCurrent(dpy, draw, read, ctx));
   }
@@ -699,6 +704,8 @@ class EglDisplay final {
  private:
   std::bitset<UnderlyingValue(EGLExtension::Max)> mAvailableExtensions;
 
+  bool mShouldLeakEGLDisplay = false;
+
   struct PrivateUseOnly final {};
 
  public:
@@ -723,6 +730,10 @@ class EglDisplay final {
   void DumpEGLConfig(EGLConfig) const;
   void DumpEGLConfigs() const;
 
+  // When called, ensure we deliberately leak the EGLDisplay rather than call
+  // eglTerminate. Used as a workaround on buggy drivers.
+  void SetShouldLeakEGLDisplay() { mShouldLeakEGLDisplay = true; }
+
   void Shutdown();
 
   // -
@@ -739,7 +750,12 @@ class EglDisplay final {
 
   // -
 
-  EGLBoolean fTerminate() { return mLib->fTerminate(mDisplay); }
+  EGLBoolean fTerminate() {
+    if (mShouldLeakEGLDisplay) {
+      return LOCAL_EGL_TRUE;
+    }
+    return mLib->fTerminate(mDisplay);
+  }
 
   EGLBoolean fMakeCurrent(EGLSurface draw, EGLSurface read,
                           EGLContext ctx) const {

@@ -144,16 +144,29 @@ class Connector {
     this._harMetadataCollector.destroy();
   }
 
-  clear() {
+  /**
+   * Clear network data from the connector.
+   *
+   * @param {object} options
+   * @param {boolean} options.isExplicitClear
+   *     Set to true if the call to clear requests is explicitly requested by
+   *     the user, to false if this is an automated clear, eg on navigation.
+   *
+   */
+  clear({ isExplicitClear }) {
     // Clear all the caches in the data provider
     this.dataProvider.clear();
 
     this._harMetadataCollector.clear();
 
-    this.commands.resourceCommand.clearResources(Connector.NETWORK_RESOURCES);
-    this.emitForTests("clear-network-resources");
+    if (isExplicitClear) {
+      // Only clear the resources if the clear was initiated explicitly by the
+      // UI, in other cases (eg navigation) the server handles the cleanup.
+      this.commands.resourceCommand.clearResources(Connector.NETWORK_RESOURCES);
+      this.emitForTests("clear-network-resources");
+    }
 
-    // Disable the realted network logs in the webconsole
+    // Disable the related network logs in the webconsole
     this.toolbox.disableAllConsoleNetworkLogs();
   }
 
@@ -265,7 +278,7 @@ class Connector {
     if (this.actions) {
       if (!Services.prefs.getBoolPref(DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF)) {
         this.actions.batchReset();
-        this.actions.clearRequests();
+        this.actions.clearRequests({ isExplicitClear: false });
       } else {
         // If the log is persistent, just clear all accumulated timing markers.
         this.actions.clearTimingMarkers();
@@ -512,14 +525,23 @@ class Connector {
   async updateNetworkThrottling(enabled, profile) {
     if (!enabled) {
       this.networkFront.clearNetworkThrottling();
+      await this.commands.targetConfigurationCommand.updateConfiguration({
+        setTabOffline: false,
+      });
     } else {
       // The profile can be either a profile id which is used to
       // search the predefined throttle profiles or a profile object
       // as defined in the trottle tests.
       if (typeof profile === "string") {
-        profile = throttlingProfiles.find(({ id }) => id == profile);
+        profile = throttlingProfiles.profiles.find(({ id }) => id == profile);
       }
-      const { download, upload, latency } = profile;
+      const { download, upload, latency, id } = profile;
+
+      // The offline profile has download and upload set to false
+      await this.commands.targetConfigurationCommand.updateConfiguration({
+        setTabOffline: id === throttlingProfiles.PROFILE_CONSTANTS.OFFLINE,
+      });
+
       await this.networkFront.setNetworkThrottling({
         downloadThroughput: download,
         uploadThroughput: upload,

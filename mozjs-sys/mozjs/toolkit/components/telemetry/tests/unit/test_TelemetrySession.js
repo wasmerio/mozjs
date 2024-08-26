@@ -50,7 +50,7 @@ const DATAREPORTING_DIR = "datareporting";
 const ABORTED_PING_FILE_NAME = "aborted-session-ping";
 const ABORTED_SESSION_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
 
-XPCOMUtils.defineLazyGetter(this, "DATAREPORTING_PATH", function () {
+ChromeUtils.defineLazyGetter(this, "DATAREPORTING_PATH", function () {
   return PathUtils.join(PathUtils.profileDir, DATAREPORTING_DIR);
 });
 
@@ -580,20 +580,13 @@ add_task(async function sessionTimeExcludingAndIncludingSuspend() {
     "In test condition, the two uptimes should be close to each other"
   );
 
-  // This however should always hold, except on Windows < 10, where the two
-  // clocks are from different system calls, and it can fail in test condition
-  // because the machine has not been suspended.
-  if (
-    AppConstants.platform != "win" ||
-    AppConstants.isPlatformAndVersionAtLeast("win", "10.0")
-  ) {
-    Assert.greaterOrEqual(
-      withSuspend,
-      withoutSuspend,
-      `The uptime with suspend must always been greater or equal to the uptime
-       without suspend`
-    );
-  }
+  // This however should always hold.
+  Assert.greaterOrEqual(
+    withSuspend,
+    withoutSuspend,
+    `The uptime with suspend must always been greater or equal to the uptime
+     without suspend`
+  );
 
   Services.prefs.setBoolPref(
     "toolkit.telemetry.testing.overrideProductsCheck",
@@ -930,7 +923,7 @@ add_task(async function test_dailyDuplication() {
   Assert.equal(ping.payload.info.reason, REASON_DAILY);
 
   // We don't expect to receive any other daily ping in this test, so assert if we do.
-  PingServer.registerPingHandler((req, res) => {
+  PingServer.registerPingHandler(() => {
     Assert.ok(
       false,
       "No more daily pings should be sent/received in this test."
@@ -974,7 +967,7 @@ add_task(async function test_dailyOverdue() {
   fakeNow(now);
 
   // Assert if we receive something!
-  PingServer.registerPingHandler((req, res) => {
+  PingServer.registerPingHandler(() => {
     Assert.ok(false, "No daily ping should be received if not overdue!.");
   });
 
@@ -1403,7 +1396,7 @@ add_task(async function test_sendFirstShutdownPing() {
     // the appropriate behavior from the preference flags.
 
     // Assert failure if we recive a ping.
-    PingServer.registerPingHandler((req, res) => {
+    PingServer.registerPingHandler(req => {
       const receivedPing = decodeRequestPayload(req);
       Assert.ok(
         false,
@@ -2045,7 +2038,7 @@ add_task(async function test_schedulerEnvironmentReschedules() {
   );
 
   // We don't expect to receive any daily ping in this test, so assert if we do.
-  PingServer.registerPingHandler((req, res) => {
+  PingServer.registerPingHandler(req => {
     const receivedPing = decodeRequestPayload(req);
     Assert.ok(
       false,
@@ -2079,7 +2072,7 @@ add_task(async function test_schedulerNothingDue() {
   await TelemetryController.testReset();
 
   // We don't expect to receive any ping in this test, so assert if we do.
-  PingServer.registerPingHandler((req, res) => {
+  PingServer.registerPingHandler(req => {
     const receivedPing = decodeRequestPayload(req);
     Assert.ok(
       false,

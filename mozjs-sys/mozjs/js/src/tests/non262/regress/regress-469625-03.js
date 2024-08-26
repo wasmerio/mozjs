@@ -1,3 +1,7 @@
+// |reftest| skip-if(this.getBuildConfiguration("pbl"))
+// skip test if PBL enabled, because we do not get a full
+// decompilation with variable names in the TypeError.
+
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /*
  * Any copyright is dedicated to the Public Domain.

@@ -32,7 +32,7 @@ const POPUP_PRELOAD_TIMEOUT_MS = 200;
 // WeakMap[Extension -> BrowserAction]
 const browserActionMap = new WeakMap();
 
-XPCOMUtils.defineLazyGetter(this, "browserAreas", () => {
+ChromeUtils.defineLazyGetter(this, "browserAreas", () => {
   return {
     navbar: CustomizableUI.AREA_NAVBAR,
     menupanel: CustomizableUI.AREA_ADDONS,
@@ -95,7 +95,7 @@ this.browserAction = class extends ExtensionAPIPersistent {
     return browserActionMap.get(extension);
   }
 
-  async onManifestEntry(entryName) {
+  async onManifestEntry() {
     let { extension } = this;
 
     let options =
@@ -341,7 +341,7 @@ this.browserAction = class extends ExtensionAPIPersistent {
         );
       },
 
-      onBeforeCommand: (event, node) => {
+      onBeforeCommand: event => {
         this.lastClickInfo = {
           button: event.button || 0,
           modifiers: clickModifiersFromEvent(event),
@@ -884,11 +884,20 @@ this.browserAction = class extends ExtensionAPIPersistent {
       return IconDetails.escapeUrl(icon);
     };
 
-    let getStyle = (name, icon) => {
+    let getStyle = (name, icon1x, icon2x) => {
       return `
-        --webextension-${name}: url("${getIcon(icon, "default")}");
-        --webextension-${name}-light: url("${getIcon(icon, "light")}");
-        --webextension-${name}-dark: url("${getIcon(icon, "dark")}");
+        --webextension-${name}: image-set(
+          url("${getIcon(icon1x, "default")}"),
+          url("${getIcon(icon2x, "default")}") 2x
+        );
+        --webextension-${name}-light: image-set(
+          url("${getIcon(icon1x, "light")}"),
+          url("${getIcon(icon2x, "light")}") 2x
+        );
+        --webextension-${name}-dark: image-set(
+          url("${getIcon(icon1x, "dark")}"),
+          url("${getIcon(icon2x, "dark")}") 2x
+        );
       `;
     };
 
@@ -897,10 +906,8 @@ this.browserAction = class extends ExtensionAPIPersistent {
     let icon64 = IconDetails.getPreferredIcon(icons, this.extension, 64).icon;
 
     return `
-        ${getStyle("menupanel-image", icon32)}
-        ${getStyle("menupanel-image-2x", icon64)}
-        ${getStyle("toolbar-image", icon16)}
-        ${getStyle("toolbar-image-2x", icon32)}
+        ${getStyle("menupanel-image", icon32, icon64)}
+        ${getStyle("toolbar-image", icon16, icon32)}
       `;
   }
 

@@ -13,6 +13,7 @@ add_task(async function () {
   await testBfCacheNavigation();
   await testDomCompleteWithWindowStop();
   await testCrossOriginNavigation();
+  await testDomCompleteWithOfflineDocument();
 });
 
 async function testDocumentEventResources() {
@@ -281,7 +282,10 @@ async function testBfCacheNavigation() {
   const secondLocation = "data:text/html,<title>second</title>second page";
   const tab = await addTab(firstLocation);
   const onLoaded = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, secondLocation);
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    secondLocation
+  );
   await onLoaded;
 
   const { commands } = await initResourceCommand(tab);
@@ -419,7 +423,7 @@ async function testCrossOriginNavigation() {
     "https://example.net/document-builder.sjs?html=<head><title>titleNet</title></head>net";
   const onLoaded = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
   const targetBeforeNavigation = commands.targetCommand.targetFront;
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, netUrl);
+  BrowserTestUtils.startLoadingURIString(gBrowser.selectedBrowser, netUrl);
   await onLoaded;
 
   // We are switching to a new target only when fission is enabled...
@@ -556,13 +560,55 @@ async function testDomCompleteWithWindowStop() {
 </html>`;
   const secondLocation = "data:text/html," + encodeURIComponent(html);
   const targetBeforeNavigation = commands.targetCommand.targetFront;
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, secondLocation);
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    secondLocation
+  );
   info(
     "Wait for will-navigate, dom-loading, dom-interactive and dom-complete events"
   );
   await waitFor(() => documentEvents.length === 4);
 
   assertEvents({ commands, targetBeforeNavigation, documentEvents });
+
+  targetCommand.destroy();
+  await client.close();
+}
+
+async function testDomCompleteWithOfflineDocument() {
+  info("Test dom-complete with an offline page");
+
+  const tab = await addTab(`${URL_ROOT_SSL}empty.html`);
+
+  const { commands, client, resourceCommand, targetCommand } =
+    await initResourceCommand(tab);
+
+  info("Check that all DOCUMENT_EVENTS are fired for the already loaded page");
+  let documentEvents = [];
+  await resourceCommand.watchResources([resourceCommand.TYPES.DOCUMENT_EVENT], {
+    onAvailable: resources => documentEvents.push(...resources),
+  });
+  is(documentEvents.length, 3, "Existing document events are fired");
+  documentEvents = [];
+
+  const targetBeforeNavigation = commands.targetCommand.targetFront;
+  tab.linkedBrowser.browsingContext.forceOffline = true;
+  gBrowser.reloadTab(tab);
+
+  // The offline mode may break Document Event Watcher and we would miss some of the expected events
+  info(
+    "Wait for will-navigate, dom-loading, dom-interactive and dom-complete events"
+  );
+  await waitFor(() => documentEvents.length === 4);
+
+  // Only will-navigate will have a valid timestamp, as the page is failing loading
+  // and we get the offline notice page, the other events will be set to 0
+  assertEvents({
+    commands,
+    targetBeforeNavigation,
+    documentEvents,
+    ignoreAllTimestamps: true,
+  });
 
   targetCommand.destroy();
   await client.close();
@@ -599,6 +645,7 @@ function assertEvents({
   expectedTargetFront = commands.targetCommand.targetFront,
   expectedNewURI = gBrowser.selectedBrowser.currentURI.spec,
   ignoreWillNavigateTimestamp = false,
+  ignoreAllTimestamps = false,
 }) {
   const [willNavigateEvent, loadingEvent, interactiveEvent, completeEvent] =
     documentEvents;
@@ -645,20 +692,26 @@ function assertEvents({
     `Type of time attribute for complete event is correct (${completeEvent.time})`
   );
 
-  if (willNavigateEvent && !ignoreWillNavigateTimestamp) {
-    ok(
-      willNavigateEvent.time <= loadingEvent.time,
-      `Timestamp for dom-loading event is greater than will-navigate event (${willNavigateEvent.time} <= ${loadingEvent.time})`
+  // In case of errors the timestamps may be set to 0.
+  if (!ignoreAllTimestamps) {
+    if (willNavigateEvent && !ignoreWillNavigateTimestamp) {
+      Assert.lessOrEqual(
+        willNavigateEvent.time,
+        loadingEvent.time,
+        `Timestamp for dom-loading event is greater than will-navigate event (${willNavigateEvent.time} <= ${loadingEvent.time})`
+      );
+    }
+    Assert.lessOrEqual(
+      loadingEvent.time,
+      interactiveEvent.time,
+      `Timestamp for interactive event is greater than loading event (${loadingEvent.time} <= ${interactiveEvent.time})`
+    );
+    Assert.lessOrEqual(
+      interactiveEvent.time,
+      completeEvent.time,
+      `Timestamp for complete event is greater than interactive event (${interactiveEvent.time} <= ${completeEvent.time}).`
     );
   }
-  ok(
-    loadingEvent.time <= interactiveEvent.time,
-    `Timestamp for interactive event is greater than loading event (${loadingEvent.time} <= ${interactiveEvent.time})`
-  );
-  ok(
-    interactiveEvent.time <= completeEvent.time,
-    `Timestamp for complete event is greater than interactive event (${interactiveEvent.time} <= ${completeEvent.time}).`
-  );
 
   if (willNavigateEvent) {
     // If we switched to a new target, this target will be different from currentTargetFront.

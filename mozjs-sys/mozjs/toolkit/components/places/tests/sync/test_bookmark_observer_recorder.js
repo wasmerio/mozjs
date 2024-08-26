@@ -185,7 +185,7 @@ add_task(async function test_update_frecencies() {
     let frecencies = await promiseAllURLFrecencies();
     let urlsWithFrecency = mapFilterIterator(
       frecencies.entries(),
-      ([href, { frecency, recalc }]) => (recalc == 0 ? href : null)
+      ([href, { recalc }]) => (recalc == 0 ? href : null)
     );
 
     // A is unchanged, and we should recalculate frecency for three more
@@ -236,7 +236,7 @@ add_task(async function test_update_frecencies() {
     let frecencies = await promiseAllURLFrecencies();
     let urlsWithoutFrecency = mapFilterIterator(
       frecencies.entries(),
-      ([href, { frecency, recalc }]) => (recalc == 1 ? href : null)
+      ([href, { recalc }]) => (recalc == 1 ? href : null)
     );
     deepEqual(
       urlsWithoutFrecency,
@@ -381,6 +381,7 @@ add_task(async function test_apply_then_revert() {
   );
 
   info("Revert local tree");
+  let dateAdded = new Date(localTimeSeconds * 1000);
   await PlacesSyncUtils.bookmarks.wipe();
   await setupLocalTree(localTimeSeconds);
   await PlacesTestUtils.markBookmarksAsSynced();
@@ -389,7 +390,7 @@ add_task(async function test_apply_then_revert() {
     parentGuid: PlacesUtils.bookmarks.menuGuid,
     title: "E",
     url: "http://example.com/e",
-    dateAdded: new Date(localTimeSeconds * 1000),
+    dateAdded,
     lastModified: new Date(localTimeSeconds * 1000),
   });
   let localIdForD = await PlacesTestUtils.promiseItemId("bookmarkDDDD");
@@ -490,6 +491,7 @@ add_task(async function test_apply_then_revert() {
         frecency: 0,
         hidden: false,
         visitCount: 0,
+        dateAdded: dateAdded.getTime(),
         lastVisitDate: null,
       },
     },
@@ -511,6 +513,7 @@ add_task(async function test_apply_then_revert() {
         frecency: 0,
         hidden: false,
         visitCount: 0,
+        dateAdded: dateAdded.getTime(),
         lastVisitDate: null,
       },
     },
@@ -532,6 +535,7 @@ add_task(async function test_apply_then_revert() {
         frecency: 1,
         hidden: false,
         visitCount: 0,
+        dateAdded: dateAdded.getTime(),
         lastVisitDate: null,
       },
     },
@@ -553,6 +557,7 @@ add_task(async function test_apply_then_revert() {
         frecency: -1,
         hidden: false,
         visitCount: 0,
+        dateAdded: dateAdded.getTime(),
         lastVisitDate: null,
       },
     },

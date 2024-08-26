@@ -207,13 +207,13 @@ void SetTaskbarGroupId(const nsString& aId) {
 #if defined(MOZ_SANDBOX)
 void AddContentSandboxLevelAnnotation() {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
-    int level = GetEffectiveContentSandboxLevel();
-    CrashReporter::AnnotateCrashReport(
-        CrashReporter::Annotation::ContentSandboxLevel, level);
+    uint32_t contentSandboxLevel = GetEffectiveContentSandboxLevel();
+    CrashReporter::RecordAnnotationU32(
+        CrashReporter::Annotation::ContentSandboxLevel, contentSandboxLevel);
   } else if (XRE_GetProcessType() == GeckoProcessType_GPU) {
-    int level = GetEffectiveGpuSandboxLevel();
-    CrashReporter::AnnotateCrashReport(
-        CrashReporter::Annotation::GpuSandboxLevel, level);
+    uint32_t gpuSandboxLevel = GetEffectiveGpuSandboxLevel();
+    CrashReporter::RecordAnnotationU32(
+        CrashReporter::Annotation::GpuSandboxLevel, gpuSandboxLevel);
   }
 }
 #endif /* MOZ_SANDBOX */
@@ -383,15 +383,6 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
 
   bool exceptionHandlerIsSet = false;
   if (!CrashReporter::IsDummy()) {
-#if defined(XP_WIN)
-    if (aArgc < 1) {
-      return NS_ERROR_FAILURE;
-    }
-    // Pop the first argument, this is used by the WER runtime exception module
-    // which reads it from the command-line so we can just discard it here.
-    --aArgc;
-#endif
-
     if (aArgc < 1) return NS_ERROR_FAILURE;
     const char* const crashReporterArg = aArgv[--aArgc];
 
@@ -518,6 +509,11 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
       uiLoopType = MessageLoop::TYPE_MOZILLA_CHILD;
       break;
     case GeckoProcessType_GMPlugin:
+      gmp::GMPProcessChild::InitStatics(aArgc, aArgv);
+      uiLoopType = gmp::GMPProcessChild::UseXPCOM()
+                       ? MessageLoop::TYPE_MOZILLA_CHILD
+                       : MessageLoop::TYPE_DEFAULT;
+      break;
     case GeckoProcessType_RemoteSandboxBroker:
       uiLoopType = MessageLoop::TYPE_DEFAULT;
       break;
@@ -529,7 +525,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
 #if defined(XP_WIN)
 #  if defined(MOZ_SANDBOX)
   if (aChildData->sandboxBrokerServices) {
-    SandboxBroker::Initialize(aChildData->sandboxBrokerServices);
+    SandboxBroker::Initialize(aChildData->sandboxBrokerServices, u""_ns);
     SandboxBroker::GeckoDependentInitialize();
   }
 #  endif  // defined(MOZ_SANDBOX)
@@ -641,7 +637,6 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
         // these...
         mozilla::FilePreferences::InitDirectoriesAllowlist();
         mozilla::FilePreferences::InitPrefs();
-        OverrideDefaultLocaleIfNeeded();
       }
 
 #if defined(MOZ_SANDBOX)

@@ -94,17 +94,8 @@ static nsSize GetDeviceSize(const Document& aDocument) {
   return size;
 }
 
-bool Gecko_MediaFeatures_WindowsNonNativeMenus(const Document* aDocument) {
-  return LookAndFeel::WindowsNonNativeMenusEnabled() ||
-         aDocument->ShouldAvoidNativeTheme();
-}
-
 bool Gecko_MediaFeatures_IsResourceDocument(const Document* aDocument) {
   return aDocument->IsResourceDoc();
-}
-
-bool Gecko_MediaFeatures_ShouldAvoidNativeTheme(const Document* aDocument) {
-  return aDocument->ShouldAvoidNativeTheme();
 }
 
 bool Gecko_MediaFeatures_UseOverlayScrollbars(const Document* aDocument) {
@@ -248,17 +239,6 @@ bool Gecko_MediaFeatures_MatchesPlatform(StylePlatform aPlatform) {
 #if defined(XP_WIN)
     case StylePlatform::Windows:
       return true;
-    case StylePlatform::WindowsWin10:
-    case StylePlatform::WindowsWin7:
-    case StylePlatform::WindowsWin8: {
-      if (IsWin10OrLater()) {
-        return aPlatform == StylePlatform::WindowsWin10;
-      }
-      if (IsWin8OrLater()) {
-        return aPlatform == StylePlatform::WindowsWin8;
-      }
-      return aPlatform == StylePlatform::WindowsWin7;
-    }
 #elif defined(ANDROID)
     case StylePlatform::Android:
       return true;
@@ -267,6 +247,9 @@ bool Gecko_MediaFeatures_MatchesPlatform(StylePlatform aPlatform) {
       return true;
 #elif defined(XP_MACOSX)
     case StylePlatform::Macos:
+      return true;
+#elif defined(XP_IOS)
+    case StylePlatform::Ios:
       return true;
 #else
 #  error "Unknown platform?"
@@ -295,7 +278,7 @@ bool Gecko_MediaFeatures_PrefersReducedTransparency(const Document* aDocument) {
 
 StylePrefersColorScheme Gecko_MediaFeatures_PrefersColorScheme(
     const Document* aDocument, bool aUseContent) {
-  auto scheme = aUseContent ? LookAndFeel::PreferredColorSchemeForContent()
+  auto scheme = aUseContent ? PreferenceSheet::ContentPrefs().mColorScheme
                             : aDocument->PreferredColorScheme();
   return scheme == ColorScheme::Dark ? StylePrefersColorScheme::Dark
                                      : StylePrefersColorScheme::Light;
@@ -353,18 +336,19 @@ StyleDynamicRange Gecko_MediaFeatures_DynamicRange(const Document* aDocument) {
 
 StyleDynamicRange Gecko_MediaFeatures_VideoDynamicRange(
     const Document* aDocument) {
-  if (aDocument->ShouldResistFingerprinting(RFPTarget::CSSVideoDynamicRange)) {
+  if (aDocument->ShouldResistFingerprinting(RFPTarget::CSSVideoDynamicRange) ||
+      !StaticPrefs::layout_css_video_dynamic_range_allows_high()) {
     return StyleDynamicRange::Standard;
   }
   // video-dynamic-range: high has 3 requirements:
   // 1) high peak brightness
   // 2) high contrast ratio
   // 3) color depth > 24
-  // We check the color depth requirement before asking the LookAndFeel
-  // if it is HDR capable.
+
+  // As a proxy for those requirements, return 'High' if the screen associated
+  // with the device context claims to be HDR capable.
   if (nsDeviceContext* dx = GetDeviceContextFor(aDocument)) {
-    if (dx->GetDepth() > 24 &&
-        LookAndFeel::GetInt(LookAndFeel::IntID::VideoDynamicRange)) {
+    if (dx->GetScreenIsHDR()) {
       return StyleDynamicRange::High;
     }
   }
@@ -418,4 +402,10 @@ PointerCapabilities Gecko_MediaFeatures_AllPointerCapabilities(
     const Document* aDocument) {
   return GetPointerCapabilities(aDocument,
                                 LookAndFeel::IntID::AllPointerCapabilities);
+}
+
+StyleGtkThemeFamily Gecko_MediaFeatures_GtkThemeFamily() {
+  static_assert(int32_t(StyleGtkThemeFamily::Unknown) == 0);
+  return StyleGtkThemeFamily(
+      LookAndFeel::GetInt(LookAndFeel::IntID::GTKThemeFamily));
 }

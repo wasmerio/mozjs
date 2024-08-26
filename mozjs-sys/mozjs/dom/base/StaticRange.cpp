@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/StaticRange.h"
 #include "mozilla/dom/StaticRangeBinding.h"
+#include "nsContentUtils.h"
 #include "nsINode.h"
 
 namespace mozilla::dom {
@@ -46,8 +47,8 @@ template void StaticRange::DoSetRange(const RawRangeBoundary& aStartBoundary,
 
 nsTArray<RefPtr<StaticRange>>* StaticRange::sCachedRanges = nullptr;
 
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_ADDREF(StaticRange)
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_RELEASE_WITH_INTERRUPTABLE_LAST_RELEASE(
+NS_IMPL_CYCLE_COLLECTING_ADDREF(StaticRange)
+NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_INTERRUPTABLE_LAST_RELEASE(
     StaticRange, DoSetRange(RawRangeBoundary(), RawRangeBoundary(), nullptr),
     AbstractRange::MaybeCacheToReuse(*this))
 
@@ -71,7 +72,8 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_END
 already_AddRefed<StaticRange> StaticRange::Create(nsINode* aNode) {
   MOZ_ASSERT(aNode);
   if (!sCachedRanges || sCachedRanges->IsEmpty()) {
-    return do_AddRef(new StaticRange(aNode));
+    return do_AddRef(
+        new StaticRange(aNode, RangeBoundaryIsMutationObserved::No));
   }
   RefPtr<StaticRange> staticRange = sCachedRanges->PopLastElement().forget();
   staticRange->Init(aNode);
@@ -94,6 +96,22 @@ StaticRange::~StaticRange() {
   DoSetRange(RawRangeBoundary(), RawRangeBoundary(), nullptr);
 }
 
+bool StaticRange::IsValid() const {
+  if (!mStart.IsSetAndValid() || !mEnd.IsSetAndValid()) {
+    return false;
+  }
+
+  MOZ_ASSERT(mAreStartAndEndInSameTree ==
+             (RangeUtils::ComputeRootNode(mStart.Container()) ==
+              RangeUtils::ComputeRootNode(mEnd.Container())));
+  if (!mAreStartAndEndInSameTree) {
+    return false;
+  }
+
+  const Maybe<int32_t> pointOrder = nsContentUtils::ComparePoints(mStart, mEnd);
+  return pointOrder.isSome() && *pointOrder <= 0;
+}
+
 template <typename SPT, typename SRT, typename EPT, typename ERT>
 void StaticRange::DoSetRange(const RangeBoundaryBase<SPT, SRT>& aStartBoundary,
                              const RangeBoundaryBase<EPT, ERT>& aEndBoundary,
@@ -101,14 +119,17 @@ void StaticRange::DoSetRange(const RangeBoundaryBase<SPT, SRT>& aStartBoundary,
   bool checkCommonAncestor =
       IsInAnySelection() && (mStart.Container() != aStartBoundary.Container() ||
                              mEnd.Container() != aEndBoundary.Container());
-  mStart.CopyFrom(aStartBoundary, RangeBoundaryIsMutationObserved::No);
-  mEnd.CopyFrom(aEndBoundary, RangeBoundaryIsMutationObserved::No);
+  mStart.CopyFrom(aStartBoundary, mIsMutationObserved);
+  mEnd.CopyFrom(aEndBoundary, mIsMutationObserved);
   MOZ_ASSERT(mStart.IsSet() == mEnd.IsSet());
   mIsPositioned = mStart.IsSet() && mEnd.IsSet();
 
   if (checkCommonAncestor) {
     UpdateCommonAncestorIfNecessary();
   }
+
+  mAreStartAndEndInSameTree = RangeUtils::ComputeRootNode(mStart.Container()) ==
+                              RangeUtils::ComputeRootNode(mEnd.Container());
 }
 
 /* static */

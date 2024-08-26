@@ -433,6 +433,9 @@ void VideoSink::RenderVideoFrames(int32_t aMaxFrames, int64_t aClockTime,
     return;
   }
 
+  PROFILER_MARKER("VideoSink::RenderVideoFrames", MEDIA_PLAYBACK, {},
+                  VideoSinkRenderMarker, aClockTime);
+
   AutoTArray<ImageContainer::NonOwningImage, 16> images;
   TimeStamp lastFrameTime;
   double playbackRate = mAudioSink->PlaybackRate();
@@ -699,10 +702,6 @@ bool VideoSink::InitializeBlankImage() {
   }
   SetImageToGreenPixel(mBlankImage->AsPlanarYCbCrImage());
   return true;
-}
-
-void VideoSink::EnableTreatAudioUnderrunAsSilence(bool aEnabled) {
-  mAudioSink->EnableTreatAudioUnderrunAsSilence(aEnabled);
 }
 
 }  // namespace mozilla

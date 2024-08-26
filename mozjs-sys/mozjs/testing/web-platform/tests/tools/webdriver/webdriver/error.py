@@ -16,7 +16,7 @@ class WebDriverException(Exception):
     status_code: ClassVar[str]
 
     def __init__(self, http_status=None, status_code=None, message=None, stacktrace=None):
-        super()
+        super().__init__()
 
         if http_status is not None:
             self.http_status = http_status
@@ -228,5 +228,5 @@ def get(error_code):
 
 _errors: DefaultDict[str, Type[WebDriverException]] = collections.defaultdict()
 for item in list(locals().values()):
-    if type(item) == type and item != WebDriverException and issubclass(item, WebDriverException):
+    if isinstance(item, type) and item != WebDriverException and issubclass(item, WebDriverException):
         _errors[item.status_code] = item

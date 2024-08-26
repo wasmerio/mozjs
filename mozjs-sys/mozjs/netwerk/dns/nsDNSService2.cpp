@@ -60,6 +60,8 @@ static const char kPrefDnsLocalDomains[] = "network.dns.localDomains";
 static const char kPrefDnsForceResolve[] = "network.dns.forceResolve";
 static const char kPrefDnsOfflineLocalhost[] = "network.dns.offline-localhost";
 static const char kPrefDnsNotifyResolution[] = "network.dns.notifyResolution";
+static const char kPrefDnsMockHTTPSRRDomain[] =
+    "network.dns.mock_HTTPS_RR_domain";
 
 //-----------------------------------------------------------------------------
 
@@ -713,11 +715,11 @@ already_AddRefed<nsIDNSService> nsDNSService::GetXPCOMSingleton() {
       return nullptr;
     }
 
-    if (XRE_IsParentProcess() || XRE_IsSocketProcess()) {
+    if (XRE_IsParentProcess()) {
       return GetSingleton();
     }
 
-    if (XRE_IsContentProcess()) {
+    if (XRE_IsContentProcess() || XRE_IsSocketProcess()) {
       return ChildDNSService::GetSingleton();
     }
 
@@ -737,6 +739,7 @@ already_AddRefed<nsIDNSService> nsDNSService::GetXPCOMSingleton() {
 
 already_AddRefed<nsDNSService> nsDNSService::GetSingleton() {
   MOZ_ASSERT_IF(nsIOService::UseSocketProcess(), XRE_IsSocketProcess());
+  MOZ_ASSERT_IF(!nsIOService::UseSocketProcess(), XRE_IsParentProcess());
 
   if (!gDNSService) {
     if (!NS_IsMainThread()) {
@@ -824,6 +827,17 @@ void nsDNSService::ReadPrefs(const char* name) {
     Preferences::GetCString(kPrefDnsForceResolve, mForceResolve);
     mForceResolveOn = !mForceResolve.IsEmpty();
   }
+  if (!name || !strcmp(name, kPrefDnsMockHTTPSRRDomain)) {
+    nsCString mockHTTPSRRDomain;
+    Preferences::GetCString(kPrefDnsMockHTTPSRRDomain, mockHTTPSRRDomain);
+    if (mockHTTPSRRDomain.IsEmpty()) {
+      mHasMockHTTPSRRDomainSet = false;
+    } else {
+      mHasMockHTTPSRRDomainSet = true;
+      MutexAutoLock lock(mLock);
+      mMockHTTPSRRDomain = mockHTTPSRRDomain;
+    }
+  }
 }
 
 NS_IMETHODIMP
@@ -862,6 +876,7 @@ nsDNSService::Init() {
     prefs->AddObserver(kPrefDnsOfflineLocalhost, this, false);
     prefs->AddObserver(kPrefBlockDotOnion, this, false);
     prefs->AddObserver(kPrefDnsNotifyResolution, this, false);
+    prefs->AddObserver(kPrefDnsMockHTTPSRRDomain, this, false);
     AddPrefObserver(prefs);
   }
 
@@ -873,7 +888,7 @@ nsDNSService::Init() {
       do_GetService("@mozilla.org/network/oblivious-http-service;1"));
 
   mTrrService = new TRRService();
-  if (NS_FAILED(mTrrService->Init())) {
+  if (NS_FAILED(mTrrService->Init(mResolver->IsNativeHTTPSEnabled()))) {
     mTrrService = nullptr;
   }
 
@@ -974,6 +989,15 @@ nsresult nsDNSService::PreprocessHostname(bool aLocalDomain,
   return NS_OK;
 }
 
+bool nsDNSService::IsLocalDomain(const nsACString& aHostname) const {
+  bool localDomain = mLocalDomains.Contains(aHostname);
+  if (StringEndsWith(aHostname, "."_ns)) {
+    localDomain = localDomain || mLocalDomains.Contains(Substring(
+                                     aHostname, 0, aHostname.Length() - 1));
+  }
+  return localDomain;
+}
+
 nsresult nsDNSService::AsyncResolveInternal(
     const nsACString& aHostname, uint16_t type, nsIDNSService::DNSFlags flags,
     nsIDNSAdditionalInfo* aInfo, nsIDNSListener* aListener,
@@ -995,7 +1019,8 @@ nsresult nsDNSService::AsyncResolveInternal(
 
     res = mResolver;
     idn = mIDN;
-    localDomain = mLocalDomains.Contains(aHostname);
+
+    localDomain = IsLocalDomain(aHostname);
   }
 
   if (mNotifyResolution) {
@@ -1050,6 +1075,13 @@ nsresult nsDNSService::AsyncResolveInternal(
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
+  if (type == RESOLVE_TYPE_HTTPSSVC && mHasMockHTTPSRRDomainSet) {
+    MutexAutoLock lock(mLock);
+    if (req->mHost == mMockHTTPSRRDomain) {
+      flags |= nsIDNSService::RESOLVE_CREATE_MOCK_HTTPS_RR;
+    }
+  }
+
   rv = res->ResolveHost(req->mHost, DNSAdditionalInfo::URL(aInfo),
                         DNSAdditionalInfo::Port(aInfo), type,
                         req->mOriginAttributes, flags, af, req);
@@ -1075,7 +1107,7 @@ nsresult nsDNSService::CancelAsyncResolveInternal(
 
     res = mResolver;
     idn = mIDN;
-    localDomain = mLocalDomains.Contains(aHostname);
+    localDomain = IsLocalDomain(aHostname);
   }
   if (!res) {
     return NS_ERROR_OFFLINE;
@@ -1211,7 +1243,7 @@ nsresult nsDNSService::ResolveInternal(
     MutexAutoLock lock(mLock);
     res = mResolver;
     idn = mIDN;
-    localDomain = mLocalDomains.Contains(aHostname);
+    localDomain = IsLocalDomain(aHostname);
   }
 
   if (mNotifyResolution) {
@@ -1592,7 +1624,7 @@ nsresult GetTRRSkipReasonName(TRRSkippedReason aReason, nsACString& aName) {
   static_assert(TRRSkippedReason::TRR_DISABLED_FLAG == 10);
   static_assert(TRRSkippedReason::TRR_TIMEOUT == 11);
   static_assert(TRRSkippedReason::TRR_CHANNEL_DNS_FAIL == 12);
-  static_assert(TRRSkippedReason::TRR_IS_OFFLINE == 13);
+  static_assert(TRRSkippedReason::TRR_BROWSER_IS_OFFLINE == 13);
   static_assert(TRRSkippedReason::TRR_NOT_CONFIRMED == 14);
   static_assert(TRRSkippedReason::TRR_DID_NOT_MAKE_QUERY == 15);
   static_assert(TRRSkippedReason::TRR_UNKNOWN_CHANNEL_FAILURE == 16);
@@ -1632,6 +1664,7 @@ nsresult GetTRRSkipReasonName(TRRSkippedReason aReason, nsACString& aName) {
   static_assert(TRRSkippedReason::TRR_HEURISTIC_TRIPPED_VPN == 45);
   static_assert(TRRSkippedReason::TRR_HEURISTIC_TRIPPED_PROXY == 46);
   static_assert(TRRSkippedReason::TRR_HEURISTIC_TRIPPED_NRPT == 47);
+  static_assert(TRRSkippedReason::TRR_BAD_URL == 48);
 
   switch (aReason) {
     case TRRSkippedReason::TRR_UNSET:
@@ -1673,8 +1706,8 @@ nsresult GetTRRSkipReasonName(TRRSkippedReason aReason, nsACString& aName) {
     case TRRSkippedReason::TRR_CHANNEL_DNS_FAIL:
       aName = "TRR_CHANNEL_DNS_FAIL"_ns;
       break;
-    case TRRSkippedReason::TRR_IS_OFFLINE:
-      aName = "TRR_IS_OFFLINE"_ns;
+    case TRRSkippedReason::TRR_BROWSER_IS_OFFLINE:
+      aName = "TRR_BROWSER_IS_OFFLINE"_ns;
       break;
     case TRRSkippedReason::TRR_NOT_CONFIRMED:
       aName = "TRR_NOT_CONFIRMED"_ns;
@@ -1777,6 +1810,9 @@ nsresult GetTRRSkipReasonName(TRRSkippedReason aReason, nsACString& aName) {
       break;
     case TRRSkippedReason::TRR_HEURISTIC_TRIPPED_NRPT:
       aName = "TRR_HEURISTIC_TRIPPED_NRPT"_ns;
+      break;
+    case TRRSkippedReason::TRR_BAD_URL:
+      aName = "TRR_BAD_URL"_ns;
       break;
     default:
       MOZ_ASSERT(false, "Unknown value");

@@ -19,6 +19,7 @@
 #include "mozilla/PositionedEventTargeting.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ScrollContainerFrame.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_ui.h"
 #include "mozilla/ToString.h"
@@ -26,7 +27,9 @@
 #include "mozilla/ViewportUtils.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/MouseEventBinding.h"
+#include "mozilla/dom/PointerEventHandler.h"
 #include "mozilla/layers/APZCCallbackHelper.h"
+#include "mozilla/layers/APZUtils.h"
 #include "mozilla/layers/IAPZCTreeManager.h"
 #include "mozilla/widget/nsAutoRollup.h"
 #include "nsCOMPtr.h"
@@ -34,7 +37,6 @@
 #include "nsDocShell.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsINamed.h"
-#include "nsIScrollableFrame.h"
 #include "nsIScrollbarMediator.h"
 #include "nsIWeakReferenceUtils.h"
 #include "nsIWidget.h"
@@ -85,9 +87,6 @@ int32_t WidgetModifiersToDOMModifiers(mozilla::Modifiers aModifiers) {
   if (aModifiers & mozilla::MODIFIER_SYMBOLLOCK) {
     result |= nsIDOMWindowUtils::MODIFIER_SYMBOLLOCK;
   }
-  if (aModifiers & mozilla::MODIFIER_OS) {
-    result |= nsIDOMWindowUtils::MODIFIER_OS;
-  }
   return result;
 }
 
@@ -102,14 +101,8 @@ APZEventState::APZEventState(nsIWidget* aWidget,
       ,
       mActiveElementManager(new ActiveElementManager()),
       mContentReceivedInputBlockCallback(std::move(aCallback)),
-      mPendingTouchPreventedResponse(false),
       mPendingTouchPreventedBlockId(0),
-      mEndTouchIsClick(false),
-      mFirstTouchCancelled(false),
-      mTouchEndCancelled(false),
-      mReceivedNonTouchStart(false),
-      mTouchStartPrevented(false),
-      mSingleTapsPendingTargetInfo(),
+      mEndTouchState(apz::SingleTapState::NotClick),
       mLastTouchIdentifier(0) {
   nsresult rv;
   mWidget = do_GetWeakReference(aWidget, &rv);
@@ -119,65 +112,6 @@ APZEventState::APZEventState(nsIWidget* aWidget,
 }
 
 APZEventState::~APZEventState() = default;
-
-RefPtr<DelayedFireSingleTapEvent> DelayedFireSingleTapEvent::Create(
-    Maybe<SingleTapTargetInfo>&& aTargetInfo) {
-  nsCOMPtr<nsITimer> timer = NS_NewTimer();
-  RefPtr<DelayedFireSingleTapEvent> event =
-      new DelayedFireSingleTapEvent(std::move(aTargetInfo), timer);
-  nsresult rv = timer->InitWithCallback(
-      event, StaticPrefs::ui_touch_activation_duration_ms(),
-      nsITimer::TYPE_ONE_SHOT);
-  if (NS_FAILED(rv)) {
-    event->ClearTimer();
-    event = nullptr;
-  }
-  return event;
-}
-
-NS_IMETHODIMP DelayedFireSingleTapEvent::Notify(nsITimer*) {
-  APZES_LOG("DelayedFireSingeTapEvent notification ready=%d",
-            mTargetInfo.isSome());
-  // If the required information to fire the synthesized events has not
-  // been populated yet, we have not received the touch-end. In this case
-  // we should not fire the synthesized events here. The synthesized events
-  // will be fired on touch-end in this case.
-  if (mTargetInfo.isSome()) {
-    FireSingleTapEvent();
-  }
-  mTimer = nullptr;
-  return NS_OK;
-}
-
-NS_IMETHODIMP DelayedFireSingleTapEvent::GetName(nsACString& aName) {
-  aName.AssignLiteral("DelayedFireSingleTapEvent");
-  return NS_OK;
-}
-
-void DelayedFireSingleTapEvent::PopulateTargetInfo(
-    SingleTapTargetInfo&& aTargetInfo) {
-  MOZ_ASSERT(!mTargetInfo.isSome());
-  mTargetInfo = Some(std::move(aTargetInfo));
-  // If the timer no longer exists, we have surpassed the minimum elapsed
-  // time to delay the synthesized click. We can immediately fire the
-  // synthesized events in this case.
-  if (!mTimer) {
-    FireSingleTapEvent();
-  }
-}
-
-void DelayedFireSingleTapEvent::FireSingleTapEvent() {
-  MOZ_ASSERT(mTargetInfo.isSome());
-  nsCOMPtr<nsIWidget> widget = do_QueryReferent(mTargetInfo->mWidget);
-  if (widget) {
-    widget::nsAutoRollup rollup(mTargetInfo->mTouchRollup.get());
-    APZCCallbackHelper::FireSingleTapEvent(mTargetInfo->mPoint,
-                                           mTargetInfo->mModifiers,
-                                           mTargetInfo->mClickCount, widget);
-  }
-}
-
-NS_IMPL_ISUPPORTS(DelayedFireSingleTapEvent, nsITimerCallback, nsINamed)
 
 void APZEventState::ProcessSingleTap(const CSSPoint& aPoint,
                                      const CSSToLayoutDeviceScale& aScale,
@@ -198,24 +132,15 @@ void APZEventState::ProcessSingleTap(const CSSPoint& aPoint,
     return;
   }
 
-  SingleTapTargetInfo targetInfo(mWidget, aPoint * aScale, aModifiers,
-                                 aClickCount, touchRollup);
-
-  auto delayedEvent = mSingleTapsPendingTargetInfo.find(aInputBlockId);
-  if (delayedEvent != mSingleTapsPendingTargetInfo.end()) {
-    APZES_LOG("Found tap for block=%" PRIu64, aInputBlockId);
-
-    // With the target info populated, the event will be fired as
-    // soon as the delay timer expires (or now, if it has already expired).
-    delayedEvent->second->PopulateTargetInfo(std::move(targetInfo));
-    mSingleTapsPendingTargetInfo.erase(delayedEvent);
-  } else {
-    APZES_LOG("Scheduling timer for click event\n");
-
-    // We don't need to keep a reference to the event, because the
-    // event and its timer keep each other alive until the timer expires
-    DelayedFireSingleTapEvent::Create(Some(std::move(targetInfo)));
+  nsCOMPtr<nsIWidget> localWidget = do_QueryReferent(mWidget);
+  if (localWidget) {
+    widget::nsAutoRollup rollup(touchRollup);
+    APZCCallbackHelper::FireSingleTapEvent(
+        aPoint * aScale, aModifiers, aClickCount, mPrecedingPointerDownState,
+        localWidget);
   }
+
+  mActiveElementManager->ProcessSingleTap();
 }
 
 PreventDefaultResult APZEventState::FireContextmenuEvents(
@@ -233,7 +158,8 @@ PreventDefaultResult APZEventState::FireContextmenuEvents(
   // Note that we don't need to check whether mousemove event is consumed or
   // not because Chrome also ignores the result.
   APZCCallbackHelper::DispatchSynthesizedMouseEvent(
-      eMouseMove, aPoint * aScale, aModifiers, 0 /* clickCount */, aWidget);
+      eMouseMove, aPoint * aScale, aModifiers, 0 /* clickCount */,
+      mPrecedingPointerDownState, aWidget);
 
   // Converting the modifiers to DOM format for the DispatchMouseEvent call
   // is the most useless thing ever because nsDOMWindowUtils::SendMouseEvent
@@ -258,7 +184,7 @@ PreventDefaultResult APZEventState::FireContextmenuEvents(
     // If the contextmenu wasn't consumed, fire the eMouseLongTap event.
     nsEventStatus status = APZCCallbackHelper::DispatchSynthesizedMouseEvent(
         eMouseLongTap, aPoint * aScale, aModifiers,
-        /*clickCount*/ 1, aWidget);
+        /*clickCount*/ 1, mPrecedingPointerDownState, aWidget);
     APZES_LOG("eMouseLongTap event %s\n", ToString(status).c_str());
 #endif
   }
@@ -279,7 +205,19 @@ void APZEventState::ProcessLongTap(PresShell* aPresShell,
     return;
   }
 
-  SendPendingTouchPreventedResponse(false);
+  // If the touch block is waiting for a content response, send one now.
+  // Bug 1848736: Why is a content response needed here? Can it be removed?
+  // However, do not clear |mPendingTouchPreventedResponse|, because APZ will
+  // wait for an additional content response before processing touch-move
+  // events (since the first touch-move could still be prevented, and that
+  // should prevent the touch block from being processed).
+  if (mPendingTouchPreventedResponse) {
+    APZES_LOG("Sending response %d for pending guid: %s block id: %" PRIu64
+              " due to long tap\n",
+              false, ToString(mPendingTouchPreventedGuid).c_str(),
+              mPendingTouchPreventedBlockId);
+    mContentReceivedInputBlockCallback(mPendingTouchPreventedBlockId, false);
+  }
 
 #ifdef XP_WIN
   // On Windows, we fire the contextmenu events when the user lifts their
@@ -288,7 +226,8 @@ void APZEventState::ProcessLongTap(PresShell* aPresShell,
   // at this time, because things like text selection or dragging may want
   // to know about it.
   APZCCallbackHelper::DispatchSynthesizedMouseEvent(
-      eMouseLongTap, aPoint * aScale, aModifiers, /*clickCount*/ 1, widget);
+      eMouseLongTap, aPoint * aScale, aModifiers, /*clickCount*/ 1,
+      mPrecedingPointerDownState, widget);
 #else
   PreventDefaultResult preventDefaultResult =
       FireContextmenuEvents(aPresShell, aPoint, aScale, aModifiers, widget);
@@ -301,7 +240,7 @@ void APZEventState::ProcessLongTap(PresShell* aPresShell,
       false;
 #elif defined(MOZ_WIDGET_ANDROID)
       // On Android, GeckoView calls preventDefault() in a JSActor
-      // (ContentDelegateChild.jsm) when opening context menu so that we can
+      // (ContentDelegateChild.sys.mjs) when opening context menu so that we can
       // tell whether contextmenu opens in response to the contextmenu event by
       // checking where preventDefault() got called.
       preventDefaultResult == PreventDefaultResult::ByChrome;
@@ -384,6 +323,14 @@ void APZEventState::ProcessTouchEvent(
       // touchstart was prevented by content.
       if (mTouchCounter.GetActiveTouchCount() == 0) {
         mFirstTouchCancelled = isTouchPrevented;
+        const PointerInfo* pointerInfo =
+            !aEvent.mTouches.IsEmpty() ? PointerEventHandler::GetPointerInfo(
+                                             aEvent.mTouches[0]->Identifier())
+                                       : nullptr;
+        mPrecedingPointerDownState =
+            pointerInfo && pointerInfo->mPreventMouseEventByContent
+                ? PrecedingPointerDown::ConsumedByContent
+                : PrecedingPointerDown::NotConsumed;
       } else {
         if (mFirstTouchCancelled && !isTouchPrevented) {
           APZES_LOG(
@@ -410,11 +357,13 @@ void APZEventState::ProcessTouchEvent(
     case eTouchEnd:
       if (isTouchPrevented) {
         mTouchEndCancelled = true;
-        mEndTouchIsClick = false;
+        mEndTouchState = apz::SingleTapState::NotClick;
       }
       [[fallthrough]];
     case eTouchCancel:
-      mActiveElementManager->HandleTouchEndEvent(mEndTouchIsClick);
+      if (mActiveElementManager->HandleTouchEndEvent(mEndTouchState)) {
+        mEndTouchState = apz::SingleTapState::NotClick;
+      }
       [[fallthrough]];
     case eTouchMove: {
       if (!mReceivedNonTouchStart) {
@@ -426,10 +375,18 @@ void APZEventState::ProcessTouchEvent(
 
       if (mPendingTouchPreventedResponse) {
         MOZ_ASSERT(aGuid == mPendingTouchPreventedGuid);
-        mPendingTouchPreventedResponse = false;
-      }
-      if (!mTouchStartPrevented) {
+        if (aEvent.mMessage == eTouchCancel) {
+          // If we received a touch-cancel and we were waiting for the
+          // first touch-move to send a content response, make the content
+          // response be preventDefault=true. This is the safer choice
+          // because content might have prevented the first touch-move,
+          // and even though the touch-cancel means any subsequent touch-moves
+          // will not be processed, the content response still influences
+          // the InputResult sent to GeckoView.
+          isTouchPrevented = true;
+        }
         mContentReceivedInputBlockCallback(aInputBlockId, isTouchPrevented);
+        mPendingTouchPreventedResponse = false;
       }
       break;
     }
@@ -536,7 +493,8 @@ void APZEventState::ProcessAPZStateChange(ViewID aViewId,
                                           Maybe<uint64_t> aInputBlockId) {
   switch (aChange) {
     case APZStateChange::eTransformBegin: {
-      nsIScrollableFrame* sf = nsLayoutUtils::FindScrollableFrameFor(aViewId);
+      ScrollContainerFrame* sf =
+          nsLayoutUtils::FindScrollContainerFrameFor(aViewId);
       if (sf) {
         sf->SetTransformingByAPZ(true);
         sf->ScrollbarActivityStarted();
@@ -552,7 +510,8 @@ void APZEventState::ProcessAPZStateChange(ViewID aViewId,
       break;
     }
     case APZStateChange::eTransformEnd: {
-      nsIScrollableFrame* sf = nsLayoutUtils::FindScrollableFrameFor(aViewId);
+      ScrollContainerFrame* sf =
+          nsLayoutUtils::FindScrollContainerFrameFor(aViewId);
       if (sf) {
         sf->SetTransformingByAPZ(false);
         sf->ScrollbarActivityStopped();
@@ -568,20 +527,14 @@ void APZEventState::ProcessAPZStateChange(ViewID aViewId,
       break;
     }
     case APZStateChange::eStartTouch: {
-      bool canBePan = aArg;
-      mActiveElementManager->HandleTouchStart(canBePan);
+      bool canBePanOrZoom = aArg;
+      mActiveElementManager->HandleTouchStart(canBePanOrZoom);
       // If this is a non-scrollable content, set a timer for the amount of
-      // time specified by ui.touch_activation.duration_ms to fire the
-      // synthesized click and mouse events.
-      APZES_LOG("%s: can-be-pan=%d", __FUNCTION__, aArg);
-      if (!canBePan) {
+      // time specified by ui.touch_activation.duration_ms to clear the
+      // active element state.
+      APZES_LOG("%s: can-be-pan-or-zoom=%d", __FUNCTION__, aArg);
+      if (!canBePanOrZoom) {
         MOZ_ASSERT(aInputBlockId.isSome());
-        RefPtr<DelayedFireSingleTapEvent> delayedEvent =
-            DelayedFireSingleTapEvent::Create(Nothing());
-        DebugOnly<bool> insertResult =
-            mSingleTapsPendingTargetInfo.emplace(*aInputBlockId, delayedEvent)
-                .second;
-        MOZ_ASSERT(insertResult, "Failed to insert delayed tap event.");
       }
       break;
     }
@@ -591,12 +544,16 @@ void APZEventState::ProcessAPZStateChange(ViewID aViewId,
       break;
     }
     case APZStateChange::eEndTouch: {
-      mEndTouchIsClick = aArg;
-      mActiveElementManager->HandleTouchEnd();
+      mEndTouchState = static_cast<apz::SingleTapState>(aArg);
+      if (mActiveElementManager->HandleTouchEnd(mEndTouchState)) {
+        mEndTouchState = apz::SingleTapState::NotClick;
+      }
       break;
     }
   }
 }
+
+void APZEventState::Destroy() { mActiveElementManager->Destroy(); }
 
 void APZEventState::SendPendingTouchPreventedResponse(bool aPreventDefault) {
   if (mPendingTouchPreventedResponse) {

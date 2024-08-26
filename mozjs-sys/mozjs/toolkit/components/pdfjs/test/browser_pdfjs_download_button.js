@@ -7,7 +7,7 @@ const RELATIVE_DIR = "toolkit/components/pdfjs/test/";
 const TESTROOT = "https://example.com/browser/" + RELATIVE_DIR;
 
 var MockFilePicker = SpecialPowers.MockFilePicker;
-MockFilePicker.init(window);
+MockFilePicker.init(window.browsingContext);
 MockFilePicker.returnValue = MockFilePicker.returnOK;
 
 var tempDir;
@@ -113,7 +113,9 @@ add_task(async function test_downloading_pdf_nonprivate_window() {
         "InitialDownloadsLoaded",
         true
       );
-      BrowserTestUtils.loadURIString(browser, "about:downloads");
+      await waitForPdfJSClose(browser);
+
+      BrowserTestUtils.startLoadingURIString(browser, "about:downloads");
       await downloadsLoaded;
 
       info("Wait for the clipboard to contain the url of the pdf");
@@ -122,4 +124,6 @@ add_task(async function test_downloading_pdf_nonprivate_window() {
       });
     }
   );
+
+  await SpecialPowers.popPrefEnv();
 });

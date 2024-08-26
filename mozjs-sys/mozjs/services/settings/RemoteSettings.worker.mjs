@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* eslint-env mozilla/chrome-worker */
-
 /**
  * A worker dedicated to Remote Settings.
  */
@@ -142,7 +140,7 @@ let gPendingTransactions = new Set();
 /**
  * Import the records into the Remote Settings Chrome IndexedDB.
  *
- * Note: This duplicates some logics from `kinto-offline-client.js`.
+ * Note: This duplicates some logics from `kinto-offline-client.sys.mjs`.
  *
  * @param {String} bucket
  * @param {String} collection

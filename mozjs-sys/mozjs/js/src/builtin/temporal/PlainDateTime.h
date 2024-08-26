@@ -7,13 +7,20 @@
 #ifndef builtin_temporal_PlainDateTime_h
 #define builtin_temporal_PlainDateTime_h
 
+#include "mozilla/Assertions.h"
+#include "mozilla/Attributes.h"
+
 #include <stdint.h>
 
+#include "builtin/temporal/Calendar.h"
 #include "builtin/temporal/TemporalTypes.h"
 #include "builtin/temporal/Wrapped.h"
+#include "js/RootingAPI.h"
 #include "js/TypeDecls.h"
 #include "js/Value.h"
 #include "vm/NativeObject.h"
+
+class JS_PUBLIC_API JSTracer;
 
 namespace js {
 struct ClassSpec;
@@ -67,7 +74,9 @@ class PlainDateTimeObject : public NativeObject {
     return getFixedSlot(ISO_NANOSECOND_SLOT).toInt32();
   }
 
-  JSObject* calendar() const { return &getFixedSlot(CALENDAR_SLOT).toObject(); }
+  CalendarValue calendar() const {
+    return CalendarValue(getFixedSlot(CALENDAR_SLOT));
+  }
 
  private:
   static const ClassSpec classSpec_;
@@ -96,8 +105,8 @@ inline PlainDateTime ToPlainDateTime(const PlainDateTimeObject* dateTime) {
   return {ToPlainDate(dateTime), ToPlainTime(dateTime)};
 }
 
-class Precision;
-enum class CalendarOption;
+class Increment;
+enum class TemporalRoundingMode;
 enum class TemporalUnit;
 
 #ifdef DEBUG
@@ -132,7 +141,7 @@ bool ISODateTimeWithinLimits(double year, double month, double day);
  */
 PlainDateTimeObject* CreateTemporalDateTime(JSContext* cx,
                                             const PlainDateTime& dateTime,
-                                            JS::Handle<JSObject*> calendar);
+                                            JS::Handle<CalendarValue> calendar);
 
 /**
  * ToTemporalDateTime ( item [ , options ] )
@@ -147,57 +156,100 @@ bool ToTemporalDateTime(JSContext* cx, JS::Handle<JS::Value> item,
                         PlainDateTime* result);
 
 /**
- * TemporalDateTimeToString ( isoYear, isoMonth, isoDay, hour, minute, second,
- * millisecond, microsecond, nanosecond, calendar, precision, showCalendar )
- */
-JSString* TemporalDateTimeToString(JSContext* cx, const PlainDateTime& dateTime,
-                                   JS::Handle<JSObject*> calendar,
-                                   Precision precision,
-                                   CalendarOption showCalendar);
-
-/**
- * TemporalDateTimeToString ( isoYear, isoMonth, isoDay, hour, minute, second,
- * millisecond, microsecond, nanosecond, calendar, precision, showCalendar )
- */
-JSString* TemporalDateTimeToString(JSContext* cx, const PlainDateTime& dateTime,
-                                   Precision precision);
-
-/**
- * InterpretTemporalDateTimeFields ( calendar, fields, options )
+ * InterpretTemporalDateTimeFields ( calendarRec, fields, options )
  */
 bool InterpretTemporalDateTimeFields(JSContext* cx,
-                                     JS::Handle<JSObject*> calendar,
+                                     JS::Handle<CalendarRecord> calendar,
                                      JS::Handle<PlainObject*> fields,
-                                     JS::Handle<JSObject*> options,
+                                     JS::Handle<PlainObject*> options,
                                      PlainDateTime* result);
 
 /**
- * InterpretTemporalDateTimeFields ( calendar, fields, options )
+ * InterpretTemporalDateTimeFields ( calendarRec, fields, options )
  */
 bool InterpretTemporalDateTimeFields(JSContext* cx,
-                                     JS::Handle<JSObject*> calendar,
+                                     JS::Handle<CalendarRecord> calendar,
                                      JS::Handle<PlainObject*> fields,
                                      PlainDateTime* result);
 
 /**
- * DifferenceISODateTime ( y1, mon1, d1, h1, min1, s1, ms1, mus1, ns1, y2, mon2,
- * d2, h2, min2, s2, ms2, mus2, ns2, calendar, largestUnit, options )
+ * RoundISODateTime ( year, month, day, hour, minute, second, millisecond,
+ * microsecond, nanosecond, increment, unit, roundingMode )
  */
-bool DifferenceISODateTime(JSContext* cx, const PlainDateTime& one,
-                           const PlainDateTime& two,
-                           JS::Handle<JSObject*> calendar,
-                           TemporalUnit largestUnit, Duration* result);
+PlainDateTime RoundISODateTime(const PlainDateTime& dateTime,
+                               Increment increment, TemporalUnit unit,
+                               TemporalRoundingMode roundingMode);
+
+class MOZ_STACK_CLASS PlainDateTimeWithCalendar final {
+  PlainDateTime dateTime_;
+  CalendarValue calendar_;
+
+ public:
+  PlainDateTimeWithCalendar() = default;
+
+  PlainDateTimeWithCalendar(const PlainDateTime& dateTime,
+                            const CalendarValue& calendar)
+      : dateTime_(dateTime), calendar_(calendar) {
+    MOZ_ASSERT(ISODateTimeWithinLimits(dateTime));
+  }
+
+  explicit PlainDateTimeWithCalendar(const PlainDateTimeObject* dateTime)
+      : PlainDateTimeWithCalendar(ToPlainDateTime(dateTime),
+                                  dateTime->calendar()) {}
+
+  const auto& dateTime() const { return dateTime_; }
+  const auto& date() const { return dateTime_.date; }
+  const auto& time() const { return dateTime_.time; }
+  const auto& calendar() const { return calendar_; }
+
+  // Allow implicit conversion to a calendar-less PlainDateTime.
+  operator const PlainDateTime&() const { return dateTime(); }
+
+  void trace(JSTracer* trc) { calendar_.trace(trc); }
+
+  const auto* calendarDoNotUse() const { return &calendar_; }
+};
 
 /**
- * DifferenceISODateTime ( y1, mon1, d1, h1, min1, s1, ms1, mus1, ns1, y2, mon2,
- * d2, h2, min2, s2, ms2, mus2, ns2, calendar, largestUnit, options )
+ * Extract the date-time fields from the PlainDateTimeWithCalendar object.
  */
-bool DifferenceISODateTime(JSContext* cx, const PlainDateTime& one,
-                           const PlainDateTime& two,
-                           JS::Handle<JSObject*> calendar,
-                           TemporalUnit largestUnit,
-                           JS::Handle<PlainObject*> options, Duration* result);
+inline const auto& ToPlainDateTime(const PlainDateTimeWithCalendar& dateTime) {
+  return dateTime.dateTime();
+}
+
+/**
+ * CreateTemporalDateTime ( isoYear, isoMonth, isoDay, hour, minute, second,
+ * millisecond, microsecond, nanosecond, calendar [ , newTarget ] )
+ */
+bool CreateTemporalDateTime(
+    JSContext* cx, const PlainDateTime& dateTime,
+    JS::Handle<CalendarValue> calendar,
+    JS::MutableHandle<PlainDateTimeWithCalendar> result);
 
 } /* namespace js::temporal */
+
+namespace js {
+
+template <typename Wrapper>
+class WrappedPtrOperations<temporal::PlainDateTimeWithCalendar, Wrapper> {
+  const auto& container() const {
+    return static_cast<const Wrapper*>(this)->get();
+  }
+
+ public:
+  const auto& dateTime() const { return container().dateTime(); }
+  const auto& date() const { return container().date(); }
+  const auto& time() const { return container().time(); }
+
+  auto calendar() const {
+    return JS::Handle<temporal::CalendarValue>::fromMarkedLocation(
+        container().calendarDoNotUse());
+  }
+
+  // Allow implicit conversion to a calendar-less PlainDateTime.
+  operator const temporal::PlainDateTime&() const { return dateTime(); }
+};
+
+}  // namespace js
 
 #endif /* builtin_temporal_PlainDateTime_h */

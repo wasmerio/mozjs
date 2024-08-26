@@ -20,6 +20,7 @@
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
 #  include "mozilla/Sandbox.h"
 #  include "mozilla/SandboxInfo.h"
+#  include "mozilla/SandboxProfilerObserver.h"
 #endif
 
 #include <string>
@@ -84,7 +85,7 @@ class PassThroughGMPAdapter : public GMPAdapter {
 
 bool GMPLoader::Load(const char* aUTF8LibPath, uint32_t aUTF8LibPathLen,
                      const GMPPlatformAPI* aPlatformAPI, GMPAdapter* aAdapter) {
-  CrashReporter::AutoAnnotateCrashReport autoLibPath(
+  CrashReporter::AutoRecordAnnotation autoLibPath(
       CrashReporter::Annotation::GMPLibraryPath,
       nsDependentCString(aUTF8LibPath));
 
@@ -179,6 +180,7 @@ class LinuxSandboxStarter : public mozilla::gmp::SandboxStarter {
     return nullptr;
   }
   bool Start(const char* aLibPath) override {
+    RegisterProfilerObserversForSandboxProfiler();
     mozilla::SetMediaPluginSandbox(aLibPath);
     return true;
   }

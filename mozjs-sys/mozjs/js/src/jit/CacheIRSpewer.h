@@ -7,8 +7,6 @@
 #ifndef jit_CacheIRSpewer_h
 #define jit_CacheIRSpewer_h
 
-#ifdef JS_CACHEIR_SPEW
-
 #  include "mozilla/Maybe.h"
 
 #  include "jit/CacheIR.h"
@@ -22,6 +20,8 @@
 
 namespace js {
 namespace jit {
+
+#ifdef JS_CACHEIR_SPEW
 
 class CacheIRSpewer {
   Mutex outputLock_ MOZ_UNANNOTATED;
@@ -53,6 +53,7 @@ class CacheIRSpewer {
   void beginCache(const IRGenerator& generator);
   void valueProperty(const char* name, const Value& v);
   void opcodeProperty(const char* name, const JSOp op);
+  void jstypeProperty(const char* name, const JSType type);
   void cacheIRSequence(CacheIRReader& reader);
   void attached(const char* name);
   void endCache();
@@ -101,16 +102,27 @@ class CacheIRSpewer {
       sp_.opcodeProperty(name, op);
     }
 
+    void jstypeProperty(const char* name, const JSType type) const {
+      sp_.jstypeProperty(name, type);
+    }
+
     explicit operator bool() const { return sp_.enabled(); }
   };
 };
 
 extern void SpewCacheIROps(GenericPrinter& out, const char* prefix,
+                           CacheIRReader& reader);
+extern void SpewCacheIROps(GenericPrinter& out, const char* prefix,
                            const CacheIRStubInfo* info);
+
+#endif /* JS_CACHEIR_SPEW */
+
+#ifdef ENABLE_JS_AOT_ICS
+extern void SpewCacheIROpsAsAOT(GenericPrinter& out, CacheKind kind,
+                                const CacheIRWriter& writer);
+#endif
 
 }  // namespace jit
 }  // namespace js
-
-#endif /* JS_CACHEIR_SPEW */
 
 #endif /* jit_CacheIRSpewer_h */

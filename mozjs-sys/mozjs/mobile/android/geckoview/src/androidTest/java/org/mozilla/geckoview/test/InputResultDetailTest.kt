@@ -80,13 +80,15 @@ class InputResultDetailTest : BaseSessionTest() {
     fun testTouchAction() {
         sessionRule.display?.run { setDynamicToolbarMaxHeight(20) }
 
-        for (subframe in arrayOf(true, false)) {
+        for (descendants in arrayOf("subframe", "svg", "nothing")) {
             for (scrollable in arrayOf(true, false)) {
                 for (event in arrayOf(true, false)) {
                     for (touchAction in arrayOf("auto", "none", "pan-x", "pan-y")) {
                         var url = TOUCH_ACTION_HTML_PATH + "?"
-                        if (subframe) {
-                            url += "subframe&"
+                        when (descendants) {
+                            "subframe" -> url += "descendants=subframe&"
+                            "svg" -> url += "descendants=svg&"
+                            "nothing" -> {}
                         }
                         if (scrollable) {
                             url += "scrollable&"
@@ -103,7 +105,7 @@ class InputResultDetailTest : BaseSessionTest() {
                         // the pan-x and pan-y cases.
                         var expectedPlace = if (touchAction == "none") {
                             PanZoomController.INPUT_RESULT_HANDLED_CONTENT
-                        } else if (scrollable && !subframe) {
+                        } else if (scrollable && descendants != "subframe") {
                             PanZoomController.INPUT_RESULT_HANDLED
                         } else {
                             PanZoomController.INPUT_RESULT_UNHANDLED
@@ -115,13 +117,7 @@ class InputResultDetailTest : BaseSessionTest() {
                             PanZoomController.SCROLLABLE_FLAG_NONE
                         }
 
-                        // FIXME: There are a couple of bugs here:
-                        //  1. In the case where touch-action allows the scrolling, the
-                        //     overscroll directions shouldn't depend on the presence of
-                        //     an event handler, but they do.
-                        //  2. In the case where touch-action doesn't allow the scrolling,
-                        //     the overscroll directions should probably be NONE.
-                        var expectedOverscrollDirections = if (touchAction != "none" && !scrollable && event) {
+                        var expectedOverscrollDirections = if (touchAction == "none") {
                             PanZoomController.OVERSCROLL_FLAG_NONE
                         } else {
                             (PanZoomController.OVERSCROLL_FLAG_HORIZONTAL or PanZoomController.OVERSCROLL_FLAG_VERTICAL)
@@ -129,7 +125,7 @@ class InputResultDetailTest : BaseSessionTest() {
 
                         var value = sessionRule.waitForResult(sendDownEvent(50f, 20f))
                         assertResultDetail(
-                            "`subframe=$subframe, scrollable=$scrollable, event=$event, touch-action=$touchAction`",
+                            "`descendants=$descendants, scrollable=$scrollable, event=$event, touch-action=$touchAction`",
                             value,
                             expectedPlace,
                             expectedScrollableDirections,
@@ -440,7 +436,7 @@ class InputResultDetailTest : BaseSessionTest() {
             """.trimIndent(),
         )
 
-        // Explicitly call `waitForRoundTrip()` to make sure the above event listners
+        // Explicitly call `waitForRoundTrip()` to make sure the above event listeners
         // have set up in the content.
         mainSession.waitForRoundTrip()
 
@@ -495,5 +491,61 @@ class InputResultDetailTest : BaseSessionTest() {
         )
 
         mainSession.panZoomController.onTouchEvent(up)
+    }
+
+    @WithDisplay(width = 100, height = 100)
+    @Test
+    fun testTouchCancelBeforeFirstTouchMove() {
+        setupDocument(ROOT_100VH_HTML_PATH)
+
+        // Setup a touchmove event listener preventing scrolling.
+        mainSession.evaluateJS(
+            """
+            window.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+            }, { passive: false });
+            """.trimIndent(),
+        )
+
+        // Explicitly call `waitForRoundTrip()` to make sure the above event listener
+        // has been set up in the content.
+        mainSession.waitForRoundTrip()
+
+        mainSession.flushApzRepaints()
+
+        // Send a touchstart. The result will not be produced yet because
+        // we will wait for the first touchmove.
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_DOWN,
+            50f,
+            50f,
+            0,
+        )
+        val result = mainSession.panZoomController.onTouchEventForDetailResult(down)
+
+        // Before any touchmove, send a touchcancel.
+        val cancel = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_CANCEL,
+            50f,
+            50f,
+            0,
+        )
+        mainSession.panZoomController.onTouchEvent(cancel)
+
+        // Check that the touchcancel results in the same response as if
+        // the touchmove was prevented.
+        val value = sessionRule.waitForResult(result)
+        assertResultDetail(
+            "testTouchCancelBeforeFirstTouchMove",
+            value,
+            PanZoomController.INPUT_RESULT_HANDLED_CONTENT,
+            PanZoomController.SCROLLABLE_FLAG_NONE,
+            (PanZoomController.OVERSCROLL_FLAG_HORIZONTAL or PanZoomController.OVERSCROLL_FLAG_VERTICAL),
+        )
     }
 }

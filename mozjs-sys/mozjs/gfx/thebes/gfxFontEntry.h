@@ -68,56 +68,108 @@ typedef struct FT_MM_Var_ FT_MM_Var;
 
 class gfxCharacterMap : public gfxSparseBitSet {
  public:
-  nsrefcnt AddRef() {
+  // gfxCharacterMap instances may be shared across multiple threads via a
+  // global table managed by gfxPlatformFontList. Once a gfxCharacterMap is
+  // inserted in the global table, its mShared flag will be TRUE, and we
+  // cannot safely delete it except from gfxPlatformFontList (which will
+  // use a lock to ensure entries are removed from its table and deleted
+  // safely).
+
+  // AddRef() is pretty much standard. We don't return the refcount as our
+  // users don't care about it.
+  void AddRef() {
+    MOZ_ASSERT_TYPE_OK_FOR_REFCOUNTING(gfxCharacterMap);
     MOZ_ASSERT(int32_t(mRefCnt) >= 0, "illegal refcnt");
-    ++mRefCnt;
-    NS_LOG_ADDREF(this, mRefCnt, "gfxCharacterMap", sizeof(*this));
-    return mRefCnt;
+    [[maybe_unused]] nsrefcnt count = ++mRefCnt;
+    NS_LOG_ADDREF(this, count, "gfxCharacterMap", sizeof(*this));
   }
 
-  nsrefcnt Release() {
-    MOZ_ASSERT(0 != mRefCnt, "dup release");
-    --mRefCnt;
-    NS_LOG_RELEASE(this, mRefCnt, "gfxCharacterMap");
-    if (mRefCnt == 0) {
-      // Because we have a raw pointer in gfxPlatformFontList that we may race
-      // access with, we may not release here.
-      return NotifyMaybeReleased();
+  // Custom Release(): if the object is referenced from the global shared
+  // table, and we're releasing the last *other* reference to it, then we
+  // notify the global table to consider also releasing its ref. (That may
+  // not actually happen, if another thread is racing with us and takes a
+  // new reference, or completes the release first!)
+  void Release() {
+    MOZ_ASSERT(int32_t(mRefCnt) > 0, "dup release");
+    // We can't safely read this after we've decremented mRefCnt, so save it
+    // in a local variable here. Note that the value is never reset to false
+    // once it has been set to true (when recording the cmap in the shared
+    // table), so there's no risk of this resulting in a "false positive" when
+    // tested later. A "false negative" is possible but harmless; it would
+    // just mean we miss an opportunity to release a reference from the shared
+    // cmap table.
+    bool isShared = mShared;
+
+    // Ensure we only access mRefCnt once, for consistency if the object is
+    // being used by multiple threads.
+    nsrefcnt count = --mRefCnt;
+    NS_LOG_RELEASE(this, count, "gfxCharacterMap");
+
+    // If isShared was true, this object has been shared across threads. In
+    // that case, if the refcount went to 1, we notify the shared table so
+    // it can drop its reference and delete the object.
+    if (isShared) {
+      MOZ_ASSERT(count > 0);
+      if (count == 1) {
+        NotifyMaybeReleased(this);
+      }
+      return;
     }
-    return mRefCnt;
+
+    // Otherwise, this object hasn't been shared and we can safely delete it
+    // as we must have been holding the only reference. (Note that if we were
+    // holding the only reference, there's no other owner who can have set
+    // mShared to true since we read it above.)
+    if (count == 0) {
+      delete this;
+    }
   }
 
-  gfxCharacterMap() : mHash(0), mBuildOnTheFly(false), mShared(false) {}
+  gfxCharacterMap() = default;
 
   explicit gfxCharacterMap(const gfxSparseBitSet& aOther)
-      : gfxSparseBitSet(aOther),
-        mHash(0),
-        mBuildOnTheFly(false),
-        mShared(false) {}
-
-  void CalcHash() { mHash = GetChecksum(); }
+      : gfxSparseBitSet(aOther) {}
 
   size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const {
     return gfxSparseBitSet::SizeOfExcludingThis(aMallocSizeOf);
   }
 
   // hash of the cmap bitvector
-  uint32_t mHash;
+  uint32_t mHash = 0;
 
   // if cmap is built on the fly it's never shared
-  bool mBuildOnTheFly;
+  bool mBuildOnTheFly = false;
 
-  // cmap is shared globally
-  bool mShared;
+  // Character map is shared globally. This can only be set by the thread that
+  // originally created the map, as no other thread can get a reference until
+  // it has been shared via the global table.
+  bool mShared = false;
 
  protected:
-  nsrefcnt NotifyMaybeReleased();
+  friend class gfxPlatformFontList;
+
+  // Destructor should not be called except via Release().
+  // (Note that our "friend" gfxPlatformFontList also accesses this from its
+  // MaybeRemoveCmap method.)
+  ~gfxCharacterMap() = default;
+
+  nsrefcnt RefCount() const { return mRefCnt; }
+
+  void CalcHash() { mHash = GetChecksum(); }
+
+  static void NotifyMaybeReleased(gfxCharacterMap* aCmap);
+
+  // Only used when clearing the shared-cmap hashtable during shutdown.
+  void ClearSharedFlag() {
+    MOZ_ASSERT(NS_IsMainThread());
+    mShared = false;
+  }
 
   mozilla::ThreadSafeAutoRefCnt mRefCnt;
 
  private:
-  gfxCharacterMap(const gfxCharacterMap&);
-  gfxCharacterMap& operator=(const gfxCharacterMap&);
+  gfxCharacterMap(const gfxCharacterMap&) = delete;
+  gfxCharacterMap& operator=(const gfxCharacterMap&) = delete;
 };
 
 // Info on an individual font feature, for reporting available features
@@ -217,6 +269,18 @@ class gfxFontEntry {
     if (flag == LazyFlag::Uninitialized) {
       flag = CheckForGraphiteTables() ? LazyFlag::Yes : LazyFlag::No;
       mHasGraphiteTables = flag;
+    }
+    return flag == LazyFlag::Yes;
+  }
+
+  inline bool AlwaysNeedsMaskForShadow() {
+    LazyFlag flag = mNeedsMaskForShadow;
+    if (flag == LazyFlag::Uninitialized) {
+      flag =
+          TryGetColorGlyphs() || TryGetSVGData(nullptr) || HasColorBitmapTable()
+              ? LazyFlag::Yes
+              : LazyFlag::No;
+      mNeedsMaskForShadow = flag;
     }
     return flag == LazyFlag::Yes;
   }
@@ -482,10 +546,13 @@ class gfxFontEntry {
 
   // Return the tracking (in font units) to be applied for the given size.
   // (This is a floating-point number because of possible interpolation.)
-  float TrackingForCSSPx(float aSize) const;
+  gfxFloat TrackingForCSSPx(gfxFloat aSize) const;
 
   mozilla::gfx::Rect GetFontExtents(float aFUnitScaleFactor) const {
     // Flip the y-axis here to match the orientation of Gecko's coordinates.
+    // We don't need to take a lock here because the min/max fields are inert
+    // after initialization, and we make sure to initialize them at gfxFont-
+    // creation time.
     return mozilla::gfx::Rect(float(mXMin) * aFUnitScaleFactor,
                               float(-mYMax) * aFUnitScaleFactor,
                               float(mXMax - mXMin) * aFUnitScaleFactor,
@@ -503,6 +570,7 @@ class gfxFontEntry {
   gfxCharacterMap* GetCharacterMap() const { return mCharacterMap; }
 
   mozilla::fontlist::Face* mShmemFace = nullptr;
+  const mozilla::fontlist::Family* mShmemFamily = nullptr;
 
   mozilla::Atomic<const SharedBitSet*> mShmemCharacterMap;
   const SharedBitSet* GetShmemCharacterMap() const {
@@ -590,6 +658,8 @@ class gfxFontEntry {
   };
   RangeFlags mRangeFlags = RangeFlags::eNoFlags;
 
+  inline RangeFlags AutoRangeFlags() const;
+
   bool mFixedPitch : 1;
   bool mIsBadUnderlineFont : 1;
   bool mIsUserFontContainer : 1;  // userfont entry
@@ -614,6 +684,7 @@ class gfxFontEntry {
   std::atomic<LazyFlag> mHasGraphiteTables;
   std::atomic<LazyFlag> mHasGraphiteSpaceContextuals;
   std::atomic<LazyFlag> mHasColorBitmapTable;
+  std::atomic<LazyFlag> mNeedsMaskForShadow;
 
   enum class SpaceFeatures : uint8_t {
     Uninitialized = 0xff,
@@ -834,6 +905,11 @@ class gfxFontEntry {
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(gfxFontEntry::RangeFlags)
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(gfxFontEntry::SpaceFeatures)
 
+inline gfxFontEntry::RangeFlags gfxFontEntry::AutoRangeFlags() const {
+  return mRangeFlags & (RangeFlags::eAutoWeight | RangeFlags::eAutoStretch |
+                        RangeFlags::eAutoSlantStyle);
+}
+
 inline bool gfxFontEntry::SupportsItalic() {
   return SlantStyle().Max().IsItalic() ||
          ((mRangeFlags & RangeFlags::eAutoSlantStyle) ==
@@ -1007,7 +1083,7 @@ class gfxFontFamily {
   // This is a no-op in cases where the family is explicitly populated by other
   // means, rather than being asked to find its faces via system API.
   virtual void FindStyleVariationsLocked(FontInfoData* aFontInfoData = nullptr)
-      MOZ_REQUIRES(mLock){};
+      MOZ_REQUIRES(mLock) {};
   void FindStyleVariations(FontInfoData* aFontInfoData = nullptr) {
     if (mHasStyles) {
       return;
@@ -1170,8 +1246,7 @@ struct FontFamily {
 // together with the CSS generic (if any) that was mapped to it in this
 // particular case (so it can be reported to the DevTools font inspector).
 struct FamilyAndGeneric final {
-  FamilyAndGeneric()
-      : mFamily(), mGeneric(mozilla::StyleGenericFontFamily(0)) {}
+  FamilyAndGeneric() : mGeneric(mozilla::StyleGenericFontFamily(0)) {}
   FamilyAndGeneric(const FamilyAndGeneric& aOther) = default;
   explicit FamilyAndGeneric(gfxFontFamily* aFamily,
                             mozilla::StyleGenericFontFamily aGeneric =

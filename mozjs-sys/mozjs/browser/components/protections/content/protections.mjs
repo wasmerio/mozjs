@@ -31,7 +31,7 @@ if (searchParams.has("entrypoint")) {
   searchParamsChanged = true;
 }
 
-document.addEventListener("DOMContentLoaded", e => {
+document.addEventListener("DOMContentLoaded", () => {
   if (searchParamsChanged) {
     let newURL = protocol + pathname;
     let params = searchParams.toString();
@@ -244,10 +244,11 @@ document.addEventListener("DOMContentLoaded", e => {
       "privacy.trackingprotection.cryptomining.enabled",
       false
     );
-    let fingerprintingEnabled = RPMGetBoolPref(
-      "privacy.trackingprotection.fingerprinting.enabled",
-      false
-    );
+    let fingerprintingEnabled =
+      RPMGetBoolPref(
+        "privacy.trackingprotection.fingerprinting.enabled",
+        false
+      ) || RPMGetBoolPref("privacy.fingerprintingProtection", false);
     let tpEnabled = RPMGetBoolPref("privacy.trackingprotection.enabled", false);
     let socialTracking = RPMGetBoolPref(
       "privacy.trackingprotection.socialtracking.enabled",
@@ -390,7 +391,7 @@ document.addEventListener("DOMContentLoaded", e => {
   let exitIcon = document.querySelector("#mobile-hanger .exit-icon");
   // hide the mobile promotion and keep hidden with a pref.
   exitIcon.addEventListener("click", () => {
-    RPMSetBoolPref("browser.contentblocking.report.show_mobile_app", false);
+    RPMSetPref("browser.contentblocking.report.show_mobile_app", false);
     document.getElementById("mobile-hanger").classList.add("hidden");
   });
 

@@ -1,0 +1,1 @@
+Call, 1, 2, 5, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(RawPointer) , LASTUSED(0) LASTUSED(3) , OP(LoadArgumentFixedSlot) ID(1) BYTE(0) OP(GuardToObject) ID(1) OP(GuardAnyClass) ID(1) OFFSET(0) OP(LoadObjectResult) ID(1) OP(ReturnFromIC)  

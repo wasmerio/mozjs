@@ -1,0 +1,1 @@
+Call, 1, 2, 4, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(0) LASTUSED(2) , OP(LoadArgumentFixedSlot) ID(1) BYTE(0) OP(GuardToObject) ID(1) OP(LoadObjectResult) ID(1) OP(ReturnFromIC)  

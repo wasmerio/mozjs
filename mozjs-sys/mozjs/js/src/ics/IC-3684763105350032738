@@ -1,0 +1,1 @@
+GetElemSuper, 3, 3, 6, JSVAL_TYPE_UNKNOWN, 16, STUBFIELD(String) STUBFIELD(WeakShape) , LASTUSED(4) LASTUSED(2) LASTUSED(1) , OP(GuardToObject) ID(0) OP(GuardToString) ID(1) OP(GuardSpecificAtom) ID(1) OFFSET(0) OP(GuardShape) ID(0) OFFSET(1) OP(LoadInt32ArrayLengthResult) ID(0) OP(ReturnFromIC)  

@@ -8,10 +8,10 @@
 #define mozilla_a11y_DocAccessible_inl_h_
 
 #include "DocAccessible.h"
+#include "LocalAccessible-inl.h"
 #include "nsAccessibilityService.h"
 #include "NotificationController.h"
 #include "States.h"
-#include "nsIScrollableFrame.h"
 #include "mozilla/dom/DocumentInlines.h"
 
 #ifdef A11Y_LOG

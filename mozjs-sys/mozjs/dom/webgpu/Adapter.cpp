@@ -7,6 +7,7 @@
 #include "mozilla/dom/WebGPUBinding.h"
 #include "Adapter.h"
 
+#include <algorithm>
 #include "Device.h"
 #include "Instance.h"
 #include "SupportedFeatures.h"
@@ -76,9 +77,6 @@ void AdapterInfo::GetWgpuBackend(nsString& s) const {
     case ffi::WGPUBackend_Dx12:
       s.AssignLiteral("Dx12");
       return;
-    case ffi::WGPUBackend_Dx11:
-      s.AssignLiteral("Dx11");
-      return;
     case ffi::WGPUBackend_Gl:
       s.AssignLiteral("Gl");
       return;
@@ -120,25 +118,17 @@ static Maybe<ffi::WGPUFeatures> ToWGPUFeatures(
       return Some(WGPUFeatures_INDIRECT_FIRST_INSTANCE);
 
     case dom::GPUFeatureName::Shader_f16:
-      return Some(WGPUFeatures_SHADER_F16);
+      // This feature is not fully implemented upstream.
+      return Nothing();  // Some(WGPUFeatures_SHADER_F16);
 
     case dom::GPUFeatureName::Rg11b10ufloat_renderable:
       return Some(WGPUFeatures_RG11B10UFLOAT_RENDERABLE);
 
     case dom::GPUFeatureName::Bgra8unorm_storage:
-#ifdef WGPUFeatures_BGRA8UNORM_STORAGE
-#  error fix todo
-#endif
-      return Nothing();  // TODO
+      return Some(WGPUFeatures_BGRA8UNORM_STORAGE);
 
     case dom::GPUFeatureName::Float32_filterable:
-#ifdef WGPUFeatures_FLOAT32_FILTERABLE
-#  error fix todo
-#endif
-      return Nothing();  // TODO
-
-    case dom::GPUFeatureName::EndGuard_:
-      break;
+      return Some(WGPUFeatures_FLOAT32_FILTERABLE);
   }
   MOZ_CRASH("Bad GPUFeatureName.");
 }
@@ -149,11 +139,11 @@ static Maybe<ffi::WGPUFeatures> MakeFeatureBits(
   for (const auto& feature : aFeatures) {
     const auto bit = ToWGPUFeatures(feature);
     if (!bit) {
-      const auto featureStr = dom::GPUFeatureNameValues::GetString(feature);
+      const auto featureStr = dom::GetEnumString(feature);
       (void)featureStr;
       NS_WARNING(
           nsPrintfCString("Requested feature bit for '%s' is not implemented.",
-                          featureStr.data())
+                          featureStr.get())
               .get());
       return Nothing();
     }
@@ -177,7 +167,7 @@ Adapter::Adapter(Instance* const aParent, WebGPUChild* const aBridge,
     auto ret = std::unordered_map<ffi::WGPUFeatures, dom::GPUFeatureName>{};
 
     for (const auto feature :
-         MakeEnumeratedRange(dom::GPUFeatureName::EndGuard_)) {
+         dom::MakeWebIDLEnumeratedRange<dom::GPUFeatureName>()) {
       const auto bitForFeature = ToWGPUFeatures(feature);
       if (!bitForFeature) {
         // There are some features that don't have bits.
@@ -217,7 +207,7 @@ Adapter::~Adapter() { Cleanup(); }
 void Adapter::Cleanup() {
   if (mValid && mBridge && mBridge->CanSend()) {
     mValid = false;
-    mBridge->SendAdapterDestroy(mId);
+    mBridge->SendAdapterDrop(mId);
   }
 }
 
@@ -371,12 +361,12 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
     for (const auto requested : aDesc.mRequiredFeatures) {
       const bool supported = mFeatures->Features().count(requested);
       if (!supported) {
-        const auto fstr = dom::GPUFeatureNameValues::GetString(requested);
+        const auto fstr = dom::GetEnumString(requested);
         const auto astr = this->LabelOrId();
         nsPrintfCString msg(
             "requestDevice: Feature '%s' requested must be supported by "
             "adapter %s",
-            fstr.data(), astr.get());
+            fstr.get(), astr.get());
         promise->MaybeRejectWithTypeError(msg);
         return;
       }
@@ -407,9 +397,8 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
         }
 
         const auto& limit = itr->second;
-        const auto& requestedValue = entry.mValue;
-        const auto supportedValueF64 = GetLimit(*mLimits->mFfi, limit);
-        const auto supportedValue = static_cast<uint64_t>(supportedValueF64);
+        uint64_t requestedValue = entry.mValue;
+        const auto supportedValue = GetLimit(*mLimits->mFfi, limit);
         if (StringBeginsWith(keyU8, "max"_ns)) {
           if (requestedValue > supportedValue) {
             nsPrintfCString msg(
@@ -420,6 +409,9 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
             promise->MaybeRejectWithOperationError(msg);
             return;
           }
+          // Clamp to default if lower than default
+          requestedValue =
+              std::max(requestedValue, GetLimit(deviceLimits, limit));
         } else {
           MOZ_ASSERT(StringBeginsWith(keyU8, "min"_ns));
           if (requestedValue < supportedValue) {
@@ -431,16 +423,20 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
             promise->MaybeRejectWithOperationError(msg);
             return;
           }
-        }
-        if (StringEndsWith(keyU8, "Alignment"_ns)) {
-          if (!IsPowerOfTwo(requestedValue)) {
-            nsPrintfCString msg(
-                "requestDevice: Request for limit '%s' must be a power of two, "
-                "was %s.",
-                keyU8.get(), std::to_string(requestedValue).c_str());
-            promise->MaybeRejectWithOperationError(msg);
-            return;
+          if (StringEndsWith(keyU8, "Alignment"_ns)) {
+            if (!IsPowerOfTwo(requestedValue)) {
+              nsPrintfCString msg(
+                  "requestDevice: Request for limit '%s' must be a power of "
+                  "two, "
+                  "was %s.",
+                  keyU8.get(), std::to_string(requestedValue).c_str());
+              promise->MaybeRejectWithOperationError(msg);
+              return;
+            }
           }
+          /// Clamp to default if higher than default
+          requestedValue =
+              std::min(requestedValue, GetLimit(deviceLimits, limit));
         }
 
         SetLimit(&deviceLimits, limit, requestedValue);
@@ -450,15 +446,16 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
     // -
 
     ffi::WGPUDeviceDescriptor ffiDesc = {};
-    ffiDesc.features = *MakeFeatureBits(aDesc.mRequiredFeatures);
-    ffiDesc.limits = deviceLimits;
+    ffiDesc.required_features = *MakeFeatureBits(aDesc.mRequiredFeatures);
+    ffiDesc.required_limits = deviceLimits;
     auto request = mBridge->AdapterRequestDevice(mId, ffiDesc);
     if (!request) {
       promise->MaybeRejectWithNotSupportedError(
           "Unable to instantiate a Device");
       return;
     }
-    RefPtr<Device> device = new Device(this, request->mId, ffiDesc.limits);
+    RefPtr<Device> device =
+        new Device(this, request->mId, ffiDesc.required_limits);
     for (const auto& feature : aDesc.mRequiredFeatures) {
       device->mFeatures->Add(feature, aRv);
     }

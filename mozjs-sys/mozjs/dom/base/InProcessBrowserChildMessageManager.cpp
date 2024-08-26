@@ -13,7 +13,6 @@
 #include "nsFrameLoaderOwner.h"
 #include "nsQueryObject.h"
 #include "xpcpublic.h"
-#include "nsIMozBrowserFrame.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/dom/ChromeMessageSender.h"
 #include "mozilla/dom/Document.h"
@@ -66,7 +65,7 @@ class nsAsyncMessageToParent : public nsSameProcessAsyncMessageBase,
  public:
   explicit nsAsyncMessageToParent(
       InProcessBrowserChildMessageManager* aBrowserChild)
-      : nsSameProcessAsyncMessageBase(), mBrowserChild(aBrowserChild) {}
+      : mBrowserChild(aBrowserChild) {}
 
   virtual nsresult HandleMessage() override {
     RefPtr<nsFrameLoader> fl = mBrowserChild->GetFrameLoader();
@@ -100,15 +99,6 @@ InProcessBrowserChildMessageManager::InProcessBrowserChildMessageManager(
       mOwner(aOwner),
       mChromeMessageManager(aChrome) {
   mozilla::HoldJSObjects(this);
-
-  // If owner corresponds to an <iframe mozbrowser>, we'll have to tweak our
-  // GetEventTargetParent implementation.
-  nsCOMPtr<nsIMozBrowserFrame> browserFrame = do_QueryInterface(mOwner);
-  if (browserFrame) {
-    mIsBrowserFrame = browserFrame->GetReallyIsBrowser();
-  } else {
-    mIsBrowserFrame = false;
-  }
 }
 
 InProcessBrowserChildMessageManager::~InProcessBrowserChildMessageManager() {
@@ -154,7 +144,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(InProcessBrowserChildMessageManager)
   NS_INTERFACE_MAP_ENTRY(nsIMessageSender)
   NS_INTERFACE_MAP_ENTRY(nsIInProcessContentFrameMessageManager)
-  NS_INTERFACE_MAP_ENTRY(ContentFrameMessageManager)
+  NS_INTERFACE_MAP_ENTRY_CONCRETE(ContentFrameMessageManager)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
@@ -236,19 +226,7 @@ void InProcessBrowserChildMessageManager::GetEventTargetParent(
     return;
   }
 
-  if (mIsBrowserFrame &&
-      (!mOwner || !nsContentUtils::IsInChromeDocshell(mOwner->OwnerDoc()))) {
-    if (mOwner) {
-      if (nsPIDOMWindowInner* innerWindow =
-              mOwner->OwnerDoc()->GetInnerWindow()) {
-        // 'this' is already a "chrome handler", so we consider window's
-        // parent target to be part of that same part of the event path.
-        aVisitor.SetParentTarget(innerWindow->GetParentTarget(), false);
-      }
-    }
-  } else {
-    aVisitor.SetParentTarget(mOwner, false);
-  }
+  aVisitor.SetParentTarget(mOwner, false);
 }
 
 class nsAsyncScriptLoad : public Runnable {

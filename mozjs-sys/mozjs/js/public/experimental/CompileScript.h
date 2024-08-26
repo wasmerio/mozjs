@@ -42,8 +42,27 @@ JS_PUBLIC_API void DestroyFrontendContext(JS::FrontendContext* fc);
 JS_PUBLIC_API void SetNativeStackQuota(JS::FrontendContext* fc,
                                        JS::NativeStackSize stackSize);
 
+// Return the stack quota that can be passed to SetNativeStackQuota, for given
+// stack size.
+// This subtracts a margin from given stack size, to make sure the stack quota
+// check performed internally is sufficient.
+JS_PUBLIC_API JS::NativeStackSize ThreadStackQuotaForSize(size_t stackSize);
+
 // Returns true if there was any error reported to given FrontendContext.
 JS_PUBLIC_API bool HadFrontendErrors(JS::FrontendContext* fc);
+
+// Convert the error reported to FrontendContext into runtime error in
+// JSContext.  Returns false if the error cannot be converted (such as due to
+// OOM). An error might still be reported to the given JSContext. Also, returns
+// false when OOM is converted. Returns true otherwise.
+//
+// The options parameter isn't actually used, but the CompileOptions
+// provided to the compile/decode operation owns the filename pointer
+// that the error and warnings reported to FrontendContext point to,
+// so the CompileOptions must be alive until this call.
+JS_PUBLIC_API bool ConvertFrontendErrorsToRuntimeErrors(
+    JSContext* cx, JS::FrontendContext* fc,
+    const JS::ReadOnlyCompileOptions& options);
 
 // Returns an error report if given JS::FrontendContext had error and it has
 // an error report associated.
@@ -56,8 +75,10 @@ JS_PUBLIC_API bool HadFrontendErrors(JS::FrontendContext* fc);
 //
 // The returned pointer is valid only while the given JS::FrontendContext is
 // alive.
+//
+// See ConvertFrontendErrorsToRuntimeErrors for options parameter.
 JS_PUBLIC_API const JSErrorReport* GetFrontendErrorReport(
-    JS::FrontendContext* fc);
+    JS::FrontendContext* fc, const JS::ReadOnlyCompileOptions& options);
 
 // Returns true if the JS::FrontendContext had over recuresed error.
 JS_PUBLIC_API bool HadFrontendOverRecursed(JS::FrontendContext* fc);
@@ -78,87 +99,31 @@ JS_PUBLIC_API size_t GetFrontendWarningCount(JS::FrontendContext* fc);
 // Returns an error report represents the index-th warning.
 //
 // The returned pointer is valid only while the JS::FrontendContext is alive.
-JS_PUBLIC_API const JSErrorReport* GetFrontendWarningAt(JS::FrontendContext* fc,
-                                                        size_t index);
-
-/*
- * Set supported import assertions on a FrontendContext to be used with
- * CompileModuleScriptToStencil. May only be set once for each FrontendContext.
- * The default list of supported import assertions is empty.
- */
-JS_PUBLIC_API bool SetSupportedImportAssertions(
-    JS::FrontendContext* fc,
-    const JS::ImportAssertionVector& supportedImportAssertions);
-
-// Temporary storage used during compiling and preparing to instantiate a
-// Stencil.
 //
-// Off-thread consumers can allocate this instance off main thread, and pass it
-// back to the main thread, in order to reduce the main thread allocation.
-struct CompilationStorage {
- private:
-  // Owned CompilationInput.
-  //
-  // This uses raw pointer instead of UniquePtr because CompilationInput
-  // is opaque.
-  JS_HAZ_NON_GC_POINTER js::frontend::CompilationInput* input_ = nullptr;
-  bool isBorrowed_ = false;
-
- public:
-  CompilationStorage() = default;
-  explicit CompilationStorage(js::frontend::CompilationInput* input)
-      : input_(input), isBorrowed_(true) {}
-  CompilationStorage(CompilationStorage&& other)
-      : input_(other.input_), isBorrowed_(other.isBorrowed_) {
-    other.input_ = nullptr;
-  }
-
-  ~CompilationStorage();
-
- private:
-  CompilationStorage(const CompilationStorage& other) = delete;
-  void operator=(const CompilationStorage& aOther) = delete;
-
- public:
-  bool hasInput() { return !!input_; }
-
-  // Internal function that initializes the CompilationInput. It should only be
-  // called once.
-  bool allocateInput(FrontendContext* fc,
-                     const JS::ReadOnlyCompileOptions& options);
-
-  js::frontend::CompilationInput& getInput() {
-    MOZ_ASSERT(hasInput());
-    return *input_;
-  }
-
-  // Size of dynamic data. Note that GC data is counted by GC and not here.
-  size_t sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
-
-  void trace(JSTracer* trc);
-};
+// See ConvertFrontendErrorsToRuntimeErrors for options parameter.
+JS_PUBLIC_API const JSErrorReport* GetFrontendWarningAt(
+    JS::FrontendContext* fc, size_t index,
+    const JS::ReadOnlyCompileOptions& options);
 
 extern JS_PUBLIC_API already_AddRefed<JS::Stencil> CompileGlobalScriptToStencil(
     JS::FrontendContext* fc, const JS::ReadOnlyCompileOptions& options,
-    JS::SourceText<mozilla::Utf8Unit>& srcBuf,
-    JS::CompilationStorage& compileStorage);
+    JS::SourceText<mozilla::Utf8Unit>& srcBuf);
 
 extern JS_PUBLIC_API already_AddRefed<JS::Stencil> CompileGlobalScriptToStencil(
     JS::FrontendContext* fc, const JS::ReadOnlyCompileOptions& options,
-    JS::SourceText<char16_t>& srcBuf, JS::CompilationStorage& compileStorage);
+    JS::SourceText<char16_t>& srcBuf);
 
 extern JS_PUBLIC_API already_AddRefed<JS::Stencil> CompileModuleScriptToStencil(
     JS::FrontendContext* fc, const JS::ReadOnlyCompileOptions& options,
-    JS::SourceText<mozilla::Utf8Unit>& srcBuf,
-    JS::CompilationStorage& compileStorage);
+    JS::SourceText<mozilla::Utf8Unit>& srcBuf);
 
 extern JS_PUBLIC_API already_AddRefed<JS::Stencil> CompileModuleScriptToStencil(
     JS::FrontendContext* fc, const JS::ReadOnlyCompileOptions& options,
-    JS::SourceText<char16_t>& srcBuf, JS::CompilationStorage& compileStorage);
+    JS::SourceText<char16_t>& srcBuf);
 
 extern JS_PUBLIC_API bool PrepareForInstantiate(
-    JS::FrontendContext* fc, JS::CompilationStorage& compileStorage,
-    JS::Stencil& stencil, JS::InstantiationStorage& storage);
+    JS::FrontendContext* fc, JS::Stencil& stencil,
+    JS::InstantiationStorage& storage);
 
 }  // namespace JS
 

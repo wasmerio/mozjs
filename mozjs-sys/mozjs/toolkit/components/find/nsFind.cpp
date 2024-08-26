@@ -8,7 +8,6 @@
 
 #include "nsFind.h"
 #include "mozilla/Likely.h"
-#include "nsContentCID.h"
 #include "nsIContent.h"
 #include "nsINode.h"
 #include "nsIFrame.h"
@@ -140,7 +139,7 @@ static bool IsRubyAnnotationNode(const nsINode* aNode) {
          StyleDisplay::RubyTextContainer == display;
 }
 
-static bool IsVisibleNode(const nsINode* aNode) {
+static bool IsFindableNode(const nsINode* aNode) {
   if (!IsDisplayedNode(aNode)) {
     return false;
   }
@@ -151,7 +150,8 @@ static bool IsVisibleNode(const nsINode* aNode) {
     return true;
   }
 
-  if (frame->HidesContent(nsIFrame::IncludeContentVisibility::Hidden) ||
+  if (frame->StyleUI()->IsInert() ||
+      frame->HidesContent(nsIFrame::IncludeContentVisibility::Hidden) ||
       frame->IsHiddenByContentVisibilityOnAnyAncestor(
           nsIFrame::IncludeContentVisibility::Hidden)) {
     return false;
@@ -480,13 +480,13 @@ NS_IMETHODIMP
 nsFind::GetEntireWord(bool* aEntireWord) {
   if (!aEntireWord) return NS_ERROR_NULL_POINTER;
 
-  *aEntireWord = mEntireWord;
+  *aEntireWord = mWordStartBounded && mWordEndBounded;
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsFind::SetEntireWord(bool aEntireWord) {
-  mEntireWord = aEntireWord;
+  mWordStartBounded = mWordEndBounded = aEntireWord;
   return NS_OK;
 }
 
@@ -861,7 +861,7 @@ nsFind::Find(const nsAString& aPatText, nsRange* aSearchRange,
     // Figure whether the previous char is a word-breaking one,
     // if we care about word boundaries.
     bool wordBreakPrev = true;
-    if (mEntireWord && prevChar) {
+    if (mWordStartBounded && prevChar) {
       if (prevChar == NBSP_CHARCODE) {
         prevChar = CHAR_TO_UNICHAR(' ');
       }
@@ -874,7 +874,8 @@ nsFind::Find(const nsAString& aPatText, nsRange* aSearchRange,
     // b) a match has already been stored
     // c) the previous character is a different "class" than the current
     // character.
-    if ((c == patc && (!mEntireWord || matchAnchorNode || wordBreakPrev)) ||
+    if ((c == patc && (!(mWordStartBounded || mWordEndBounded) ||
+                       matchAnchorNode || wordBreakPrev)) ||
         (inWhitespace && IsSpace(c))) {
       prevCharInMatch = c;
       if (inWhitespace) {
@@ -901,7 +902,7 @@ nsFind::Find(const nsAString& aPatText, nsRange* aSearchRange,
 
         // Make the range:
         // Check for word break (if necessary)
-        if (mEntireWord || inWhitespace) {
+        if (mWordEndBounded || inWhitespace) {
           int32_t nextfindex = findex + incr;
 
           char32_t nextChar;
@@ -922,7 +923,7 @@ nsFind::Find(const nsAString& aPatText, nsRange* aSearchRange,
           }
 
           // If a word break isn't there when it needs to be, reset search.
-          if (mEntireWord && nextChar && !BreakInBetween(c, nextChar)) {
+          if (mWordEndBounded && nextChar && !BreakInBetween(c, nextChar)) {
             matchAnchorNode = nullptr;
             continue;
           }
@@ -953,8 +954,8 @@ nsFind::Find(const nsAString& aPatText, nsRange* aSearchRange,
         }
 
         RefPtr<nsRange> range = nsRange::Create(current);
-        if (startParent && endParent && IsVisibleNode(startParent) &&
-            IsVisibleNode(endParent)) {
+        if (startParent && endParent && IsFindableNode(startParent) &&
+            IsFindableNode(endParent)) {
           IgnoredErrorResult rv;
           range->SetStart(*startParent, matchStartOffset, rv);
           if (!rv.Failed()) {

@@ -99,7 +99,8 @@ class InlineTranslator : public Translator {
     mPaths.InsertOrUpdate(aRefPtr, RefPtr{aPath});
   }
 
-  void AddSourceSurface(ReferencePtr aRefPtr, SourceSurface* aSurface) final {
+  void AddSourceSurface(ReferencePtr aRefPtr,
+                        SourceSurface* aSurface) override {
     mSourceSurfaces.InsertOrUpdate(aRefPtr, RefPtr{aSurface});
   }
 
@@ -126,7 +127,16 @@ class InlineTranslator : public Translator {
   }
 
   void RemoveDrawTarget(ReferencePtr aRefPtr) override {
+    ReferencePtr currentDT = mCurrentDT;
+    if (currentDT == aRefPtr) {
+      mCurrentDT = nullptr;
+    }
     mDrawTargets.Remove(aRefPtr);
+  }
+
+  bool SetCurrentDrawTarget(ReferencePtr aRefPtr) override {
+    mCurrentDT = mDrawTargets.GetWeak(aRefPtr);
+    return !!mCurrentDT;
   }
 
   void RemovePath(ReferencePtr aRefPtr) final { mPaths.Remove(aRefPtr); }

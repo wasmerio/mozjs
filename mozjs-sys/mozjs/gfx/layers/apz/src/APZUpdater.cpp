@@ -136,22 +136,28 @@ void APZUpdater::ProcessPendingTasks(const wr::WrWindowId& aWindowId) {
 void APZUpdater::ClearTree(LayersId aRootLayersId) {
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
   RefPtr<APZUpdater> self = this;
-  RunOnUpdaterThread(aRootLayersId,
-                     NS_NewRunnableFunction("APZUpdater::ClearTree", [=]() {
-                       self->mApz->ClearTree();
-                       self->mDestroyed = true;
+  RunOnUpdaterThread(
+      aRootLayersId,
+      NS_NewRunnableFunction("APZUpdater::ClearTree",
+                             [=]() {
+                               self->mApz->ClearTree();
+                               self->mDestroyed = true;
 
-                       // Once ClearTree is called on the APZCTreeManager, we
-                       // are in a shutdown phase. After this point it's ok if
-                       // WebRender cannot get a hold of the updater via the
-                       // window id, and it's a good point to remove the mapping
-                       // and avoid leaving a dangling pointer to this object.
-                       StaticMutexAutoLock lock(sWindowIdLock);
-                       if (self->mWindowId) {
-                         MOZ_ASSERT(sWindowIdMap);
-                         sWindowIdMap->erase(wr::AsUint64(*(self->mWindowId)));
-                       }
-                     }));
+                               // Once ClearTree is called on the
+                               // APZCTreeManager, we are in a shutdown phase.
+                               // After this point it's ok if WebRender cannot
+                               // get a hold of the updater via the window id,
+                               // and it's a good point to remove the mapping
+                               // and avoid leaving a dangling pointer to this
+                               // object.
+                               StaticMutexAutoLock lock(sWindowIdLock);
+                               if (self->mWindowId) {
+                                 MOZ_ASSERT(sWindowIdMap);
+                                 sWindowIdMap->erase(
+                                     wr::AsUint64(*(self->mWindowId)));
+                               }
+                             }),
+      DuringShutdown::Yes);
 }
 
 void APZUpdater::UpdateFocusState(LayersId aRootLayerTreeId,
@@ -191,14 +197,38 @@ void APZUpdater::UpdateScrollDataAndTreeState(
             auto isFirstPaint = aScrollData.IsFirstPaint();
             auto paintSequenceNumber = aScrollData.GetPaintSequenceNumber();
 
+            auto previous = self->mScrollData.find(aOriginatingLayersId);
+            // If there's the previous scroll data which hasn't yet been
+            // processed, we need to merge the previous scroll position updates
+            // into the latest one.
+            if (previous != self->mScrollData.end()) {
+              WebRenderScrollData& previousData = previous->second;
+              if (previousData.GetWasUpdateSkipped()) {
+                MOZ_ASSERT(previousData.IsFirstPaint());
+                aScrollData.PrependUpdates(previousData);
+              }
+            }
+
             self->mScrollData[aOriginatingLayersId] = std::move(aScrollData);
             auto root = self->mScrollData.find(aRootLayerTreeId);
             if (root == self->mScrollData.end()) {
               return;
             }
-            self->mApz->UpdateHitTestingTree(
-                WebRenderScrollDataWrapper(*self, &(root->second)),
-                isFirstPaint, aOriginatingLayersId, paintSequenceNumber);
+            if ((self->mApz->UpdateHitTestingTree(
+                     WebRenderScrollDataWrapper(*self, &(root->second)),
+                     isFirstPaint, aOriginatingLayersId, paintSequenceNumber) ==
+                 APZCTreeManager::OriginatingLayersIdUpdated::No) &&
+                isFirstPaint) {
+              // If the given |aOriginatingLayersId| data wasn't used for
+              // updating, it's likly that the parent process hasn't yet
+              // received the LayersId as "ReferentId", thus we need to process
+              // it in a subsequent update where we got the "ReferentId".
+              //
+              // NOTE: We restrict the above previous scroll data prepending to
+              // the first paint case, otherwise the cumulative scroll data may
+              // be exploded if we have never received the "ReferenceId".
+              self->mScrollData[aOriginatingLayersId].SetWasUpdateSkipped();
+            }
           }));
 }
 
@@ -314,7 +344,8 @@ void APZUpdater::AssertOnUpdaterThread() const {
 }
 
 void APZUpdater::RunOnUpdaterThread(LayersId aLayersId,
-                                    already_AddRefed<Runnable> aTask) {
+                                    already_AddRefed<Runnable> aTask,
+                                    DuringShutdown aDuringShutdown) {
   RefPtr<Runnable> task = aTask;
 
   // In the scenario where IsConnectedToWebRender() is true, this function
@@ -341,19 +372,21 @@ void APZUpdater::RunOnUpdaterThread(LayersId aLayersId,
     // during the callback from the updater thread, which we trigger by the
     // call to WakeSceneBuilder.
 
-    bool sendWakeMessage = true;
+    bool sendWakeMessage = aDuringShutdown == DuringShutdown::No;
     {  // scope lock
       MutexAutoLock lock(mQueueLock);
-      for (const auto& queuedTask : mUpdaterQueue) {
-        if (queuedTask.mLayersId == aLayersId) {
-          // If there's already a task in the queue with this layers id, then
-          // we must have previously sent a WakeSceneBuilder message (when
-          // adding the first task with this layers id to the queue). Either
-          // that hasn't been fully processed yet, or the layers id is blocked
-          // waiting for an epoch - in either case there's no point in sending
-          // another WakeSceneBuilder message.
-          sendWakeMessage = false;
-          break;
+      if (sendWakeMessage) {
+        for (const auto& queuedTask : mUpdaterQueue) {
+          if (queuedTask.mLayersId == aLayersId) {
+            // If there's already a task in the queue with this layers id, then
+            // we must have previously sent a WakeSceneBuilder message (when
+            // adding the first task with this layers id to the queue). Either
+            // that hasn't been fully processed yet, or the layers id is blocked
+            // waiting for an epoch - in either case there's no point in sending
+            // another WakeSceneBuilder message.
+            sendWakeMessage = false;
+            break;
+          }
         }
       }
       mUpdaterQueue.push_back(QueuedTask{aLayersId, task});

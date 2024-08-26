@@ -6,7 +6,10 @@
 
 #include "jit/AliasAnalysis.h"
 
+#include "mozilla/DebugOnly.h"
+
 #include "jit/JitSpewer.h"
+#include "jit/MIR-wasm.h"
 #include "jit/MIR.h"
 #include "jit/MIRGenerator.h"
 #include "jit/MIRGraph.h"
@@ -187,8 +190,27 @@ bool AliasAnalysis::analyze() {
       def->setId(newId++);
     }
 
-    for (MInstructionIterator def(block->begin()),
-         end(block->begin(block->lastIns()));
+    {
+      // "The block has one or more instructions"
+      MOZ_ASSERT(block->hasAnyIns());
+      // "The last instruction is a control instruction"
+      MOZ_ASSERT(block->hasLastIns());
+      // "The only control instructions that can have a non-empty alias set
+      //  are MWasmCallCatchable and MWasmReturnCall".
+      // Note, this isn't a requirement that is intrinsic to MIR.  In
+      // principle, any control instruction can have a non-empty alias set,
+      // and that should be correctly handled by this routine.  The assertion
+      // merely reflects the current state of usage of MIR, in which
+      // MWasmCallCatchable and MWasmReturnCall are the only control
+      // instructions we generate that have non-empty alias sets.
+      // See bug 1837686.
+      mozilla::DebugOnly<MControlInstruction*> lastIns = block->lastIns();
+      MOZ_ASSERT_IF(
+          !lastIns->isWasmCallCatchable() && !lastIns->isWasmReturnCall(),
+          lastIns->getAliasSet().isNone());
+    }
+
+    for (MInstructionIterator def(block->begin()), end(block->end());
          def != end; ++def) {
       def->setId(newId++);
 
@@ -251,10 +273,6 @@ bool AliasAnalysis::analyze() {
         }
       }
     }
-
-    // Renumber the last instruction, as the analysis depends on this and the
-    // order.
-    block->lastIns()->setId(newId++);
 
     if (block->isLoopBackedge()) {
       MOZ_ASSERT(loop_->loopHeader() == block->loopHeaderOfBackedge());

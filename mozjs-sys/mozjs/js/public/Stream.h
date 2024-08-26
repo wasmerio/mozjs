@@ -301,12 +301,6 @@ extern JS_PUBLIC_API bool IsReadableStreamDefaultReader(JSObject* obj);
  */
 extern JS_PUBLIC_API bool IsReadableStreamController(JSObject* obj);
 
-/**
- * Returns true if the given object is a ReadableByteStreamController
- * object or an unwrappable wrapper for one, false otherwise.
- */
-extern JS_PUBLIC_API bool IsReadableByteStreamController(JSObject* obj);
-
 enum class ReadableStreamMode { Default, Byte, ExternalSource };
 
 /**
@@ -495,9 +489,6 @@ extern JS_PUBLIC_API bool ReadableStreamClose(JSContext* cx,
 extern JS_PUBLIC_API bool ReadableStreamReaderIsClosed(JSContext* cx,
                                                        HandleObject reader,
                                                        bool* result);
-
-extern JS_PUBLIC_API bool ReadableStreamReaderGetClosedPromise(
-    JSContext* cx, HandleObject reader, MutableHandleObject result);
 
 /**
  * Enqueues the given chunk in the given ReadableStream.

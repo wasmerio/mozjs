@@ -102,8 +102,6 @@ class AccEvent {
     eCaretMoveEvent,
     eTextSelChangeEvent,
     eSelectionChangeEvent,
-    eTableChangeEvent,
-    eVirtualCursorChangeEvent,
     eObjectAttrChangedEvent,
     eScrollingEvent,
     eAnnouncementEvent,
@@ -440,59 +438,6 @@ class AccSelChangeEvent : public AccEvent {
   AccSelChangeEvent* mPackedEvent;
 
   friend class EventQueue;
-};
-
-/**
- * Accessible table change event.
- */
-class AccTableChangeEvent : public AccEvent {
- public:
-  AccTableChangeEvent(LocalAccessible* aAccessible, uint32_t aEventType,
-                      int32_t aRowOrColIndex, int32_t aNumRowsOrCols);
-
-  // AccEvent
-  static const EventGroup kEventGroup = eTableChangeEvent;
-  virtual unsigned int GetEventGroups() const override {
-    return AccEvent::GetEventGroups() | (1U << eTableChangeEvent);
-  }
-
-  // AccTableChangeEvent
-  uint32_t GetIndex() const { return mRowOrColIndex; }
-  uint32_t GetCount() const { return mNumRowsOrCols; }
-
- private:
-  uint32_t mRowOrColIndex;  // the start row/column after which the rows are
-                            // inserted/deleted.
-  uint32_t mNumRowsOrCols;  // the number of inserted/deleted rows/columns
-};
-
-/**
- * Accessible virtual cursor change event.
- */
-class AccVCChangeEvent : public AccEvent {
- public:
-  AccVCChangeEvent(LocalAccessible* aAccessible,
-                   LocalAccessible* aOldAccessible,
-                   LocalAccessible* aNewAccessible, int16_t aReason,
-                   EIsFromUserInput aIsFromUserInput = eFromUserInput);
-
-  virtual ~AccVCChangeEvent() {}
-
-  // AccEvent
-  static const EventGroup kEventGroup = eVirtualCursorChangeEvent;
-  virtual unsigned int GetEventGroups() const override {
-    return AccEvent::GetEventGroups() | (1U << eVirtualCursorChangeEvent);
-  }
-
-  // AccVCChangeEvent
-  LocalAccessible* OldAccessible() const { return mOldAccessible; }
-  LocalAccessible* NewAccessible() const { return mNewAccessible; }
-  int32_t Reason() const { return mReason; }
-
- private:
-  RefPtr<LocalAccessible> mOldAccessible;
-  RefPtr<LocalAccessible> mNewAccessible;
-  int16_t mReason;
 };
 
 /**

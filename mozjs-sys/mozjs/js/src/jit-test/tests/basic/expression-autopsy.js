@@ -1,4 +1,4 @@
-// |jit-test| skip-if: getBuildConfiguration()['pbl']
+// |jit-test| skip-if: getBuildConfiguration('pbl')
 load(libdir + "asserts.js");
 load(libdir + "iteration.js");
 

@@ -81,32 +81,48 @@ function openContextMenu(aMessage, aBrowser, aActor) {
   // We don't have access to the original event here, as that happened in
   // another process. Therefore we synthesize a new MouseEvent to propagate the
   // inputSource to the subsequently triggered popupshowing event.
-  let newEvent = document.createEvent("MouseEvent");
-  let screenX = context.screenXDevPx / window.devicePixelRatio;
-  let screenY = context.screenYDevPx / window.devicePixelRatio;
-  newEvent.initNSMouseEvent(
-    "contextmenu",
-    true,
-    true,
-    null,
-    0,
-    screenX,
-    screenY,
-    0,
-    0,
-    false,
-    false,
-    false,
-    false,
-    2,
-    null,
-    0,
-    context.mozInputSource
-  );
+  const ContextMenuEventConstructor = Services.prefs.getBoolPref(
+    "dom.w3c_pointer_events.dispatch_click_as_pointer_event"
+  )
+    ? PointerEvent
+    : MouseEvent;
+  let newEvent = new ContextMenuEventConstructor("contextmenu", {
+    bubbles: true,
+    cancelable: true,
+    screenX: context.screenXDevPx / window.devicePixelRatio,
+    screenY: context.screenYDevPx / window.devicePixelRatio,
+    button: 2,
+    pointerType: (() => {
+      switch (context.inputSource) {
+        case MouseEvent.MOZ_SOURCE_MOUSE:
+          return "mouse";
+        case MouseEvent.MOZ_SOURCE_PEN:
+          return "pen";
+        case MouseEvent.MOZ_SOURCE_ERASER:
+          return "eraser";
+        case MouseEvent.MOZ_SOURCE_CURSOR:
+          return "cursor";
+        case MouseEvent.MOZ_SOURCE_TOUCH:
+          return "touch";
+        case MouseEvent.MOZ_SOURCE_KEYBOARD:
+          return "keyboard";
+        default:
+          return "";
+      }
+    })(),
+  });
   popup.openPopupAtScreen(newEvent.screenX, newEvent.screenY, true, newEvent);
 }
 
 class nsContextMenu {
+  /**
+   * A promise to retrieve the translations language pair
+   * if the context menu was opened in a context relevant to
+   * open the SelectTranslationsPanel.
+   * @type {Promise<{fromLanguage: string, toLanguage: string}>}
+   */
+  #translationsLangPairPromise;
+
   constructor(aXulMenu, aIsShift) {
     // Get contextual info.
     this.setContext();
@@ -284,8 +300,8 @@ class nsContextMenu {
 
     const { gBrowser } = this.browser.ownerGlobal;
 
-    this.textSelected = this.selectionInfo.text;
-    this.isTextSelected = !!this.textSelected.length;
+    this.selectedText = this.selectionInfo.text;
+    this.isTextSelected = !!this.selectedText.length;
     this.webExtBrowserType = this.browser.getAttribute(
       "webextension-view-type"
     );
@@ -328,7 +344,9 @@ class nsContextMenu {
     InlineSpellCheckerUI.clearDictionaryListFromMenu();
     InlineSpellCheckerUI.uninit();
     if (
-      Cu.isModuleLoaded("resource://gre/modules/LoginManagerContextMenu.jsm")
+      Cu.isESModuleLoaded(
+        "resource://gre/modules/LoginManagerContextMenu.sys.mjs"
+      )
     ) {
       nsContextMenu.LoginManagerContextMenu.clearLoginsFromMenu(document);
     }
@@ -383,6 +401,11 @@ class nsContextMenu {
     ]) {
       this.showItem(id, this.inPDFEditor);
     }
+
+    this.showItem(
+      "context-pdfjs-highlight-selection",
+      this.pdfEditorStates?.hasSelectedText
+    );
 
     if (!this.inPDFEditor) {
       return;
@@ -615,6 +638,25 @@ class nsContextMenu {
       "disabled",
       !this.mediaURL || mediaIsBlob
     );
+
+    if (
+      Services.policies.status === Services.policies.ACTIVE &&
+      !Services.policies.isAllowed("filepickers")
+    ) {
+      // When file pickers are disallowed by enterprise policy,
+      // these items silently fail. So to avoid confusion, we
+      // disable them.
+      for (let item of [
+        "context-savepage",
+        "context-savelink",
+        "context-savevideo",
+        "context-saveaudio",
+        "context-video-saveimage",
+        "context-saveaudio",
+      ]) {
+        this.setItemAttr(item, "disabled", true);
+      }
+    }
   }
 
   initImageItems() {
@@ -650,6 +692,17 @@ class nsContextMenu {
       "context-saveimage",
       (this.onLoadedImage || this.onCanvas) && !this.inPDFEditor
     );
+
+    if (Services.policies.status === Services.policies.ACTIVE) {
+      // When file pickers are disallowed by enterprise policy,
+      // this item silently fails. So to avoid confusion, we
+      // disable it.
+      this.setItemAttr(
+        "context-saveimage",
+        "disabled",
+        !Services.policies.isAllowed("filepickers")
+      );
+    }
 
     // Copy image contents depends on whether we're on an image.
     // Note: the element doesn't exist on all platforms, but showItem() takes
@@ -820,6 +873,11 @@ class nsContextMenu {
     }
 
     this.showAndFormatSearchContextItem();
+    this.showTranslateSelectionItem();
+    nsContextMenu.GenAI.buildAskChatMenu(
+      document.getElementById("context-ask-chat"),
+      this
+    );
 
     // srcdoc cannot be opened separately due to concerns about web
     // content with about:srcdoc in location bar masquerading as trusted
@@ -986,7 +1044,7 @@ class nsContextMenu {
     );
 
     // Showing "Copy Clean link" depends on whether the strip-on-share feature is enabled
-    // and whether we can strip anything.
+    // and the user is selecting a URL
     this.showItem(
       "context-stripOnShareLink",
       STRIP_ON_SHARE_ENABLED &&
@@ -994,7 +1052,7 @@ class nsContextMenu {
         !this.onMailtoLink &&
         !this.onTelLink &&
         !this.onMozExtLink &&
-        this.getStrippedLink()
+        !this.isSecureAboutPage()
     );
 
     let copyLinkSeparator = document.getElementById("context-sep-copylink");
@@ -1154,18 +1212,10 @@ class nsContextMenu {
 
       // Set the correct label for the fill menu
       let fillMenu = document.getElementById("fill-login");
-      if (onPasswordLikeField) {
-        document.l10n.setAttributes(
-          fillMenu,
-          "main-context-menu-use-saved-password"
-        );
-      } else {
-        // On a username field
-        document.l10n.setAttributes(
-          fillMenu,
-          "main-context-menu-use-saved-login"
-        );
-      }
+      document.l10n.setAttributes(
+        fillMenu,
+        "main-context-menu-use-saved-password"
+      );
 
       let documentURI = this.contentData?.documentURIObject;
       let formOrigin = LoginHelper.getLoginOrigin(documentURI?.spec);
@@ -1199,8 +1249,9 @@ class nsContextMenu {
       popup.appendChild(fragment);
     } finally {
       const documentURI = this.contentData?.documentURIObject;
-      const origin = LoginHelper.getLoginOrigin(documentURI?.spec);
-      const showRelay = origin && this.contentData?.context.showRelay;
+      const showRelay =
+        this.contentData?.context.showRelay &&
+        LoginHelper.getLoginOrigin(documentURI?.spec);
 
       this.showItem("fill-login", showUseSavedLogin);
       this.showItem("fill-login-generated-password", showGenerate);
@@ -1308,8 +1359,6 @@ class nsContextMenu {
       !this.onTextInput &&
       !this.onLink &&
       !this.onPlainTextLink &&
-      !this.onImage &&
-      !this.onVideo &&
       !this.onAudio &&
       !this.onEditable &&
       !this.onPassword;
@@ -1355,9 +1404,7 @@ class nsContextMenu {
 
   useGeneratedPassword() {
     nsContextMenu.LoginManagerContextMenu.useGeneratedPassword(
-      this.targetIdentifier,
-      this.contentData.documentURIObject,
-      this.browser
+      this.targetIdentifier
     );
   }
 
@@ -1582,7 +1629,7 @@ class nsContextMenu {
 
   // Open new "view source" window with the frame's URL.
   viewFrameSource() {
-    BrowserViewSourceOfDocument({
+    BrowserCommands.viewSourceOfDocument({
       browser: this.browser,
       URL: this.contentData.docLocation,
       outerWindowID: this.frameOuterWindowID,
@@ -1590,7 +1637,7 @@ class nsContextMenu {
   }
 
   viewInfo() {
-    BrowserPageInfo(
+    BrowserCommands.pageInfo(
       this.contentData.docLocation,
       null,
       null,
@@ -1600,7 +1647,7 @@ class nsContextMenu {
   }
 
   viewImageInfo() {
-    BrowserPageInfo(
+    BrowserCommands.pageInfo(
       this.contentData.docLocation,
       "mediaTab",
       this.imageInfo,
@@ -1624,7 +1671,7 @@ class nsContextMenu {
   }
 
   viewFrameInfo() {
-    BrowserPageInfo(
+    BrowserCommands.pageInfo(
       this.contentData.docLocation,
       null,
       null,
@@ -1648,7 +1695,7 @@ class nsContextMenu {
 
   // Change current window to the URL of the image, video, or audio.
   viewMedia(e) {
-    let where = whereToOpenLink(e, false, false);
+    let where = BrowserUtils.whereToOpenLink(e, false, false);
     if (where == "current") {
       where = "tab";
     }
@@ -1945,7 +1992,7 @@ class nsContextMenu {
     // we give up waiting for the filename.
     function timerCallback() {}
     timerCallback.prototype = {
-      notify: function sLA_timer_notify(aTimer) {
+      notify: function sLA_timer_notify() {
         channel.cancel(NS_ERROR_SAVE_LINK_AS_TIMEOUT);
       },
     };
@@ -2138,7 +2185,10 @@ class nsContextMenu {
     var clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].getService(
       Ci.nsIClipboardHelper
     );
-    clipboard.copyString(addresses);
+    clipboard.copyString(
+      addresses,
+      this.actor.manager.browsingContext.currentWindowGlobal
+    );
   }
 
   // Extract phone and put it on clipboard
@@ -2158,7 +2208,10 @@ class nsContextMenu {
     var clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].getService(
       Ci.nsIClipboardHelper
     );
-    clipboard.copyString(phone);
+    clipboard.copyString(
+      phone,
+      this.actor.manager.browsingContext.currentWindowGlobal
+    );
   }
 
   copyLink() {
@@ -2167,7 +2220,10 @@ class nsContextMenu {
     var clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].getService(
       Ci.nsIClipboardHelper
     );
-    clipboard.copyString(linkURL);
+    clipboard.copyString(
+      linkURL,
+      this.actor.manager.browsingContext.currentWindowGlobal
+    );
   }
 
   /**
@@ -2183,7 +2239,10 @@ class nsContextMenu {
       let clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].getService(
         Ci.nsIClipboardHelper
       );
-      clipboard.copyString(strippedLinkURL);
+      clipboard.copyString(
+        strippedLinkURL,
+        this.actor.manager.browsingContext.currentWindowGlobal
+      );
     }
   }
 
@@ -2276,7 +2335,7 @@ class nsContextMenu {
   /**
    * Strips any known query params from the link URI.
    * @returns {nsIURI|null} - the stripped version of the URI,
-   * or null if we could not strip any query parameter.
+   * or the original URI if we could not strip any query parameter.
    *
    */
   getStrippedLink() {
@@ -2287,10 +2346,30 @@ class nsContextMenu {
     try {
       strippedLinkURI = QueryStringStripper.stripForCopyOrShare(this.linkURI);
     } catch (e) {
-      console.warn(`isLinkURIStrippable: ${e.message}`);
-      return null;
+      console.warn(`stripForCopyOrShare: ${e.message}`);
+      return this.linkURI;
     }
-    return strippedLinkURI;
+
+    // If nothing can be stripped, we return the original URI
+    // so the feature can still be used.
+    return strippedLinkURI ?? this.linkURI;
+  }
+
+  /**
+   * Checks if a webpage is a secure interal webpage
+   * @returns {Boolean}
+   *
+   */
+  isSecureAboutPage() {
+    let { currentURI } = this.browser;
+    if (currentURI?.schemeIs("about")) {
+      let module = E10SUtils.getAboutModule(currentURI);
+      if (module) {
+        let flags = module.getURIFlags(currentURI);
+        return !!(flags & Ci.nsIAboutModule.IS_SECURE_CHROME_UI);
+      }
+    }
+    return false;
   }
 
   // Kept for addon compat
@@ -2401,7 +2480,10 @@ class nsContextMenu {
     var clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].getService(
       Ci.nsIClipboardHelper
     );
-    clipboard.copyString(this.originalMediaURL);
+    clipboard.copyString(
+      this.originalMediaURL,
+      this.actor.manager.browsingContext.currentWindowGlobal
+    );
   }
 
   getImageText() {
@@ -2427,13 +2509,161 @@ class nsContextMenu {
     let drmInfoURL =
       Services.urlFormatter.formatURLPref("app.support.baseURL") +
       "drm-content";
-    let dest = whereToOpenLink(aEvent);
+    let dest = BrowserUtils.whereToOpenLink(aEvent);
     // Don't ever want this to open in the same tab as it'll unload the
     // DRM'd video, which is going to be a bad idea in most cases.
     if (dest == "current") {
       dest = "tab";
     }
     openTrustedLinkIn(drmInfoURL, dest);
+  }
+
+  /**
+   * Determines if Full Page Translations is currently active on this page.
+   *
+   * @returns {boolean}
+   */
+  static #isFullPageTranslationsActive() {
+    try {
+      const { requestedTranslationPair } =
+        TranslationsParent.getTranslationsActor(
+          gBrowser.selectedBrowser
+        ).languageState;
+      return requestedTranslationPair !== null;
+    } catch {
+      // Failed to retrieve the Full Page Translations actor, do nothing.
+    }
+    return false;
+  }
+
+  /**
+   * Opens the SelectTranslationsPanel singleton instance.
+   *
+   * @param {Event} event - The triggering event for opening the panel.
+   */
+  openSelectTranslationsPanel(event) {
+    const context = this.contentData.context;
+    let screenX = context.screenXDevPx / window.devicePixelRatio;
+    let screenY = context.screenYDevPx / window.devicePixelRatio;
+    SelectTranslationsPanel.open(
+      event,
+      screenX,
+      screenY,
+      this.#getTextToTranslate(),
+      this.isTextSelected,
+      this.#translationsLangPairPromise
+    ).catch(console.error);
+  }
+
+  /**
+   * Localizes the translate-selection menuitem.
+   *
+   * The item will either be localized with a target language's display name
+   * or localized in a generic way without a target language.
+   *
+   * @param {Element} translateSelectionItem
+   * @returns {Promise<void>}
+   */
+  async localizeTranslateSelectionItem(translateSelectionItem) {
+    const { toLanguage } = await this.#translationsLangPairPromise;
+
+    if (toLanguage) {
+      // A valid to-language exists, so localize the menuitem for that language.
+      let displayName;
+
+      try {
+        const displayNames = new Services.intl.DisplayNames(undefined, {
+          type: "language",
+        });
+        displayName = displayNames.of(toLanguage);
+      } catch {
+        // Services.intl.DisplayNames.of threw, do nothing.
+      }
+
+      if (displayName) {
+        document.l10n.setAttributes(
+          translateSelectionItem,
+          this.isTextSelected
+            ? "main-context-menu-translate-selection-to-language"
+            : "main-context-menu-translate-link-text-to-language",
+          { language: displayName }
+        );
+        return;
+      }
+    }
+
+    // Either no to-language exists, or an error occurred,
+    // so localize the menuitem without a target language.
+    document.l10n.setAttributes(
+      translateSelectionItem,
+      this.isTextSelected
+        ? "main-context-menu-translate-selection"
+        : "main-context-menu-translate-link-text"
+    );
+  }
+
+  /**
+   * Fetches text for translation, prioritizing selected text over link text.
+   *
+   * @returns {string} The text to translate.
+   */
+  #getTextToTranslate() {
+    if (this.isTextSelected) {
+      // If there is an active selection, we will always offer to translate.
+      return this.selectionInfo.fullText.trim();
+    }
+
+    const linkText = this.linkTextStr.trim();
+    if (!linkText) {
+      // There was no underlying link text, so do not offer to translate.
+      return "";
+    }
+
+    try {
+      // If the underlying link text is a URL, we should not offer to translate.
+      new URL(linkText);
+      return "";
+    } catch {
+      // A URL could not be parsed from the unerlying link text.
+    }
+
+    // Since the underlying link text is not a URL, we should offer to translate it.
+    return linkText;
+  }
+
+  /**
+   * Displays or hides the translate-selection item in the context menu.
+   */
+  showTranslateSelectionItem() {
+    const translateSelectionItem = document.getElementById(
+      "context-translate-selection"
+    );
+    const translationsEnabled = Services.prefs.getBoolPref(
+      "browser.translations.enable"
+    );
+    const selectTranslationsEnabled = Services.prefs.getBoolPref(
+      "browser.translations.select.enable"
+    );
+
+    const textToTranslate = this.#getTextToTranslate();
+
+    translateSelectionItem.hidden =
+      // Only show the item if the feature is enabled.
+      !(translationsEnabled && selectTranslationsEnabled) ||
+      // Only show the item if Translations is supported on this hardware.
+      !TranslationsParent.getIsTranslationsEngineSupported() ||
+      // If there is no text to translate, we have nothing to do.
+      textToTranslate.length === 0 ||
+      // We do not allow translating selections on top of Full Page Translations.
+      nsContextMenu.#isFullPageTranslationsActive();
+
+    if (translateSelectionItem.hidden) {
+      return;
+    }
+
+    this.#translationsLangPairPromise =
+      SelectTranslationsPanel.getLangPairPromise(textToTranslate);
+    this.localizeTranslateSelectionItem(translateSelectionItem);
   }
 
   // Formats the 'Search <engine> for "<selection or link text>"' context menu.
@@ -2476,7 +2706,7 @@ class nsContextMenu {
     }
 
     let selectedText = this.isTextSelected
-      ? this.textSelected
+      ? this.selectedText
       : this.linkTextStr;
 
     // Store searchTerms in context menu item so we know what to search onclick
@@ -2538,8 +2768,10 @@ class nsContextMenu {
 
 ChromeUtils.defineESModuleGetters(nsContextMenu, {
   DevToolsShim: "chrome://devtools-startup/content/DevToolsShim.sys.mjs",
+  GenAI: "resource:///modules/GenAI.sys.mjs",
   LoginManagerContextMenu:
     "resource://gre/modules/LoginManagerContextMenu.sys.mjs",
+  TranslationsParent: "resource://gre/actors/TranslationsParent.sys.mjs",
   WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.sys.mjs",
 });
 

@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import { PureComponent } from "react";
-import PropTypes from "prop-types";
+import { PureComponent } from "devtools/client/shared/vendor/react";
+import PropTypes from "devtools/client/shared/vendor/react-prop-types";
 
-import { getDocument } from "../../utils/editor";
-const classnames = require("devtools/client/shared/classnames.js");
+import { getDocument } from "../../utils/editor/index";
+const classnames = require("resource://devtools/client/shared/classnames.js");
 
 // eslint-disable-next-line max-len
 
@@ -42,7 +42,6 @@ export default class ColumnBreakpoint extends PureComponent {
   static get propTypes() {
     return {
       columnBreakpoint: PropTypes.object.isRequired,
-      cx: PropTypes.object.isRequired,
       source: PropTypes.object.isRequired,
     };
   }
@@ -76,7 +75,6 @@ export default class ColumnBreakpoint extends PureComponent {
     event.stopPropagation();
     event.preventDefault();
     const {
-      cx,
       columnBreakpoint,
       toggleDisabledBreakpoint,
       removeBreakpoint,
@@ -85,15 +83,14 @@ export default class ColumnBreakpoint extends PureComponent {
 
     // disable column breakpoint on shift-click.
     if (event.shiftKey) {
-      const breakpoint = columnBreakpoint.breakpoint;
-      toggleDisabledBreakpoint(cx, breakpoint);
+      toggleDisabledBreakpoint(columnBreakpoint.breakpoint);
       return;
     }
 
     if (columnBreakpoint.breakpoint) {
-      removeBreakpoint(cx, columnBreakpoint.breakpoint);
+      removeBreakpoint(columnBreakpoint.breakpoint);
     } else {
-      addBreakpoint(cx, columnBreakpoint.location);
+      addBreakpoint(columnBreakpoint.location);
     }
   };
 

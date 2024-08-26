@@ -152,7 +152,13 @@ impl StylesheetInvalidationSet {
 
         let quirks_mode = device.quirks_mode();
         for rule in stylesheet.effective_rules(device, guard) {
-            self.collect_invalidations_for_rule(rule, guard, device, quirks_mode, /* is_generic_change = */ false);
+            self.collect_invalidations_for_rule(
+                rule,
+                guard,
+                device,
+                quirks_mode,
+                /* is_generic_change = */ false,
+            );
             if self.fully_invalid {
                 break;
             }
@@ -549,16 +555,19 @@ impl StylesheetInvalidationSet {
             return;
         }
 
-        if !is_generic_change &&
-            !EffectiveRules::is_effective(guard, device, quirks_mode, rule)
-        {
+        if !is_generic_change && !EffectiveRules::is_effective(guard, device, quirks_mode, rule) {
             return;
         }
 
-        let rules =
-            EffectiveRulesIterator::effective_children(device, quirks_mode, guard, rule);
+        let rules = EffectiveRulesIterator::effective_children(device, quirks_mode, guard, rule);
         for rule in rules {
-            self.collect_invalidations_for_rule(rule, guard, device, quirks_mode, /* is_generic_change = */ false);
+            self.collect_invalidations_for_rule(
+                rule,
+                guard,
+                device,
+                quirks_mode,
+                /* is_generic_change = */ false,
+            );
             if self.fully_invalid {
                 break;
             }
@@ -590,7 +599,7 @@ impl StylesheetInvalidationSet {
                 }
 
                 let style_rule = lock.read_with(guard);
-                for selector in &style_rule.selectors.0 {
+                for selector in style_rule.selectors.slice() {
                     self.collect_invalidations(selector, quirks_mode);
                     if self.fully_invalid {
                         return;
@@ -606,15 +615,15 @@ impl StylesheetInvalidationSet {
                 // invalidate fully.
                 return self.invalidate_fully();
             },
-            Document(..) | Import(..) | Media(..) | Supports(..) |
-            Container(..)  | LayerBlock(..) => {
+            Document(..) | Import(..) | Media(..) | Supports(..) | Container(..) |
+            LayerBlock(..) | StartingStyle(..) => {
                 // Do nothing, relevant nested rules are visited as part of rule iteration.
             },
             FontFace(..) => {
                 // Do nothing, @font-face doesn't affect computed style information on it's own.
                 // We'll restyle when the font face loads, if needed.
             },
-            Page(..) => {
+            Page(..) | Margin(..) => {
                 // Do nothing, we don't support OM mutations on print documents, and page rules
                 // can't affect anything else.
             },
@@ -633,11 +642,13 @@ impl StylesheetInvalidationSet {
                     // Do nothing, this animation can't affect the style of existing elements.
                 }
             },
-            CounterStyle(..) |
-            Property(..) |
-            FontFeatureValues(..) |
-            FontPaletteValues(..) => {
+            CounterStyle(..) | Property(..) | FontFeatureValues(..) | FontPaletteValues(..) => {
                 debug!(" > Found unsupported rule, marking the whole subtree invalid.");
+                self.invalidate_fully();
+            },
+            Scope(..) => {
+                // Addition/removal of @scope requires re-evaluation of scope proximity to properly
+                // figure out the styling order.
                 self.invalidate_fully();
             },
         }

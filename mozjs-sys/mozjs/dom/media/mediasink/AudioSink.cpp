@@ -196,7 +196,7 @@ TimeUnit AudioSink::UnplayedDuration() const {
 void AudioSink::ReenqueueUnplayedAudioDataIfNeeded() {
   // This is OK: the AudioStream has been shut down. ShutDown guarantees that
   // the audio callback thread won't call back again.
-  mProcessedSPSCQueue->ResetThreadIds();
+  mProcessedSPSCQueue->ResetConsumerThreadId();
 
   // construct an AudioData
   int sampleInRingbuffer = mProcessedSPSCQueue->AvailableRead();
@@ -288,8 +288,6 @@ void AudioSink::ShutDown() {
   mAudioQueueFinishListener.DisconnectIfExists();
   mProcessedQueueListener.DisconnectIfExists();
 
-  Maybe<MozPromiseHolder<MediaSink::EndedPromise>> rv;
-
   if (mAudioStream) {
     mAudioStream->ShutDown();
     mAudioStream = nullptr;
@@ -357,7 +355,7 @@ uint32_t AudioSink::PopFrames(AudioDataValue* aBuffer, uint32_t aFrames,
   // happen when not using cubeb remoting, and often when changing audio device
   // at the system level.
   if (aAudioThreadChanged) {
-    mProcessedSPSCQueue->ResetThreadIds();
+    mProcessedSPSCQueue->ResetConsumerThreadId();
   }
 
   TRACE_COMMENT("AudioSink::PopFrames", "%u frames (ringbuffer: %u/%u)",
@@ -366,16 +364,11 @@ uint32_t AudioSink::PopFrames(AudioDataValue* aBuffer, uint32_t aFrames,
 
   const int samplesToPop = static_cast<int>(aFrames * mOutputChannels);
   const int samplesRead = mProcessedSPSCQueue->Dequeue(aBuffer, samplesToPop);
-  auto sampleOut = samplesRead;
   MOZ_ASSERT(samplesRead % mOutputChannels == 0);
   mWritten += SampleToFrame(samplesRead);
   if (samplesRead != samplesToPop) {
     if (Ended()) {
       SINK_LOG("Last PopFrames -- Source ended.");
-    } else if (mTreatUnderrunAsSilence) {
-      SINK_LOG("Treat underrun frames (%u) as silence frames",
-               SampleToFrame(samplesToPop - samplesRead));
-      sampleOut = samplesToPop;
     } else {
       NS_WARNING("Underrun when popping samples from audiosink ring buffer.");
       TRACE_COMMENT("AudioSink::PopFrames", "Underrun %u frames missing",
@@ -390,9 +383,9 @@ uint32_t AudioSink::PopFrames(AudioDataValue* aBuffer, uint32_t aFrames,
   SINK_LOG_V("Popping %u frames. Remaining in ringbuffer %u / %u\n", aFrames,
              SampleToFrame(mProcessedSPSCQueue->AvailableRead()),
              SampleToFrame(mProcessedSPSCQueue->Capacity()));
-  CheckIsAudible(Span(aBuffer, sampleOut), mOutputChannels);
+  CheckIsAudible(Span(aBuffer, samplesRead), mOutputChannels);
 
-  return SampleToFrame(sampleOut);
+  return SampleToFrame(samplesRead);
 }
 
 bool AudioSink::Ended() const {
@@ -651,11 +644,6 @@ void AudioSink::GetDebugInfo(dom::MediaSinkDebugInfo& aInfo) {
   aInfo.mAudioSinkWrapper.mAudioSink.mHasErrored = bool(mErrored);
   aInfo.mAudioSinkWrapper.mAudioSink.mPlaybackComplete =
       mAudioStream ? mAudioStream->IsPlaybackCompleted() : false;
-}
-
-void AudioSink::EnableTreatAudioUnderrunAsSilence(bool aEnabled) {
-  SINK_LOG("set mTreatUnderrunAsSilence=%d", aEnabled);
-  mTreatUnderrunAsSilence = aEnabled;
 }
 
 }  // namespace mozilla

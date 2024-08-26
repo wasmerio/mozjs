@@ -37,22 +37,6 @@ const DISALLOWED = {
   // "remote":
   //   checked manually, since its default value will
   //   depend on whether or not e10s is enabled by default.
-  popup: {
-    flag: Ci.nsIWebBrowserChrome.CHROME_WINDOW_POPUP,
-    defaults_to: false,
-  },
-  alwaysLowered: {
-    flag: Ci.nsIWebBrowserChrome.CHROME_WINDOW_LOWERED,
-    defaults_to: false,
-  },
-  "z-lock": {
-    flag: Ci.nsIWebBrowserChrome.CHROME_WINDOW_LOWERED, // Renamed to alwaysLowered
-    defaults_to: false,
-  },
-  alwaysRaised: {
-    flag: Ci.nsIWebBrowserChrome.CHROME_WINDOW_RAISED,
-    defaults_to: false,
-  },
   alwaysOnTop: {
     flag: Ci.nsIWebBrowserChrome.CHROME_ALWAYS_ON_TOP,
     defaults_to: false,
@@ -138,7 +122,7 @@ function getContentChromeFlags(win) {
  * @param chromeFlags (int)
  *        Some chromeFlags to check.
  */
-function assertContentFlags(chromeFlags, isPopup) {
+function assertContentFlags(chromeFlags) {
   for (let feature in DISALLOWED) {
     let flag = DISALLOWED[feature].flag;
     Assert.ok(flag, "Expected flag to be a non-zeroish value");
@@ -187,7 +171,7 @@ add_task(async function test_disallowed_flags() {
       gBrowser,
       url: SCRIPT_PAGE,
     },
-    async function (browser) {
+    async function () {
       let win = await newWinPromise;
       let parentChromeFlags = getParentChromeFlags(win);
       assertContentFlags(parentChromeFlags);
@@ -234,7 +218,7 @@ add_task(async function test_disallowed_flags() {
       gBrowser,
       url: SCRIPT_PAGE_FOR_CHROME_ALL,
     },
-    async function (browser) {
+    async function () {
       let win = await newWinPromise;
       let parentChromeFlags = getParentChromeFlags(win);
       Assert.notEqual(
@@ -261,7 +245,7 @@ add_task(async function test_scrollbars_flag() {
       gBrowser,
       url: SCRIPT_PAGE,
     },
-    async function (browser) {
+    async function () {
       let win = await newWinPromise;
 
       let parentChromeFlags = getParentChromeFlags(win);

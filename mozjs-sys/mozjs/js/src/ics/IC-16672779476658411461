@@ -1,0 +1,1 @@
+Compare, 2, 2, 4, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(0) LASTUSED(1) , OP(GuardToBoolean) ID(0) OP(GuardToSymbol) ID(1) OP(LoadBooleanResult) BOOL(0) OP(ReturnFromIC)  

@@ -9,6 +9,136 @@
 Changelog
 =========
 
+13.0.0
+------
+
+    * Most xsimd functions are flagged as always_inline
+
+    * Fix some xsimd scalar version (abs, bitofsign, signbit, bitwise_cast, exp10)
+
+    * Move from batch_constant<batch<T, A>, Csts...> to batch_constant<T, A, Csts...>
+
+    * Move from batch_bool_constant<batch<T, A>, Csts...> to batch_bool_constant<T, A, Csts...>
+
+    * Provide an as_batch() method (resp. as_batch_bool) method for batch_constant (resp. batch_bool_constant)
+
+    * New architecture emulated<N> for batches of N bits emulated using scalar operations.
+
+    * Remove the version method from all architectures
+
+    * Support xsimd::avg and xsimd::avgr vector operation
+
+    * Model i8mm arm extension
+
+    * Fix dispatching mechanism
+
+12.1.1
+------
+
+    * Update readme with a section on adoption, and a section on the history of the project 
+
+    * Fix/avx512vnni implementation
+
+    * Fix regression on XSIMD_NO_SUPPORTED_ARCHITECTURE
+
+12.1.0
+------
+
+    * Fix various problems with architecture version handling
+
+    * Specialize xsimd::compress for riscv
+
+    * Provide stubs for various avx512xx architectures
+
+12.0.0
+------
+
+    * Fix sincos implementation to cope with Emscripten
+    
+    * Upgraded minimal version of cmake to remove deprecation warning
+
+    * Fixed constants::signmask for GCC when using ffast-math
+
+    * Add RISC-V Vector support
+
+    * Generic, simple implementation fox xsimd::compress
+
+    * Disable batch of bools, and suggest using batch_bool instead
+
+    * Add an option to skip installation
+
+11.2.0
+------
+
+    * Provide shuffle operations of floating point batches
+
+    * Provide a generic implementation of xsimd::swizzle with dynamic indices
+
+    * Implement rotl, rotr, rotate_left and rotate_right
+
+    * Let CMake figure out pkgconfig directories 
+
+    * Add missing boolean operators in xsimd_api.hpp
+
+    * Initial Implementation for the new WASM based instruction set
+
+    * Provide a generic version for float to uint32_t conversion 
+
+11.1.0
+------
+
+    * Introduce XSIMD_DEFAULT_ARCH to force default architecture (if any)
+
+    * Remove C++ requirement on xsimd::exp10 scalar implementation
+
+    * Improve and test documentation
+
+11.0.0
+------
+
+    * Provide a generic reducer
+
+    * Fix ``find_package(xsimd)`` for xtl enabled xsimd, reloaded
+
+    * Cleanup benchmark code
+
+    * Provide avx512f implementation of FMA and variant
+
+    * Hexadecimal floating points are not a C++11 feature
+
+    * back to slow implementation of exp10 on Windows
+
+    * Changed bitwise_cast API
+
+    * Provide generic signed /unsigned type conversion
+
+    * Fixed sde location
+
+    * Feature/incr decr
+
+    * Cleanup documentation
+
+10.0.0
+------
+
+    * Fix potential ABI issue in SVE support
+
+    * Disable fast exp10 on OSX
+
+    * Assert on unaligned memory when calling aligned load/store
+
+    * Fix warning about uninitialized storage
+
+    * Always forward arch parameter
+
+    * Do not specialize the behavior of ``simd_return_type`` for char
+
+    * Support broadcasting of complex batches
+
+    * Make xsimd compatible with -fno-exceptions
+
+    * Provide and test comparison operators overloads that accept scalars
+
 9.0.1
 -----
 

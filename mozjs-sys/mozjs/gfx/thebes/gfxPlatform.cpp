@@ -21,16 +21,14 @@
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/GPUProcessManager.h"
 #include "mozilla/gfx/GraphicsMessages.h"
-#include "mozilla/gfx/CanvasManagerChild.h"
-#include "mozilla/gfx/CanvasManagerParent.h"
 #include "mozilla/gfx/CanvasRenderThread.h"
+#include "mozilla/gfx/CanvasShutdownManager.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/EnumTypeTraits.h"
 #include "mozilla/StaticPrefs_accessibility.h"
 #include "mozilla/StaticPrefs_apz.h"
 #include "mozilla/StaticPrefs_bidi.h"
-#include "mozilla/StaticPrefs_canvas.h"
 #include "mozilla/StaticPrefs_gfx.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/StaticPrefs_layers.h"
@@ -39,6 +37,7 @@
 #include "mozilla/StaticPrefs_webgl.h"
 #include "mozilla/StaticPrefs_widget.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Unused.h"
 #include "mozilla/IntegerPrintfMacros.h"
@@ -80,10 +79,9 @@
 #if defined(XP_WIN)
 #  include "gfxWindowsPlatform.h"
 #  include "mozilla/widget/WinWindowOcclusionTracker.h"
-#elif defined(XP_MACOSX)
+#elif defined(XP_DARWIN)
 #  include "gfxPlatformMac.h"
 #  include "gfxQuartzSurface.h"
-#  include "nsCocoaFeatures.h"
 #elif defined(MOZ_WIDGET_GTK)
 #  include "gfxPlatformGtk.h"
 #elif defined(ANDROID)
@@ -177,6 +175,7 @@ gfxPlatform* gPlatform = nullptr;
 static bool gEverInitialized = false;
 
 const ContentDeviceData* gContentDeviceInitData = nullptr;
+Maybe<nsTArray<uint8_t>> gCMSOutputProfileData;
 
 Atomic<bool, MemoryOrdering::ReleaseAcquire> gfxPlatform::gCMSInitialized;
 CMSMode gfxPlatform::gCMSMode = CMSMode::Off;
@@ -221,8 +220,7 @@ class CrashStatsLogForwarder : public mozilla::gfx::LogForwarder {
 };
 
 CrashStatsLogForwarder::CrashStatsLogForwarder(CrashReporter::Annotation aKey)
-    : mBuffer(),
-      mCrashCriticalKey(aKey),
+    : mCrashCriticalKey(aKey),
       mMaxCapacity(0),
       mIndex(-1),
       mMutex("CrashStatsLogForwarder") {}
@@ -291,9 +289,8 @@ void CrashStatsLogForwarder::UpdateCrashReport() {
             << " (t=" << std::get<2>(it) << ") ";
   }
 
-  nsCString reportString(message.str().c_str());
-  nsresult annotated =
-      CrashReporter::AnnotateCrashReport(mCrashCriticalKey, reportString);
+  nsresult annotated = CrashReporter::RecordAnnotationCString(
+      mCrashCriticalKey, message.str().c_str());
 
   if (annotated != NS_OK) {
     printf("Crash Annotation %s: %s",
@@ -332,6 +329,8 @@ class LogForwarderEvent : public Runnable {
 
 void CrashStatsLogForwarder::Log(const std::string& aString) {
   MutexAutoLock lock(mMutex);
+  PROFILER_MARKER_TEXT("gfx::CriticalError", GRAPHICS, {},
+                       nsDependentCString(aString.c_str()));
 
   if (UpdateStringsVector(aString)) {
     UpdateCrashReport();
@@ -411,7 +410,7 @@ void CrashStatsLogForwarder::CrashAction(LogReason aReason) {
 #define GFX_PREF_WORD_CACHE_MAXENTRIES "gfx.font_rendering.wordcache.maxentries"
 
 #define GFX_PREF_GRAPHITE_SHAPING "gfx.font_rendering.graphite.enabled"
-#if defined(XP_MACOSX)
+#if defined(XP_DARWIN)
 #  define GFX_PREF_CORETEXT_SHAPING "gfx.font_rendering.coretext.enabled"
 #endif
 
@@ -448,8 +447,7 @@ gfxPlatform::gfxPlatform()
       mDisplayInfoCollector(this, &gfxPlatform::GetDisplayInfo),
       mOverlayInfoCollector(this, &gfxPlatform::GetOverlayInfo),
       mSwapChainInfoCollector(this, &gfxPlatform::GetSwapChainInfo),
-      mCompositorBackend(layers::LayersBackend::LAYERS_NONE),
-      mScreenDepth(0) {
+      mCompositorBackend(layers::LayersBackend::LAYERS_NONE) {
   mAllowDownloadableFonts = UNINITIALIZED_VALUE;
 
   InitBackendPrefs(GetBackendPrefs());
@@ -471,10 +469,10 @@ bool gfxPlatform::Initialized() { return !!gPlatform; }
 /* static */
 void gfxPlatform::InitChild(const ContentDeviceData& aData) {
   MOZ_ASSERT(XRE_IsContentProcess());
-  MOZ_RELEASE_ASSERT(!gPlatform,
-                     "InitChild() should be called before first GetPlatform()");
+  MOZ_ASSERT(!gPlatform,
+             "InitChild() should be called before first GetPlatform()");
   // Make the provided initial ContentDeviceData available to the init
-  // routines, so they don't have to do a sync request from the parent.
+  // routines.
   gContentDeviceInitData = &aData;
   Init();
   gContentDeviceInitData = nullptr;
@@ -576,8 +574,15 @@ static void WebRenderDebugPrefChangeCallback(const char* aPrefName, void*) {
   GFX_WEBRENDER_DEBUG(".window-visibility",
                       wr::DebugFlags::WINDOW_VISIBILITY_DBG)
   GFX_WEBRENDER_DEBUG(".restrict-blob-size", wr::DebugFlags::RESTRICT_BLOB_SIZE)
+  GFX_WEBRENDER_DEBUG(".surface-promotion-logging",
+                      wr::DebugFlags::SURFACE_PROMOTION_LOGGING)
 #undef GFX_WEBRENDER_DEBUG
-  gfx::gfxVars::SetWebRenderDebugFlags(flags.bits);
+  gfx::gfxVars::SetWebRenderDebugFlags(flags._0);
+
+  uint32_t threshold = Preferences::GetFloat(
+      StaticPrefs::GetPrefName_gfx_webrender_debug_slow_cpu_frame_threshold(),
+      10.0);
+  gfx::gfxVars::SetWebRenderSlowCpuFrameThreshold(threshold);
 }
 
 static void WebRenderQualityPrefChangeCallback(const char* aPref, void*) {
@@ -788,7 +793,7 @@ bool gfxPlatform::HasVariationFontSupport() {
     // as any thread will set it to the same value.
 #if defined(XP_WIN)
     sHasVariationFontSupport = gfxWindowsPlatform::CheckVariationFontSupport();
-#elif defined(XP_MACOSX)
+#elif defined(XP_DARWIN)
     sHasVariationFontSupport = gfxPlatformMac::CheckVariationFontSupport();
 #elif defined(MOZ_WIDGET_GTK)
     sHasVariationFontSupport = gfxPlatformGtk::CheckVariationFontSupport();
@@ -802,6 +807,8 @@ bool gfxPlatform::HasVariationFontSupport() {
 }
 
 void gfxPlatform::Init() {
+  AUTO_PROFILER_MARKER_TEXT("gfxPlatform", GRAPHICS, {},
+                            "gfxPlatform::Init"_ns);
   MOZ_RELEASE_ASSERT(!XRE_IsGPUProcess(), "GFX: Not allowed in GPU process.");
   MOZ_RELEASE_ASSERT(!XRE_IsRDDProcess(), "GFX: Not allowed in RDD process.");
   MOZ_RELEASE_ASSERT(NS_IsMainThread(), "GFX: Not in main thread.");
@@ -876,10 +883,9 @@ void gfxPlatform::Init() {
         StaticPrefs::webgl_disable_angle(), StaticPrefs::webgl_dxgl_enabled(),
         StaticPrefs::webgl_force_enabled(), StaticPrefs::webgl_msaa_force());
     // Prefs that don't fit into any of the other sections
-    forcedPrefs.AppendPrintf("-T%d%d%d) ",
+    forcedPrefs.AppendPrintf("-T%d%d) ",
                              StaticPrefs::gfx_android_rgb16_force_AtStartup(),
-                             StaticPrefs::gfx_canvas_accelerated(),
-                             StaticPrefs::layers_force_shmem_tiles_AtStartup());
+                             StaticPrefs::gfx_canvas_accelerated());
     ScopedGfxFeatureReporter::AppNote(forcedPrefs);
   }
 
@@ -906,7 +912,7 @@ void gfxPlatform::Init() {
 
 #if defined(XP_WIN)
   gPlatform = new gfxWindowsPlatform;
-#elif defined(XP_MACOSX)
+#elif defined(XP_DARWIN)
   gPlatform = new gfxPlatformMac;
 #elif defined(MOZ_WIDGET_GTK)
   gPlatform = new gfxPlatformGtk;
@@ -937,6 +943,12 @@ void gfxPlatform::Init() {
     gPlatform->EnsureDevicesInitialized();
   }
 #endif
+
+  if (XRE_IsParentProcess()) {
+    mozilla::glean::gpu_process::feature_status.Set(
+        gfxConfig::GetFeature(Feature::GPU_PROCESS)
+            .GetStatusAndFailureIdString());
+  }
 
   if (gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
     GPUProcessManager* gpu = GPUProcessManager::Get();
@@ -1058,62 +1070,72 @@ void gfxPlatform::ReportTelemetry() {
     RefPtr<widget::Screen> primaryScreen = screenManager.GetPrimaryScreen();
     const LayoutDeviceIntRect rect = primaryScreen->GetRect();
 
-    Telemetry::ScalarSet(Telemetry::ScalarID::GFX_DISPLAY_COUNT, screenCount);
-    Telemetry::ScalarSet(Telemetry::ScalarID::GFX_DISPLAY_PRIMARY_HEIGHT,
-                         uint32_t(rect.Height()));
-    Telemetry::ScalarSet(Telemetry::ScalarID::GFX_DISPLAY_PRIMARY_WIDTH,
-                         uint32_t(rect.Width()));
+    mozilla::glean::gfx_display::count.Set(screenCount);
+    mozilla::glean::gfx_display::primary_height.Set(rect.Height());
+    mozilla::glean::gfx_display::primary_width.Set(rect.Width());
+
+    // Check if any screen known by screenManager supports HDR.
+    bool supportsHDR = false;
+    for (const auto& screen : screenManager.CurrentScreenList()) {
+      supportsHDR |= screen->GetIsHDR();
+    }
+    Telemetry::ScalarSet(Telemetry::ScalarID::GFX_SUPPORTS_HDR, supportsHDR);
   }
 
   nsString adapterDesc;
   gfxInfo->GetAdapterDescription(adapterDesc);
-  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DESCRIPTION,
-                       adapterDesc);
+
+// Android description is constructed in a way that makes it possible to exceed
+// the metric's length limit.
+#if defined(ANDROID)
+  if (!adapterDesc.IsEmpty()) {
+    adapterDesc.Truncate(99);
+  }
+#endif
+
+  mozilla::glean::gfx_adapter_primary::description.Set(
+      NS_ConvertUTF16toUTF8(adapterDesc));
 
   nsString adapterVendorId;
   gfxInfo->GetAdapterVendorID(adapterVendorId);
-  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_VENDOR_ID,
-                       adapterVendorId);
+  mozilla::glean::gfx_adapter_primary::vendor_id.Set(
+      NS_ConvertUTF16toUTF8(adapterVendorId));
 
   nsString adapterDeviceId;
   gfxInfo->GetAdapterDeviceID(adapterDeviceId);
-  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DEVICE_ID,
-                       adapterDeviceId);
+  mozilla::glean::gfx_adapter_primary::device_id.Set(
+      NS_ConvertUTF16toUTF8(adapterDeviceId));
 
   nsString adapterSubsystemId;
   gfxInfo->GetAdapterSubsysID(adapterSubsystemId);
-  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_SUBSYSTEM_ID,
-                       adapterSubsystemId);
+  mozilla::glean::gfx_adapter_primary::subsystem_id.Set(
+      NS_ConvertUTF16toUTF8(adapterSubsystemId));
 
   uint32_t adapterRam = 0;
   gfxInfo->GetAdapterRAM(&adapterRam);
-  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_RAM, adapterRam);
+  mozilla::glean::gfx_adapter_primary::ram.Set(adapterRam);
 
   nsString adapterDriver;
   gfxInfo->GetAdapterDriver(adapterDriver);
-  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DRIVER_FILES,
-                       adapterDriver);
+  mozilla::glean::gfx_adapter_primary::driver_files.Set(
+      NS_ConvertUTF16toUTF8(adapterDriver));
 
   nsString adapterDriverVendor;
   gfxInfo->GetAdapterDriverVendor(adapterDriverVendor);
-  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DRIVER_VENDOR,
-                       adapterDriverVendor);
+  mozilla::glean::gfx_adapter_primary::driver_vendor.Set(
+      NS_ConvertUTF16toUTF8(adapterDriverVendor));
 
   nsString adapterDriverVersion;
   gfxInfo->GetAdapterDriverVersion(adapterDriverVersion);
-  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DRIVER_VERSION,
-                       adapterDriverVersion);
+  mozilla::glean::gfx_adapter_primary::driver_version.Set(
+      NS_ConvertUTF16toUTF8(adapterDriverVersion));
 
   nsString adapterDriverDate;
   gfxInfo->GetAdapterDriverDate(adapterDriverDate);
-  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DRIVER_DATE,
-                       adapterDriverDate);
+  mozilla::glean::gfx_adapter_primary::driver_date.Set(
+      NS_ConvertUTF16toUTF8(adapterDriverDate));
 
-  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_HEADLESS, IsHeadless());
-
-  MOZ_ASSERT(gPlatform, "Need gPlatform to generate some telemetry.");
-  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_SUPPORTS_HDR,
-                       gPlatform->SupportsHDR());
+  mozilla::glean::gfx_status::headless.Set(IsHeadless());
 }
 
 static bool IsFeatureSupported(long aFeature, bool aDefault) {
@@ -1192,7 +1214,8 @@ bool gfxPlatform::IsHeadless() {
 
 /* static */
 bool gfxPlatform::UseRemoteCanvas() {
-  return XRE_IsContentProcess() && gfx::gfxVars::RemoteCanvasEnabled();
+  return XRE_IsContentProcess() && (gfx::gfxVars::RemoteCanvasEnabled() ||
+                                    gfx::gfxVars::UseAcceleratedCanvas2D());
 }
 
 /* static */
@@ -1311,14 +1334,15 @@ void gfxPlatform::InitLayersIPC() {
 #endif
     if (!gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
       RemoteTextureMap::Init();
-      if (gfxVars::UseCanvasRenderThread()) {
-        gfx::CanvasRenderThread::Start();
-      }
       wr::RenderThread::Start(GPUProcessManager::Get()->AllocateNamespace());
       image::ImageMemoryReporter::InitForWebRender();
     }
 
     layers::CompositorThreadHolder::Start();
+
+    if (!gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
+      gfx::CanvasRenderThread::Start();
+    }
   }
 }
 
@@ -1331,7 +1355,7 @@ void gfxPlatform::ShutdownLayersIPC() {
 
   if (XRE_IsContentProcess()) {
     gfx::VRManagerChild::ShutDown();
-    gfx::CanvasManagerChild::Shutdown();
+    gfx::CanvasShutdownManager::Shutdown();
     // cf bug 1215265.
     if (StaticPrefs::layers_child_process_shutdown()) {
       layers::CompositorManagerChild::Shutdown();
@@ -1342,11 +1366,13 @@ void gfxPlatform::ShutdownLayersIPC() {
     VideoBridgeParent::Shutdown();
     RDDProcessManager::RDDProcessShutdown();
     gfx::VRManagerChild::ShutDown();
-    gfx::CanvasManagerChild::Shutdown();
+    gfx::CanvasShutdownManager::Shutdown();
     layers::CompositorManagerChild::Shutdown();
     layers::ImageBridgeChild::ShutDown();
-    // This could be running on either the Compositor or the Renderer thread.
-    gfx::CanvasManagerParent::Shutdown();
+    // This could be running on either the Compositor thread, the Renderer
+    // thread, or the dedicated CanvasRender thread, so we need to shutdown
+    // before the former two.
+    gfx::CanvasRenderThread::Shutdown();
     // This has to happen after shutting down the child protocols.
     layers::CompositorThreadHolder::Shutdown();
     RemoteTextureMap::Shutdown();
@@ -1364,9 +1390,6 @@ void gfxPlatform::ShutdownLayersIPC() {
           WebRenderBlobTileSizePrefChangeCallback,
           nsDependentCString(
               StaticPrefs::GetPrefName_gfx_webrender_blob_tile_size()));
-    }
-    if (gfx::CanvasRenderThread::Get()) {
-      gfx::CanvasRenderThread::ShutDown();
     }
 #if defined(XP_WIN)
     widget::WinWindowOcclusionTracker::ShutDown();
@@ -1596,6 +1619,12 @@ already_AddRefed<DataSourceSurface> gfxPlatform::GetWrappedDataSourceSurface(
 }
 
 void gfxPlatform::PopulateScreenInfo() {
+  // We're only going to set some gfxVars here, which is only possible from
+  // the parent process.
+  if (!XRE_IsParentProcess()) {
+    return;
+  }
+
   nsCOMPtr<nsIScreenManager> manager =
       do_GetService("@mozilla.org/gfx/screenmanager;1");
   MOZ_ASSERT(manager, "failed to get nsIScreenManager");
@@ -1607,13 +1636,9 @@ void gfxPlatform::PopulateScreenInfo() {
     return;
   }
 
-  screen->GetColorDepth(&mScreenDepth);
-  if (XRE_IsParentProcess()) {
-    gfxVars::SetScreenDepth(mScreenDepth);
-  }
-
-  int left, top;
-  screen->GetRect(&left, &top, &mScreenSize.width, &mScreenSize.height);
+  int32_t screenDepth;
+  screen->GetColorDepth(&screenDepth);
+  gfxVars::SetPrimaryScreenDepth(screenDepth);
 }
 
 bool gfxPlatform::SupportsAzureContentForDrawTarget(DrawTarget* aTarget) {
@@ -2062,9 +2087,13 @@ const mozilla::gfx::ContentDeviceData* gfxPlatform::GetInitContentDeviceData() {
   return gContentDeviceInitData;
 }
 
+Maybe<nsTArray<uint8_t>>& gfxPlatform::GetCMSOutputProfileData() {
+  return gCMSOutputProfileData;
+}
+
 CMSMode GfxColorManagementMode() {
   const auto mode = StaticPrefs::gfx_color_management_mode();
-  if (mode >= 0 && mode < UnderlyingValue(CMSMode::AllCount)) {
+  if (mode >= 0 && mode <= UnderlyingValue(CMSMode::_ENUM_MAX)) {
     return CMSMode(mode);
   }
   return CMSMode::Off;
@@ -2266,7 +2295,7 @@ void gfxPlatform::FontsPrefsChanged(const char* aPref) {
              !strcmp(GFX_PREF_GRAPHITE_SHAPING, aPref)) {
     FlushFontAndWordCaches();
   } else if (
-#if defined(XP_MACOSX)
+#if defined(XP_DARWIN)
       !strcmp(GFX_PREF_CORETEXT_SHAPING, aPref) ||
 #endif
       !strcmp("gfx.font_rendering.ahem_antialias_none", aPref)) {
@@ -2433,8 +2462,7 @@ void gfxPlatform::InitAcceleration() {
       gfxCriticalNote << "Cannot evaluate keyed mutex feature status";
       gfxVars::SetAllowD3D11KeyedMutex(true);
     }
-    if (StaticPrefs::gfx_direct3d11_use_double_buffering() &&
-        IsWin10OrLater()) {
+    if (StaticPrefs::gfx_direct3d11_use_double_buffering()) {
       gfxVars::SetUseDoubleBufferingWithCompositor(true);
     }
 #endif
@@ -2478,8 +2506,24 @@ void gfxPlatform::InitAcceleration() {
         "media.hardware-video-decoding.failed");
     InitGPUProcessPrefs();
 
-    gfxVars::SetRemoteCanvasEnabled(StaticPrefs::gfx_canvas_remote() &&
-                                    gfxConfig::IsEnabled(Feature::GPU_PROCESS));
+    FeatureState& feature = gfxConfig::GetFeature(Feature::REMOTE_CANVAS);
+    feature.SetDefault(StaticPrefs::gfx_canvas_remote_AtStartup(),
+                       FeatureStatus::Disabled, "Disabled via pref");
+
+    if (!gfxConfig::IsEnabled(Feature::GPU_PROCESS) &&
+        !StaticPrefs::gfx_canvas_remote_allow_in_parent_AtStartup()) {
+      feature.Disable(FeatureStatus::UnavailableNoGpuProcess,
+                      "Disabled without GPU process",
+                      "FEATURE_REMOTE_CANVAS_NO_GPU_PROCESS"_ns);
+    }
+
+#ifndef XP_WIN
+    gfxConfig::ForceDisable(Feature::REMOTE_CANVAS, FeatureStatus::Blocked,
+                            "Platform not supported",
+                            "FEATURE_REMOTE_CANVAS_NOT_WINDOWS"_ns);
+#endif
+
+    gfxVars::SetRemoteCanvasEnabled(feature.IsEnabled());
   }
 }
 
@@ -2521,11 +2565,6 @@ void gfxPlatform::InitGPUProcessPrefs() {
   if (IsHeadless()) {
     gpuProc.ForceDisable(FeatureStatus::Blocked, "Headless mode is enabled",
                          "FEATURE_FAILURE_HEADLESS_MODE"_ns);
-    return;
-  }
-  if (InSafeMode()) {
-    gpuProc.ForceDisable(FeatureStatus::Blocked, "Safe-mode is enabled",
-                         "FEATURE_FAILURE_SAFE_MODE"_ns);
     return;
   }
 
@@ -2574,8 +2613,7 @@ void gfxPlatform::InitCompositorAccelerationPrefs() {
 
 /*static*/
 bool gfxPlatform::WebRenderPrefEnabled() {
-  return StaticPrefs::gfx_webrender_all_AtStartup() ||
-         StaticPrefs::gfx_webrender_enabled_AtStartup_DoNotUseDirectly();
+  return StaticPrefs::gfx_webrender_all_AtStartup();
 }
 
 /*static*/
@@ -2616,6 +2654,10 @@ void gfxPlatform::InitWebRenderConfig() {
   gfxConfigManager manager;
   manager.Init();
   manager.ConfigureWebRender();
+
+  if (gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
+    gfxVars::SetGPUProcessEnabled(true);
+  }
 
   bool hasHardware = gfxConfig::IsEnabled(Feature::WEBRENDER);
 
@@ -2677,7 +2719,7 @@ void gfxPlatform::InitWebRenderConfig() {
           StaticPrefs::GetPrefName_gfx_webrender_batched_upload_threshold()));
 
   if (WebRenderResourcePathOverride()) {
-    CrashReporter::AnnotateCrashReport(
+    CrashReporter::RecordAnnotationBool(
         CrashReporter::Annotation::IsWebRenderResourcePathOverridden, true);
   }
 
@@ -2724,7 +2766,7 @@ void gfxPlatform::InitWebRenderConfig() {
                                  "FEATURE_FAILURE_WR_NO_GFX_INFO"_ns);
         useVideoHwOverlay = false;
       } else {
-        if (status != nsIGfxInfo::FEATURE_ALLOW_ALWAYS) {
+        if (status != nsIGfxInfo::FEATURE_STATUS_OK) {
           FeatureState& feature =
               gfxConfig::GetFeature(Feature::VIDEO_HARDWARE_OVERLAY);
           feature.DisableByDefault(FeatureStatus::Blocked,
@@ -2793,8 +2835,7 @@ void gfxPlatform::InitWebRenderConfig() {
 
   bool useHwVideoZeroCopy = false;
   if (StaticPrefs::media_wmf_zero_copy_nv12_textures_AtStartup()) {
-    // XXX relax limitation to Windows 8.1
-    if (IsWin10OrLater() && hasHardware) {
+    if (hasHardware) {
       useHwVideoZeroCopy = true;
     }
 
@@ -2881,6 +2922,49 @@ void gfxPlatform::InitWebRenderConfig() {
     }
   }
 #endif
+
+  bool allowOverlayVpAutoHDR = false;
+  if (StaticPrefs::gfx_webrender_overlay_vp_auto_hdr_AtStartup()) {
+    allowOverlayVpAutoHDR = true;
+
+    nsCString failureId;
+    int32_t status;
+    const nsCOMPtr<nsIGfxInfo> gfxInfo = components::GfxInfo::Service();
+    if (NS_FAILED(gfxInfo->GetFeatureStatus(
+            nsIGfxInfo::FEATURE_OVERLAY_VP_AUTO_HDR, failureId, &status))) {
+      allowOverlayVpAutoHDR = false;
+    } else {
+      if (status != nsIGfxInfo::FEATURE_STATUS_OK) {
+        allowOverlayVpAutoHDR = false;
+      }
+    }
+  }
+
+  if (allowOverlayVpAutoHDR) {
+    gfxVars::SetWebRenderOverlayVpAutoHDR(true);
+  }
+
+  bool allowOverlayVpSuperResolution = false;
+  if (StaticPrefs::gfx_webrender_overlay_vp_super_resolution_AtStartup()) {
+    allowOverlayVpSuperResolution = true;
+
+    nsCString failureId;
+    int32_t status;
+    const nsCOMPtr<nsIGfxInfo> gfxInfo = components::GfxInfo::Service();
+    if (NS_FAILED(gfxInfo->GetFeatureStatus(
+            nsIGfxInfo::FEATURE_OVERLAY_VP_SUPER_RESOLUTION, failureId,
+            &status))) {
+      allowOverlayVpSuperResolution = false;
+    } else {
+      if (status != nsIGfxInfo::FEATURE_STATUS_OK) {
+        allowOverlayVpSuperResolution = false;
+      }
+    }
+  }
+
+  if (allowOverlayVpSuperResolution) {
+    gfxVars::SetWebRenderOverlayVpSuperResolution(true);
+  }
 
   if (gfxConfig::IsEnabled(Feature::WEBRENDER_COMPOSITOR)) {
     gfxVars::SetUseWebRenderCompositor(true);
@@ -2979,6 +3063,8 @@ void gfxPlatform::InitWebGLConfig() {
       IsFeatureOk(nsIGfxInfo::FEATURE_WEBGL_OPENGL));
   gfxVars::SetAllowWebglAccelAngle(
       IsFeatureOk(nsIGfxInfo::FEATURE_WEBGL_ANGLE));
+  gfxVars::SetWebglUseHardware(
+      IsFeatureOk(nsIGfxInfo::FEATURE_WEBGL_USE_HARDWARE));
 
   if (kIsMacOS) {
     // Avoid crash for Intel HD Graphics 3000 on OSX. (Bug 1413269)
@@ -3029,7 +3115,7 @@ void gfxPlatform::InitWebGLConfig() {
   gfxVars::SetUseCanvasRenderThread(feature.IsEnabled());
 
   bool webglOopAsyncPresentForceSync =
-      !gfxVars::UseCanvasRenderThread() ||
+      (threadsafeGL && !gfxVars::UseCanvasRenderThread()) ||
       StaticPrefs::webgl_out_of_process_async_present_force_sync();
   gfxVars::SetWebglOopAsyncPresentForceSync(webglOopAsyncPresentForceSync);
 
@@ -3076,7 +3162,8 @@ void gfxPlatform::InitWebGPUConfig() {
   if (!IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_WEBGPU, &message, failureId)) {
     if (StaticPrefs::gfx_webgpu_ignore_blocklist_AtStartup()) {
       feature.UserForceEnable(
-          "Ignoring blocklist entry because of gfx.webgpu.force-enabled:true.");
+          "Ignoring blocklist entry because gfx.webgpu.ignore-blocklist is "
+          "true.");
     }
 
     feature.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
@@ -3089,6 +3176,13 @@ void gfxPlatform::InitWebGPUConfig() {
 #endif
 
   gfxVars::SetAllowWebGPU(feature.IsEnabled());
+
+#if XP_WIN
+  if (IsWin10CreatorsUpdateOrLater() &&
+      StaticPrefs::dom_webgpu_allow_present_without_readback()) {
+    gfxVars::SetAllowWebGPUPresentWithoutReadback(true);
+  }
+#endif
 }
 
 #ifdef XP_WIN
@@ -3229,6 +3323,12 @@ static void AcceleratedCanvas2DPrefChangeCallback(const char*, void*) {
   if (!gfxPlatform::IsGfxInfoStatusOkay(
           nsIGfxInfo::FEATURE_ACCELERATED_CANVAS2D, &message, failureId)) {
     feature.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
+  }
+
+  if (StaticPrefs::gfx_canvas_remote_worker_threads_AtStartup() != 0) {
+    feature.ForceDisable(FeatureStatus::Failed,
+                         "Disabled with non-zero canvas worker threads",
+                         "FEATURE_FAILURE_DISABLE_BY_CANVAS_WORKER_THREADS"_ns);
   }
 
   gfxVars::SetUseAcceleratedCanvas2D(feature.IsEnabled());
@@ -3569,11 +3669,21 @@ void gfxPlatform::GetOverlayInfo(mozilla::widget::InfoObject& aObj) {
     MOZ_CRASH("Incomplete switch");
   };
 
-  nsPrintfCString value("NV12=%s YUV2=%s BGRA8=%s RGB10A2=%s",
-                        toString(mOverlayInfo.ref().mNv12Overlay),
-                        toString(mOverlayInfo.ref().mYuy2Overlay),
-                        toString(mOverlayInfo.ref().mBgra8Overlay),
-                        toString(mOverlayInfo.ref().mRgb10a2Overlay));
+  auto toStringBool = [](bool aSupported) -> const char* {
+    if (aSupported) {
+      return "Supported";
+    }
+    return "Not Supported";
+  };
+
+  nsPrintfCString value(
+      "NV12=%s YUV2=%s BGRA8=%s RGB10A2=%s VpSR=%s VpAutoHDR=%s",
+      toString(mOverlayInfo.ref().mNv12Overlay),
+      toString(mOverlayInfo.ref().mYuy2Overlay),
+      toString(mOverlayInfo.ref().mBgra8Overlay),
+      toString(mOverlayInfo.ref().mRgb10a2Overlay),
+      toStringBool(mOverlayInfo.ref().mSupportsVpSuperResolution),
+      toStringBool(mOverlayInfo.ref().mSupportsVpAutoHDR));
 
   aObj.DefineProperty("OverlaySupport", NS_ConvertUTF8toUTF16(value));
 }
@@ -3632,8 +3742,7 @@ uint32_t gfxPlatform::TargetFrameRate() {
 
 /* static */
 bool gfxPlatform::UseDesktopZoomingScrollbars() {
-  return StaticPrefs::apz_allow_zooming() &&
-         !StaticPrefs::apz_force_disable_desktop_zooming_scrollbars();
+  return StaticPrefs::apz_allow_zooming();
 }
 
 /*static*/
@@ -3679,22 +3788,19 @@ void gfxPlatform::NotifyCompositorCreated(LayersBackend aBackend) {
   mCompositorBackend = aBackend;
 
   if (XRE_IsParentProcess()) {
-    Telemetry::ScalarSet(
-        Telemetry::ScalarID::GFX_COMPOSITOR,
-        NS_ConvertUTF8toUTF16(GetLayersBackendName(mCompositorBackend)));
+    nsDependentCString compositor(GetLayersBackendName(mCompositorBackend));
+    mozilla::glean::gfx_status::compositor.Set(compositor);
 
     nsCString geckoVersion;
     nsCOMPtr<nsIXULAppInfo> app = do_GetService("@mozilla.org/xre/app-info;1");
     if (app) {
       app->GetVersion(geckoVersion);
     }
-    Telemetry::ScalarSet(Telemetry::ScalarID::GFX_LAST_COMPOSITOR_GECKO_VERSION,
-                         NS_ConvertASCIItoUTF16(geckoVersion));
+    mozilla::glean::gfx_status::last_compositor_gecko_version.Set(geckoVersion);
 
-    Telemetry::ScalarSet(
-        Telemetry::ScalarID::GFX_FEATURE_WEBRENDER,
-        NS_ConvertUTF8toUTF16(gfxConfig::GetFeature(gfx::Feature::WEBRENDER)
-                                  .GetStatusAndFailureIdString()));
+    mozilla::glean::gfx_feature::webrender.Set(
+        gfxConfig::GetFeature(gfx::Feature::WEBRENDER)
+            .GetStatusAndFailureIdString());
   }
 
   // Notify that we created a compositor, so telemetry can update.
@@ -3820,7 +3926,15 @@ bool gfxPlatform::FallbackFromAcceleration(FeatureStatus aStatus,
 
 /* static */
 void gfxPlatform::DisableGPUProcess() {
-  gfxVars::SetRemoteCanvasEnabled(false);
+  if (gfxVars::RemoteCanvasEnabled() &&
+      !StaticPrefs::gfx_canvas_remote_allow_in_parent_AtStartup()) {
+    gfxConfig::Disable(
+        Feature::REMOTE_CANVAS, FeatureStatus::UnavailableNoGpuProcess,
+        "Disabled by GPU process disabled",
+        "FEATURE_REMOTE_CANVAS_DISABLED_BY_GPU_PROCESS_DISABLED"_ns);
+    gfxVars::SetRemoteCanvasEnabled(false);
+  }
+
   if (kIsAndroid) {
     // On android, enable out-of-process WebGL only when GPU process exists.
     gfxVars::SetAllowWebglOop(false);
@@ -3832,29 +3946,38 @@ void gfxPlatform::DisableGPUProcess() {
   }
 
   RemoteTextureMap::Init();
-  if (gfxVars::UseCanvasRenderThread()) {
-    gfx::CanvasRenderThread::Start();
-  }
   // We need to initialize the parent process to prepare for WebRender if we
   // did not end up disabling it, despite losing the GPU process.
   wr::RenderThread::Start(GPUProcessManager::Get()->AllocateNamespace());
+  gfx::CanvasRenderThread::Start();
   image::ImageMemoryReporter::InitForWebRender();
 }
 
-void gfxPlatform::FetchAndImportContentDeviceData() {
+/* static */ void gfxPlatform::DisableRemoteCanvas() {
+  if (gfxVars::RemoteCanvasEnabled()) {
+    gfxConfig::ForceDisable(Feature::REMOTE_CANVAS, FeatureStatus::Failed,
+                            "Disabled by runtime error",
+                            "FEATURE_REMOTE_CANVAS_RUNTIME_ERROR"_ns);
+    gfxVars::SetRemoteCanvasEnabled(false);
+  }
+  if (gfxVars::UseAcceleratedCanvas2D()) {
+    gfxConfig::ForceDisable(Feature::ACCELERATED_CANVAS2D,
+                            FeatureStatus::Failed, "Disabled by runtime error",
+                            "FEATURE_ACCELERATED_CANVAS2D_RUNTIME_ERROR"_ns);
+    gfxVars::SetUseAcceleratedCanvas2D(false);
+  }
+}
+
+void gfxPlatform::ImportCachedContentDeviceData() {
   MOZ_ASSERT(XRE_IsContentProcess());
 
-  if (gContentDeviceInitData) {
-    ImportContentDeviceData(*gContentDeviceInitData);
+  // Import the content device data if we've got some waiting.
+  if (!gContentDeviceInitData) {
     return;
   }
 
-  mozilla::dom::ContentChild* cc = mozilla::dom::ContentChild::GetSingleton();
-
-  mozilla::gfx::ContentDeviceData data;
-  cc->SendGetGraphicsDeviceInitData(&data);
-
-  ImportContentDeviceData(data);
+  ImportContentDeviceData(*gContentDeviceInitData);
+  gContentDeviceInitData = nullptr;
 }
 
 void gfxPlatform::ImportContentDeviceData(
@@ -3863,7 +3986,12 @@ void gfxPlatform::ImportContentDeviceData(
 
   const DevicePrefs& prefs = aData.prefs();
   gfxConfig::Inherit(Feature::HW_COMPOSITING, prefs.hwCompositing());
-  gfxConfig::Inherit(Feature::OPENGL_COMPOSITING, prefs.oglCompositing());
+
+  // We don't inherit Feature::OPENGL_COMPOSITING here, because platforms
+  // will handle that (without imported data from the parent) in
+  // InitOpenGLConfig.
+
+  gCMSOutputProfileData = Some(aData.cmsOutputProfileData().Clone());
 }
 
 void gfxPlatform::BuildContentDeviceData(

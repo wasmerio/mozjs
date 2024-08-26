@@ -92,15 +92,7 @@ add_task(async function save_worthy_tabs_remote_final() {
   ok(browser.isRemoteBrowser, "browser is still remote");
 
   // Remove the tab before the update arrives.
-  let promise = promiseRemoveTabAndSessionState(tab);
-
-  // With SHIP, we'll do the final tab state update sooner than we did before.
-  if (!Services.appinfo.sessionHistoryInParent) {
-    // No tab state worth saving (that we know about yet).
-    ok(!isValueInClosedData(r), "closed tab not saved");
-  }
-
-  await promise;
+  await promiseRemoveTabAndSessionState(tab);
 
   // Turns out there is a tab state worth saving.
   ok(isValueInClosedData(r), "closed tab saved");
@@ -112,20 +104,12 @@ add_task(async function save_worthy_tabs_nonremote_final() {
   ok(browser.isRemoteBrowser, "browser is remote");
 
   // Replace about:blank with a non-remote entry.
-  BrowserTestUtils.loadURIString(browser, "about:robots");
+  BrowserTestUtils.startLoadingURIString(browser, "about:robots");
   await BrowserTestUtils.browserLoaded(browser);
   ok(!browser.isRemoteBrowser, "browser is not remote anymore");
 
   // Remove the tab before the update arrives.
-  let promise = promiseRemoveTabAndSessionState(tab);
-
-  // With SHIP, we'll do the final tab state update sooner than we did before.
-  if (!Services.appinfo.sessionHistoryInParent) {
-    // No tab state worth saving (that we know about yet).
-    ok(!isValueInClosedData(r), "closed tab not saved");
-  }
-
-  await promise;
+  await promiseRemoveTabAndSessionState(tab);
 
   // Turns out there is a tab state worth saving.
   ok(isValueInClosedData(r), "closed tab saved");
@@ -151,15 +135,7 @@ add_task(async function dont_save_empty_tabs_final() {
   await entryReplaced;
 
   // Remove the tab before the update arrives.
-  let promise = promiseRemoveTabAndSessionState(tab);
-
-  // With SHIP, we'll do the final tab state update sooner than we did before.
-  if (!Services.appinfo.sessionHistoryInParent) {
-    // Tab state deemed worth saving (yet).
-    ok(isValueInClosedData(r), "closed tab saved");
-  }
-
-  await promise;
+  await promiseRemoveTabAndSessionState(tab);
 
   // Turns out we don't want to save the tab state.
   ok(!isValueInClosedData(r), "closed tab not saved");

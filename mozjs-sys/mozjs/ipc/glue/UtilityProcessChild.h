@@ -63,7 +63,8 @@ class UtilityProcessChild final : public PUtilityProcessChild {
   mozilla::ipc::IPCResult RecvTestTelemetryProbes();
 
   mozilla::ipc::IPCResult RecvStartUtilityAudioDecoderService(
-      Endpoint<PUtilityAudioDecoderParent>&& aEndpoint);
+      Endpoint<PUtilityAudioDecoderParent>&& aEndpoint,
+      nsTArray<gfx::GfxVarUpdate>&& aUpdates);
 
   mozilla::ipc::IPCResult RecvStartJSOracleService(
       Endpoint<dom::PJSOracleChild>&& aEndpoint);
@@ -71,6 +72,9 @@ class UtilityProcessChild final : public PUtilityProcessChild {
 #if defined(XP_WIN)
   mozilla::ipc::IPCResult RecvStartWindowsUtilsService(
       Endpoint<PWindowsUtilsChild>&& aEndpoint);
+
+  mozilla::ipc::IPCResult RecvStartWinFileDialogService(
+      Endpoint<PWinFileDialogChild>&& aEndpoint);
 
   mozilla::ipc::IPCResult RecvGetUntrustedModulesData(
       GetUntrustedModulesDataResolver&& aResolver);

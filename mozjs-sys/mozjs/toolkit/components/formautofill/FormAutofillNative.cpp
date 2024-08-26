@@ -200,14 +200,16 @@ enum class CCExpYearParams : uint8_t {
 };
 
 struct AutofillParams {
-  EnumeratedArray<CCNumberParams, CCNumberParams::Count, double>
+  EnumeratedArray<CCNumberParams, double, size_t(CCNumberParams::Count)>
       mCCNumberParams;
-  EnumeratedArray<CCNameParams, CCNameParams::Count, double> mCCNameParams;
-  EnumeratedArray<CCTypeParams, CCTypeParams::Count, double> mCCTypeParams;
-  EnumeratedArray<CCExpParams, CCExpParams::Count, double> mCCExpParams;
-  EnumeratedArray<CCExpMonthParams, CCExpMonthParams::Count, double>
+  EnumeratedArray<CCNameParams, double, size_t(CCNameParams::Count)>
+      mCCNameParams;
+  EnumeratedArray<CCTypeParams, double, size_t(CCTypeParams::Count)>
+      mCCTypeParams;
+  EnumeratedArray<CCExpParams, double, size_t(CCExpParams::Count)> mCCExpParams;
+  EnumeratedArray<CCExpMonthParams, double, size_t(CCExpMonthParams::Count)>
       mCCExpMonthParams;
-  EnumeratedArray<CCExpYearParams, CCExpYearParams::Count, double>
+  EnumeratedArray<CCExpYearParams, double, size_t(CCExpYearParams::Count)>
       mCCExpYearParams;
 };
 
@@ -390,6 +392,7 @@ const Rule kCreditCardRules[] = {
     {RegexKey::CC_NAME,
      // Firefox-specific rules
      "account.*holder.*name"
+     "|^(credit[-\\s]?card|card).*name"
      // de-DE
      "|^(kredit)?(karten|konto)inhaber"
      "|^(name).*karte"
@@ -402,6 +405,8 @@ const Rule kCreditCardRules[] = {
      "|posiadacz.*karty"
      // es-ES
      "|nombre.*(titular|tarjeta)"
+     // nl-NL
+     "|naam.*op.*kaart"
      // Rules from Bitwarden
      "|cc-?name"
      "|card-?name"
@@ -432,6 +437,8 @@ const Rule kCreditCardRules[] = {
      "|numer.*karty"
      // es-ES
      "|(número|numero).*tarjeta"
+     // nl-NL
+     "|kaartnummer"
      // Rules from Bitwarden
      "|cc-?number"
      "|cc-?num"
@@ -662,13 +669,11 @@ class FormAutofillImpl {
   // Array contains regular expressions to match the corresponding
   // field. Ex, CC number, CC type, etc.
   using RegexStringArray =
-      EnumeratedArray<RegexKey, RegexKey::Count, nsCString>;
+      EnumeratedArray<RegexKey, nsCString, size_t(RegexKey::Count)>;
   RegexStringArray mRuleMap;
 
   // Array that holds RegexWrapper that created by regex::ffi::regex_new
-  using RegexWrapperArray =
-      EnumeratedArray<RegexKey, RegexKey::Count,
-                      RustRegex>;
+  using RegexWrapperArray = EnumeratedArray<RegexKey, RustRegex, size_t(RegexKey::Count)>;
   RegexWrapperArray mRegexes;
 };
 

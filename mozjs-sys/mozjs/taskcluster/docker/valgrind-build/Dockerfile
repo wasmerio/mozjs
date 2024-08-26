@@ -21,7 +21,6 @@ RUN apt-get update && apt-get install \
     libatk-bridge2.0-0-dbgsym \
     libatk1.0-0-dbgsym \
     libcairo2-dbgsym \
-    libdbus-glib-1-2-dbgsym \
     libdrm2-dbgsym \
     libffi8-dbgsym \
     libfontconfig1-dbgsym \
@@ -61,6 +60,8 @@ RUN apt-get update && apt-get install \
     valgrind-dbgsym \
     xvfb \
     zlib1g-dbgsym
+
+RUN /usr/local/sbin/clean_packages.sh $DOCKER_IMAGE_PACKAGES
 
 # %include taskcluster/docker/recipes/xvfb.sh
 COPY topsrcdir/taskcluster/docker/recipes/xvfb.sh /builds/worker/scripts/xvfb.sh

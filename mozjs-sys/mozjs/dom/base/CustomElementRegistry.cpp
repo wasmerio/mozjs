@@ -26,11 +26,12 @@
 #include "mozilla/UseCounter.h"
 #include "nsContentUtils.h"
 #include "nsHTMLTags.h"
+#include "nsInterfaceHashtable.h"
+#include "nsPIDOMWindow.h"
 #include "jsapi.h"
 #include "js/ForOfIterator.h"       // JS::ForOfIterator
 #include "js/PropertyAndElement.h"  // JS_GetProperty, JS_GetUCProperty
 #include "xpcprivate.h"
-#include "nsGlobalWindow.h"
 #include "nsNameSpaceManager.h"
 
 namespace mozilla::dom {
@@ -124,8 +125,7 @@ class CustomElementCallbackReaction final : public CustomElementReaction {
 
 size_t LifecycleCallbackArgs::SizeOfExcludingThis(
     MallocSizeOf aMallocSizeOf) const {
-  size_t n = mName.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
-  n += mOldValue.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
+  size_t n = mOldValue.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
   n += mNewValue.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
   n += mNamespaceURI.SizeOfExcludingThisIfUnshared(aMallocSizeOf);
   return n;
@@ -228,8 +228,8 @@ void CustomElementCallback::Call() {
       break;
     case ElementCallbackType::eAttributeChanged:
       static_cast<LifecycleAttributeChangedCallback*>(mCallback.get())
-          ->Call(mThisObject, mArgs.mName, mArgs.mOldValue, mArgs.mNewValue,
-                 mArgs.mNamespaceURI);
+          ->Call(mThisObject, nsDependentAtomString(mArgs.mName),
+                 mArgs.mOldValue, mArgs.mNewValue, mArgs.mNamespaceURI);
       break;
     case ElementCallbackType::eFormAssociated:
       static_cast<LifecycleFormAssociatedCallback*>(mCallback.get())
@@ -627,9 +627,7 @@ void CustomElementRegistry::EnqueueLifecycleCallback(
   }
 
   if (aType == ElementCallbackType::eAttributeChanged) {
-    RefPtr<nsAtom> attrName = NS_Atomize(aArgs.mName);
-    if (definition->mObservedAttributes.IsEmpty() ||
-        !definition->mObservedAttributes.Contains(attrName)) {
+    if (!definition->mObservedAttributes.Contains(aArgs.mName)) {
       return;
     }
   }
@@ -1133,7 +1131,8 @@ void CustomElementRegistry::Define(
                            /* Cancelable */ true, detail);
     event->SetTrusted(true);
 
-    AsyncEventDispatcher* dispatcher = new AsyncEventDispatcher(doc, event);
+    AsyncEventDispatcher* dispatcher =
+        new AsyncEventDispatcher(doc, event.forget());
     dispatcher->mOnlyChromeDispatch = ChromeOnlyDispatch::eYes;
 
     dispatcher->PostDOMEvent();
@@ -1156,7 +1155,15 @@ void CustomElementRegistry::SetElementCreationCallback(
   }
 
   RefPtr<CustomElementCreationCallback> callback = &aCallback;
-  mElementCreationCallbacks.InsertOrUpdate(nameAtom, std::move(callback));
+
+  if (mCandidatesMap.Contains(nameAtom)) {
+    mElementCreationCallbacksUpgradeCandidatesMap.GetOrInsertNew(nameAtom);
+    RefPtr<Runnable> runnable =
+        new RunCustomElementCreationCallback(this, nameAtom, callback);
+    nsContentUtils::AddScriptRunner(runnable.forget());
+  } else {
+    mElementCreationCallbacks.InsertOrUpdate(nameAtom, std::move(callback));
+  }
 }
 
 void CustomElementRegistry::Upgrade(nsINode& aRoot) {
@@ -1231,9 +1238,10 @@ already_AddRefed<Promise> CustomElementRegistry::WhenDefined(
   uint32_t nameSpaceID =
       doc ? doc->GetDefaultNamespaceID() : kNameSpaceID_XHTML;
   if (!nsContentUtils::IsCustomElementName(nameAtom, nameSpaceID)) {
-    return createPromise([](const RefPtr<Promise>& promise) {
-      promise->MaybeReject(NS_ERROR_DOM_SYNTAX_ERR);
-    });
+    aRv.ThrowSyntaxError(
+        nsPrintfCString("'%s' is not a valid custom element name",
+                        NS_ConvertUTF16toUTF8(aName).get()));
+    return nullptr;
   }
 
   if (CustomElementDefinition* definition =
@@ -1329,7 +1337,7 @@ void CustomElementRegistry::Upgrade(Element* aElement,
                                                            namespaceURI);
 
         LifecycleCallbackArgs args;
-        args.mName = nsDependentAtomString(attrName);
+        args.mName = attrName;
         args.mOldValue = VoidString();
         args.mNewValue = attrValue;
         args.mNamespaceURI =

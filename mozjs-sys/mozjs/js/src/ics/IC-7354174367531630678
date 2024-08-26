@@ -1,0 +1,1 @@
+GetProp, 1, 2, 5, JSVAL_TYPE_UNKNOWN, 24, STUBFIELD(WeakObject) STUBFIELD(JSObject) STUBFIELD(RawInt32) , LASTUSED(1) LASTUSED(3) , OP(GuardToObject) ID(0) OP(GuardSpecificObject) ID(0) OFFSET(0) OP(LoadObject) ID(1) OFFSET(1) OP(LoadDynamicSlotResult) ID(1) OFFSET(2) OP(ReturnFromIC)  

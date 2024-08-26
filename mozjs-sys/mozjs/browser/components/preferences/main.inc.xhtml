@@ -29,6 +29,20 @@
   <vbox id="startupPageBox">
     <checkbox id="browserRestoreSession"
               data-l10n-id="startup-restore-windows-and-tabs"/>
+#ifdef XP_WIN
+    <hbox id="windowsLaunchOnLoginBox" align="center" hidden="true">
+      <checkbox id="windowsLaunchOnLogin"
+                data-l10n-id="windows-launch-on-login"/>
+    </hbox>
+    <hbox id="windowsLaunchOnLoginDisabledBox" align="center" class="indent" hidden="true">
+      <hbox class="info-icon-container">
+        <html:img class="info-icon"/>
+      </hbox>
+      <html:div data-l10n-id="windows-launch-on-login-disabled">
+        <html:a id="windowsAutostartLink" class="text-link" data-l10n-name="startup-link" href="ms-settings:startupapps" target="_self" />
+      </html:div>
+    </hbox>
+#endif
   </vbox>
 
 #ifdef HAVE_SHELL_SERVICE
@@ -67,6 +81,14 @@
   </hbox>
 </groupbox>
 
+<groupbox id="dataBackupGroup" data-category="paneGeneral" hidden="true"
+          data-hidden-from-search="true">
+  <label><html:h2 data-l10n-id="settings-data-backup-header"/></label>
+  <hbox flex="1">
+    <html:backup-settings />
+  </hbox>
+</groupbox>
+
 <!-- Tab preferences -->
 <groupbox data-category="paneGeneral"
           hidden="true">
@@ -95,6 +117,9 @@
     <checkbox id="showTabsInTaskbar" data-l10n-id="show-tabs-in-taskbar"
               preference="browser.taskbar.previews.enable"/>
 #endif
+
+    <checkbox id="tabPreviewShowThumbnails" data-l10n-id="settings-tabs-show-image-in-preview"
+              preference="browser.tabs.hoverPreview.showThumbnails" hidden="true"/>
 
     <vbox id="browserContainersbox" hidden="true">
       <hbox id="browserContainersExtensionContent"
@@ -141,15 +166,11 @@
 <groupbox id="webAppearanceGroup" data-category="paneGeneral" hidden="true">
   <html:h2 data-l10n-id="preferences-web-appearance-header"/>
   <html:div id="webAppearanceSettings">
-    <description data-l10n-id="preferences-web-appearance-description"/>
-    <html:div id="web-appearance-override-warning" class="info-box-container">
-      <html:div class="info-icon-container">
-        <html:img class="info-icon"/>
-      </html:div>
-      <description data-l10n-id="preferences-web-appearance-override-warning">
-        <html:a class="text-link" data-l10n-name="colors-link" id="web-appearance-manage-colors-link" href="#"/>
-      </description>
-    </html:div>
+    <description class="description-deemphasized" data-l10n-id="preferences-web-appearance-description"/>
+    <html:moz-message-bar id="web-appearance-override-warning" data-l10n-id="preferences-web-appearance-override-warning2"
+        data-l10n-attrs="message">
+        <button slot="actions" class="accessory-button" data-l10n-id="preferences-colors-manage-button" id="web-appearance-manage-colors-button"/>
+    </html:moz-message-bar>
     <form xmlns="http://www.w3.org/1999/xhtml" id="web-appearance-chooser" autocomplete="off">
       <label class="web-appearance-choice" data-l10n-id="preferences-web-appearance-choice-tooltip-auto">
         <div class="web-appearance-choice-image-container"><img role="presentation" alt="" width="54" height="42" /></div>
@@ -198,7 +219,6 @@
               colors-text-header,
               colors-background,
               colors-use-system,
-              colors-underline-links,
               colors-links-header,
               colors-unvisited-links,
               colors-visited-links
@@ -299,14 +319,14 @@
 <!-- Zoom -->
 <groupbox id="zoomGroup" data-category="paneGeneral" hidden="true">
   <label><html:h2 data-l10n-id="preferences-zoom-header"/></label>
-
   <hbox id="zoomBox" align="center" hidden="true">
     <label control="defaultZoom" data-l10n-id="preferences-default-zoom"/>
     <menulist id="defaultZoom">
       <menupopup/>
     </menulist>
   </hbox>
-
+  <html:moz-message-bar id="text-zoom-override-warning" data-l10n-id="preferences-text-zoom-override-warning"
+    data-l10n-attrs="message" />
   <checkbox id="zoomText"
     data-l10n-id="preferences-zoom-text-only"/>
 
@@ -372,20 +392,20 @@
   <vbox id="translationsGroup" hidden="true" data-subcategory="translations">
     <label><html:h2 data-l10n-id="translations-manage-header"/></label>
     <hbox id="translations-manage-description" align="center">
-      <description flex="1" data-l10n-id="translations-manage-description"/>
-        <button id="translations-manage-settings-button"
-                is="highlightable-button"
-                class="accessory-button"
-                data-l10n-id="translations-manage-settings-button"/>
+      <description flex="1" data-l10n-id="translations-manage-intro-2"/>
+      <button id="translations-manage-settings-button"
+              is="highlightable-button"
+              class="accessory-button"
+              data-l10n-id="translations-manage-settings-button"/>
     </hbox>
     <vbox>
-      <html:div id="translations-manage-install-list" hidden="true">
+      <html:div id="translations-manage-install-list" hidden="true" tabindex="-1">
         <hbox class="translations-manage-language">
-          <label data-l10n-id="translations-manage-all-language"></label>
+          <label data-l10n-id="translations-manage-download-description"></label>
           <button id="translations-manage-install-all"
-                  data-l10n-id="translations-manage-language-download-button"></button>
+                  data-l10n-id="translations-manage-language-download-all-button"></button>
           <button id="translations-manage-delete-all"
-                  data-l10n-id="translations-manage-language-delete-button"></button>
+                  data-l10n-id="translations-manage-language-remove-all-button"></button>
         </hbox>
         <!-- The downloadable languages will be listed here. -->
       </html:div>
@@ -426,7 +446,7 @@
 
 <groupbox id="applicationsGroup" data-category="paneGeneral" hidden="true">
   <label><html:h2 data-l10n-id="applications-header"/></label>
-  <description data-l10n-id="applications-description"/>
+  <description class="description-deemphasized" data-l10n-id="applications-description"/>
   <search-textbox id="filter" flex="1"
                   data-l10n-id="applications-filter"
                   data-l10n-attrs="placeholder"
@@ -442,8 +462,8 @@
   </listheader>
   <richlistbox id="handlersView"
                preference="pref.downloads.disable_button.edit_actions"/>
-  <description id="handleNewFileTypesDesc"
-               data-l10n-id="applications-handle-new-file-types-description"/>
+  <label id="handleNewFileTypesDesc"
+         data-l10n-id="applications-handle-new-file-types-description"/>
   <radiogroup id="handleNewFileTypes"
               preference="browser.download.always_ask_before_handling_new_types">
     <radio id="saveForNewTypes"
@@ -480,12 +500,12 @@
 <groupbox id="updateApp" data-category="paneGeneral" hidden="true">
   <label class="search-header" hidden="true"><html:h2 data-l10n-id="update-application-title"/></label>
 
-  <label data-l10n-id="update-application-description"/>
+  <description class="description-deemphasized" data-l10n-id="update-application-description"/>
   <hbox align="center">
     <vbox flex="1">
-      <description id="updateAppInfo">
+      <html:span id="updateAppInfo">
         <html:a id="releasenotes" target="_blank" data-l10n-name="learn-more" class="learnMore text-link" hidden="true"/>
-      </description>
+      </html:span>
       <description id="distribution" class="text-blurb" hidden="true"/>
       <description id="distributionId" class="text-blurb" hidden="true"/>
     </vbox>
@@ -529,10 +549,10 @@
                 is="highlightable-button"
                 disabled="true"/>
       </hbox>
-      <hbox id="downloading" align="start" data-l10n-id="settings-update-downloading" data-l10n-args='{"transfer":""}'>
+      <description id="downloading" data-l10n-id="settings-update-downloading" data-l10n-args='{"transfer":""}'>
         <html:img class="update-throbber" data-l10n-name="icon"/>
         <label data-l10n-name="download-status"/>
-      </hbox>
+      </description>
       <hbox id="applying" align="start">
         <html:img class="update-throbber"/>
         <label data-l10n-id="update-applying"/>
@@ -546,7 +566,7 @@
                 is="highlightable-button"/>
       </hbox>
       <hbox id="policyDisabled" align="start">
-        <label data-l10n-id="update-adminDisabled"/>
+        <label data-l10n-id="update-policy-disabled"/>
         <button data-l10n-id="update-checkForUpdatesButton"
                 is="highlightable-button"
                 disabled="true"/>
@@ -605,7 +625,7 @@
 #endif
 
 #ifdef MOZ_UPDATER
-  <description id="updateAllowDescription" data-l10n-id="update-application-allow-description"></description>
+  <label id="updateAllowDescription" data-l10n-id="update-application-allow-description"></label>
   <vbox id="updateSettingsContainer" class="info-box-container">
     <radiogroup id="updateRadioGroup">
       <radio id="autoDesktop"
@@ -631,11 +651,6 @@
       </description>
     </hbox>
   </vbox>
-#ifdef MOZ_MAINTENANCE_SERVICE
-  <checkbox id="useService"
-            data-l10n-id="update-application-use-service"
-            preference="app.update.service.enabled"/>
-#endif
 #ifdef NIGHTLY_BUILD
   <checkbox id="showUpdatePrompts"
             data-l10n-id="update-application-suppress-prompts"
@@ -717,13 +732,20 @@
 #endif
 #ifdef XP_WIN
   <checkbox id="useOnScreenKeyboard"
-            hidden="true"
             data-l10n-id="browsing-use-onscreen-keyboard"
             preference="ui.osk.enabled"/>
 #endif
   <checkbox id="useCursorNavigation"
             data-l10n-id="browsing-use-cursor-navigation"
             preference="accessibility.browsewithcaret"/>
+#ifdef XP_MACOSX
+  <checkbox id="useFullKeyboardNavigation"
+            data-l10n-id="browsing-use-full-keyboard-navigation"
+            preference="accessibility.tabfocus" />
+#endif
+  <checkbox id="alwaysUnderlineLinks"
+            data-l10n-id="browsing-always-underline-links"
+            preference="layout.css.always_underline_links"/>
   <checkbox id="searchStartTyping"
             data-l10n-id="browsing-search-on-start-typing"
             preference="accessibility.typeaheadfind"/>
@@ -799,6 +821,7 @@
               connection-proxy-option-no.label,
               connection-proxy-option-auto.label,
               connection-proxy-option-system.label,
+              connection-proxy-option-wpad.label,
               connection-proxy-option-manual.label,
               connection-proxy-http,
               connection-proxy-https,

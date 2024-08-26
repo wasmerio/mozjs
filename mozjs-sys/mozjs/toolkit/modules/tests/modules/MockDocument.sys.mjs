@@ -40,7 +40,7 @@ export const MockDocument = {
     // Mock the document.location object so we can unit test without a frame. We use a proxy
     // instead of just assigning to the property since it's not configurable or writable.
     let document = new Proxy(aDoc, {
-      get(target, property, receiver) {
+      get(target, property) {
         // document.location is normally null when a document is outside of a "browsing context".
         // See https://html.spec.whatwg.org/#the-location-interface
         if (property == "location") {
@@ -59,10 +59,6 @@ export const MockDocument = {
   mockOwnerGlobalProperty(aElement) {
     Object.defineProperty(aElement, "ownerGlobal", {
       value: {
-        windowUtils: {
-          addManuallyManagedState() {},
-          removeManuallyManagedState() {},
-        },
         UIEvent: Event,
         Event,
       },

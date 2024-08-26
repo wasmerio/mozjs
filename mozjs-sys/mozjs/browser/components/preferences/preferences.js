@@ -7,6 +7,7 @@
 /* import-globals-from home.js */
 /* import-globals-from search.js */
 /* import-globals-from containers.js */
+/* import-globals-from translations.js */
 /* import-globals-from privacy.js */
 /* import-globals-from sync.js */
 /* import-globals-from experimental.js */
@@ -98,6 +99,7 @@ ChromeUtils.defineESModuleGetters(this, {
   OSKeyStore: "resource://gre/modules/OSKeyStore.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   QuickSuggest: "resource:///modules/QuickSuggest.sys.mjs",
+  Region: "resource://gre/modules/Region.sys.mjs",
   SelectionChangedMenulist:
     "resource:///modules/SelectionChangedMenulist.sys.mjs",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
@@ -106,18 +108,10 @@ ChromeUtils.defineESModuleGetters(this, {
   UIState: "resource://services-sync/UIState.sys.mjs",
   UpdateUtils: "resource://gre/modules/UpdateUtils.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
-  UrlbarProviderQuickActions:
-    "resource:///modules/UrlbarProviderQuickActions.sys.mjs",
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
 });
 
-XPCOMUtils.defineLazyModuleGetters(this, {
-  SelectionChangedMenulist: "resource:///modules/SelectionChangedMenulist.jsm",
-  SiteDataManager: "resource:///modules/SiteDataManager.jsm",
-  TransientPrefs: "resource:///modules/TransientPrefs.jsm",
-});
-
-XPCOMUtils.defineLazyGetter(this, "gSubDialog", function () {
+ChromeUtils.defineLazyGetter(this, "gSubDialog", function () {
   const { SubDialogManager } = ChromeUtils.importESModule(
     "resource://gre/modules/SubDialog.sys.mjs"
   );
@@ -208,6 +202,10 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
+
+  if (Services.prefs.getBoolPref("browser.translations.newSettingsUI.enable")) {
+    register_module("paneTranslations", gTranslationsPane);
+  }
   if (Services.prefs.getBoolPref("browser.preferences.experimental")) {
     // Set hidden based on previous load's hidden value.
     document.getElementById("category-experimental").hidden =
@@ -264,7 +262,7 @@ function init_all() {
         return;
       }
       let mainWindow = window.browsingContext.topChromeWindow;
-      mainWindow.BrowserOpenAddonsMgr();
+      mainWindow.BrowserAddonUI.openAddonsMgr();
     });
 
     document.dispatchEvent(
@@ -274,22 +272,6 @@ function init_all() {
       })
     );
   });
-}
-
-function telemetryBucketForCategory(category) {
-  category = category.toLowerCase();
-  switch (category) {
-    case "containers":
-    case "general":
-    case "home":
-    case "privacy":
-    case "search":
-    case "sync":
-    case "searchresults":
-      return category;
-    default:
-      return "unknown";
-  }
 }
 
 function onHashChange() {
@@ -418,6 +400,16 @@ async function gotoPref(
     aShowReason,
     category
   );
+
+  document.dispatchEvent(
+    new CustomEvent("paneshown", {
+      bubbles: true,
+      cancelable: true,
+      detail: {
+        category,
+      },
+    })
+  );
 }
 
 function search(aQuery, aAttribute) {
@@ -444,16 +436,6 @@ function search(aQuery, aAttribute) {
     }
     element.classList.remove("visually-hidden");
   }
-
-  let keysets = mainPrefPane.getElementsByTagName("keyset");
-  for (let element of keysets) {
-    let attributeValue = element.getAttribute(aAttribute);
-    if (attributeValue == aQuery) {
-      element.removeAttribute("disabled");
-    } else {
-      element.setAttribute("disabled", true);
-    }
-  }
 }
 
 async function spotlight(subcategory, category) {
@@ -468,7 +450,7 @@ async function spotlight(subcategory, category) {
   }
 }
 
-async function scrollAndHighlight(subcategory, category) {
+async function scrollAndHighlight(subcategory) {
   let element = document.querySelector(`[data-subcategory="${subcategory}"]`);
   if (!element) {
     return;
@@ -591,8 +573,9 @@ async function confirmRestartPrompt(
       break;
   }
 
-  let buttonIndex = Services.prompt.confirmEx(
-    window,
+  let button = await Services.prompt.asyncConfirmEx(
+    window.browsingContext,
+    Ci.nsIPrompt.MODAL_TYPE_CONTENT,
     title,
     msg,
     buttonFlags,
@@ -602,6 +585,8 @@ async function confirmRestartPrompt(
     null,
     {}
   );
+
+  let buttonIndex = button.get("buttonNumClicked");
 
   // If we have the second confirmation dialog for restart, see if the user
   // cancels out at that point.
@@ -636,7 +621,7 @@ async function ensureScrollPadding() {
   let stickyContainer = document.querySelector(".sticky-container");
   let height = await window.browsingContext.topChromeWindow
     .promiseDocumentFlushed(() => stickyContainer.clientHeight)
-    .catch(err => Cu.reportError); // Can reject if the window goes away.
+    .catch(() => Cu.reportError); // Can reject if the window goes away.
 
   // Make it a bit more, to ensure focus rectangles etc. don't get cut off.
   // This being 8px causes us to end up with 90px if the policies container

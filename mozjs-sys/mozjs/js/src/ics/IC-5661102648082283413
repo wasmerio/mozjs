@@ -1,0 +1,1 @@
+UnaryArith, 1, 2, 4, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(RawInt32) , LASTUSED(0) LASTUSED(2) , OP(GuardIsNull) ID(0) OP(LoadInt32Constant) OFFSET(0) ID(1) OP(LoadInt32Result) ID(1) OP(ReturnFromIC)  

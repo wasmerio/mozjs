@@ -6,7 +6,7 @@
 //!
 //! [images]: https://drafts.csswg.org/css-images/#image-values
 
-use crate::color::{mix::ColorInterpolationMethod, ColorSpace};
+use crate::color::mix::ColorInterpolationMethod;
 use crate::custom_properties;
 use crate::values::generics::position::PositionComponent;
 use crate::values::generics::Optional;
@@ -24,7 +24,7 @@ use style_traits::{CssWriter, ToCss};
     Clone, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue, ToResolvedValue, ToShmem,
 )]
 #[repr(C, u8)]
-pub enum GenericImage<G, MozImageRect, ImageUrl, Color, Percentage, Resolution> {
+pub enum GenericImage<G, ImageUrl, Color, Percentage, Resolution> {
     /// `none` variant.
     None,
     /// A `<url()>` image.
@@ -33,10 +33,6 @@ pub enum GenericImage<G, MozImageRect, ImageUrl, Color, Percentage, Resolution> 
     /// A `<gradient>` image.  Gradients are rather large, and not nearly as
     /// common as urls, so we box them here to keep the size of this enum sane.
     Gradient(Box<G>),
-    /// A `-moz-image-rect` image.  Also fairly large and rare.
-    // not cfg’ed out on non-Gecko to avoid `error[E0392]: parameter `MozImageRect` is never used`
-    // Instead we make MozImageRect an empty enum
-    Rect(Box<MozImageRect>),
 
     /// A `-moz-element(# <element-id>)`
     #[cfg(feature = "gecko")]
@@ -45,7 +41,7 @@ pub enum GenericImage<G, MozImageRect, ImageUrl, Color, Percentage, Resolution> 
 
     /// A paint worklet image.
     /// <https://drafts.css-houdini.org/css-paint-api/>
-    #[cfg(feature = "servo-layout-2013")]
+    #[cfg(feature = "servo")]
     PaintWorklet(PaintWorklet),
 
     /// A `<cross-fade()>` image. Storing this directly inside of
@@ -159,6 +155,21 @@ impl<I: style_traits::ToCss, R: style_traits::ToCss> ToCss for GenericImageSetIt
 pub use self::GenericImageSet as ImageSet;
 pub use self::GenericImageSetItem as ImageSetItem;
 
+/// State flags stored on each variant of a Gradient.
+#[derive(
+    Clone, Copy, Debug, Default, MallocSizeOf, PartialEq, ToComputedValue, ToResolvedValue, ToShmem,
+)]
+#[repr(C)]
+pub struct GradientFlags(u8);
+bitflags! {
+    impl GradientFlags: u8 {
+        /// Set if this is a repeating gradient.
+        const REPEATING = 1 << 0;
+        /// Set if the color interpolation method matches the default for the items.
+        const HAS_DEFAULT_COLOR_INTERPOLATION_METHOD = 1 << 1;
+    }
+}
+
 /// A CSS gradient.
 /// <https://drafts.csswg.org/css-images/#gradients>
 #[derive(Clone, Debug, MallocSizeOf, PartialEq, ToComputedValue, ToResolvedValue, ToShmem)]
@@ -181,8 +192,8 @@ pub enum GenericGradient<
         color_interpolation_method: ColorInterpolationMethod,
         /// The color stops and interpolation hints.
         items: crate::OwnedSlice<GenericGradientItem<Color, LengthPercentage>>,
-        /// True if this is a repeating gradient.
-        repeating: bool,
+        /// State flags for the gradient.
+        flags: GradientFlags,
         /// Compatibility mode.
         compat_mode: GradientCompatMode,
     },
@@ -196,8 +207,8 @@ pub enum GenericGradient<
         color_interpolation_method: ColorInterpolationMethod,
         /// The color stops and interpolation hints.
         items: crate::OwnedSlice<GenericGradientItem<Color, LengthPercentage>>,
-        /// True if this is a repeating gradient.
-        repeating: bool,
+        /// State flags for the gradient.
+        flags: GradientFlags,
         /// Compatibility mode.
         compat_mode: GradientCompatMode,
     },
@@ -211,8 +222,8 @@ pub enum GenericGradient<
         color_interpolation_method: ColorInterpolationMethod,
         /// The color stops and interpolation hints.
         items: crate::OwnedSlice<GenericGradientItem<Color, AngleOrPercentage>>,
-        /// True if this is a repeating gradient.
-        repeating: bool,
+        /// State flags for the gradient.
+        flags: GradientFlags,
     },
 }
 
@@ -380,46 +391,18 @@ impl ToCss for PaintWorklet {
     }
 }
 
-/// Values for `moz-image-rect`.
-///
-/// `-moz-image-rect(<uri>, top, right, bottom, left);`
-#[allow(missing_docs)]
-#[derive(
-    Clone,
-    Debug,
-    MallocSizeOf,
-    PartialEq,
-    SpecifiedValueInfo,
-    ToComputedValue,
-    ToCss,
-    ToResolvedValue,
-    ToShmem,
-)]
-#[css(comma, function = "-moz-image-rect")]
-#[repr(C)]
-pub struct GenericMozImageRect<NumberOrPercentage, MozImageRectUrl> {
-    pub url: MozImageRectUrl,
-    pub top: NumberOrPercentage,
-    pub right: NumberOrPercentage,
-    pub bottom: NumberOrPercentage,
-    pub left: NumberOrPercentage,
-}
-
-pub use self::GenericMozImageRect as MozImageRect;
-
-impl<G, R, U, C, P, Resolution> fmt::Debug for Image<G, R, U, C, P, Resolution>
+impl<G, U, C, P, Resolution> fmt::Debug for Image<G, U, C, P, Resolution>
 where
-    Image<G, R, U, C, P, Resolution>: ToCss,
+    Image<G, U, C, P, Resolution>: ToCss,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.to_css(&mut CssWriter::new(f))
     }
 }
 
-impl<G, R, U, C, P, Resolution> ToCss for Image<G, R, U, C, P, Resolution>
+impl<G, U, C, P, Resolution> ToCss for Image<G, U, C, P, Resolution>
 where
     G: ToCss,
-    R: ToCss,
     U: ToCss,
     C: ToCss,
     P: ToCss,
@@ -433,8 +416,7 @@ where
             Image::None => dest.write_str("none"),
             Image::Url(ref url) => url.to_css(dest),
             Image::Gradient(ref gradient) => gradient.to_css(dest),
-            Image::Rect(ref rect) => rect.to_css(dest),
-            #[cfg(feature = "servo-layout-2013")]
+            #[cfg(feature = "servo")]
             Image::PaintWorklet(ref paint_worklet) => paint_worklet.to_css(dest),
             #[cfg(feature = "gecko")]
             Image::Element(ref selector) => {
@@ -463,18 +445,22 @@ where
     where
         W: Write,
     {
-        let (compat_mode, repeating) = match *self {
+        let (compat_mode, repeating, has_default_color_interpolation_method) = match *self {
             Gradient::Linear {
-                compat_mode,
-                repeating,
-                ..
-            } => (compat_mode, repeating),
+                compat_mode, flags, ..
+            } |
             Gradient::Radial {
+                compat_mode, flags, ..
+            } => (
                 compat_mode,
-                repeating,
-                ..
-            } => (compat_mode, repeating),
-            Gradient::Conic { repeating, .. } => (GradientCompatMode::Modern, repeating),
+                flags.contains(GradientFlags::REPEATING),
+                flags.contains(GradientFlags::HAS_DEFAULT_COLOR_INTERPOLATION_METHOD),
+            ),
+            Gradient::Conic { flags, .. } => (
+                GradientCompatMode::Modern,
+                flags.contains(GradientFlags::REPEATING),
+                flags.contains(GradientFlags::HAS_DEFAULT_COLOR_INTERPOLATION_METHOD),
+            ),
         };
 
         match compat_mode {
@@ -501,7 +487,7 @@ where
                     direction.to_css(dest, compat_mode)?;
                     skip_comma = false;
                 }
-                if !matches!(color_interpolation_method.space, ColorSpace::Srgb) {
+                if !has_default_color_interpolation_method {
                     if !skip_comma {
                         dest.write_char(' ')?;
                     }
@@ -553,16 +539,15 @@ where
                         shape.to_css(dest)?;
                     }
                 }
-                let omit_color_interpolation_method =
-                    matches!(color_interpolation_method.space, ColorSpace::Srgb);
-                if !omit_color_interpolation_method {
+                if !has_default_color_interpolation_method {
                     if !omit_shape || !omit_position {
                         dest.write_char(' ')?;
                     }
                     color_interpolation_method.to_css(dest)?;
                 }
 
-                let mut skip_comma = omit_shape && omit_position && omit_color_interpolation_method;
+                let mut skip_comma =
+                    omit_shape && omit_position && has_default_color_interpolation_method;
                 for item in &**items {
                     if !skip_comma {
                         dest.write_str(", ")?;
@@ -574,6 +559,7 @@ where
             Gradient::Conic {
                 ref angle,
                 ref position,
+                ref color_interpolation_method,
                 ref items,
                 ..
             } => {
@@ -591,7 +577,14 @@ where
                     dest.write_str("at ")?;
                     position.to_css(dest)?;
                 }
-                let mut skip_comma = omit_angle && omit_position;
+                if !has_default_color_interpolation_method {
+                    if !omit_angle || !omit_position {
+                        dest.write_char(' ')?;
+                    }
+                    color_interpolation_method.to_css(dest)?;
+                }
+                let mut skip_comma =
+                    omit_angle && omit_position && has_default_color_interpolation_method;
                 for item in &**items {
                     if !skip_comma {
                         dest.write_str(", ")?;

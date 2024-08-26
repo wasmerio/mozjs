@@ -32,14 +32,16 @@ class HTMLEmbedElement final : public nsGenericHTMLElement,
     return IsRewrittenYoutubeEmbed() && GetBoolAttr(nsGkAtoms::allowfullscreen);
   }
 
-  // EventTarget
-  void AsyncEventRunning(AsyncEventDispatcher* aEvent) override;
+  // nsObjectLoadingContent
+  const Element* AsElement() const final { return this; }
 
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
-  void UnbindFromTree(bool aNullParent = true) override;
+  void UnbindFromTree(UnbindContext&) override;
 
-  bool IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
+  bool IsHTMLFocusable(IsFocusableFlags, bool* aIsFocusable,
                        int32_t* aTabIndex) override;
+
+  int32_t TabIndexDefault() override;
 
   bool ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                       const nsAString& aValue,
@@ -47,7 +49,6 @@ class HTMLEmbedElement final : public nsGenericHTMLElement,
                       nsAttrValue& aResult) override;
   nsMapRuleToAttributesFunc GetAttributeMappingFunction() const override;
   NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const override;
-  ElementState IntrinsicState() const override;
   void DestroyContent() override;
 
   // nsObjectLoadingContent
@@ -102,9 +103,6 @@ class HTMLEmbedElement final : public nsGenericHTMLElement,
   void StartObjectLoad(bool aNotify, bool aForceLoad);
 
  protected:
-  // Override for nsImageLoadingContent.
-  nsIContent* AsContent() override { return this; }
-
   void AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
                     const nsAttrValue* aValue, const nsAttrValue* aOldValue,
                     nsIPrincipal* aSubjectPrincipal, bool aNotify) override;

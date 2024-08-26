@@ -5,6 +5,7 @@
 /*---
 esid: sec-Intl.DurationFormat.prototype.formatToParts
 description:  Checks basic handling of formatToParts, using long, short,narrow and digital styles.
+includes: [testIntl.js]
 features: [Intl.DurationFormat]
 ---*/
 
@@ -39,33 +40,11 @@ const duration = {
 };
 
 const style = "short";
-const expected = [
-    { type: "integer", value: "7", unit: "hour" },
-    { type: "literal", value: " ", unit: "hour" },
-    { type: "unit", value: "hr", unit: "hour" },
-    { type: "literal", value: ", " },
-    { type: "integer", value: "8", unit: "minute" },
-    { type: "literal", value: " ", unit: "minute" },
-    { type: "unit", value: "min", unit: "minute" },
-    { type: "literal", value: ", " },
-    { type: "integer", value: "9", unit: "second" },
-    { type: "literal", value: " ", unit: "second" },
-    { type: "unit", value: "sec", unit: "second" },
-    { type: "literal", value: ", " },
-    { type: "integer", value: "123", unit: "millisecond" },
-    { type: "literal", value: " ", unit: "millisecond" },
-    { type: "unit", value: "msec", unit: "millisecond" },
-    { type: "literal", value: ", " },
-    { type: "integer", value: "456", unit: "microsecond" },
-    { type: "literal", value: " ", unit: "microsecond" },
-    { type: "unit", value: "μsec", unit: "microsecond" },
-    { type: "literal", value: " and " },
-    { type: "integer", value: "789", unit: "nanosecond" },
-    { type: "literal", value: " ", unit: "nanosecond" },
-    { type: "unit", value: "nsec", unit: "nanosecond" },
-  ];
 
-let df = new Intl.DurationFormat('en', { style });
+const df = new Intl.DurationFormat('en', { style });
+
+const expected = partitionDurationFormatPattern(df, duration);
+
 compare(df.formatToParts(duration), expected, `Using style : ${style}`);
 
 reportCompare(0, 0);

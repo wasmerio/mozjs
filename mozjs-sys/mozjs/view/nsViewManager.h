@@ -180,12 +180,8 @@ class nsViewManager final {
    * The view manager generates the appropriate dirty regions.
    * @param aView view to move
    * @param the new bounds relative to the current position
-   * @param RepaintExposedAreaOnly
-   *     if true Repaint only the expanded or contracted region,
-   *     if false Repaint the union of the old and new rectangles.
    */
-  void ResizeView(nsView* aView, const nsRect& aRect,
-                  bool aRepaintExposedAreaOnly = false);
+  void ResizeView(nsView* aView, const nsRect& aRect);
 
   /**
    * Set the visibility of a view. Hidden views have the effect of hiding
@@ -199,20 +195,6 @@ class nsViewManager final {
    * @param visible new visibility state
    */
   void SetViewVisibility(nsView* aView, ViewVisibility aVisible);
-
-  /**
-   * Set the z-index of a view. Positive z-indices mean that a view
-   * is above its parent in z-order. Negative z-indices mean that a
-   * view is below its parent.
-   * The view manager generates the appropriate dirty regions.
-   * @param aAutoZIndex indicate that the z-index of a view is "auto". An
-   *     "auto" z-index means that the view does not define a new stacking
-   *     context, which means that the z-indicies of the view's children are
-   *     relative to the view's siblings.
-   * @param aView view to change z depth of
-   * @param aZindex explicit z depth
-   */
-  void SetViewZIndex(nsView* aView, bool aAutoZIndex, int32_t aZindex);
 
   /**
    * Set whether the view "floats" above all other views,

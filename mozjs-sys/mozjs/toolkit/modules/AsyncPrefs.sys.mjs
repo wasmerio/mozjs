@@ -15,14 +15,31 @@ const kAllowedPrefs = new Set([
   "browser.contentblocking.report.hide_vpn_banner",
   "browser.contentblocking.report.show_mobile_app",
 
+  "browser.shopping.experience2023.optedIn",
+  "browser.shopping.experience2023.active",
+  "browser.shopping.experience2023.ads.userEnabled",
+  "browser.shopping.experience2023.autoOpen.enabled",
+  "browser.shopping.experience2023.autoOpen.userEnabled",
+  "browser.shopping.experience2023.showKeepSidebarClosedMessage",
+  "browser.shopping.experience2023.sidebarClosedCount",
+
   "narrate.rate",
   "narrate.voice",
 
   "reader.font_size",
   "reader.font_type",
+  "reader.font_weight",
   "reader.color_scheme",
   "reader.content_width",
   "reader.line_height",
+  "reader.text_alignment",
+  "reader.character_spacing",
+  "reader.word_spacing",
+  "reader.custom_colors.foreground",
+  "reader.custom_colors.background",
+  "reader.custom_colors.unvisited-links",
+  "reader.custom_colors.visited-links",
+  "reader.custom_colors.selection-highlight",
 
   "security.tls.version.enable-deprecated",
   "security.xfocsp.errorReporting.automatic",
@@ -95,7 +112,7 @@ export var AsyncPrefs = {
     return AsyncPrefsParent.set(pref, value);
   },
 
-  reset(pref, value) {
+  reset(pref) {
     if (kInChildProcess) {
       return ChromeUtils.domProcessChild.getActor("AsyncPrefs").reset(pref);
     }

@@ -15,11 +15,6 @@
 #include "nsCExternalHandlerService.h"
 #include "nsCOMPtr.h"
 #include <windows.h>
-
-#ifdef _WIN32_WINNT
-#  undef _WIN32_WINNT
-#endif
-#define _WIN32_WINNT 0x0600
 #include <shlobj.h>
 
 class nsMIMEInfoWin;
@@ -33,7 +28,6 @@ class nsOSHelperAppService : public nsExternalHelperAppService {
   // override nsIExternalProtocolService methods
   NS_IMETHOD OSProtocolHandlerExists(const char* aProtocolScheme,
                                      bool* aHandlerExists) override;
-  nsresult LoadUriInternal(nsIURI* aURL);
   NS_IMETHOD GetApplicationDescription(const nsACString& aScheme,
                                        nsAString& _retval) override;
 

@@ -267,7 +267,7 @@ bool TestJSWeakMapWithGrayUnmarking(MarkKeyOrDelegate markKey,
   // orderings.
   unsigned markOrderings = weakMapMarkColor == keyOrDelegateMarkColor ? 2 : 1;
 
-  JS_SetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking), 0);
+  JS::SetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking), 0);
 
   for (unsigned markOrder = 0; markOrder < markOrderings; markOrder++) {
     CHECK(CreateJSWeakMapObjects(&weakMap, &key, &value));
@@ -281,7 +281,7 @@ bool TestJSWeakMapWithGrayUnmarking(MarkKeyOrDelegate markKey,
     // Start an incremental GC and run until gray roots have been pushed onto
     // the mark stack.
     JS::PrepareForFullGC(cx);
-    js::SliceBudget budget(TimeBudget(1000000));
+    JS::SliceBudget budget(JS::TimeBudget(1000000));
     JS::StartIncrementalGC(cx, JS::GCOptions::Normal, JS::GCReason::DEBUG_GC,
                            budget);
     MOZ_ASSERT(cx->runtime()->gc.state() == gc::State::Sweep);
@@ -305,7 +305,7 @@ bool TestJSWeakMapWithGrayUnmarking(MarkKeyOrDelegate markKey,
     CHECK(value->color() == expectedValueColor);
   }
 
-  JS_UnsetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking));
+  JS::UnsetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking));
 
   return true;
 }
@@ -329,8 +329,9 @@ bool CreateJSWeakMapObjects(JSObject** weakMapOut, JSObject** keyOut,
   RootedObject weakMap(cx, JS::NewWeakMapObject(cx));
   CHECK(weakMap);
 
+  JS::RootedValue keyValue(cx, ObjectValue(*key));
   JS::RootedValue valueValue(cx, ObjectValue(*value));
-  CHECK(SetWeakMapEntry(cx, weakMap, key, valueValue));
+  CHECK(SetWeakMapEntry(cx, weakMap, keyValue, valueValue));
 
   *weakMapOut = weakMap;
   *keyOut = key;
@@ -396,7 +397,7 @@ bool TestInternalWeakMapWithGrayUnmarking(CellColor keyMarkColor,
   // orderings.
   unsigned markOrderings = keyMarkColor == delegateMarkColor ? 2 : 1;
 
-  JS_SetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking), 0);
+  JS::SetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking), 0);
 
   for (unsigned markOrder = 0; markOrder < markOrderings; markOrder++) {
     CHECK(CreateInternalWeakMapObjects(&weakMap, &key, &value));
@@ -410,7 +411,7 @@ bool TestInternalWeakMapWithGrayUnmarking(CellColor keyMarkColor,
     // Start an incremental GC and run until gray roots have been pushed onto
     // the mark stack.
     JS::PrepareForFullGC(cx);
-    js::SliceBudget budget(TimeBudget(1000000));
+    JS::SliceBudget budget(JS::TimeBudget(1000000));
     JS::StartIncrementalGC(cx, JS::GCOptions::Normal, JS::GCReason::DEBUG_GC,
                            budget);
     MOZ_ASSERT(cx->runtime()->gc.state() == gc::State::Sweep);
@@ -434,7 +435,7 @@ bool TestInternalWeakMapWithGrayUnmarking(CellColor keyMarkColor,
     CHECK(value->color() == expectedColor);
   }
 
-  JS_UnsetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking));
+  JS::UnsetGCZeal(cx, uint8_t(ZealMode::YieldWhileGrayMarking));
 
   return true;
 }
@@ -502,7 +503,7 @@ bool TestCCWs() {
 
   JSRuntime* rt = cx->runtime();
   JS::PrepareForFullGC(cx);
-  js::SliceBudget budget(js::WorkBudget(1));
+  JS::SliceBudget budget(JS::WorkBudget(1));
   rt->gc.startDebugGC(JS::GCOptions::Normal, budget);
   while (rt->gc.state() == gc::State::Prepare) {
     rt->gc.debugGCSlice(budget);
@@ -530,7 +531,7 @@ bool TestCCWs() {
 
   // Incremental zone GC started: the source is now unmarked.
   JS::PrepareZoneForGC(cx, wrapper->zone());
-  budget = js::SliceBudget(js::WorkBudget(1));
+  budget = JS::SliceBudget(JS::WorkBudget(1));
   rt->gc.startDebugGC(JS::GCOptions::Normal, budget);
   while (rt->gc.state() == gc::State::Prepare) {
     rt->gc.debugGCSlice(budget);
@@ -663,7 +664,7 @@ void RemoveGrayRootTracer() {
   JS_SetGrayGCRootsTracer(cx, nullptr, nullptr);
 }
 
-static bool TraceGrayRoots(JSTracer* trc, SliceBudget& budget, void* data) {
+static bool TraceGrayRoots(JSTracer* trc, JS::SliceBudget& budget, void* data) {
   auto grayRoots = static_cast<GrayRoots*>(data);
   TraceEdge(trc, &grayRoots->grayRoot1, "gray root 1");
   TraceEdge(trc, &grayRoots->grayRoot2, "gray root 2");

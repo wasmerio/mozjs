@@ -24,7 +24,10 @@ const {
   ERRNO_INVALID_AUTH_TOKEN,
   ONLOGIN_NOTIFICATION,
   ONVERIFIED_NOTIFICATION,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
+  SCOPE_APP_SYNC,
+} = ChromeUtils.importESModule(
+  "resource://gre/modules/FxAccountsCommon.sys.mjs"
+);
 const { Service } = ChromeUtils.importESModule(
   "resource://services-sync/service.sys.mjs"
 );
@@ -35,9 +38,8 @@ const { TokenServerClient, TokenServerClientServerError } =
   ChromeUtils.importESModule(
     "resource://services-common/tokenserverclient.sys.mjs"
   );
-const { AccountState } = ChromeUtils.importESModule(
-  "resource://gre/modules/FxAccounts.sys.mjs"
-);
+const { AccountState, ERROR_INVALID_ACCOUNT_STATE } =
+  ChromeUtils.importESModule("resource://gre/modules/FxAccounts.sys.mjs");
 
 const SECOND_MS = 1000;
 const MINUTE_MS = SECOND_MS * 60;
@@ -65,8 +67,8 @@ MockFxAccountsClient.prototype = {
   },
   getScopedKeyData() {
     return Promise.resolve({
-      "https://identity.mozilla.com/apps/oldsync": {
-        identifier: "https://identity.mozilla.com/apps/oldsync",
+      [SCOPE_APP_SYNC]: {
+        identifier: SCOPE_APP_SYNC,
         keyRotationSecret:
           "0000000000000000000000000000000000000000000000000000000000000000",
         keyRotationTimestamp: 1234567890123,
@@ -190,8 +192,11 @@ add_task(async function test_initialializeWithAuthErrorAndDeletedAccount() {
 
   await Assert.rejects(
     syncAuthManager._ensureValidToken(),
-    AuthenticationError,
-    "should reject due to an auth error"
+    err => {
+      Assert.equal(err.message, ERROR_INVALID_ACCOUNT_STATE);
+      return true; // expected error
+    },
+    "should reject because the account was deleted"
   );
 
   Assert.ok(accessTokenWithSessionTokenCalled);
@@ -799,14 +804,11 @@ add_task(async function test_getKeysMissing() {
       storageManager.initialize(identityConfig.fxaccount.user);
       return new AccountState(storageManager);
     },
-    // And the keys object with a mock that returns no keys.
-    keys: {
-      getKeyForScope() {
-        return Promise.resolve(null);
-      },
-    },
   });
-
+  fxa.getOAuthTokenAndKey = () => {
+    // And the keys object with a mock that returns no keys.
+    return Promise.resolve({ key: null, token: "fake token" });
+  };
   syncAuthManager._fxaService = fxa;
 
   await Assert.rejects(
@@ -842,13 +844,11 @@ add_task(async function test_getKeysUnexpecedError() {
       storageManager.initialize(identityConfig.fxaccount.user);
       return new AccountState(storageManager);
     },
-    // And the keys object with a mock that returns no keys.
-    keys: {
-      async getKeyForScope() {
-        throw new Error("well that was unexpected");
-      },
-    },
   });
+
+  fxa.getOAuthTokenAndKey = () => {
+    return Promise.reject("well that was unexpected");
+  };
 
   syncAuthManager._fxaService = fxa;
 
@@ -1003,7 +1003,7 @@ function mockTokenServer(func) {
     requestLog.addAppender(new Log.DumpAppender());
     requestLog.level = Log.Level.Trace;
   }
-  function MockRESTRequest(url) {}
+  function MockRESTRequest() {}
   MockRESTRequest.prototype = {
     _log: requestLog,
     setHeader() {},

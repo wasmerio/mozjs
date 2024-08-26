@@ -222,6 +222,9 @@ class nsHttpConnectionInfo final : public ARefBase {
   void SetWebTransport(bool aWebTransport);
   bool GetWebTransport() const { return mWebTransport; }
 
+  void SetWebTransportId(uint64_t id);
+  uint32_t GetWebTransportId() const { return mWebTransportId; };
+
   const nsCString& GetNPNToken() { return mNPNToken; }
   const nsCString& GetUsername() { return mUsername; }
 
@@ -232,6 +235,9 @@ class nsHttpConnectionInfo final : public ARefBase {
 
   // Returns true when proxying over HTTP or HTTPS
   bool UsingHttpProxy() const { return mUsingHttpProxy || mUsingHttpsProxy; }
+
+  // Returns true when only proxying over HTTP
+  bool UsingOnlyHttpProxy() const { return mUsingHttpProxy; }
 
   // Returns true when proxying over HTTPS
   bool UsingHttpsProxy() const { return mUsingHttpsProxy; }
@@ -306,6 +312,9 @@ class nsHttpConnectionInfo final : public ARefBase {
 
   bool mHasIPHintAddress = false;
   nsCString mEchConfig;
+
+  uint64_t mWebTransportId = 0;  // current dedicated Id only used for
+                                 // Webtransport, zero means not dedicated
 
   // for RefPtr
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(nsHttpConnectionInfo, override)

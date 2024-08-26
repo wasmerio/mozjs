@@ -18,7 +18,7 @@ const TEST_SPACES = [" ", "\u3000", " \u3000", "\u3000 "];
 
 testEngine_setup();
 
-add_task(async function setup() {
+add_setup(async function () {
   registerCleanupFunction(async () => {
     Services.prefs.clearUserPref(QUICKACTIONS_PREF);
     Services.prefs.clearUserPref(SUGGEST_ENABLED_PREF);
@@ -40,7 +40,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}/`,
-        fallbackTitle: `http://${query}/`,
+        fallbackTitle: `${query}/`,
         heuristic: true,
       }),
       makeSearchResult(context, {
@@ -58,7 +58,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}/`,
-        fallbackTitle: `http://${query}/`,
+        fallbackTitle: `${query}/`,
         heuristic: true,
       }),
       makeSearchResult(context, {
@@ -76,7 +76,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}/`,
-        fallbackTitle: `http://${query}/`,
+        fallbackTitle: `${query}/`,
         heuristic: true,
       }),
       makeSearchResult(context, {
@@ -178,7 +178,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}`,
-        fallbackTitle: `http://${query}`,
+        fallbackTitle: `${query}`,
         iconUri: "page-icon:http://mozilla.org/",
         heuristic: true,
       }),
@@ -227,7 +227,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}/`,
-        fallbackTitle: `http://${query}/`,
+        fallbackTitle: `${query}/`,
         heuristic: true,
       }),
       makeSearchResult(context, {
@@ -245,7 +245,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}`,
-        fallbackTitle: `http://${query}`,
+        fallbackTitle: `${query}`,
         iconUri: "page-icon:http://firefox/",
         heuristic: true,
       }),
@@ -265,7 +265,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}`,
-        fallbackTitle: `http://${query}`,
+        fallbackTitle: `${query}`,
         iconUri: "page-icon:http://mozilla/",
         heuristic: true,
       }),
@@ -282,7 +282,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}/`,
-        fallbackTitle: `http://${query}/`,
+        fallbackTitle: `${query}/`,
         heuristic: true,
       }),
     ],
@@ -297,7 +297,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}/`,
-        fallbackTitle: `http://${query}/`,
+        fallbackTitle: `${query}/`,
         heuristic: true,
       }),
     ],
@@ -318,7 +318,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}/`,
-        fallbackTitle: `http://${query}/`,
+        fallbackTitle: `${query}/`,
         heuristic: true,
       }),
     ],
@@ -408,7 +408,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}/`,
-        fallbackTitle: `http://${query}/`,
+        fallbackTitle: `${query}/`,
         heuristic: true,
       }),
     ],
@@ -614,7 +614,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${query}/`,
-        fallbackTitle: `http://${query}/`,
+        fallbackTitle: `${query}/`,
         heuristic: true,
       }),
       makeSearchResult(context, {
@@ -650,7 +650,7 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: "http://user:pass@not-host/",
-        fallbackTitle: "http://user:pass@not-host/",
+        fallbackTitle: "user:pass@not-host/",
         heuristic: true,
       }),
     ],
@@ -665,12 +665,96 @@ add_task(async function () {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: "http://user@192.168.0.1/",
-        fallbackTitle: "http://user@192.168.0.1/",
+        fallbackTitle: "user@192.168.0.1/",
         heuristic: true,
       }),
       makeSearchResult(context, {
         heuristic: false,
         query,
+        engineName: SUGGESTIONS_ENGINE_NAME,
+      }),
+    ],
+  });
+
+  await PlacesUtils.history.clear();
+  // Check that punycode results are properly decoded before being displayed.
+  info("visit url, host matching visited host but not visited url");
+  await PlacesTestUtils.addVisits([
+    {
+      uri: Services.io.newURI("http://test.пример.com/"),
+      title: "test.пример.com",
+      transition: PlacesUtils.history.TRANSITION_TYPED,
+    },
+  ]);
+  context = createContext("test", { isPrivate: false });
+  await check_results({
+    context,
+    matches: [
+      makeVisitResult(context, {
+        source: UrlbarUtils.RESULT_SOURCE.HISTORY,
+        uri: `http://test.xn--e1afmkfd.com/`,
+        displayUrl: `test.пример.com`,
+        heuristic: true,
+        iconUri: "page-icon:http://test.xn--e1afmkfd.com/",
+      }),
+    ],
+  });
+  await PlacesUtils.history.clear();
+});
+
+add_task(async function dont_fixup_urls_with_at_symbol() {
+  info("don't fixup search string if it contains no protocol and spaces.");
+  let query = "Lorem Ipsum @mozilla.org";
+  let context = createContext(query, { isPrivate: false });
+  await check_results({
+    context,
+    matches: [
+      makeSearchResult(context, {
+        engineName: SUGGESTIONS_ENGINE_NAME,
+        heuristic: true,
+      }),
+    ],
+  });
+
+  query = "http://Lorem Ipsum @mozilla.org";
+  context = createContext(query, { isPrivate: false });
+  await check_results({
+    context,
+    matches: [
+      makeVisitResult(context, {
+        source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+        uri: `http://Lorem%20Ipsum%20@mozilla.org/`,
+        fallbackTitle: `${query}/`,
+        heuristic: true,
+      }),
+    ],
+  });
+  query = "https://Lorem Ipsum @mozilla.org";
+  context = createContext(query, { isPrivate: false });
+  await check_results({
+    context,
+    matches: [
+      makeVisitResult(context, {
+        source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+        uri: `https://Lorem%20Ipsum%20@mozilla.org/`,
+        fallbackTitle: `${query}/`,
+        heuristic: true,
+      }),
+    ],
+  });
+
+  query = "LoremIpsum@mozilla.org";
+  context = createContext(query, { isPrivate: false });
+  await check_results({
+    context,
+    matches: [
+      makeVisitResult(context, {
+        source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
+        uri: `http://${query}/`,
+        fallbackTitle: `${query}/`,
+        heuristic: true,
+      }),
+      makeSearchResult(context, {
         engineName: SUGGESTIONS_ENGINE_NAME,
       }),
     ],

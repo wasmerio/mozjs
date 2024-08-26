@@ -12,10 +12,14 @@ export class ParserDispatcher extends WorkerDispatcher {
   }
 
   findOutOfScopeLocations = this.task("findOutOfScopeLocations");
+  findBestMatchExpression = this.task("findBestMatchExpression");
 
   getScopes = this.task("getScopes");
 
   getSymbols = this.task("getSymbols");
+  getFunctionSymbols = this.task("getFunctionSymbols");
+  getClassSymbols = this.task("getClassSymbols");
+  getClosestFunctionName = this.task("getClosestFunctionName");
 
   async setSource(sourceId, content) {
     const astSource = {
@@ -27,8 +31,6 @@ export class ParserDispatcher extends WorkerDispatcher {
 
     return this.invoke("setSource", astSource);
   }
-
-  hasSyntaxError = this.task("hasSyntaxError");
 
   mapExpression = this.task("mapExpression");
 

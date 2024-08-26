@@ -109,6 +109,12 @@ this.test = class extends ExtensionAPI {
           return pids[0];
         },
 
+        async waitForContentTransformsReceived(tabId) {
+          return getActorForTab(tabId).sendQuery(
+            "WaitForContentTransformsReceived"
+          );
+        },
+
         async getAllBrowserPids() {
           const pids = [];
           const processes = ChromeUtils.getAllDOMProcesses();
@@ -222,6 +228,27 @@ this.test = class extends ExtensionAPI {
           return actor.receiveMessage({
             name: "CookieBanner::HandledBanner",
           });
+        },
+
+        async triggerTranslationsOffer(tabId) {
+          const browser = context.extension.tabManager.get(tabId).browser;
+          const { CustomEvent } = browser.ownerGlobal;
+          return browser.dispatchEvent(
+            new CustomEvent("TranslationsParent:OfferTranslation", {
+              bubbles: true,
+            })
+          );
+        },
+
+        async triggerLanguageStateChange(tabId, languageState) {
+          const browser = context.extension.tabManager.get(tabId).browser;
+          const { CustomEvent } = browser.ownerGlobal;
+          return browser.dispatchEvent(
+            new CustomEvent("TranslationsParent:LanguageState", {
+              bubbles: true,
+              detail: languageState,
+            })
+          );
         },
       },
     };

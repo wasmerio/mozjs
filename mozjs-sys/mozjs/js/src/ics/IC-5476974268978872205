@@ -1,0 +1,1 @@
+Call, 1, 2, 7, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(5) LASTUSED(5) , OP(LoadArgumentDynamicSlot) ID(1) ID(0) BYTE(2) OP(GuardToObject) ID(1) OP(GuardClass) ID(1) GUARDCLASSKIND(JSFunction) OP(GuardFunctionHasNoJitEntry) ID(1) OP(GuardFunctionIsConstructor) ID(1) OP(CallNativeFunction) ID(1) ID(0) CALLFLAGS(33) UINT32(1) BOOL(0) OP(ReturnFromIC)  

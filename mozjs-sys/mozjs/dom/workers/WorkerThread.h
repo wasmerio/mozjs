@@ -25,9 +25,6 @@ namespace dom {
 
 class WorkerRunnable;
 class WorkerPrivate;
-template <class>
-class WorkerPrivateParent;
-
 namespace workerinternals {
 class RuntimeService;
 }
@@ -38,7 +35,6 @@ class RuntimeService;
 class WorkerThreadFriendKey {
   friend class workerinternals::RuntimeService;
   friend class WorkerPrivate;
-  friend class WorkerPrivateParent<WorkerPrivate>;
 
   WorkerThreadFriendKey();
   ~WorkerThreadFriendKey();
@@ -76,6 +72,13 @@ class WorkerThread final : public nsThread {
   void SetWorker(const WorkerThreadFriendKey& aKey,
                  WorkerPrivate* aWorkerPrivate);
 
+  // This method is used to decouple the connection with the WorkerPrivate which
+  // is set in SetWorker(). And it also clears all pending runnables on this
+  // WorkerThread.
+  // After decoupling, WorkerThreadRunnable can not run on this WorkerThread
+  // anymore, since WorkerPrivate is invalid.
+  void ClearEventQueueAndWorker(const WorkerThreadFriendKey& aKey);
+
   nsresult DispatchPrimaryRunnable(const WorkerThreadFriendKey& aKey,
                                    already_AddRefed<nsIRunnable> aRunnable);
 
@@ -83,6 +86,11 @@ class WorkerThread final : public nsThread {
                              already_AddRefed<WorkerRunnable> aWorkerRunnable);
 
   uint32_t RecursionDepth(const WorkerThreadFriendKey& aKey) const;
+
+  // Override HasPendingEvents to allow HasPendingEvents could be accessed by
+  // the parent thread. WorkerPrivate::IsEligibleForCC calls this method on the
+  // parent thread to check if there is any pending events on the worker thread.
+  NS_IMETHOD HasPendingEvents(bool* aHasPendingEvents) override;
 
   NS_INLINE_DECL_REFCOUNTING_INHERITED(WorkerThread, nsThread)
 

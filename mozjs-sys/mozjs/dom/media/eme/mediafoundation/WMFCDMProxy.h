@@ -46,7 +46,7 @@ class WMFCDMProxy : public CDMProxy {
                    const nsAString& aSessionId) override;
 
   void SetServerCertificate(PromiseId aPromiseId,
-                            nsTArray<uint8_t>& aCert) override {}
+                            nsTArray<uint8_t>& aCert) override;
 
   void UpdateSession(const nsAString& aSessionId, PromiseId aPromiseId,
                      nsTArray<uint8_t>& aResponse) override;
@@ -100,7 +100,7 @@ class WMFCDMProxy : public CDMProxy {
   void OnKeyStatusesChange(const nsAString& aSessionId) override;
 
   void GetStatusForPolicy(PromiseId aPromiseId,
-                          const nsAString& aMinHdcpVersion) override {}
+                          const dom::HDCPVersion& aMinHdcpVersion) override;
 
 #ifdef DEBUG
   bool IsOnOwnerThread() override {
@@ -109,6 +109,8 @@ class WMFCDMProxy : public CDMProxy {
 #endif
 
   WMFCDMProxy* AsWMFCDMProxy() override { return this; }
+
+  bool IsHardwareDecryptionSupported() const override;
 
   // Can only be called after initialization succeeded.
   uint64_t GetCDMProxyId() const;
@@ -124,8 +126,13 @@ class WMFCDMProxy : public CDMProxy {
   // Reject promise with an InvalidStateError and the given message.
   void RejectPromiseWithStateError(PromiseId aId, const nsCString& aReason);
 
+  // For HDCP GetStatusForPolicy usage.
+  void ResolvePromiseWithKeyStatus(const PromiseId& aId,
+                                   const dom::MediaKeyStatus& aStatus);
+
   CopyableTArray<MFCDMMediaCapability> GenerateMFCDMMediaCapabilities(
-      const dom::Sequence<dom::MediaKeySystemMediaCapability>& aCapabilities);
+      const dom::Sequence<dom::MediaKeySystemMediaCapability>& aCapabilities,
+      const Maybe<nsString>& forcedRobustness = Nothing());
 
   RefPtr<WMFCDMImpl> mCDM;
 

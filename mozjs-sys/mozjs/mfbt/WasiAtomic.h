@@ -7,6 +7,8 @@
 #ifndef mozilla_WasiAtomic_h
 #define mozilla_WasiAtomic_h
 
+#include <cstddef>  // For _LIBCPP_VERSION and ptrdiff_t
+
 // Clang >= 14 supports <atomic> for wasm targets.
 #if _LIBCPP_VERSION >= 14000
 #  include <atomic>

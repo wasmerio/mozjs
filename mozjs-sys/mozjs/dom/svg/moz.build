@@ -7,7 +7,7 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "SVG")
 
-MOCHITEST_MANIFESTS += ["test/mochitest.ini"]
+MOCHITEST_MANIFESTS += ["test/mochitest.toml"]
 
 EXPORTS.mozilla += [
     "SVGAnimatedClass.h",
@@ -79,6 +79,7 @@ EXPORTS.mozilla.dom += [
     "SVGMPathElement.h",
     "SVGPathData.h",
     "SVGPathElement.h",
+    "SVGPathSegUtils.h",
     "SVGPatternElement.h",
     "SVGPolygonElement.h",
     "SVGPolylineElement.h",
@@ -122,8 +123,6 @@ UNIFIED_SOURCES += [
     "DOMSVGLengthList.cpp",
     "DOMSVGNumber.cpp",
     "DOMSVGNumberList.cpp",
-    "DOMSVGPathSeg.cpp",
-    "DOMSVGPathSegList.cpp",
     "DOMSVGPoint.cpp",
     "DOMSVGPointList.cpp",
     "DOMSVGStringList.cpp",
@@ -199,6 +198,7 @@ UNIFIED_SOURCES += [
     "SVGLength.cpp",
     "SVGLengthList.cpp",
     "SVGLengthListSMILType.cpp",
+    "SVGLengthSMILType.cpp",
     "SVGLineElement.cpp",
     "SVGMarkerElement.cpp",
     "SVGMaskElement.cpp",

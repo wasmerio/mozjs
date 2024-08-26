@@ -158,7 +158,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   PRIntervalTime SpdyPingTimeout() { return mSpdyPingTimeout; }
   bool AllowAltSvc() { return mEnableAltSvc; }
   bool AllowAltSvcOE() { return mEnableAltSvcOE; }
-  bool AllowOriginExtension() { return mEnableOriginExtension; }
   uint32_t ConnectTimeout() { return mConnectTimeout; }
   uint32_t TLSHandshakeTimeout() { return mTLSHandshakeTimeout; }
   uint32_t ParallelSpeculativeConnectLimit() {
@@ -375,7 +374,12 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
     NotifyObservers(chan, NS_DOCUMENT_ON_MODIFY_REQUEST_TOPIC);
   }
 
-  // Called by the channel before writing a request
+  // Called by the channel before calling onStopRequest
+  void OnBeforeStopRequest(nsIHttpChannel* chan) {
+    NotifyObservers(chan, NS_HTTP_ON_BEFORE_STOP_REQUEST_TOPIC);
+  }
+
+  // Called by the channel after calling onStopRequest
   void OnStopRequest(nsIHttpChannel* chan) {
     NotifyObservers(chan, NS_HTTP_ON_STOP_REQUEST_TOPIC);
   }
@@ -424,6 +428,9 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
                                                  int32_t port,
                                                  nsACString& hostLine);
 
+  static uint8_t UrgencyFromCoSFlags(uint32_t cos,
+                                     int32_t aSupportsPriority = 0);
+
   SpdyInformation* SpdyInfo() { return &mSpdyInfo; }
   bool IsH2MandatorySuiteEnabled() { return mH2MandatorySuiteEnabled; }
 
@@ -445,10 +452,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   uint32_t DefaultQpackTableSize() const { return mQpackTableSize; }
   uint16_t DefaultHttp3MaxBlockedStreams() const {
     return (uint16_t)mHttp3MaxBlockedStreams;
-  }
-
-  uint32_t MaxHttpResponseHeaderSize() const {
-    return mMaxHttpResponseHeaderSize;
   }
 
   const nsCString& Http3QlogDir();
@@ -481,8 +484,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
                                 bool aPrivateBrowsing,
                                 nsIInterfaceRequestor* aCallbacks,
                                 const OriginAttributes& aOriginAttributes);
-
-  bool UseHTTPSRRAsAltSvcEnabled() const;
 
   bool EchConfigEnabled(bool aIsHttp3 = false) const;
   // When EchConfig is enabled and all records with echConfig are failed, this
@@ -623,7 +624,7 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
 
   // cache support
   uint32_t mLastUniqueID;
-  uint32_t mSessionStartTime{0};
+  Atomic<uint32_t, Relaxed> mSessionStartTime{0};
 
   // useragent components
   nsCString mLegacyAppName{"Mozilla"};
@@ -663,7 +664,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
 
   uint32_t mEnableAltSvc : 1;
   uint32_t mEnableAltSvcOE : 1;
-  uint32_t mEnableOriginExtension : 1;
 
   // Try to use SPDY features instead of HTTP/1.1 over SSL
   SpdyInformation mSpdyInfo;
@@ -730,9 +730,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
 
   nsCString mHttp3QlogDir;
 
-  // The max size (in bytes) for received Http response header.
-  uint32_t mMaxHttpResponseHeaderSize{393216};
-
   // The ratio for dispatching transactions from the focused window.
   float mFocusedWindowTransactionRatio{0.9f};
 
@@ -784,8 +781,11 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   void ExcludeHttp2OrHttp3Internal(const nsHttpConnectionInfo* ci);
 
   // State for generating channelIds
-  uint32_t mProcessId{0};
+  uint64_t mUniqueProcessId{0};
   Atomic<uint32_t, Relaxed> mNextChannelId{1};
+
+  // ProcessId used for logging.
+  uint32_t mProcessId{0};
 
   // The last time any of the active tab page load optimization took place.
   // This is accessed on multiple threads, hence a lock is needed.

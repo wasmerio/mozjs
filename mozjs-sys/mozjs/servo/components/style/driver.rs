@@ -13,10 +13,7 @@ use crate::dom::{SendNode, TElement, TNode};
 use crate::parallel;
 use crate::scoped_tls::ScopedTLS;
 use crate::traversal::{DomTraversal, PerLevelTraversalData, PreTraverseToken};
-use rayon;
 use std::collections::VecDeque;
-use std::mem;
-use time;
 
 #[cfg(feature = "servo")]
 fn should_report_statistics() -> bool {
@@ -37,27 +34,41 @@ fn report_statistics(_stats: &PerThreadTraversalStatistics) {
 fn report_statistics(stats: &PerThreadTraversalStatistics) {
     // This should only be called in the main thread, or it may be racy
     // to update the statistics in a global variable.
-    debug_assert!(unsafe { crate::gecko_bindings::bindings::Gecko_IsMainThread() });
-    let gecko_stats =
-        unsafe { &mut crate::gecko_bindings::structs::ServoTraversalStatistics_sSingleton };
-    gecko_stats.mElementsTraversed += stats.elements_traversed;
-    gecko_stats.mElementsStyled += stats.elements_styled;
-    gecko_stats.mElementsMatched += stats.elements_matched;
-    gecko_stats.mStylesShared += stats.styles_shared;
-    gecko_stats.mStylesReused += stats.styles_reused;
+    unsafe {
+        debug_assert!(crate::gecko_bindings::bindings::Gecko_IsMainThread());
+        let gecko_stats = std::ptr::addr_of_mut!(
+            crate::gecko_bindings::structs::ServoTraversalStatistics_sSingleton
+        );
+        (*gecko_stats).mElementsTraversed += stats.elements_traversed;
+        (*gecko_stats).mElementsStyled += stats.elements_styled;
+        (*gecko_stats).mElementsMatched += stats.elements_matched;
+        (*gecko_stats).mStylesShared += stats.styles_shared;
+        (*gecko_stats).mStylesReused += stats.styles_reused;
+    }
 }
 
-fn with_pool_in_place_scope<'scope, R>(
+fn with_pool_in_place_scope<'scope>(
     work_unit_max: usize,
     pool: Option<&rayon::ThreadPool>,
-    closure: impl FnOnce(Option<&rayon::ScopeFifo<'scope>>) -> R,
-) -> R {
+    closure: impl FnOnce(Option<&rayon::ScopeFifo<'scope>>) + Send + 'scope,
+) {
     if work_unit_max == 0 || pool.is_none() {
-        closure(None)
+        closure(None);
     } else {
-        pool.unwrap().in_place_scope_fifo(|scope| {
-            closure(Some(scope))
-        })
+        let pool = pool.unwrap();
+        pool.in_place_scope_fifo(|scope| {
+            #[cfg(feature = "gecko")]
+            debug_assert_eq!(
+                pool.current_thread_index(),
+                Some(0),
+                "Main thread should be the first thread"
+            );
+            if cfg!(feature = "gecko") || pool.current_thread_index().is_some() {
+                closure(Some(scope));
+            } else {
+                scope.spawn_fifo(|scope| closure(Some(scope)));
+            }
+        });
     }
 }
 
@@ -106,41 +117,41 @@ where
     //     ThreadLocalStyleContext on the main thread. If the main thread
     //     ThreadLocalStyleContext has not released its TLS borrow by that point,
     //     we'll panic on double-borrow.
-    let mut scoped_tls = pool.map(ScopedTLS::<ThreadLocalStyleContext<E>>::new);
-    let mut tlc = ThreadLocalStyleContext::new();
-    let mut context = StyleContext {
-        shared: traversal.shared_context(),
-        thread_local: &mut tlc,
-    };
-
+    let mut scoped_tls = ScopedTLS::<ThreadLocalStyleContext<E>>::new(pool);
     // Process the nodes breadth-first. This helps keep similar traversal characteristics for the
     // style sharing cache.
     let work_unit_max = work_unit_max();
+
+    let send_root = unsafe { SendNode::new(root.as_node()) };
     with_pool_in_place_scope(work_unit_max, pool, |maybe_scope| {
+        let mut tlc = scoped_tls.ensure(parallel::create_thread_local_context);
+        let mut context = StyleContext {
+            shared: traversal.shared_context(),
+            thread_local: &mut tlc,
+        };
+
         let mut discovered = VecDeque::with_capacity(work_unit_max * 2);
-        discovered.push_back(unsafe { SendNode::new(root.as_node()) });
+        let current_dom_depth = send_root.depth();
+        let opaque_root = send_root.opaque();
+        discovered.push_back(send_root);
         parallel::style_trees(
             &mut context,
             discovered,
-            root.as_node().opaque(),
+            opaque_root,
             work_unit_max,
-            static_prefs::pref!("layout.css.stylo-local-work-queue.in-main-thread") as usize,
-            PerLevelTraversalData { current_dom_depth: root.depth() },
+            PerLevelTraversalData { current_dom_depth },
             maybe_scope,
             traversal,
-            scoped_tls.as_ref(),
+            &scoped_tls,
         );
     });
 
     // Collect statistics from thread-locals if requested.
     if dump_stats || report_stats {
-        let mut aggregate = mem::replace(&mut context.thread_local.statistics, Default::default());
-        let parallel = pool.is_some();
-        if let Some(ref mut tls) = scoped_tls {
-            for slot in tls.slots() {
-                if let Some(cx) = slot.get_mut() {
-                    aggregate += cx.statistics.clone();
-                }
+        let mut aggregate = PerThreadTraversalStatistics::default();
+        for slot in scoped_tls.slots() {
+            if let Some(cx) = slot.get_mut() {
+                aggregate += cx.statistics.clone();
             }
         }
 
@@ -149,6 +160,7 @@ where
         }
         // dump statistics to stdout if requested
         if dump_stats {
+            let parallel = pool.is_some();
             let stats =
                 TraversalStatistics::new(aggregate, traversal, parallel, start_time.unwrap());
             if stats.is_large {

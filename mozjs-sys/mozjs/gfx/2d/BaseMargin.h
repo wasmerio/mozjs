@@ -69,15 +69,15 @@ struct BaseMargin {
   BaseMargin(Coord aTop, Coord aRight, Coord aBottom, Coord aLeft)
       : top(aTop), right(aRight), bottom(aBottom), left(aLeft) {}
 
-  void SizeTo(T aTop, T aRight, T aBottom, T aLeft) {
+  void SizeTo(Coord aTop, Coord aRight, Coord aBottom, Coord aLeft) {
     top = aTop;
     right = aRight;
     bottom = aBottom;
     left = aLeft;
   }
 
-  T LeftRight() const { return left + right; }
-  T TopBottom() const { return top + bottom; }
+  Coord LeftRight() const { return left + right; }
+  Coord TopBottom() const { return top + bottom; }
 
   Coord& Side(SideT aSide) {
     // This is ugly!

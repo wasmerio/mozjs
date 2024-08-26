@@ -4,7 +4,6 @@
 
 import { PushDB } from "resource://gre/modules/PushDB.sys.mjs";
 import { PushRecord } from "resource://gre/modules/PushRecord.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 import { NetUtil } from "resource://gre/modules/NetUtil.sys.mjs";
 import { clearTimeout, setTimeout } from "resource://gre/modules/Timer.sys.mjs";
@@ -13,7 +12,7 @@ import { PushCrypto } from "resource://gre/modules/PushCrypto.sys.mjs";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "console", () => {
+ChromeUtils.defineLazyGetter(lazy, "console", () => {
   let { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
@@ -53,7 +52,7 @@ PushSubscriptionListener.prototype = {
     return this.QueryInterface(aIID);
   },
 
-  onStartRequest(aRequest) {
+  onStartRequest() {
     lazy.console.debug("PushSubscriptionListener: onStartRequest()");
     // We do not do anything here.
   },
@@ -175,7 +174,7 @@ var PushServiceDelete = function (resolve, reject) {
 };
 
 PushServiceDelete.prototype = {
-  onStartRequest(aRequest) {},
+  onStartRequest() {},
 
   onDataAvailable(aRequest, aStream, aOffset, aCount) {
     // Nobody should send data, but just to be sure, otherwise necko will
@@ -219,9 +218,9 @@ var SubscriptionListener = function (
 };
 
 SubscriptionListener.prototype = {
-  onStartRequest(aRequest) {},
+  onStartRequest() {},
 
-  onDataAvailable(aRequest, aStream, aOffset, aCount) {},
+  onDataAvailable() {},
 
   onStopRequest(aRequest, aStatus) {
     lazy.console.debug("SubscriptionListener: onStopRequest()");
@@ -419,12 +418,12 @@ export var PushServiceHttp2 = {
     return this._mainPushService !== null;
   },
 
-  async connect(broadcastListeners) {
+  async connect() {
     let subscriptions = await this._mainPushService.getAllUnexpired();
     this.startConnections(subscriptions);
   },
 
-  async sendSubscribeBroadcast(serviceId, version) {
+  async sendSubscribeBroadcast() {
     // Not implemented yet
   },
 
@@ -738,7 +737,7 @@ export var PushServiceHttp2 = {
               .catch(console.error);
           }
         },
-        error => {
+        () => {
           if (this._mainPushService) {
             this._mainPushService
               .dropRegistrationAndNotifyApp(aSubscriptionUri)

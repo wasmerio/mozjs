@@ -33,11 +33,22 @@ nsFirstLetterFrame* NS_NewFirstLetterFrame(PresShell* aPresShell,
       nsFirstLetterFrame(aStyle, aPresShell->GetPresContext());
 }
 
+nsFirstLetterFrame* NS_NewFloatingFirstLetterFrame(PresShell* aPresShell,
+                                                   ComputedStyle* aStyle) {
+  return new (aPresShell)
+      nsFloatingFirstLetterFrame(aStyle, aPresShell->GetPresContext());
+}
+
 NS_IMPL_FRAMEARENA_HELPERS(nsFirstLetterFrame)
 
 NS_QUERYFRAME_HEAD(nsFirstLetterFrame)
   NS_QUERYFRAME_ENTRY(nsFirstLetterFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsContainerFrame)
+
+NS_IMPL_FRAMEARENA_HELPERS(nsFloatingFirstLetterFrame)
+NS_QUERYFRAME_HEAD(nsFloatingFirstLetterFrame)
+  NS_QUERYFRAME_ENTRY(nsFloatingFirstLetterFrame)
+NS_QUERYFRAME_TAIL_INHERITING(nsFirstLetterFrame)
 
 #ifdef DEBUG_FRAME_DUMP
 nsresult nsFirstLetterFrame::GetFrameName(nsAString& aResult) const {
@@ -186,7 +197,6 @@ void nsFirstLetterFrame::Reflow(nsPresContext* aPresContext,
                                 nsReflowStatus& aReflowStatus) {
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsFirstLetterFrame");
-  DISPLAY_REFLOW(aPresContext, this, aReflowInput, aMetrics, aReflowStatus);
   MOZ_ASSERT(aReflowStatus.IsEmpty(),
              "Caller should pass a fresh reflow status!");
 
@@ -286,7 +296,7 @@ void nsFirstLetterFrame::Reflow(nsPresContext* aPresContext,
     aMetrics.ISize(lineWM) = ll->EndSpan(this) + bp.IStartEnd(wm);
     ll->SetInFirstLetter(false);
 
-    if (mComputedStyle->StyleTextReset()->mInitialLetterSize != 0.0f) {
+    if (mComputedStyle->StyleTextReset()->mInitialLetter.size != 0.0f) {
       aMetrics.SetBlockStartAscent(kidMetrics.BlockStartAscent() +
                                    bp.BStart(wm));
       aMetrics.BSize(lineWM) = kidMetrics.BSize(lineWM) + bp.BStartEnd(wm);
@@ -302,10 +312,11 @@ void nsFirstLetterFrame::Reflow(nsPresContext* aPresContext,
       if (aReflowInput.mLineLayout) {
         aReflowInput.mLineLayout->SetFirstLetterStyleOK(false);
       }
-      nsIFrame* kidNextInFlow = kid->GetNextInFlow();
-      if (kidNextInFlow) {
+      if (nsIFrame* kidNextInFlow = kid->GetNextInFlow()) {
+        DestroyContext context(PresShell());
         // Remove all of the childs next-in-flows
-        kidNextInFlow->GetParent()->DeleteNextInFlowChild(kidNextInFlow, true);
+        kidNextInFlow->GetParent()->DeleteNextInFlowChild(context,
+                                                          kidNextInFlow, true);
       }
     } else {
       // Create a continuation for the child frame if it doesn't already
@@ -357,13 +368,10 @@ void nsFirstLetterFrame::CreateContinuationForFloatingParent(
   // this frame's ComputedStyle's parent in the presence of ::first-line,
   // which we do want the continuation to inherit from.
   ComputedStyle* parentSC = parent->Style();
-  if (parentSC) {
-    RefPtr<ComputedStyle> newSC;
-    newSC =
-        presShell->StyleSet()->ResolveStyleForFirstLetterContinuation(parentSC);
-    continuation->SetComputedStyle(newSC);
-    nsLayoutUtils::MarkDescendantsDirty(continuation);
-  }
+  RefPtr<ComputedStyle> newSC =
+      presShell->StyleSet()->ResolveStyleForFirstLetterContinuation(parentSC);
+  continuation->SetComputedStyle(newSC);
+  nsLayoutUtils::MarkDescendantsDirty(continuation);
 
   // XXX Bidi may not be involved but we have to use the list name
   // FrameChildListID::NoReflowPrincipal because this is just like creating a
@@ -373,6 +381,47 @@ void nsFirstLetterFrame::CreateContinuationForFloatingParent(
                        nullptr, nsFrameList(continuation, continuation));
 
   *aContinuation = continuation;
+}
+
+nsTextFrame* nsFirstLetterFrame::CreateContinuationForFramesAfter(
+    nsTextFrame* aFrame) {
+  auto* presShell = PresShell();
+  auto* parent = GetParent();
+  auto* letterContinuation = static_cast<nsFirstLetterFrame*>(
+      presShell->FrameConstructor()->CreateContinuingFrame(this, parent, true));
+
+  parent->InsertFrames(FrameChildListID::NoReflowPrincipal, this, nullptr,
+                       nsFrameList(letterContinuation, letterContinuation));
+
+  nsTextFrame* next;
+  auto list = mFrames.TakeFramesAfter(aFrame);
+  if (list.NotEmpty()) {
+    // If we already have additional frames, just move them to the continuation.
+    next = static_cast<nsTextFrame*>(list.FirstChild());
+    for (auto* frame : list) {
+      frame->SetParent(letterContinuation);
+    }
+    letterContinuation->SetInitialChildList(FrameChildListID::Principal,
+                                            std::move(list));
+  } else {
+    // We don't have extra frames already, so create a new text continuation.
+    next = static_cast<nsTextFrame*>(
+        presShell->FrameConstructor()->CreateContinuingFrame(
+            aFrame, letterContinuation));
+    letterContinuation->SetInitialChildList(FrameChildListID::Principal,
+                                            nsFrameList(next, next));
+  }
+
+  // Update the computed style of the continuation text frame(s) that are
+  // no longer supposed to be first-letter style.
+  ComputedStyle* parentSC = letterContinuation->Style();
+  RefPtr<ComputedStyle> newSC =
+      presShell->StyleSet()->ResolveStyleForFirstLetterContinuation(parentSC);
+  for (auto* frame : letterContinuation->PrincipalChildList()) {
+    frame->SetComputedStyle(newSC);
+  }
+
+  return next;
 }
 
 void nsFirstLetterFrame::DrainOverflowFrames(nsPresContext* aPresContext) {
@@ -436,12 +485,12 @@ Maybe<nscoord> nsFirstLetterFrame::GetNaturalBaselineBOffset(
 
 LogicalSides nsFirstLetterFrame::GetLogicalSkipSides() const {
   if (GetPrevContinuation()) {
-    // We shouldn't get calls to GetSkipSides for later continuations since
-    // they have separate ComputedStyles with initial values for all the
-    // properties that could trigger a call to GetSkipSides.  Then again,
-    // it's not really an error to call GetSkipSides on any frame, so
+    // We shouldn't get calls to GetLogicalSkipSides for later continuations
+    // since they have separate ComputedStyles with initial values for all the
+    // properties that could trigger a call to GetLogicalSkipSides. Then again,
+    // it's not really an error to call GetLogicalSkipSides on any frame, so
     // that's why we handle it properly.
-    return LogicalSides(mWritingMode, eLogicalSideBitsAll);
+    return LogicalSides(mWritingMode, LogicalSides::All);
   }
   return LogicalSides(mWritingMode);  // first continuation displays all sides
 }

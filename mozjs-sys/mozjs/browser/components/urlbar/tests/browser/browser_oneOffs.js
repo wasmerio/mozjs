@@ -12,7 +12,7 @@ const TEST_ENGINE_BASENAME = "searchSuggestionEngine.xml";
 let gMaxResults;
 let engine;
 
-XPCOMUtils.defineLazyGetter(this, "oneOffSearchButtons", () => {
+ChromeUtils.defineLazyGetter(this, "oneOffSearchButtons", () => {
   return UrlbarTestUtils.getOneOffSearchButtons(window);
 });
 
@@ -21,7 +21,7 @@ add_setup(async function () {
 
   // Add a search suggestion engine and move it to the front so that it appears
   // as the first one-off.
-  engine = await SearchTestUtils.promiseNewSearchEngine({
+  engine = await SearchTestUtils.installOpenSearchEngine({
     url: getRootDirectory(gTestPath) + TEST_ENGINE_BASENAME,
   });
   await Services.search.moveEngine(engine, 0);
@@ -30,7 +30,6 @@ add_setup(async function () {
     set: [
       ["browser.search.separatePrivateDefault.ui.enabled", false],
       ["browser.urlbar.suggest.quickactions", false],
-      ["browser.urlbar.shortcuts.quickactions", true],
     ],
   });
 
@@ -141,7 +140,8 @@ add_task(async function topSites() {
   );
 
   // There's one top sites result, the page with a lot of visits from init.
-  let resultURL = "example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - 1);
+  let resultURL =
+    "http://example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - 1);
   Assert.equal(UrlbarTestUtils.getResultCount(window), 1, "Result count");
 
   Assert.equal(
@@ -218,10 +218,10 @@ add_task(async function editedView() {
     assertState(
       i + 1,
       -1,
-      "example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - i - 1)
+      "http://example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - i - 1)
     );
     Assert.ok(
-      !BrowserTestUtils.is_visible(heuristicResult.element.action),
+      !BrowserTestUtils.isVisible(heuristicResult.element.action),
       "The heuristic action should not be visible"
     );
   }
@@ -232,7 +232,7 @@ add_task(async function editedView() {
     EventUtils.synthesizeKey("KEY_ArrowDown");
     assertState(-1, i, typedValue);
     Assert.equal(
-      BrowserTestUtils.is_visible(heuristicResult.element.action),
+      BrowserTestUtils.isVisible(heuristicResult.element.action),
       !oneOffSearchButtons.selectedButton.classList.contains(
         "search-setting-button"
       ),
@@ -244,7 +244,7 @@ add_task(async function editedView() {
   EventUtils.synthesizeKey("KEY_ArrowDown");
   assertState(0, -1, typedValue);
   Assert.ok(
-    BrowserTestUtils.is_visible(heuristicResult.element.action),
+    BrowserTestUtils.isVisible(heuristicResult.element.action),
     "The heuristic action should be visible"
   );
 
@@ -254,7 +254,7 @@ add_task(async function editedView() {
     EventUtils.synthesizeKey("KEY_ArrowUp");
     assertState(-1, i, typedValue);
     Assert.equal(
-      BrowserTestUtils.is_visible(heuristicResult.element.action),
+      BrowserTestUtils.isVisible(heuristicResult.element.action),
       !oneOffSearchButtons.selectedButton.classList.contains(
         "search-setting-button"
       ),
@@ -268,10 +268,10 @@ add_task(async function editedView() {
     assertState(
       i + 1,
       -1,
-      "example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - i - 1)
+      "http://example.com/browser_urlbarOneOffs.js/?" + (gMaxResults - i - 1)
     );
     Assert.ok(
-      !BrowserTestUtils.is_visible(heuristicResult.element.action),
+      !BrowserTestUtils.isVisible(heuristicResult.element.action),
       "The heuristic action should not be visible"
     );
   }
@@ -280,7 +280,7 @@ add_task(async function editedView() {
   EventUtils.synthesizeKey("KEY_ArrowUp");
   assertState(0, -1, typedValue);
   Assert.ok(
-    BrowserTestUtils.is_visible(heuristicResult.element.action),
+    BrowserTestUtils.isVisible(heuristicResult.element.action),
     "The heuristic action should be visible"
   );
 
@@ -937,7 +937,7 @@ async function doLocalShortcutsShownTest() {
   await rebuildPromise;
 
   let buttons = oneOffSearchButtons.localButtons;
-  Assert.equal(buttons.length, 4, "Expected number of local shortcuts");
+  Assert.equal(buttons.length, 3, "Expected number of local shortcuts");
 
   let expectedSource;
   let seenIDs = new Set();
@@ -956,9 +956,6 @@ async function doLocalShortcutsShownTest() {
         break;
       case "urlbar-engine-one-off-item-history":
         expectedSource = UrlbarUtils.RESULT_SOURCE.HISTORY;
-        break;
-      case "urlbar-engine-one-off-item-actions":
-        expectedSource = UrlbarUtils.RESULT_SOURCE.ACTIONS;
         break;
       default:
         Assert.ok(false, `Unexpected local shortcut ID: ${button.id}`);

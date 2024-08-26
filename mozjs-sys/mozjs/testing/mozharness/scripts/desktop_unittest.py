@@ -12,7 +12,6 @@ author: Jordan Lund
 
 import copy
 import glob
-import imp
 import json
 import multiprocessing
 import os
@@ -25,6 +24,7 @@ from datetime import datetime, timedelta
 here = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(1, os.path.dirname(here))
 
+from mozfile import load_source
 from mozharness.base.errors import BaseErrorList
 from mozharness.base.log import INFO, WARNING
 from mozharness.base.script import PreScriptAction
@@ -216,6 +216,15 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
                 },
             ],
             [
+                ["--variant"],
+                {
+                    "action": "store",
+                    "dest": "variant",
+                    "default": "",
+                    "help": "specify a variant if mozharness needs to setup paths",
+                },
+            ],
+            [
                 ["--gpu-required"],
                 {
                     "action": "store_true",
@@ -262,7 +271,7 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
                     "action": "store_true",
                     "default": False,
                     "dest": "a11y_checks",
-                    "help": "Run tests with accessibility checks disabled.",
+                    "help": "Run tests with accessibility checks enabled.",
                 },
             ],
             [
@@ -340,6 +349,15 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
                     "help": "Whether to use the Http2 server",
                 },
             ],
+            [
+                ["--mochitest-flavor"],
+                {
+                    "action": "store",
+                    "dest": "mochitest_flavor",
+                    "help": "Specify which mochitest flavor to run."
+                    "Examples: 'plain', 'browser'",
+                },
+            ],
         ]
         + copy.deepcopy(testing_config_options)
         + copy.deepcopy(code_coverage_config_options)
@@ -376,6 +394,7 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
         self.binary_path = c.get("binary_path")
         self.abs_app_dir = None
         self.abs_res_dir = None
+        self.mochitest_flavor = c.get("mochitest_flavor", None)
 
         # Construct an identifier to be used to identify Perfherder data
         # for resource monitoring recording. This attempts to uniquely
@@ -527,10 +546,26 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
                 )
             )
 
-        for requirements_file in requirements_files:
-            self.register_virtualenv_module(
-                requirements=[requirements_file], two_pass=True
+        if (
+            self._query_specified_suites("mochitest", "mochitest-browser-a11y")
+            is not None
+            and sys.platform == "win32"
+        ):
+            # Only Windows a11y browser tests need this.
+            requirements_files.append(
+                os.path.join(
+                    dirs["abs_mochitest_dir"],
+                    "browser",
+                    "accessible",
+                    "tests",
+                    "browser",
+                    "windows",
+                    "a11y_setup_requirements.txt",
+                )
             )
+
+        for requirements_file in requirements_files:
+            self.register_virtualenv_module(requirements=[requirements_file])
 
         _python_interp = self.query_exe("python")
         if "win" in self.platform_name() and os.path.exists(_python_interp):
@@ -568,7 +603,10 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
         return self.symbols_url
 
     def _get_mozharness_test_paths(self, suite_category, suite):
+        # test_paths is the group name, confirm_paths can be the path+testname
+        # test_paths will always be the group name, unrelated to if confirm_paths is set or not.
         test_paths = json.loads(os.environ.get("MOZHARNESS_TEST_PATHS", '""'))
+        confirm_paths = json.loads(os.environ.get("MOZHARNESS_CONFIRM_PATHS", '""'))
 
         if "-coverage" in suite:
             suite = suite[: suite.index("-coverage")]
@@ -577,6 +615,8 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
             return None
 
         suite_test_paths = test_paths[suite]
+        if confirm_paths and suite in confirm_paths and confirm_paths[suite]:
+            suite_test_paths = confirm_paths[suite]
 
         if suite_category == "reftest":
             dirs = self.query_abs_dirs()
@@ -612,6 +652,9 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
                 "gtest_dir": os.path.join(dirs["abs_test_install_dir"], "gtest"),
             }
 
+            if self.mochitest_flavor:
+                str_format_values.update({"mochitest_flavor": self.mochitest_flavor})
+
             # TestingMixin._download_and_extract_symbols() will set
             # self.symbols_path when downloading/extracting.
             if self.symbols_path:
@@ -644,11 +687,17 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
             elif c["useHttp2Server"]:
                 base_cmd.append("--use-http2-server")
 
+            if c["restartAfterFailure"]:
+                base_cmd.append("--restart-after-failure")
+
             # Ignore chunking if we have user specified test paths
             if not (self.verify_enabled or self.per_test_coverage):
                 test_paths = self._get_mozharness_test_paths(suite_category, suite)
-                if test_paths:
-                    base_cmd.extend(test_paths)
+                if test_paths or c["test_tags"]:
+                    if test_paths:
+                        base_cmd.extend(test_paths)
+                    if c["test_tags"]:
+                        base_cmd.extend(["--tag={}".format(t) for t in c["test_tags"]])
                 elif c.get("total_chunks") and c.get("this_chunk"):
                     base_cmd.extend(
                         [
@@ -668,11 +717,17 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
                         "mochitest."
                     )
 
+            if c.get("mochitest_flavor", None):
+                base_cmd.append("--flavor={}".format(c["mochitest_flavor"]))
+
             if c["headless"]:
                 base_cmd.append("--headless")
 
             if c.get("threads"):
                 base_cmd.extend(["--threads", c["threads"]])
+
+            if c["variant"]:
+                base_cmd.append("--variant={}".format(c["variant"]))
 
             if c["enable_xorigin_tests"]:
                 base_cmd.append("--enable-xorigin-tests")
@@ -699,10 +754,6 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
 
             if c["conditioned_profile"]:
                 base_cmd.append("--conditioned-profile")
-
-            # Ensure the --tag flag and its params get passed along
-            if c["test_tags"]:
-                base_cmd.extend(["--tag={}".format(t) for t in c["test_tags"]])
 
             if suite_category not in c["suite_definitions"]:
                 self.fatal("'%s' not defined in the config!")
@@ -902,8 +953,17 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
 
             # All Linux systems need module-null-sink to be loaded, otherwise
             # media tests fail.
+
             self.run_command("pactl load-module module-null-sink")
-            self.run_command("pactl list modules short")
+            modules = self.get_output_from_command("pactl list modules short")
+            if not [l for l in modules.splitlines() if "module-x11" in l]:
+                # gnome-session isn't running, missing logind and other system services
+                # force the task to retry (return 4)
+                self.return_code = 4
+                self.fatal(
+                    "Unable to start PulseAudio and load x11 modules",
+                    exit_code=self.return_code,
+                )
 
     def stage_files(self):
         for category in SUITE_CATEGORIES:
@@ -959,6 +1019,8 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
             return
 
         self._stage_files(self.config["xpcshell_name"])
+        if "plugin_container_name" in self.config:
+            self._stage_files(self.config["plugin_container_name"])
         # http3server isn't built for Windows tests or Linux asan/tsan
         # builds. Only stage if the `http3server_name` config is set and if
         # the file actually exists.
@@ -1163,7 +1225,14 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
                     options_list = suites[suite]
                     tests_list = []
 
-                flavor = self._query_try_flavor(suite_category, suite)
+                flavor = (
+                    self.mochitest_flavor
+                    if self.mochitest_flavor
+                    else self._query_try_flavor(suite_category, suite)
+                )
+                if self.mochitest_flavor:
+                    replace_dict.update({"mochitest_flavor": flavor})
+
                 try_options, try_tests = self.try_args(flavor)
 
                 suite_name = suite_category + "-" + suite
@@ -1178,7 +1247,7 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin, CodeCoverageM
                 )
 
                 if suite_category == "reftest":
-                    ref_formatter = imp.load_source(
+                    ref_formatter = load_source(
                         "ReftestFormatter",
                         os.path.abspath(
                             os.path.join(dirs["abs_reftest_dir"], "output.py")

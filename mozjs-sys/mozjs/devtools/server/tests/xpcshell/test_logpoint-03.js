@@ -10,9 +10,9 @@
 const Resources = require("resource://devtools/server/actors/resources/index.js");
 
 add_task(
-  threadFrontTest(async ({ threadActor, threadFront, debuggee, client }) => {
+  threadFrontTest(async ({ threadActor, threadFront, debuggee }) => {
     let lastMessage, lastExpression;
-    const targetActor = threadActor._parent;
+    const { targetActor } = threadActor;
     // Only Workers are evaluating through the WebConsoleActor.
     // Tabs will be evaluating directly via the frame object.
     targetActor._consoleActor = {
@@ -24,11 +24,14 @@ add_task(
     // And then listen for resource RDP event.
     // Bug 1646677: But we should probably migrate this test to ResourceCommand so that
     // we don't have to hack the server side via Resource.watchResources call.
-    targetActor.on("resource-available-form", resources => {
-      if (resources[0].resourceType == Resources.TYPES.CONSOLE_MESSAGE) {
-        lastMessage = resources[0].message;
+    targetActor.on(
+      "resources-available-array",
+      ([[resourceType, resources]]) => {
+        if (resourceType == Resources.TYPES.CONSOLE_MESSAGE) {
+          lastMessage = resources[0];
+        }
       }
-    });
+    );
 
     // But both tabs and processes will be going through the ConsoleMessages module
     // We force watching for console message first,

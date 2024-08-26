@@ -15,7 +15,7 @@ Services.scriptloader.loadSubScript(
 );
 
 const SW_TAB_URL = URL_ROOT_SSL + "resources/service-workers/push-sw.html";
-const SW_URL = URL_ROOT_SSL + "resources/service-workers/push-sw.js";
+const SW_URL = URL_ROOT_SSL + "resources/service-workers/push-sw.worker.js";
 
 /**
  * Test that service workers appear and dissapear from the runtime page when they
@@ -45,8 +45,9 @@ add_task(async function () {
   await waitForServiceWorkerRunning(SW_URL, document);
 
   swPane = getDebugTargetPane("Service Workers", document);
-  ok(
-    swPane.querySelectorAll(".qa-debug-target-item").length === 1,
+  Assert.strictEqual(
+    swPane.querySelectorAll(".qa-debug-target-item").length,
+    1,
     "Service worker list has one element"
   );
   ok(

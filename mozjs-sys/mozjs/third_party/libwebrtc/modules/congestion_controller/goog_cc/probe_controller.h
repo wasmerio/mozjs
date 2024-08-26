@@ -13,16 +13,15 @@
 
 #include <stdint.h>
 
-#include <initializer_list>
 #include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/types/optional.h"
 #include "api/field_trials_view.h"
 #include "api/rtc_event_log/rtc_event_log.h"
-#include "api/transport/network_control.h"
 #include "api/transport/network_types.h"
 #include "api/units/data_rate.h"
+#include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
 #include "rtc_base/experiments/field_trial_parser.h"
 
@@ -43,6 +42,7 @@ struct ProbeControllerConfig {
   FieldTrialOptional<double> second_exponential_probe_scale;
   FieldTrialParameter<double> further_exponential_probe_scale;
   FieldTrialParameter<double> further_probe_threshold;
+  FieldTrialParameter<bool> abort_further_probe_if_max_lower_than_current;
 
   // Configures how often we send ALR probes and how big they are.
   FieldTrialParameter<TimeDelta> alr_probing_interval;
@@ -65,21 +65,16 @@ struct ProbeControllerConfig {
   FieldTrialParameter<bool> probe_on_max_allocated_bitrate_change;
   FieldTrialOptional<double> first_allocation_probe_scale;
   FieldTrialOptional<double> second_allocation_probe_scale;
-  FieldTrialFlag allocation_allow_further_probing;
-  FieldTrialParameter<DataRate> allocation_probe_max;
+  FieldTrialOptional<double> allocation_probe_limit_by_current_scale;
 
   // The minimum number probing packets used.
   FieldTrialParameter<int> min_probe_packets_sent;
   // The minimum probing duration.
   FieldTrialParameter<TimeDelta> min_probe_duration;
-  // Periodically probe when bandwidth estimate is loss limited.
-  FieldTrialParameter<bool> limit_probe_target_rate_to_loss_bwe;
   FieldTrialParameter<double> loss_limited_probe_scale;
   // Dont send a probe if min(estimate, network state estimate) is larger than
   // this fraction of the set max bitrate.
   FieldTrialParameter<double> skip_if_estimate_larger_than_fraction_of_max;
-  // Do not send probes if either overusing/underusing network or high rtt.
-  FieldTrialParameter<bool> not_probe_if_delay_increased;
 };
 
 // Reason that bandwidth estimate is limited. Bandwidth estimate can be limited
@@ -87,7 +82,7 @@ struct ProbeControllerConfig {
 // estimate.
 enum class BandwidthLimitedCause {
   kLossLimitedBweIncreasing = 0,
-  kLossLimitedBweDecreasing = 1,
+  kLossLimitedBwe = 1,
   kDelayBasedLimited = 2,
   kDelayBasedLimitedDelayIncreased = 3,
   kRttBasedBackOffHighRtt = 4
@@ -136,16 +131,12 @@ class ProbeController {
   void SetNetworkStateEstimate(webrtc::NetworkStateEstimate estimate);
 
   // Resets the ProbeController to a state equivalent to as if it was just
-  // created EXCEPT for `enable_periodic_alr_probing_`.
+  // created EXCEPT for `enable_periodic_alr_probing_` and
+  // `network_available_`.
   void Reset(Timestamp at_time);
 
   ABSL_MUST_USE_RESULT std::vector<ProbeClusterConfig> Process(
       Timestamp at_time);
-
-  // Gets the value of field trial not_probe_if_delay_increased.
-  bool DontProbeIfDelayIncreased() {
-    return config_.not_probe_if_delay_increased;
-  }
 
  private:
   enum class State {

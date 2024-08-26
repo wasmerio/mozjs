@@ -1,0 +1,1 @@
+Compare, 2, 2, 3, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(0) LASTUSED(1) , OP(GuardIsNull) ID(0) OP(CompareNullUndefinedResult) JSOP(Eq) BOOL(0) ID(1) OP(ReturnFromIC)  

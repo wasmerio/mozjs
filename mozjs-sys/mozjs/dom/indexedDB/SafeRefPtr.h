@@ -219,8 +219,7 @@ class MOZ_IS_REFPTR MOZ_TRIVIAL_ABI SafeRefPtr {
     aOther.mRawPtr = nullptr;
   }
   SafeRefPtr& operator=(SafeRefPtr&& aOther) noexcept {
-    assign_assuming_AddRef(aOther.mRawPtr);
-    aOther.mRawPtr = nullptr;
+    assign_assuming_AddRef(aOther.forget().take());
     return *this;
   }
 
@@ -298,8 +297,8 @@ template <typename T>
 class CheckedUnsafePtr;
 
 template <typename T>
-SafeRefPtr(const CheckedUnsafePtr<T>&, const AcquireStrongRefFromRawPtr&)
-    -> SafeRefPtr<T>;
+SafeRefPtr(const CheckedUnsafePtr<T>&,
+           const AcquireStrongRefFromRawPtr&) -> SafeRefPtr<T>;
 
 template <typename T>
 SafeRefPtr<T>::SafeRefPtr(T* aRawPtr, detail::InitialConstructionTag)

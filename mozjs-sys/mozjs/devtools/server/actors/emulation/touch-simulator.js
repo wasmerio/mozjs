@@ -175,7 +175,7 @@ class TouchSimulator {
     // (especially ignore mouse event being dispatched from a touch event)
     if (
       evt.button ||
-      evt.mozInputSource != evt.MOZ_SOURCE_MOUSE ||
+      evt.inputSource != evt.MOZ_SOURCE_MOUSE ||
       evt.isSynthesized
     ) {
       return;
@@ -260,8 +260,12 @@ class TouchSimulator {
 
   sendContextMenu({ target, clientX, clientY, screenX, screenY }) {
     const view = target.ownerGlobal;
-    const { MouseEvent } = view;
-    const evt = new MouseEvent("contextmenu", {
+    const ContextMenuEventConstructor = Services.prefs.getBoolPref(
+      "dom.w3c_pointer_events.dispatch_click_as_pointer_event"
+    )
+      ? view.PointerEvent
+      : view.MouseEvent;
+    const evt = new ContextMenuEventConstructor("contextmenu", {
       bubbles: true,
       cancelable: true,
       view,

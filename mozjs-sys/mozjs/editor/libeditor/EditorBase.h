@@ -38,7 +38,7 @@
 #include "nsLiteralString.h"         // for NS_LITERAL_STRING
 #include "nsPIDOMWindow.h"           // for nsPIDOMWindowInner, etc.
 #include "nsString.h"                // for nsCString
-#include "nsTArray.h"                // for nsTArray and nsAutoTArray
+#include "nsTArray.h"                // for nsTArray and AutoTArray
 #include "nsWeakReference.h"         // for nsSupportsWeakReference
 #include "nscore.h"                  // for nsresult, nsAString, etc.
 
@@ -130,8 +130,13 @@ class EditorBase : public nsIEditor,
    */
   explicit EditorBase(EditorType aEditorType);
 
-  bool IsInitialized() const { return !!mDocument; }
-  bool Destroyed() const { return mDidPreDestroy; }
+  [[nodiscard]] bool IsInitialized() const {
+    return mDocument && mDidPostCreate;
+  }
+  [[nodiscard]] bool IsBeingInitialized() const {
+    return mDocument && !mDidPostCreate;
+  }
+  [[nodiscard]] bool Destroyed() const { return mDidPreDestroy; }
 
   Document* GetDocument() const { return mDocument; }
   nsPIDOMWindowOuter* GetWindow() const;
@@ -195,6 +200,12 @@ class EditorBase : public nsIEditor,
     }
     return false;
   }
+
+  /**
+   * This checks whether the call with aPrincipal should or should not be
+   * treated as user input.
+   */
+  [[nodiscard]] static bool TreatAsUserInput(nsIPrincipal* aPrincipal);
 
   PresShell* GetPresShell() const;
   nsPresContext* GetPresContext() const;
@@ -772,6 +783,13 @@ class EditorBase : public nsIEditor,
       int32_t aClipboardType, DispatchPasteEvent aDispatchPasteEvent,
       nsIPrincipal* aPrincipal = nullptr);
 
+  /**
+   * Return true if `beforeinput` or `input` event is being dispatched.
+   */
+  [[nodiscard]] bool IsDispatchingInputEvent() const {
+    return mEditActionData && mEditActionData->IsDispatchingInputEvent();
+  }
+
  protected:  // May be used by friends.
   class AutoEditActionDataSetter;
 
@@ -849,8 +867,7 @@ class EditorBase : public nsIEditor,
     void WillDeleteContent(EditorBase& aEditorBase,
                            nsIContent& aRemovingContent);
     void DidSplitContent(EditorBase& aEditorBase, nsIContent& aSplitContent,
-                         nsIContent& aNewContent,
-                         SplitNodeDirection aSplitNodeDirection);
+                         nsIContent& aNewContent);
     void DidJoinContents(EditorBase& aEditorBase,
                          const EditorRawDOMPoint& aJoinedPoint);
     void DidInsertText(EditorBase& aEditorBase,
@@ -1007,7 +1024,7 @@ class EditorBase : public nsIEditor,
     }
 
     [[nodiscard]] bool IsDataAvailable() const {
-      return mSelection && mEditorBase.IsInitialized();
+      return mSelection && mEditorBase.mDocument;
     }
 
     /**
@@ -1206,6 +1223,7 @@ class EditorBase : public nsIEditor,
         case EditSubAction::eOutdent:
         case EditSubAction::eSetOrClearAlignment:
         case EditSubAction::eCreateOrRemoveBlock:
+        case EditSubAction::eFormatBlockForHTMLCommand:
         case EditSubAction::eMergeBlockContents:
         case EditSubAction::eRemoveList:
         case EditSubAction::eCreateOrChangeDefinitionListItem:
@@ -1284,6 +1302,19 @@ class EditorBase : public nsIEditor,
 
     void UpdateSelectionCache(Selection& aSelection);
 
+    bool IsDispatchingInputEvent() const {
+      return mDispatchingInputEvent ||
+             (mParentData && mParentData->IsDispatchingInputEvent());
+    }
+    void WillDispatchInputEvent() {
+      MOZ_ASSERT(!mDispatchingInputEvent);
+      mDispatchingInputEvent = true;
+    }
+    void DidDispatchInputEvent() {
+      MOZ_ASSERT(mDispatchingInputEvent);
+      mDispatchingInputEvent = false;
+    }
+
    private:
     bool IsBeforeInputEventEnabled() const;
 
@@ -1349,6 +1380,8 @@ class EditorBase : public nsIEditor,
           return false;
       }
     }
+
+    void MarkEditActionCanceled();
 
     EditorBase& mEditorBase;
     RefPtr<Selection> mSelection;
@@ -1427,6 +1460,8 @@ class EditorBase : public nsIEditor,
     // This is set before dispatching `input` event and notifying editor
     // observers.
     bool mHandled;
+    // Whether the editor is dispatching a `beforeinput` or `input` event.
+    bool mDispatchingInputEvent = false;
 
 #ifdef DEBUG
     mutable bool mHasCanHandleChecked = false;
@@ -1669,11 +1704,20 @@ class EditorBase : public nsIEditor,
    * @param aStringToInsert The string to insert.
    * @param aPointToInsert  The point to insert aStringToInsert.
    *                        Must be valid DOM point.
+   * @param aInsertTextTo   Whether forcibly creates a new `Text` node in
+   *                        specific condition or use existing `Text` if
+   *                        available.
    */
+  enum class InsertTextTo {
+    ExistingTextNodeIfAvailable,
+    ExistingTextNodeIfAvailableAndNotStart,
+    AlwaysCreateNewTextNode
+  };
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT virtual Result<InsertTextResult, nsresult>
   InsertTextWithTransaction(Document& aDocument,
                             const nsAString& aStringToInsert,
-                            const EditorDOMPoint& aPointToInsert);
+                            const EditorDOMPoint& aPointToInsert,
+                            InsertTextTo aInsertTextTo);
 
   /**
    * Insert aStringToInsert to aPointToInsert.
@@ -1731,6 +1775,19 @@ class EditorBase : public nsIEditor,
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT Result<CreateElementResult, nsresult>
   InsertPaddingBRElementForEmptyLastLineWithTransaction(
       const EditorDOMPoint& aPointToInsert);
+
+  enum class BRElementType {
+    Normal,
+    PaddingForEmptyEditor,
+    PaddingForEmptyLastLine
+  };
+  /**
+   * Updates the type of aBRElement.  If it will be hidden or shown from
+   * IMEContentObserver and ContentEventHandler points of view, this temporarily
+   * removes the node and reconnect to the same position.
+   */
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
+  UpdateBRElementType(dom::HTMLBRElement& aBRElement, BRElementType aNewType);
 
   /**
    * CloneAttributesWithTransaction() clones all attributes from
@@ -2374,7 +2431,7 @@ class EditorBase : public nsIEditor,
 
   virtual nsresult InstallEventListeners();
   virtual void CreateEventListeners();
-  virtual void RemoveEventListeners();
+  void RemoveEventListeners();
   [[nodiscard]] bool IsListeningToEvents() const;
 
   /**
@@ -2506,6 +2563,25 @@ class EditorBase : public nsIEditor,
   [[nodiscard]] MOZ_CAN_RUN_SCRIPT nsresult
   DeleteSelectionWithTransaction(nsIEditor::EDirection aDirectionAndAmount,
                                  nsIEditor::EStripWrappers aStripWrappers);
+
+  /**
+   * DeleteRangeWithTransaction() removes content in aRangeToDelete or content
+   * around collapsed aRangeToDelete with transactions and remove empty
+   * inclusive ancestor inline elements of the collapsed range after removing
+   * the contents.
+   *
+   * @param aDirectionAndAmount How much range should be removed.
+   * @param aStripWrappers      Whether the parent blocks should be removed
+   *                            when they become empty.
+   *                            Note that this must be `nsIEditor::eNoStrip`
+   *                            if this is a TextEditor because anyway it'll
+   *                            be ignored.
+   * @param aRangeToDelete     The range to delete content.
+   */
+  [[nodiscard]] MOZ_CAN_RUN_SCRIPT Result<CaretPoint, nsresult>
+  DeleteRangeWithTransaction(nsIEditor::EDirection aDirectionAndAmount,
+                             nsIEditor::EStripWrappers aStripWrappers,
+                             nsRange& aRangeToDelete);
 
   /**
    * DeleteRangesWithTransaction() removes content in aRangesToDelete or content

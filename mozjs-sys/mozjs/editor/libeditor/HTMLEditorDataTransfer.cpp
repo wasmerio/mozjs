@@ -433,8 +433,9 @@ class MOZ_STACK_CLASS
 HTMLBRElement*
 HTMLEditor::HTMLWithContextInserter::GetInvisibleBRElementAtPoint(
     const EditorDOMPoint& aPointToInsert) const {
-  WSRunScanner wsRunScannerAtInsertionPoint(mHTMLEditor.ComputeEditingHost(),
-                                            aPointToInsert);
+  WSRunScanner wsRunScannerAtInsertionPoint(
+      mHTMLEditor.ComputeEditingHost(), aPointToInsert,
+      BlockInlineCheck::UseComputedDisplayStyle);
   if (wsRunScannerAtInsertionPoint.EndsByInvisibleBRElement()) {
     return wsRunScannerAtInsertionPoint.EndReasonBRElementPtr();
   }
@@ -451,6 +452,7 @@ HTMLEditor::HTMLWithContextInserter::GetNewCaretPointAfterInsertingHTML(
   if (!HTMLEditUtils::IsTable(aLastInsertedPoint.GetChild())) {
     containerContent = HTMLEditUtils::GetLastLeafContent(
         *aLastInsertedPoint.GetChild(), {LeafNodeType::OnlyEditableLeafNode},
+        BlockInlineCheck::Unused,
         aLastInsertedPoint.GetChild()->GetAsElementOrParentElement());
     if (containerContent) {
       Element* mostDistantInclusiveAncestorTableElement = nullptr;
@@ -494,19 +496,21 @@ HTMLEditor::HTMLWithContextInserter::GetNewCaretPointAfterInsertingHTML(
   // Make sure we don't end up with selection collapsed after an invisible
   // `<br>` element.
   Element* editingHost = mHTMLEditor.ComputeEditingHost();
-  WSRunScanner wsRunScannerAtCaret(editingHost, pointToPutCaret);
+  WSRunScanner wsRunScannerAtCaret(editingHost, pointToPutCaret,
+                                   BlockInlineCheck::UseComputedDisplayStyle);
   if (wsRunScannerAtCaret
           .ScanPreviousVisibleNodeOrBlockBoundaryFrom(pointToPutCaret)
           .ReachedInvisibleBRElement()) {
     WSRunScanner wsRunScannerAtStartReason(
         editingHost,
-        EditorDOMPoint(wsRunScannerAtCaret.GetStartReasonContent()));
-    WSScanResult backwardScanFromPointToCaretResult =
+        EditorDOMPoint(wsRunScannerAtCaret.GetStartReasonContent()),
+        BlockInlineCheck::UseComputedDisplayStyle);
+    const WSScanResult backwardScanFromPointToCaretResult =
         wsRunScannerAtStartReason.ScanPreviousVisibleNodeOrBlockBoundaryFrom(
             pointToPutCaret);
     if (backwardScanFromPointToCaretResult.InVisibleOrCollapsibleCharacters()) {
-      pointToPutCaret =
-          backwardScanFromPointToCaretResult.Point<EditorDOMPoint>();
+      pointToPutCaret = backwardScanFromPointToCaretResult
+                            .PointAfterReachedContent<EditorDOMPoint>();
     } else if (backwardScanFromPointToCaretResult.ReachedSpecialContent()) {
       // XXX In my understanding, this is odd.  The end reason may not be
       //     same as the reached special content because the equality is
@@ -884,7 +888,8 @@ HTMLEditor::HTMLWithContextInserter::InsertContents(
       pointToInsert.IsInContentNode()
           ? HTMLEditUtils::GetInclusiveAncestorElement(
                 *pointToInsert.ContainerAs<nsIContent>(),
-                HTMLEditUtils::ClosestBlockElement)
+                HTMLEditUtils::ClosestBlockElement,
+                BlockInlineCheck::UseComputedDisplayOutsideStyle)
           : nullptr;
 
   EditorDOMPoint lastInsertedPoint;
@@ -986,7 +991,9 @@ HTMLEditor::HTMLWithContextInserter::InsertContents(
           //     is not proper child of the parent element, or current node
           //     is a list element.
           if (HTMLEditUtils::IsListItem(pointToInsert.GetContainer()) &&
-              HTMLEditUtils::IsEmptyNode(*pointToInsert.GetContainer())) {
+              HTMLEditUtils::IsEmptyNode(
+                  *pointToInsert.GetContainer(),
+                  {EmptyCheckOption::TreatNonEditableContentAsInvisible})) {
             NS_WARNING_ASSERTION(pointToInsert.GetContainerParent(),
                                  "Insertion point is out of the DOM tree");
             if (pointToInsert.GetContainerParent()) {
@@ -2316,7 +2323,12 @@ nsresult HTMLEditor::PasteInternal(int32_t aClipboardType) {
     return NS_ERROR_FAILURE;
   }
   // Get the Data from the clipboard
-  rv = clipboard->GetData(transferable, aClipboardType);
+  auto* windowContext = GetDocument()->GetWindowContext();
+  if (!windowContext) {
+    NS_WARNING("No window context");
+    return NS_ERROR_FAILURE;
+  }
+  rv = clipboard->GetData(transferable, aClipboardType, windowContext);
   if (NS_FAILED(rv)) {
     NS_WARNING("nsIClipboard::GetData() failed");
     return rv;
@@ -2350,7 +2362,8 @@ nsresult HTMLEditor::PasteInternal(int32_t aClipboardType) {
     NS_WARNING_ASSERTION(
         NS_SUCCEEDED(rvIgnored),
         "nsITransferable::AddDataFlavor(kHTMLContext) failed, but ignored");
-    rvIgnored = clipboard->GetData(contextTransferable, aClipboardType);
+    rvIgnored =
+        clipboard->GetData(contextTransferable, aClipboardType, windowContext);
     NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
                          "nsIClipboard::GetData() failed, but ignored");
     nsCOMPtr<nsISupports> contextDataObj;
@@ -2380,7 +2393,9 @@ nsresult HTMLEditor::PasteInternal(int32_t aClipboardType) {
     NS_WARNING_ASSERTION(
         NS_SUCCEEDED(rvIgnored),
         "nsITransferable::AddDataFlavor(kHTMLInfo) failed, but ignored");
-    clipboard->GetData(infoTransferable, aClipboardType);
+
+    rvIgnored =
+        clipboard->GetData(infoTransferable, aClipboardType, windowContext);
     NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
                          "nsIClipboard::GetData() failed, but ignored");
     nsCOMPtr<nsISupports> infoDataObj;
@@ -2546,6 +2561,11 @@ nsresult HTMLEditor::PasteNoFormattingAsAction(
     NS_WARNING("Editor didn't have document, but ignored");
     return NS_OK;
   }
+  auto* windowContext = GetDocument()->GetWindowContext();
+  if (!windowContext) {
+    NS_WARNING("Editor didn't have document window context, but ignored");
+    return NS_OK;
+  }
 
   Result<nsCOMPtr<nsITransferable>, nsresult> maybeTransferable =
       EditorUtils::CreateTransferableForPlainText(*GetDocument());
@@ -2566,7 +2586,7 @@ nsresult HTMLEditor::PasteNoFormattingAsAction(
   }
 
   // Get the Data from the clipboard
-  rv = clipboard->GetData(transferable, aClipboardType);
+  rv = clipboard->GetData(transferable, aClipboardType, windowContext);
   if (NS_FAILED(rv)) {
     NS_WARNING("nsIClipboard::GetData() failed");
     return rv;
@@ -2810,6 +2830,12 @@ nsresult HTMLEditor::PasteAsPlaintextQuotation(int32_t aSelectionType) {
   }
 
   RefPtr<Document> destdoc = GetDocument();
+  auto* windowContext = GetDocument()->GetWindowContext();
+  if (!windowContext) {
+    NS_WARNING("Editor didn't have document window context");
+    return NS_ERROR_FAILURE;
+  }
+
   nsILoadContext* loadContext = destdoc ? destdoc->GetLoadContext() : nullptr;
   DebugOnly<nsresult> rvIgnored = transferable->Init(loadContext);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
@@ -2822,7 +2848,7 @@ nsresult HTMLEditor::PasteAsPlaintextQuotation(int32_t aSelectionType) {
       "nsITransferable::AddDataFlavor(kTextMime) failed, but ignored");
 
   // Get the Data from the clipboard
-  rvIgnored = clipboard->GetData(transferable, aSelectionType);
+  rvIgnored = clipboard->GetData(transferable, aSelectionType, windowContext);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
                        "nsIClipboard::GetData() failed, but ignored");
 
@@ -3576,18 +3602,20 @@ void HTMLEditor::HTMLWithContextInserter::FragmentFromPasteCreator::
       //   insert empty list element.
       isEmptyNodeShouldNotInserted = HTMLEditUtils::IsEmptyNode(
           *child,
-          {// Although we don't check relation between list item element
-           // and parent list element, but it should not be a problem in the
-           // wild because appearing such invalid list element is an edge case
-           // and anyway HTMLEditor supports editing in them.
-           EmptyCheckOption::TreatListItemAsVisible,
-           // Ignore editable state because non-editable list item element
-           // may make the list element visible.  Although HTMLEditor does not
-           // support to edit list elements which have only non-editable list
-           // item elements, but it should be deleted from outside.
-           // TODO: Currently, HTMLEditor does not support deleting such list
-           //       element with Backspace.  We should fix this.
-           EmptyCheckOption::IgnoreEditableState});
+          {
+              // Although we don't check relation between list item element
+              // and parent list element, but it should not be a problem in the
+              // wild because appearing such invalid list element is an edge
+              // case and anyway HTMLEditor supports editing in them.
+              EmptyCheckOption::TreatListItemAsVisible,
+              // A non-editable list item element may make the list element
+              // visible.  Although HTMLEditor does not support to edit list
+              // elements which have only non-editable list item elements, but
+              // it should be deleted from outside.  Therefore, don't treat
+              // non-editable things as invisible.
+              // TODO: Currently, HTMLEditor does not support deleting such list
+              //       element with Backspace.  We should fix this issue.
+          });
     }
     // TODO: Perhaps, we should delete <table>s if they have no <td>/<th>
     //       element, or something other elements which must have specific

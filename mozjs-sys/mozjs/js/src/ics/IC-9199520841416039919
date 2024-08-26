@@ -1,0 +1,1 @@
+GetElem, 2, 2, 3, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(1) LASTUSED(1) , OP(GuardToObject) ID(0) OP(MegamorphicLoadSlotByValueResult) ID(0) ID(1) OP(ReturnFromIC)  

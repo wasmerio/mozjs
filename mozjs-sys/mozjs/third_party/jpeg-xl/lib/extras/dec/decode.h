@@ -8,11 +8,9 @@
 
 // Facade for image decoders (PNG, PNM, ...).
 
-#include <stddef.h>
-#include <stdint.h>
-
+#include <cstddef>
+#include <cstdint>
 #include <string>
-#include <vector>
 
 #include "lib/extras/dec/color_hints.h"
 #include "lib/jxl/base/span.h"
@@ -24,7 +22,7 @@ struct SizeConstraints;
 
 namespace extras {
 
-// Codecs supported by CodecInOut::Encode.
+// Codecs supported by DecodeBytes.
 enum class Codec : uint32_t {
   kUnknown,  // for CodecFromPath
   kPNG,
@@ -36,13 +34,14 @@ enum class Codec : uint32_t {
   kJXL
 };
 
-std::vector<Codec> AvailableCodecs();
+bool CanDecode(Codec codec);
+
+std::string ListOfDecodeCodecs();
 
 // If and only if extension is ".pfm", *bits_per_sample is updated to 32 so
 // that Encode() would encode to PFM instead of PPM.
-Codec CodecFromPath(std::string path,
+Codec CodecFromPath(const std::string& path,
                     size_t* JXL_RESTRICT bits_per_sample = nullptr,
-                    std::string* basename = nullptr,
                     std::string* extension = nullptr);
 
 // Decodes "bytes" info *ppf.

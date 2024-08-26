@@ -44,6 +44,7 @@ class InspectorUtils {
   static void GetCSSStyleRules(GlobalObject& aGlobal, Element& aElement,
                                const nsAString& aPseudo,
                                bool aIncludeVisitedStyle,
+                               bool aWithStartingStyle,
                                nsTArray<RefPtr<CSSStyleRule>>& aResult);
 
   /**
@@ -72,17 +73,20 @@ class InspectorUtils {
    */
   static uint32_t GetRelativeRuleLine(GlobalObject& aGlobal, css::Rule& aRule);
 
+  static void GetRuleIndex(GlobalObject& aGlobal, css::Rule& aRule,
+                           nsTArray<uint32_t>& aResult);
+
   static bool HasRulesModifiedByCSSOM(GlobalObject& aGlobal,
                                       StyleSheet& aSheet);
 
-  static void GetAllStyleSheetCSSStyleRules(
+  static void GetStyleSheetRuleCountAndAtRules(
       GlobalObject& aGlobal, StyleSheet& aSheet,
-      nsTArray<RefPtr<css::Rule>>& aResult);
+      InspectorStyleSheetRuleCountAndAtRulesResult& aResult);
 
   // Utilities for working with CSS properties
   //
   // Returns true if the string names a property that is inherited by default.
-  static bool IsInheritedProperty(GlobalObject& aGlobal,
+  static bool IsInheritedProperty(GlobalObject& aGlobal, Document& aDocument,
                                   const nsACString& aPropertyName);
 
   // Get a list of all our supported property names.  Optionally
@@ -104,7 +108,7 @@ class InspectorUtils {
 
   // Utilities for working with CSS colors
   static void RgbToColorName(GlobalObject& aGlobal, uint8_t aR, uint8_t aG,
-                             uint8_t aB, nsAString& aResult);
+                             uint8_t aB, nsACString& aResult);
 
   // Convert a given CSS color string to rgba. Returns null on failure or an
   // InspectorRGBATuple on success.
@@ -114,6 +118,11 @@ class InspectorUtils {
   static void ColorToRGBA(GlobalObject&, const nsACString& aColorString,
                           const Document*,
                           Nullable<InspectorRGBATuple>& aResult);
+
+  // Convert a given CSS color string to another color space.
+  static void ColorTo(GlobalObject&, const nsACString& aFromColor,
+                      const nsACString& aToColorSpace,
+                      Nullable<InspectorColorToResult>& aResult);
 
   // Check whether a given color is a valid CSS color.
   static bool IsValidCSSColor(GlobalObject& aGlobal,
@@ -206,24 +215,29 @@ class InspectorUtils {
    * Pseudo-elements which are only accepted in UA style sheets are
    * not included.
    */
-  static void GetCSSPseudoElementNames(GlobalObject& aGlobal,
+  static void GetCSSPseudoElementNames(GlobalObject&,
                                        nsTArray<nsString>& aResult);
 
   // pseudo-class style locking methods. aPseudoClass must be a valid
   // pseudo-class selector string, e.g. ":hover". ":any-link" and
   // non-event-state pseudo-classes are ignored. aEnabled sets whether the
   // psuedo-class should be locked to on or off.
-  static void AddPseudoClassLock(GlobalObject& aGlobal, Element& aElement,
+  static void AddPseudoClassLock(GlobalObject&, Element&,
                                  const nsAString& aPseudoClass, bool aEnabled);
-  static void RemovePseudoClassLock(GlobalObject& aGlobal, Element& aElement,
+  static void RemovePseudoClassLock(GlobalObject&, Element&,
                                     const nsAString& aPseudoClass);
-  static bool HasPseudoClassLock(GlobalObject& aGlobal, Element& aElement,
+  static bool HasPseudoClassLock(GlobalObject&, Element&,
                                  const nsAString& aPseudoClass);
-  static void ClearPseudoClassLocks(GlobalObject& aGlobal, Element& aElement);
+  static void ClearPseudoClassLocks(GlobalObject&, Element&);
 
-  static bool IsElementThemed(GlobalObject& aGlobal, Element& aElement);
+  static bool IsElementThemed(GlobalObject&, Element&);
+
+  static bool IsUsedColorSchemeDark(GlobalObject&, Element&);
 
   static Element* ContainingBlockOf(GlobalObject&, Element&);
+
+  static void GetBlockLineCounts(GlobalObject&, Element&,
+                                 Nullable<nsTArray<uint32_t>>& aResult);
 
   MOZ_CAN_RUN_SCRIPT
   static already_AddRefed<nsINodeList> GetOverflowingChildrenOfElement(
@@ -244,6 +258,40 @@ class InspectorUtils {
    */
   static bool IsCustomElementName(GlobalObject&, const nsAString& aName,
                                   const nsAString& aNamespaceURI);
+
+  /**
+   * Get the names of registered Highlights
+   */
+  static void GetRegisteredCssHighlights(GlobalObject& aGlobal,
+                                         Document& aDocument, bool aActiveOnly,
+                                         nsTArray<nsString>& aResult);
+  /**
+   * Get registered CSS properties (via CSS.registerProperty or @property)
+   */
+  static void GetCSSRegisteredProperties(
+      GlobalObject& aGlobal, Document& aDocument,
+      nsTArray<InspectorCSSPropertyDefinition>& aResult);
+
+  /**
+   * Returns whether or not a CSS property value is valid for the passed syntax
+   */
+  static bool ValueMatchesSyntax(GlobalObject&, Document& aDocument,
+                                 const nsACString& aValue,
+                                 const nsACString& aSyntax);
+
+  /**
+   * Get the rule body text within aInitialText
+   */
+  static void GetRuleBodyText(GlobalObject&, const nsACString& aInitialText,
+                              nsACString& aBodyText);
+
+  /**
+   * Replace the rule body text in aStyleSheetText at passed line and column
+   */
+  static void ReplaceBlockRuleBodyTextInStylesheet(
+      GlobalObject&, const nsACString& aStyleSheetText, uint32_t aLine,
+      uint32_t aColumn, const nsACString& aNewBodyText,
+      nsACString& aNewStyleSheetText);
 };
 
 }  // namespace mozilla::dom

@@ -66,7 +66,7 @@ add_task(async function run_test() {
   try {
     _("Expect the compact light theme to be active");
     Assert.strictEqual(
-      Services.prefs.getCharPref("extensions.activeThemeID"),
+      Services.prefs.getStringPref("extensions.activeThemeID"),
       COMPACT_THEME_ID
     );
 
@@ -152,12 +152,12 @@ add_task(async function run_test() {
     _("Update some prefs, including one that's to be reset/deleted.");
     // This pref is not going to be reset or deleted as there's no "control pref"
     // in either the incoming record or locally.
-    Services.prefs.setCharPref(
+    Services.prefs.setStringPref(
       "testing.deleted-without-control-pref",
       "I'm deleted-without-control-pref"
     );
     // Another pref with only a local control pref.
-    Services.prefs.setCharPref(
+    Services.prefs.setStringPref(
       "testing.deleted-with-local-control-pref",
       "I'm deleted-with-local-control-pref"
     );
@@ -166,7 +166,7 @@ add_task(async function run_test() {
       true
     );
     // And a pref without a local control pref but one that's incoming.
-    Services.prefs.setCharPref(
+    Services.prefs.setStringPref(
       "testing.deleted-with-incoming-control-pref",
       "I'm deleted-with-incoming-control-pref"
     );
@@ -197,12 +197,12 @@ add_task(async function run_test() {
     await store.update(record);
     Assert.strictEqual(Services.prefs.getIntPref("testing.int"), 42);
     Assert.strictEqual(
-      Services.prefs.getCharPref("testing.string"),
+      Services.prefs.getStringPref("testing.string"),
       "im in ur prefs"
     );
     Assert.strictEqual(Services.prefs.getBoolPref("testing.bool"), false);
     Assert.strictEqual(
-      Services.prefs.getCharPref("testing.deleted-without-control-pref"),
+      Services.prefs.getStringPref("testing.deleted-without-control-pref"),
       "I'm deleted-without-control-pref"
     );
     Assert.strictEqual(
@@ -210,11 +210,13 @@ add_task(async function run_test() {
       Ci.nsIPrefBranch.PREF_INVALID
     );
     Assert.strictEqual(
-      Services.prefs.getCharPref("testing.deleted-with-incoming-control-pref"),
+      Services.prefs.getStringPref(
+        "testing.deleted-with-incoming-control-pref"
+      ),
       "I'm deleted-with-incoming-control-pref"
     );
     Assert.strictEqual(
-      Services.prefs.getCharPref("testing.dont.change"),
+      Services.prefs.getStringPref("testing.dont.change"),
       "Please don't change me."
     );
     Assert.strictEqual(
@@ -272,78 +274,29 @@ add_task(async function run_test() {
 
 add_task(async function test_dangerously_allow() {
   _("services.sync.prefs.dangerously_allow_arbitrary");
-  // read our custom prefs file before doing anything.
+  // Bug 1538015 added a capability to "dangerously allow" arbitrary prefs.
+  // Bug 1854698 removed that capability but did keep the fact we never
+  // sync the pref which enabled the "dangerous" behaviour, just incase someone
+  // tries to sync it back to a profile which *does* support that pref.
   Services.prefs.readDefaultPrefsFromFile(
     do_get_file("prefs_test_prefs_store.js")
-  );
-  // configure so that arbitrary prefs are synced.
-  Services.prefs.setBoolPref(
-    "services.sync.prefs.dangerously_allow_arbitrary",
-    true
   );
 
   let engine = Service.engineManager.get("prefs");
   let store = engine._store;
   try {
-    _("Update some prefs");
-    // This pref is not going to be reset or deleted as there's no "control pref"
-    // in either the incoming record or locally.
-    Services.prefs.setCharPref(
-      "testing.deleted-without-control-pref",
-      "I'm deleted-without-control-pref"
-    );
-    // Another pref with only a local control pref.
-    Services.prefs.setCharPref(
-      "testing.deleted-with-local-control-pref",
-      "I'm deleted-with-local-control-pref"
-    );
-    Services.prefs.setBoolPref(
-      "services.sync.prefs.sync.testing.deleted-with-local-control-pref",
-      true
-    );
-    // And a pref without a local control pref but one that's incoming.
-    Services.prefs.setCharPref(
-      "testing.deleted-with-incoming-control-pref",
-      "I'm deleted-with-incoming-control-pref"
-    );
+    // an incoming record with our old "dangerous" pref.
     let record = new PrefRec("prefs", PREFS_GUID);
     record.value = {
-      "testing.deleted-without-control-pref": null,
-      "testing.deleted-with-local-control-pref": null,
-      "testing.deleted-with-incoming-control-pref": null,
-      "services.sync.prefs.sync.testing.deleted-with-incoming-control-pref": true,
-      "testing.somepref": "im a new pref from other device",
-      "services.sync.prefs.sync.testing.somepref": true,
-      // Make sure our "master control pref" is ignored, even when it's already set.
-      "services.sync.prefs.dangerously_allow_arbitrary": false,
+      "services.sync.prefs.dangerously_allow_arbitrary": true,
       "services.sync.prefs.sync.services.sync.prefs.dangerously_allow_arbitrary": true,
     };
     await store.update(record);
     Assert.strictEqual(
-      Services.prefs.getCharPref("testing.deleted-without-control-pref"),
-      "I'm deleted-without-control-pref"
-    );
-    Assert.strictEqual(
-      Services.prefs.getPrefType("testing.deleted-with-local-control-pref"),
-      Ci.nsIPrefBranch.PREF_INVALID
-    );
-    Assert.strictEqual(
-      Services.prefs.getPrefType("testing.deleted-with-incoming-control-pref"),
-      Ci.nsIPrefBranch.PREF_INVALID
-    );
-    Assert.strictEqual(
-      Services.prefs.getCharPref("testing.somepref"),
-      "im a new pref from other device"
-    );
-    Assert.strictEqual(
-      Svc.PrefBranch.getBoolPref("prefs.sync.testing.somepref"),
-      true
-    );
-    Assert.strictEqual(
       Services.prefs.getBoolPref(
         "services.sync.prefs.dangerously_allow_arbitrary"
       ),
-      true
+      false
     );
     Assert.strictEqual(
       Services.prefs.getPrefType(
@@ -368,7 +321,7 @@ add_task(async function test_incoming_sets_seen() {
     do_get_file("prefs_test_prefs_store.js")
   );
   const defaultValue = "the value";
-  Assert.equal(Services.prefs.getCharPref("testing.seen"), defaultValue);
+  Assert.equal(Services.prefs.getStringPref("testing.seen"), defaultValue);
 
   let record = await store.createRecord(PREFS_GUID, "prefs");
   // Haven't seen a non-default value before, so remains null.
@@ -407,25 +360,28 @@ add_task(async function test_outgoing_when_changed() {
     do_get_file("prefs_test_prefs_store.js")
   );
   const defaultValue = "the value";
-  Assert.equal(Services.prefs.getCharPref("testing.seen"), defaultValue);
+  Assert.equal(Services.prefs.getStringPref("testing.seen"), defaultValue);
 
   let record = await store.createRecord(PREFS_GUID, "prefs");
   // Haven't seen a non-default value before, so remains null.
   Assert.strictEqual(record.value["testing.seen"], null);
 
   // Change the value.
-  Services.prefs.setCharPref("testing.seen", "new value");
+  Services.prefs.setStringPref("testing.seen", "new value");
   record = await store.createRecord(PREFS_GUID, "prefs");
   // creating the record toggled that "seen" pref.
   Assert.strictEqual(
     Services.prefs.getBoolPref("services.sync.prefs.sync-seen.testing.seen"),
     true
   );
-  Assert.strictEqual(Services.prefs.getCharPref("testing.seen"), "new value");
+  Assert.strictEqual(Services.prefs.getStringPref("testing.seen"), "new value");
 
   // Resetting the pref does not change that seen value.
   Services.prefs.clearUserPref("testing.seen");
-  Assert.strictEqual(Services.prefs.getCharPref("testing.seen"), defaultValue);
+  Assert.strictEqual(
+    Services.prefs.getStringPref("testing.seen"),
+    defaultValue
+  );
 
   record = await store.createRecord(PREFS_GUID, "prefs");
   Assert.strictEqual(

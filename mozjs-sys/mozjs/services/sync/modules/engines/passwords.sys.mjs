@@ -14,8 +14,6 @@ import {
 } from "resource://services-sync/engines.sys.mjs";
 import { Svc, Utils } from "resource://services-sync/util.sys.mjs";
 
-import { Async } from "resource://services-common/async.sys.mjs";
-
 // These are valid fields the server could have for a logins record
 // we mainly use this to detect if there are any unknownFields and
 // store (but don't process) those fields to roundtrip them back
@@ -129,7 +127,7 @@ PasswordEngine.prototype = {
   async _getChangedIDs(getAll) {
     let changes = {};
 
-    let logins = await this._store.storage.getAllLoginsAsync(true);
+    let logins = await this._store.storage.getAllLogins(true);
     for (let login of logins) {
       if (getAll || login.syncCounter > 0) {
         if (Utils.getSyncCredentialsHosts().has(login.origin)) {
@@ -164,13 +162,11 @@ PasswordEngine.prototype = {
       return null;
     }
 
-    let logins = this._store.storage.findLogins(
-      login.origin,
-      login.formActionOrigin,
-      login.httpRealm
-    );
-
-    await Async.promiseYield(); // Yield back to main thread after synchronous operation.
+    let logins = await this._store.storage.searchLoginsAsync({
+      origin: login.origin,
+      formActionOrigin: login.formActionOrigin,
+      httpRealm: login.httpRealm,
+    });
 
     // Look for existing logins that match the origin, but ignore the password.
     for (let local of logins) {
@@ -306,7 +302,7 @@ PasswordStore.prototype = {
 
   async getAllIDs() {
     let items = {};
-    let logins = await this.storage.getAllLoginsAsync(true);
+    let logins = await this.storage.getAllLogins(true);
 
     for (let i = 0; i < logins.length; i++) {
       // Skip over Weave password/passphrase entries.
@@ -496,8 +492,8 @@ export class PasswordValidator extends CollectionValidator {
     ]);
   }
 
-  getClientItems() {
-    let logins = Services.logins.getAllLogins();
+  async getClientItems() {
+    let logins = await Services.logins.getAllLogins();
     let syncHosts = Utils.getSyncCredentialsHosts();
     let result = logins
       .map(l => l.QueryInterface(Ci.nsILoginMetaInfo))

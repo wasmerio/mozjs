@@ -29,7 +29,11 @@ with Files("controlcenter/**"):
 DIRS += [
     "about",
     "aboutlogins",
+    "aboutwelcome",
+    "asrouter",
     "attribution",
+    "backup",
+    "contentanalysis",
     "contextualidentity",
     "customizableui",
     "doh",
@@ -37,6 +41,7 @@ DIRS += [
     "enterprisepolicies",
     "extensions",
     "firefoxview",
+    "genai",
     "ion",
     "messagepreview",
     "migration",
@@ -50,14 +55,19 @@ DIRS += [
     "prompts",
     "protections",
     "protocolhandler",
+    "reportbrokensite",
     "resistfingerprinting",
     "screenshots",
     "search",
     "sessionstore",
     "shell",
+    "shopping",
+    "sidebar",
     "syncedtabs",
+    "tabbrowser",
     "tabunloader",
     "textrecognition",
+    "topsites",
     "translations",
     "uitour",
     "urlbar",
@@ -65,9 +75,8 @@ DIRS += [
 
 DIRS += ["build"]
 
-if CONFIG["NIGHTLY_BUILD"]:
-    DIRS += ["shopping"]
-
+if CONFIG["MOZ_SELECTABLE_PROFILES"]:
+    DIRS += ["profiles"]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
     DIRS += ["touchbar"]
@@ -100,13 +109,15 @@ if CONFIG["MOZ_DEBUG"] or CONFIG["MOZ_DEV_EDITION"] or CONFIG["NIGHTLY_BUILD"]:
     ]
 
 BROWSER_CHROME_MANIFESTS += [
-    "safebrowsing/content/test/browser.ini",
-    "tests/browser/browser.ini",
+    "safebrowsing/content/test/browser.toml",
+    "tests/browser/browser.toml",
 ]
 
 if CONFIG["MOZ_UPDATER"]:
     BROWSER_CHROME_MANIFESTS += [
-        "tests/browser/whats_new_page/browser.ini",
+        "tests/browser/whats_new_page/browser.toml",
     ]
 
-XPCSHELL_TESTS_MANIFESTS += ["tests/unit/xpcshell.ini"]
+MARIONETTE_MANIFESTS += ["tests/marionette/manifest.toml"]
+
+XPCSHELL_TESTS_MANIFESTS += ["tests/unit/xpcshell.toml"]

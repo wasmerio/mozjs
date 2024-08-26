@@ -94,7 +94,9 @@ class WebMDemuxer : public MediaDataDemuxer,
   explicit WebMDemuxer(MediaResource* aResource);
   // Indicate if the WebMDemuxer is to be used with MediaSource. In which
   // case the demuxer will stop reads to the last known complete block.
-  WebMDemuxer(MediaResource* aResource, bool aIsMediaSource);
+  WebMDemuxer(
+      MediaResource* aResource, bool aIsMediaSource,
+      Maybe<media::TimeUnit> aFrameEndTimeBeforeRecreateDemuxer = Nothing());
 
   RefPtr<InitPromise> Init() override;
 
@@ -223,6 +225,8 @@ class WebMDemuxer : public MediaDataDemuxer,
   Maybe<int64_t> mLastAudioFrameTime;
   Maybe<int64_t> mLastVideoFrameTime;
 
+  Maybe<media::TimeUnit> mVideoFrameEndTimeBeforeReset;
+
   // Codec ID of audio track
   int mAudioCodec;
   // Codec ID of video track
@@ -238,6 +242,11 @@ class WebMDemuxer : public MediaDataDemuxer,
   // as nestegg only performs 1-byte read at a time.
   int64_t mLastWebMBlockOffset;
   const bool mIsMediaSource;
+  // Discard padding in WebM cannot occur more than once. This is set to true if
+  // a discard padding element has been found and processed, and the decoding is
+  // expected to error out if another discard padding element is found
+  // subsequently in the byte stream.
+  bool mProcessedDiscardPadding = false;
 
   EncryptionInfo mCrypto;
 };

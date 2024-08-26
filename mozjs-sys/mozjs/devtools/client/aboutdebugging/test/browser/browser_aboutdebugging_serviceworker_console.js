@@ -16,7 +16,8 @@ Services.scriptloader.loadSubScript(
 
 const SW_TAB_URL =
   URL_ROOT_SSL + "resources/service-workers/controlled-sw.html";
-const SW_URL = URL_ROOT_SSL + "resources/service-workers/controlled-sw.js";
+const SW_URL =
+  URL_ROOT_SSL + "resources/service-workers/controlled-sw.worker.js";
 
 /**
  * Test various simple debugging operation against service workers debugged through about:debugging.
@@ -85,7 +86,7 @@ add_task(async function () {
 
   info("Wait for next interupt in the worker thread");
   await clickElement(dbg, "pause");
-  await waitForState(dbg, state => getIsWaitingOnBreak(getCurrentThread()));
+  await waitForState(dbg, () => getIsWaitingOnBreak(getCurrentThread()));
 
   info("Trigger some code in the worker and wait for pause");
   await SpecialPowers.spawn(swTab.linkedBrowser, [], async function () {

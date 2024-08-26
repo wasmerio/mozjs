@@ -11,7 +11,9 @@
 #include "nsISocketProvider.h"
 #include "secerr.h"
 #include "mozilla/Base64.h"
+#include "mozilla/dom/Promise.h"
 #include "nsNSSCallbacks.h"
+#include "nsProxyRelease.h"
 
 using namespace mozilla;
 using namespace mozilla::psm;
@@ -37,6 +39,8 @@ NSSSocketControl::NSSSocketControl(const nsCString& aHostName, int32_t aPort,
       mIsFullHandshake(false),
       mNotedTimeUntilReady(false),
       mEchExtensionStatus(EchExtensionStatus::kNotPresent),
+      mSentXyberShare(false),
+      mHasTls13HandshakeSecrets(false),
       mIsShortWritePending(false),
       mShortWritePendingByte(0),
       mShortWriteOriginalAmount(-1),
@@ -47,7 +51,8 @@ NSSSocketControl::NSSSocketControl(const nsCString& aHostName, int32_t aPort,
       mSocketCreationTimestamp(TimeStamp::Now()),
       mPlaintextBytesRead(0),
       mClaimed(!(providerFlags & nsISocketProvider::IS_SPECULATIVE_CONNECTION)),
-      mPendingSelectClientAuthCertificate(nullptr) {}
+      mPendingSelectClientAuthCertificate(nullptr),
+      mBrowserId(0) {}
 
 NS_IMETHODIMP
 NSSSocketControl::GetKEAUsed(int16_t* aKea) {
@@ -290,6 +295,58 @@ NSSSocketControl::StartTLS() {
 }
 
 NS_IMETHODIMP
+NSSSocketControl::AsyncStartTLS(JSContext* aCx,
+                                mozilla::dom::Promise** aPromise) {
+  MOZ_RELEASE_ASSERT(NS_IsMainThread());
+  NS_ENSURE_ARG_POINTER(aCx);
+  NS_ENSURE_ARG_POINTER(aPromise);
+
+  nsIGlobalObject* globalObject = xpc::CurrentNativeGlobal(aCx);
+  if (!globalObject) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  ErrorResult result;
+  RefPtr<mozilla::dom::Promise> promise =
+      mozilla::dom::Promise::Create(globalObject, result);
+  if (result.Failed()) {
+    return result.StealNSResult();
+  }
+
+  nsCOMPtr<nsIEventTarget> target(
+      do_GetService(NS_SOCKETTRANSPORTSERVICE_CONTRACTID));
+  if (!target) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  auto promiseHolder = MakeRefPtr<nsMainThreadPtrHolder<dom::Promise>>(
+      "AsyncStartTLS promise", promise);
+
+  nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
+      "AsyncStartTLS::StartTLS",
+      [promiseHolder = std::move(promiseHolder), self = RefPtr{this}]() {
+        nsresult rv = self->StartTLS();
+        NS_DispatchToMainThread(NS_NewRunnableFunction(
+            "AsyncStartTLS::Resolve", [rv, promiseHolder]() {
+              dom::Promise* promise = promiseHolder.get()->get();
+              if (NS_FAILED(rv)) {
+                promise->MaybeReject(rv);
+              } else {
+                promise->MaybeResolveWithUndefined();
+              }
+            }));
+      }));
+
+  nsresult rv = target->Dispatch(runnable, NS_DISPATCH_NORMAL);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  promise.forget(aPromise);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 NSSSocketControl::SetNPNList(nsTArray<nsCString>& protocolArray) {
   COMMON_SOCKET_CONTROL_ASSERT_ON_OWNING_THREAD();
   if (!mFd) return NS_ERROR_FAILURE;
@@ -321,7 +378,7 @@ nsresult NSSSocketControl::ActivateSSL() {
 
   mHandshakePending = true;
 
-  return SetResumptionTokenFromExternalCache();
+  return SetResumptionTokenFromExternalCache(mFd);
 }
 
 nsresult NSSSocketControl::GetFileDescPtr(PRFileDesc** aFilePtr) {
@@ -382,7 +439,15 @@ void NSSSocketControl::SetCertVerificationResult(PRErrorCode errorCode) {
                           AssertedCast<uint32_t>(mPlaintextBytesRead));
   }
 
+  MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+          ("[%p] SetCertVerificationResult to AfterCertVerification, "
+           "mTlsHandshakeCallback=%p",
+           (void*)mFd, mTlsHandshakeCallback.get()));
+
   mCertVerificationState = AfterCertVerification;
+  if (mTlsHandshakeCallback) {
+    Unused << mTlsHandshakeCallback->CertVerificationDone();
+  }
 }
 
 void NSSSocketControl::ClientAuthCertificateSelected(
@@ -434,6 +499,13 @@ void NSSSocketControl::ClientAuthCertificateSelected(
       mFd, sendingClientAuthCert ? SECSuccess : SECFailure,
       sendingClientAuthCert ? key.release() : nullptr,
       sendingClientAuthCert ? cert.release() : nullptr);
+
+  MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+          ("[%p] ClientAuthCertificateSelected mTlsHandshakeCallback=%p",
+           (void*)mFd, mTlsHandshakeCallback.get()));
+  if (mTlsHandshakeCallback) {
+    Unused << mTlsHandshakeCallback->ClientAuthCertificateSelected();
+  }
 }
 
 SharedSSLState& NSSSocketControl::SharedState() {
@@ -508,7 +580,6 @@ PRStatus NSSSocketControl::CloseSocketAndDestroy() {
   if (status != PR_SUCCESS) return status;
 
   popped->identity = PR_INVALID_IO_LAYER;
-  NS_RELEASE_THIS();
   popped->dtor(popped);
 
   return PR_SUCCESS;
@@ -624,15 +695,15 @@ NSSSocketControl::GetPeerId(nsACString& aResult) {
   return NS_OK;
 }
 
-nsresult NSSSocketControl::SetResumptionTokenFromExternalCache() {
+nsresult NSSSocketControl::SetResumptionTokenFromExternalCache(PRFileDesc* fd) {
   COMMON_SOCKET_CONTROL_ASSERT_ON_OWNING_THREAD();
-  if (!mFd) {
-    return NS_ERROR_FAILURE;
+  if (!fd) {
+    return NS_ERROR_INVALID_ARG;
   }
 
   // If SSL_NO_CACHE option was set, we must not use the cache
   PRIntn val;
-  if (SSL_OptionGet(mFd, SSL_NO_CACHE, &val) != SECSuccess) {
+  if (SSL_OptionGet(fd, SSL_NO_CACHE, &val) != SECSuccess) {
     return NS_ERROR_FAILURE;
   }
 
@@ -659,7 +730,7 @@ nsresult NSSSocketControl::SetResumptionTokenFromExternalCache() {
     return rv;
   }
 
-  SECStatus srv = SSL_SetResumptionToken(mFd, token.Elements(), token.Length());
+  SECStatus srv = SSL_SetResumptionToken(fd, token.Elements(), token.Length());
   if (srv == SECFailure) {
     PRErrorCode error = PR_GetError();
     mozilla::net::SSLTokensCache::Remove(peerId, tokenId);
@@ -696,5 +767,20 @@ void NSSSocketControl::SetPreliminaryHandshakeInfo(
 NS_IMETHODIMP NSSSocketControl::Claim() {
   COMMON_SOCKET_CONTROL_ASSERT_ON_OWNING_THREAD();
   mClaimed = true;
+  return NS_OK;
+}
+
+NS_IMETHODIMP NSSSocketControl::SetBrowserId(uint64_t browserId) {
+  COMMON_SOCKET_CONTROL_ASSERT_ON_OWNING_THREAD();
+  mBrowserId = browserId;
+  return NS_OK;
+}
+
+NS_IMETHODIMP NSSSocketControl::GetBrowserId(uint64_t* browserId) {
+  COMMON_SOCKET_CONTROL_ASSERT_ON_OWNING_THREAD();
+  if (!browserId) {
+    return NS_ERROR_INVALID_ARG;
+  }
+  *browserId = mBrowserId;
   return NS_OK;
 }

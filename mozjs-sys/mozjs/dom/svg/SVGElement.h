@@ -175,7 +175,8 @@ class SVGElement : public SVGElementBase  // nsIContent
     return GetStringInfo().mInfos[aAttrEnum].mIsAnimatable;
   }
   bool NumberAttrAllowsPercentage(uint8_t aAttrEnum) {
-    return GetNumberInfo().mInfos[aAttrEnum].mPercentagesAllowed;
+    return IsSVGElement(nsGkAtoms::stop) &&
+           GetNumberInfo().mInfos[aAttrEnum].mName == nsGkAtoms::offset;
   }
   virtual bool HasValidDimensions() const { return true; }
   void SetLength(nsAtom* aName, const SVGAnimatedLength& aLength);
@@ -244,21 +245,55 @@ class SVGElement : public SVGElementBase  // nsIContent
                            const mozAutoDocUpdate& aProofOfUpdate);
 
   void DidAnimateLength(uint8_t aAttrEnum);
-  void DidAnimateNumber(uint8_t aAttrEnum);
-  void DidAnimateNumberPair(uint8_t aAttrEnum);
-  void DidAnimateInteger(uint8_t aAttrEnum);
-  void DidAnimateIntegerPair(uint8_t aAttrEnum);
-  void DidAnimateBoolean(uint8_t aAttrEnum);
-  void DidAnimateEnum(uint8_t aAttrEnum);
-  void DidAnimateOrient();
-  void DidAnimateViewBox();
-  void DidAnimatePreserveAspectRatio();
-  void DidAnimateNumberList(uint8_t aAttrEnum);
-  void DidAnimateLengthList(uint8_t aAttrEnum);
+  void DidAnimateNumber(uint8_t aAttrEnum) {
+    auto info = GetNumberInfo();
+    DidAnimateAttribute(kNameSpaceID_None, info.mInfos[aAttrEnum].mName);
+  }
+  void DidAnimateNumberPair(uint8_t aAttrEnum) {
+    auto info = GetNumberPairInfo();
+    DidAnimateAttribute(kNameSpaceID_None, info.mInfos[aAttrEnum].mName);
+  }
+  void DidAnimateInteger(uint8_t aAttrEnum) {
+    auto info = GetIntegerInfo();
+    DidAnimateAttribute(kNameSpaceID_None, info.mInfos[aAttrEnum].mName);
+  }
+  void DidAnimateIntegerPair(uint8_t aAttrEnum) {
+    auto info = GetIntegerPairInfo();
+    DidAnimateAttribute(kNameSpaceID_None, info.mInfos[aAttrEnum].mName);
+  }
+  void DidAnimateBoolean(uint8_t aAttrEnum) {
+    auto info = GetBooleanInfo();
+    DidAnimateAttribute(kNameSpaceID_None, info.mInfos[aAttrEnum].mName);
+  }
+  void DidAnimateEnum(uint8_t aAttrEnum) {
+    auto info = GetEnumInfo();
+    DidAnimateAttribute(kNameSpaceID_None, info.mInfos[aAttrEnum].mName);
+  }
+  void DidAnimateOrient() {
+    DidAnimateAttribute(kNameSpaceID_None, nsGkAtoms::orient);
+  }
+  void DidAnimateViewBox() {
+    DidAnimateAttribute(kNameSpaceID_None, nsGkAtoms::viewBox);
+  }
+  void DidAnimatePreserveAspectRatio() {
+    DidAnimateAttribute(kNameSpaceID_None, nsGkAtoms::preserveAspectRatio);
+  }
+  void DidAnimateNumberList(uint8_t aAttrEnum) {
+    auto info = GetNumberListInfo();
+    DidAnimateAttribute(kNameSpaceID_None, info.mInfos[aAttrEnum].mName);
+  }
+  void DidAnimateLengthList(uint8_t aAttrEnum) {
+    auto info = GetLengthListInfo();
+    DidAnimateAttribute(kNameSpaceID_None, info.mInfos[aAttrEnum].mName);
+  }
   void DidAnimatePointList();
   void DidAnimatePathSegList();
   void DidAnimateTransformList(int32_t aModType);
-  void DidAnimateString(uint8_t aAttrEnum);
+  void DidAnimateString(uint8_t aAttrEnum) {
+    auto info = GetStringInfo();
+    DidAnimateAttribute(info.mInfos[aAttrEnum].mNamespaceID,
+                        info.mInfos[aAttrEnum].mName);
+  }
 
   enum {
     /**
@@ -397,7 +432,6 @@ class SVGElement : public SVGElementBase  // nsIContent
   struct NumberInfo {
     nsStaticAtom* const mName;
     const float mDefaultValue;
-    const bool mPercentagesAllowed;
   };
 
   using NumberAttributesInfo = AttributesInfo<SVGAnimatedNumber, NumberInfo>;
@@ -503,6 +537,8 @@ class SVGElement : public SVGElementBase  // nsIContent
   virtual StringListAttributesInfo GetStringListInfo();
 
   static SVGEnumMapping sSVGUnitTypesMap[];
+
+  virtual void DidAnimateAttribute(int32_t aNameSpaceID, nsAtom* aAttribute);
 
  private:
   void UnsetAttrInternal(int32_t aNameSpaceID, nsAtom* aName, bool aNotify);

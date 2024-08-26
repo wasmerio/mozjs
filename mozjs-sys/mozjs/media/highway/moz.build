@@ -8,8 +8,9 @@ LOCAL_INCLUDES += [
     "/third_party/highway/",
 ]
 
-if CONFIG["CPU_ARCH"] == "ppc64" and CONFIG["OS_TARGET"] == "Linux":
-
+# CMake has check_include_file() but for now we disable this.
+# See bug 1839363 and bug 1903190.
+if CONFIG["TARGET_CPU"] in ("ppc64", "s390x") and CONFIG["OS_TARGET"] == "Linux":
     DEFINES["TOOLCHAIN_MISS_ASM_HWCAP_H"] = True
 
 SOURCES += [
@@ -28,6 +29,7 @@ EXPORTS.hwy += [
     "/third_party/highway/hwy/foreach_target.h",
     "/third_party/highway/hwy/highway.h",
     "/third_party/highway/hwy/highway_export.h",
+    "/third_party/highway/hwy/per_target.h",
     "/third_party/highway/hwy/targets.h",
 ]
 
@@ -48,7 +50,7 @@ EXPORTS.hwy.ops += [
     "/third_party/highway/hwy/ops/x86_512-inl.h",
 ]
 
-FINAL_LIBRARY = "gkmedias"
+FINAL_LIBRARY = "xul"
 
 # We allow warnings for third-party code that can be updated from upstream.
 AllowCompilerWarnings()

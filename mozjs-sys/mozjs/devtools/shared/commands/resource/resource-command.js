@@ -64,8 +64,23 @@ class ResourceCommand {
     // we don't have listeners registered twice.
     this._offTargetFrontListeners = new Map();
 
+    // @backward-compat { version 124 } The server started throttling ressource emission
+    // Once 124 is released, we can always throttle to 0.
+    // We might also remove the throttle usage entirely as it may not have a significant impact anymore.
+    const throttleDelay =
+      commands.client.mainRoot.traits.throttledResources &&
+      !Services.prefs.getBoolPref(
+        "devtools.client-side-throttling.enable",
+        false
+      )
+        ? 0
+        : 100;
+
     this._notifyWatchers = this._notifyWatchers.bind(this);
-    this._throttledNotifyWatchers = throttle(this._notifyWatchers, 100);
+    this._throttledNotifyWatchers = throttle(
+      this._notifyWatchers,
+      throttleDelay
+    );
   }
 
   get watcherFront() {
@@ -74,6 +89,9 @@ class ResourceCommand {
 
   addResourceToCache(resource) {
     const { resourceId, resourceType } = resource;
+    if (TRANSIENT_RESOURCE_TYPES.includes(resourceType)) {
+      return;
+    }
     this._cache.set(cacheKey(resourceType, resourceId), resource);
   }
 
@@ -179,6 +197,10 @@ class ResourceCommand {
       }
     }
 
+    // Copy the array in order to avoid the callsite to modify the list of watched resources by mutating the array.
+    // You have to call (un)watchResources to update the list of resources being watched!
+    resources = [...resources];
+
     // Pending watchers are used in unwatchResources to remove watchers which
     // are not fully registered yet. Store `onAvailable` which is the unique key
     // for a watcher, as well as the resources array, so that unwatchResources
@@ -194,6 +216,8 @@ class ResourceCommand {
       this._listenerRegistered = true;
       // Resources watched from the parent process will be emitted on the Watcher Actor.
       // So that we also have to listen for this event on it, in addition to all targets.
+      // @backward-compat { version 129 } Once Fx129 is release, resource-*-form event won't be used anymore,
+      //                                  only the resources-*-array will be still used.
       this.watcherFront.on(
         "resource-available-form",
         this._onResourceAvailable.bind(this, {
@@ -207,6 +231,24 @@ class ResourceCommand {
       this.watcherFront.on(
         "resource-destroyed-form",
         this._onResourceDestroyed.bind(this, {
+          watcherFront: this.watcherFront,
+        })
+      );
+      this.watcherFront.on(
+        "resources-available-array",
+        this._onResourceAvailableArray.bind(this, {
+          watcherFront: this.watcherFront,
+        })
+      );
+      this.watcherFront.on(
+        "resources-updated-array",
+        this._onResourceUpdatedArray.bind(this, {
+          watcherFront: this.watcherFront,
+        })
+      );
+      this.watcherFront.on(
+        "resources-destroyed-array",
+        this._onResourceDestroyedArray.bind(this, {
           watcherFront: this.watcherFront,
         })
       );
@@ -414,9 +456,15 @@ class ResourceCommand {
   async _startLegacyListenersForExistingTargets(resourceType) {
     // If we were already listening to targets, we want to start the legacy listeners
     // for all already existing targets.
+    //
+    // Only try instantiating the legacy listener, if this resource type:
+    //   - has legacy listener implementation
+    // (new resource types may not be supported by old runtime and just not be received without breaking anything)
+    //   - isn't supported by the server, or, the target type requires the a legacy listener implementation.
     const shouldRunLegacyListeners =
-      !this.hasResourceCommandSupport(resourceType) ||
-      this._shouldRunLegacyListenerEvenWithWatcherSupport(resourceType);
+      resourceType in LegacyListeners &&
+      (!this.hasResourceCommandSupport(resourceType) ||
+        this._shouldRunLegacyListenerEvenWithWatcherSupport(resourceType));
     if (shouldRunLegacyListeners) {
       const promises = [];
       const targets = this.targetCommand.getAllTargets(
@@ -510,12 +558,27 @@ class ResourceCommand {
       "resource-destroyed-form",
       this._onResourceDestroyed.bind(this, { targetFront })
     );
+    const offResourceAvailableArray = targetFront.on(
+      "resources-available-array",
+      this._onResourceAvailableArray.bind(this, { targetFront })
+    );
+    const offResourceUpdatedArray = targetFront.on(
+      "resources-updated-array",
+      this._onResourceUpdatedArray.bind(this, { targetFront })
+    );
+    const offResourceDestroyedArray = targetFront.on(
+      "resources-destroyed-array",
+      this._onResourceDestroyedArray.bind(this, { targetFront })
+    );
 
     const offList = this._offTargetFrontListeners.get(targetFront) || [];
     offList.push(
       offResourceAvailable,
       offResourceUpdated,
-      offResourceDestroyed
+      offResourceDestroyed,
+      offResourceAvailableArray,
+      offResourceUpdatedArray,
+      offResourceDestroyedArray
     );
 
     if (isTargetSwitching) {
@@ -616,6 +679,38 @@ class ResourceCommand {
         }
       }
     }
+  }
+
+  async _onResourceAvailableArray({ targetFront, watcherFront }, array) {
+    for (const [resourceType, resources] of array) {
+      for (const resource of resources) {
+        if (!("resourceType" in resource)) {
+          resource.resourceType = resourceType;
+        }
+      }
+      await this._onResourceAvailable({ targetFront, watcherFront }, resources);
+    }
+  }
+
+  async _onResourceUpdatedArray(context, array) {
+    for (const [resourceType, resources] of array) {
+      for (const resource of resources) {
+        if (!("resourceType" in resource)) {
+          resource.resourceType = resourceType;
+        }
+      }
+      await this._onResourceUpdated(context, resources);
+    }
+  }
+
+  async _onResourceDestroyedArray(context, array) {
+    const resources = [];
+    for (const [resourceType, resourceIds] of array) {
+      for (const resourceId of resourceIds) {
+        resources.push({ resourceType, resourceId });
+      }
+    }
+    await this._onResourceDestroyed(context, resources);
   }
 
   /**
@@ -820,10 +915,13 @@ class ResourceCommand {
    * Called everytime a resource is destroyed in the remote target.
    * See _onResourceAvailable for the argument description.
    */
-  async _onResourceDestroyed({ targetFront, watcherFront }, resources) {
+  async _onResourceDestroyed({ targetFront }, resources) {
     for (const resource of resources) {
       const { resourceType, resourceId } = resource;
       this._cache.delete(cacheKey(resourceType, resourceId));
+      if (!resource.targetFront) {
+        resource.targetFront = targetFront;
+      }
       this._queueResourceEvent("destroyed", resourceType, resource);
     }
     this._throttledNotifyWatchers();
@@ -914,7 +1012,7 @@ class ResourceCommand {
     return null;
   }
 
-  _onWillNavigate(targetFront) {
+  _onWillNavigate() {
     // Special case for toolboxes debugging a document,
     // purge the cache entirely when we start navigating to a new document.
     // Other toolboxes and additional target for remote iframes or content process
@@ -1192,6 +1290,7 @@ ResourceCommand.TYPES = ResourceCommand.prototype.TYPES = {
   CONSOLE_MESSAGE: "console-message",
   CSS_CHANGE: "css-change",
   CSS_MESSAGE: "css-message",
+  CSS_REGISTERED_PROPERTIES: "css-registered-properties",
   ERROR_MESSAGE: "error-message",
   PLATFORM_MESSAGE: "platform-message",
   DOCUMENT_EVENT: "document-event",
@@ -1209,7 +1308,8 @@ ResourceCommand.TYPES = ResourceCommand.prototype.TYPES = {
   REFLOW: "reflow",
   SOURCE: "source",
   THREAD_STATE: "thread-state",
-  TRACING_STATE: "tracing-state",
+  JSTRACER_TRACE: "jstracer-trace",
+  JSTRACER_STATE: "jstracer-state",
   SERVER_SENT_EVENT: "server-sent-event",
   LAST_PRIVATE_CONTEXT_EXIT: "last-private-context-exit",
 };
@@ -1228,15 +1328,21 @@ const WORKER_RESOURCE_TYPES = [
   ResourceCommand.TYPES.THREAD_STATE,
 ];
 
+// List of resource types which aren't stored in the internal ResourceCommand cache.
+// Only the first `watchResources()` call for a given resource type may receive already existing
+// resources. All subsequent call to `watchResources()` for the same resource type will
+// only receive future resource, and not the one already notified in the past.
+// This is typically used for resources with very high throughput.
+const TRANSIENT_RESOURCE_TYPES = [
+  ResourceCommand.TYPES.JSTRACER_TRACE,
+  ResourceCommand.TYPES.JSTRACER_STATE,
+];
+
 // Backward compat code for each type of resource.
 // Each section added here should eventually be removed once the equivalent server
 // code is implement in Firefox, in its release channel.
 const LegacyListeners = {
-  async [ResourceCommand.TYPES.DOCUMENT_EVENT]({
-    targetCommand,
-    targetFront,
-    onAvailable,
-  }) {
+  async [ResourceCommand.TYPES.DOCUMENT_EVENT]({ targetFront, onAvailable }) {
     // DocumentEventsListener of webconsole handles only top level document.
     if (!targetFront.isTopLevel) {
       return;

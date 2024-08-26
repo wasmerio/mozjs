@@ -22,8 +22,7 @@ class Element;
 class HTMLEditorEventListener final : public EditorEventListener {
  public:
   HTMLEditorEventListener()
-      : EditorEventListener(),
-        mListeningToMouseMoveEventForResizers(false),
+      : mListeningToMouseMoveEventForResizers(false),
         mListeningToMouseMoveEventForGrabber(false),
         mListeningToResizeEvent(false) {}
 
@@ -79,8 +78,8 @@ class HTMLEditorEventListener final : public EditorEventListener {
       dom::MouseEvent* aMouseEvent) override;
   MOZ_CAN_RUN_SCRIPT virtual nsresult MouseUp(
       dom::MouseEvent* aMouseEvent) override;
-  MOZ_CAN_RUN_SCRIPT virtual nsresult MouseClick(
-      WidgetMouseEvent* aMouseClickEvent) override;
+  MOZ_CAN_RUN_SCRIPT virtual nsresult PointerClick(
+      WidgetMouseEvent* aPointerClickEvent) override;
 
   nsresult ListenToMouseMoveEventForResizersOrGrabber(bool aListen,
                                                       bool aForGrabber);

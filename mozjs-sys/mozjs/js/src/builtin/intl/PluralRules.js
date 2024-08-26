@@ -40,7 +40,7 @@ function resolvePluralRulesInternals(lazyPluralRulesData) {
   var localeData = PluralRules.localeData;
 
   // Step 10.
-  const r = ResolveLocale(
+  var r = ResolveLocale(
     "PluralRules",
     lazyPluralRulesData.requestedLocales,
     lazyPluralRulesData.opt,
@@ -159,8 +159,8 @@ function InitializePluralRules(pluralRules, locales, options) {
   //     minimumIntegerDigits: integer ∈ [1, 21],
   //
   //     // optional, mutually exclusive with the significant-digits option
-  //     minimumFractionDigits: integer ∈ [0, 20],
-  //     maximumFractionDigits: integer ∈ [0, 20],
+  //     minimumFractionDigits: integer ∈ [0, 100],
+  //     maximumFractionDigits: integer ∈ [0, 100],
   //
   //     // optional, mutually exclusive with the fraction-digits option
   //     minimumSignificantDigits: integer ∈ [1, 21],
@@ -182,10 +182,10 @@ function InitializePluralRules(pluralRules, locales, options) {
   // Note that lazy data is only installed as a final step of initialization,
   // so every PluralRules lazy data object has *all* these properties, never a
   // subset of them.
-  const lazyPluralRulesData = std_Object_create(null);
+  var lazyPluralRulesData = std_Object_create(null);
 
   // Step 1.
-  let requestedLocales = CanonicalizeLocaleList(locales);
+  var requestedLocales = CanonicalizeLocaleList(locales);
   lazyPluralRulesData.requestedLocales = requestedLocales;
 
   // Step 2. (Inlined call to CoerceOptionsToObject.)
@@ -196,11 +196,11 @@ function InitializePluralRules(pluralRules, locales, options) {
   }
 
   // Step 3.
-  let opt = new_Record();
+  var opt = new_Record();
   lazyPluralRulesData.opt = opt;
 
   // Steps 4-5.
-  let matcher = GetOption(
+  var matcher = GetOption(
     options,
     "localeMatcher",
     "string",
@@ -210,7 +210,7 @@ function InitializePluralRules(pluralRules, locales, options) {
   opt.localeMatcher = matcher;
 
   // Steps 6-7.
-  const type = GetOption(
+  var type = GetOption(
     options,
     "type",
     "string",
@@ -245,7 +245,7 @@ function Intl_PluralRules_supportedLocalesOf(locales /*, options*/) {
   var availableLocales = "PluralRules";
 
   // Step 2.
-  let requestedLocales = CanonicalizeLocaleList(locales);
+  var requestedLocales = CanonicalizeLocaleList(locales);
 
   // Step 3.
   return SupportedLocales(availableLocales, requestedLocales, options);
@@ -262,7 +262,7 @@ function Intl_PluralRules_supportedLocalesOf(locales /*, options*/) {
  */
 function Intl_PluralRules_select(value) {
   // Step 1.
-  let pluralRules = this;
+  var pluralRules = this;
 
   // Step 2.
   if (
@@ -278,7 +278,7 @@ function Intl_PluralRules_select(value) {
   }
 
   // Step 3.
-  let n = ToNumber(value);
+  var n = ToNumber(value);
 
   // Ensure the PluralRules internals are resolved.
   getPluralRulesInternals(pluralRules);
@@ -339,7 +339,7 @@ function Intl_PluralRules_selectRange(start, end) {
  *
  * Returns the resolved options for a PluralRules object.
  *
- * ES2024 Intl draft rev 74ca7099f103d143431b2ea422ae640c6f43e3e6
+ * ES2024 Intl draft rev a1db4567870dbe505121a4255f1210338757190a
  */
 function Intl_PluralRules_resolvedOptions() {
   // Step 1.
@@ -359,7 +359,20 @@ function Intl_PluralRules_resolvedOptions() {
 
   var internals = getPluralRulesInternals(pluralRules);
 
-  // Steps 3-4.
+  // Step 4.
+  var internalsPluralCategories = internals.pluralCategories;
+  if (internalsPluralCategories === null) {
+    internalsPluralCategories = intl_GetPluralCategories(pluralRules);
+    internals.pluralCategories = internalsPluralCategories;
+  }
+
+  // Step 5.b.
+  var pluralCategories = [];
+  for (var i = 0; i < internalsPluralCategories.length; i++) {
+    DefineDataProperty(pluralCategories, i, internalsPluralCategories[i]);
+  }
+
+  // Steps 3 and 5.
   var result = {
     locale: internals.locale,
     type: internals.type,
@@ -406,35 +419,16 @@ function Intl_PluralRules_resolvedOptions() {
     );
   }
 
-  DefineDataProperty(result, "roundingMode", internals.roundingMode);
+  DefineDataProperty(result, "pluralCategories", pluralCategories);
   DefineDataProperty(result, "roundingIncrement", internals.roundingIncrement);
+  DefineDataProperty(result, "roundingMode", internals.roundingMode);
+  DefineDataProperty(result, "roundingPriority", internals.roundingPriority);
   DefineDataProperty(
     result,
     "trailingZeroDisplay",
     internals.trailingZeroDisplay
   );
 
-  // Step 5.
-  var internalsPluralCategories = internals.pluralCategories;
-  if (internalsPluralCategories === null) {
-    internalsPluralCategories = intl_GetPluralCategories(pluralRules);
-    internals.pluralCategories = internalsPluralCategories;
-  }
-
-  var pluralCategories = [];
-  for (var i = 0; i < internalsPluralCategories.length; i++) {
-    DefineDataProperty(pluralCategories, i, internalsPluralCategories[i]);
-  }
-
   // Step 6.
-  DefineDataProperty(result, "pluralCategories", pluralCategories);
-
-  // Steps 7-9.
-  //
-  // Our implementation doesn't use [[RoundingType]], but instead directly
-  // stores the computed `roundingPriority` value.
-  DefineDataProperty(result, "roundingPriority", internals.roundingPriority);
-
-  // Step 10.
   return result;
 }

@@ -11,6 +11,7 @@
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/ElementInternalsBinding.h"
 #include "mozilla/dom/UnionTypes.h"
+#include "mozilla/dom/CustomStateSet.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsIConstraintValidation.h"
 #include "nsIFormControl.h"
@@ -24,6 +25,13 @@
   }                                                                 \
   void Set##method(const nsAString& aValue, ErrorResult& aResult) { \
     aResult = ErrorResult(SetAttr(nsGkAtoms::attr, aValue));        \
+  }
+
+#define ARIA_REFLECT_ATTR_ELEMENT(method, attr)                            \
+  Element* Get##method() const { return GetAttrElement(nsGkAtoms::attr); } \
+                                                                           \
+  void Set##method(Element* aElement) {                                    \
+    SetAttrElement(nsGkAtoms::attr, aElement);                             \
   }
 
 class nsINodeList;
@@ -71,6 +79,7 @@ class ElementInternals final : public nsIFormControl,
   bool ReportValidity(ErrorResult& aRv);
   already_AddRefed<nsINodeList> GetLabels(ErrorResult& aRv) const;
   nsGenericHTMLElement* GetValidationAnchor(ErrorResult& aRv) const;
+  CustomStateSet* States();
 
   // nsIFormControl
   mozilla::dom::HTMLFieldSetElement* GetFieldSet() override {
@@ -117,9 +126,12 @@ class ElementInternals final : public nsIFormControl,
   ARIA_REFLECT_ATTR(Role, role)
 
   // AriaAttributes
+  ARIA_REFLECT_ATTR_ELEMENT(AriaActiveDescendantElement, aria_activedescendant)
   ARIA_REFLECT_ATTR(AriaAtomic, aria_atomic)
   ARIA_REFLECT_ATTR(AriaAutoComplete, aria_autocomplete)
   ARIA_REFLECT_ATTR(AriaBusy, aria_busy)
+  ARIA_REFLECT_ATTR(AriaBrailleLabel, aria_braillelabel)
+  ARIA_REFLECT_ATTR(AriaBrailleRoleDescription, aria_brailleroledescription)
   ARIA_REFLECT_ATTR(AriaChecked, aria_checked)
   ARIA_REFLECT_ATTR(AriaColCount, aria_colcount)
   ARIA_REFLECT_ATTR(AriaColIndex, aria_colindex)
@@ -170,6 +182,18 @@ class ElementInternals final : public nsIFormControl,
  private:
   ~ElementInternals() = default;
 
+  /**
+   * Gets the attribute element for the given attribute.
+   * https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#explicitly-set-attr-element
+   */
+  Element* GetAttrElement(nsAtom* aAttr) const;
+
+  /**
+   * Sets an attribute element for the given attribute.
+   * https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#explicitly-set-attr-element
+   */
+  void SetAttrElement(nsAtom* aAttr, Element* aElement);
+
   // It's a target element which is a custom element.
   RefPtr<HTMLElement> mTarget;
 
@@ -203,10 +227,18 @@ class ElementInternals final : public nsIFormControl,
   // session. Is empty until element has been upgraded.
   nsCString mStateKey;
 
+  RefPtr<CustomStateSet> mCustomStateSet;
+
   // A number for a form-associated custom element that is unique within its
   // owner document. This is only set to a number for elements inserted into the
   // document by the parser from the network. Otherwise, it is -1.
   int32_t mControlNumber;
+
+  /**
+   * Explicitly set attr-elements, see
+   * https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#explicitly-set-attr-element
+   */
+  nsTHashMap<RefPtr<nsAtom>, nsWeakPtr> mAttrElements;
 };
 
 }  // namespace mozilla::dom

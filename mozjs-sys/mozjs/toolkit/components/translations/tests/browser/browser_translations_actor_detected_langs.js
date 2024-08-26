@@ -6,16 +6,16 @@
 add_task(async function test_detected_language() {
   const { cleanup, tab } = await loadTestPage({
     // This page will get its language changed by the test.
-    page: TRANSLATIONS_TESTER_EN,
+    page: ENGLISH_PAGE_URL,
     autoDownloadFromRemoteSettings: true,
     languagePairs: [
       // Spanish
-      { fromLang: "es", toLang: "en", isBeta: false },
-      { fromLang: "en", toLang: "es", isBeta: false },
+      { fromLang: "es", toLang: "en" },
+      { fromLang: "en", toLang: "es" },
 
       // Norwegian Bokmål
-      { fromLang: "nb", toLang: "en", isBeta: false },
-      { fromLang: "en", toLang: "nb", isBeta: false },
+      { fromLang: "nb", toLang: "en" },
+      { fromLang: "en", toLang: "nb" },
     ],
   });
 
@@ -74,8 +74,12 @@ add_task(async function test_detected_language() {
 
   Assert.deepEqual(
     await getDetectedLanguagesFor("gibberish"),
-    { docLangTag: null, userLangTag: null, isDocLangTagSupported: false },
-    "A gibberish locale is discarded."
+    {
+      docLangTag: "en",
+      userLangTag: null,
+      isDocLangTagSupported: true,
+    },
+    "A gibberish locale is discarded, and the language is detected."
   );
 
   return cleanup();

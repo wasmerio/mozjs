@@ -38,7 +38,7 @@ def get_cmd_output(*args, **kwargs):
         close_fds=os.name != "nt",
         encoding=system_encoding,
         errors="replace",
-        **kwargs
+        **kwargs,
     )
     stdout, stderr = proc.communicate()
     return proc.wait(), stdout, stderr
@@ -217,9 +217,9 @@ def try_invoke_compiler(
 ):
     compiler_path = compiler[0]
     compiler = wrapper + compiler
-    use_cache = True
+    use_cache = configure_cache is not None
 
-    if compiler_path not in configure_cache.version_checked_compilers:
+    if use_cache and compiler_path not in configure_cache.version_checked_compilers:
         try:
             version_info = subprocess.check_output(
                 [compiler_path, "--version"],
@@ -501,18 +501,29 @@ def project_flag(env=None, set_as_define=False, **kwargs):
     if not env:
         configure_error("A project_flag must be passed a variable name to set.")
 
+    if kwargs.get("nargs", 0) not in (0, 1):
+        configure_error("A project_flag must be passed nargs={0,1}.")
+
     opt = option(env=env, possible_origins=("implied",), **kwargs)
 
     @depends(opt.option)
     def option_implementation(value):
         if value:
-            if len(value):
+            if len(value) == 1:
+                return value[0]
+            elif len(value):
                 return value
             return bool(value)
 
     set_config(env, option_implementation)
     if set_as_define:
         set_define(env, option_implementation)
+
+
+@template
+@imports(_from="mozbuild.configure.constants", _import="RaiseErrorOnUse")
+def obsolete_config(name, *, replacement):
+    set_config(name, RaiseErrorOnUse(f"{name} is obsolete. Use {replacement} instead."))
 
 
 # Hacks related to old-configure

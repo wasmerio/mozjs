@@ -4,12 +4,11 @@
 
 /* eslint-disable no-restricted-globals */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  accessibility: "chrome://remote/content/marionette/accessibility.sys.mjs",
+  accessibility:
+    "chrome://remote/content/shared/webdriver/Accessibility.sys.mjs",
   action: "chrome://remote/content/shared/webdriver/Actions.sys.mjs",
   atom: "chrome://remote/content/marionette/atom.sys.mjs",
   dom: "chrome://remote/content/shared/DOM.sys.mjs",
@@ -22,7 +21,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Sandboxes: "chrome://remote/content/marionette/evaluate.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.Log.get(lazy.Log.TYPES.MARIONETTE)
 );
 
@@ -168,14 +167,16 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
         await new Promise(resolve => Services.tm.dispatchToMainThread(resolve));
       }
 
-      const { seenNodeIds, serializedValue } = lazy.json.clone(
-        result,
-        this.#processActor.getNodeCache()
-      );
+      const { seenNodeIds, serializedValue, hasSerializedWindows } =
+        lazy.json.clone(result, this.#processActor.getNodeCache());
 
       // Because in WebDriver classic nodes can only be returned from the same
       // browsing context, we only need the seen unique ids as flat array.
-      return { seenNodeIds: [...seenNodeIds.values()].flat(), serializedValue };
+      return {
+        seenNodeIds: [...seenNodeIds.values()].flat(),
+        serializedValue,
+        hasSerializedWindows,
+      };
     } catch (e) {
       // Always wrap errors as WebDriverError
       return { error: lazy.error.wrap(e).toJSON() };
@@ -282,12 +283,7 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
   async getComputedLabel(options = {}) {
     const { elem } = options;
 
-    const accessible = await lazy.accessibility.getAccessible(elem);
-    if (!accessible) {
-      return null;
-    }
-
-    return accessible.name;
+    return lazy.accessibility.getAccessibleName(elem);
   }
 
   /**
@@ -296,13 +292,7 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
   async getComputedRole(options = {}) {
     const { elem } = options;
 
-    const accessible = await lazy.accessibility.getAccessible(elem);
-    if (!accessible) {
-      // If it's not in the a11y tree, it's probably presentational.
-      return "none";
-    }
-
-    return accessible.computedARIARole;
+    return lazy.accessibility.getComputedRole(elem);
   }
 
   /**
@@ -362,9 +352,9 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
     const { elem } = options;
 
     try {
-      return lazy.atom.getElementText(elem, this.document.defaultView);
+      return await lazy.atom.getVisibleText(elem, this.document.defaultView);
     } catch (e) {
-      lazy.logger.warn(`Atom getElementText failed: "${e.message}"`);
+      lazy.logger.warn(`Atom getVisibleText failed: "${e.message}"`);
 
       // Fallback in case the atom implementation is broken.
       // As known so far this only happens for XML documents (bug 1794099).

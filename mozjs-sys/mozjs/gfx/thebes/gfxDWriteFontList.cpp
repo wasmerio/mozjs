@@ -15,6 +15,7 @@
 #include "nsServiceManagerUtils.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "mozilla/gfx/Logging.h"
+#include "mozilla/LookAndFeel.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/Sprintf.h"
@@ -554,7 +555,7 @@ nsresult gfxDWriteFontEntry::ReadCMAP(FontInfoData* aFontInfoData) {
     gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
     fontlist::FontList* sharedFontList = pfl->SharedFontList();
     if (!IsUserFont() && mShmemFace) {
-      mShmemFace->SetCharacterMap(sharedFontList, charmap);  // async
+      mShmemFace->SetCharacterMap(sharedFontList, charmap, mShmemFamily);
       if (TrySetShmemCharacterMap()) {
         setCharMap = false;
       }
@@ -674,11 +675,13 @@ gfxFont* gfxDWriteFontEntry::CreateFontInstance(
     switch (StaticPrefs::gfx_font_rendering_directwrite_bold_simulation()) {
       case 0:  // never use the DWrite simulation
         break;
-      case 1:  // use DWrite simulation for installed fonts but not webfonts
-        useBoldSim = !mIsDataUserFont;
+      case 1:  // use DWrite simulation for installed fonts except COLR fonts,
+               // but not webfonts
+        useBoldSim =
+            !mIsDataUserFont && !HasFontTable(TRUETYPE_TAG('C', 'O', 'L', 'R'));
         break;
-      default:  // always use DWrite bold simulation
-        useBoldSim = true;
+      default:  // always use DWrite bold simulation, except for COLR fonts
+        useBoldSim = !HasFontTable(TRUETYPE_TAG('C', 'O', 'L', 'R'));
         break;
     }
   }
@@ -926,16 +929,14 @@ FontFamily gfxDWriteFontList::GetDefaultFontForPlatform(
   }
 
   // otherwise, use local default
-  NONCLIENTMETRICSW ncm;
-  ncm.cbSize = sizeof(ncm);
-  BOOL status =
-      ::SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
-
-  if (status) {
-    ff = FindFamily(aPresContext,
-                    NS_ConvertUTF16toUTF8(ncm.lfMessageFont.lfFaceName));
+  gfxFontStyle fontStyle;
+  nsAutoString systemFontName;
+  if (!mozilla::LookAndFeel::GetFont(mozilla::StyleSystemFont::MessageBox,
+                                     systemFontName, fontStyle)) {
+    return ff;
   }
 
+  ff = FindFamily(aPresContext, NS_ConvertUTF16toUTF8(systemFontName));
   return ff;
 }
 
@@ -1157,6 +1158,17 @@ FontVisibility gfxDWriteFontList::GetVisibilityForFamily(
   return FontVisibility::User;
 }
 
+nsTArray<std::pair<const char**, uint32_t>>
+gfxDWriteFontList::GetFilteredPlatformFontLists() {
+  nsTArray<std::pair<const char**, uint32_t>> fontLists;
+
+  fontLists.AppendElement(std::make_pair(kBaseFonts, ArrayLength(kBaseFonts)));
+  fontLists.AppendElement(
+      std::make_pair(kLangPackFonts, ArrayLength(kLangPackFonts)));
+
+  return fontLists;
+}
+
 void gfxDWriteFontList::AppendFamiliesFromCollection(
     IDWriteFontCollection* aCollection,
     nsTArray<fontlist::Family::InitData>& aFamilies,
@@ -1196,28 +1208,32 @@ void gfxDWriteFontList::AppendFamiliesFromCollection(
       continue;
     }
 
-    auto addFamily = [&](const nsACString& name, bool altLocale = false) {
+    auto addFamily = [&](const nsACString& name, FontVisibility visibility,
+                         bool altLocale = false) {
       nsAutoCString key;
       key = name;
       BuildKeyNameFromFontName(key);
       bool bad = mBadUnderlineFamilyNames.ContainsSorted(key);
       bool classic =
           aForceClassicFams && aForceClassicFams->ContainsSorted(key);
-      FontVisibility visibility;
+      aFamilies.AppendElement(fontlist::Family::InitData(
+          key, name, i, visibility, aCollection != mSystemFonts, bad, classic,
+          altLocale));
+    };
+
+    auto visibilityForName = [&](const nsACString& aName) -> FontVisibility {
       // Special case: hide the "Gill Sans" family that contains only UltraBold
       // faces, as this leads to breakage on sites with CSS that targeted the
       // Gill Sans family as found on macOS. (Bug 551313, bug 1632738)
       // TODO (jfkthame): the ultrabold faces from Gill Sans should be treated
       // as belonging to the Gill Sans MT family.
-      if (key.EqualsLiteral("gill sans") && allFacesUltraBold(family)) {
-        visibility = FontVisibility::Hidden;
-      } else {
-        visibility = aCollection == mSystemFonts ? GetVisibilityForFamily(name)
-                                                 : FontVisibility::Base;
+      if (aName.EqualsLiteral("Gill Sans") && allFacesUltraBold(family)) {
+        return FontVisibility::Hidden;
       }
-      aFamilies.AppendElement(fontlist::Family::InitData(
-          key, name, i, visibility, aCollection != mSystemFonts, bad, classic,
-          altLocale));
+      // Bundled fonts are always available, so only system fonts are checked
+      // against the standard font names list.
+      return aCollection == mSystemFonts ? GetVisibilityForFamily(aName)
+                                         : FontVisibility::Base;
     };
 
     unsigned count = localizedNames->GetCount();
@@ -1229,10 +1245,11 @@ void gfxDWriteFontList::AppendFamiliesFromCollection(
         gfxWarning() << "GetNameAsUtf8 failed for index 0 in font-family " << i;
         continue;
       }
-      addFamily(name);
+      addFamily(name, visibilityForName(name));
     } else {
       AutoTArray<nsCString, 4> names;
       int sysLocIndex = -1;
+      FontVisibility visibility = FontVisibility::User;
       for (unsigned index = 0; index < count; ++index) {
         nsAutoCString name;
         if (!GetNameAsUtf8(name, localizedNames, index)) {
@@ -1240,16 +1257,29 @@ void gfxDWriteFontList::AppendFamiliesFromCollection(
                        << " in font-family " << i;
           continue;
         }
-        if (!names.Contains(name)) {
-          if (sysLocIndex == -1) {
-            WCHAR buf[32];
-            if (SUCCEEDED(localizedNames->GetLocaleName(index, buf, 32))) {
-              if (loc16.Equals(buf)) {
-                sysLocIndex = names.Length();
-              }
+        if (names.Contains(name)) {
+          continue;
+        }
+        if (sysLocIndex == -1) {
+          WCHAR buf[32];
+          if (SUCCEEDED(localizedNames->GetLocaleName(index, buf, 32))) {
+            if (loc16.Equals(buf)) {
+              sysLocIndex = names.Length();
             }
           }
-          names.AppendElement(name);
+        }
+        names.AppendElement(name);
+        // We give the family the least-restrictive visibility of all its
+        // localized names, so that the used visibility will not depend on
+        // locale; with the exception that if any name is explicitly Hidden,
+        // this hides the family as a whole.
+        if (visibility != FontVisibility::Hidden) {
+          FontVisibility v = visibilityForName(name);
+          if (v == FontVisibility::Hidden) {
+            visibility = FontVisibility::Hidden;
+          } else {
+            visibility = std::min(visibility, v);
+          }
         }
       }
       // If we didn't find a name that matched the system locale, use the
@@ -1265,7 +1295,8 @@ void gfxDWriteFontList::AppendFamiliesFromCollection(
         sysLocIndex = 1;
       }
       for (unsigned index = 0; index < names.Length(); ++index) {
-        addFamily(names[index], index != static_cast<unsigned>(sysLocIndex));
+        addFamily(names[index], visibility,
+                  index != static_cast<unsigned>(sysLocIndex));
       }
     }
   }
@@ -1356,8 +1387,9 @@ void gfxDWriteFontList::GetFacesInitDataForFamily(
   }
 }
 
-bool gfxDWriteFontList::ReadFaceNames(fontlist::Family* aFamily,
-                                      fontlist::Face* aFace, nsCString& aPSName,
+bool gfxDWriteFontList::ReadFaceNames(const fontlist::Family* aFamily,
+                                      const fontlist::Face* aFace,
+                                      nsCString& aPSName,
                                       nsCString& aFullName) {
   IDWriteFontCollection* collection =
 #ifdef MOZ_BUNDLED_FONTS
@@ -1462,7 +1494,7 @@ void gfxDWriteFontList::ReadFaceNamesForFamily(
     // Read PS-names and fullnames of the faces, and any alternate family names
     // (either localizations or legacy subfamily names)
     for (unsigned i = 0; i < aFamily->NumFaces(); ++i) {
-      auto face = static_cast<fontlist::Face*>(facePtrs[i].ToPtr(list));
+      auto* face = facePtrs[i].ToPtr<fontlist::Face>(list);
       if (!face) {
         continue;
       }
@@ -1498,11 +1530,18 @@ void gfxDWriteFontList::ReadFaceNamesForFamily(
       }
 
       nsAutoCString psname, fullname;
-      if (NS_SUCCEEDED(gfxFontUtils::ReadCanonicalName(
-              data, size, gfxFontUtils::NAME_ID_POSTSCRIPT, psname))) {
-        ToLowerCase(psname);
-        mLocalNameTable.InsertOrUpdate(
-            psname, fontlist::LocalFaceRec::InitData(key, i));
+      // Bug 1854090: don't load PSname if the family name ends with ".tmp",
+      // as some PDF-related software appears to pollute the font collection
+      // with spurious re-encoded versions of standard fonts like Arial, fails
+      // to alter the PSname, and thus can result in garbled rendering because
+      // the wrong resource may be found via src:local(...).
+      if (!StringEndsWith(key, ".tmp"_ns)) {
+        if (NS_SUCCEEDED(gfxFontUtils::ReadCanonicalName(
+                data, size, gfxFontUtils::NAME_ID_POSTSCRIPT, psname))) {
+          ToLowerCase(psname);
+          mLocalNameTable.InsertOrUpdate(
+              psname, fontlist::LocalFaceRec::InitData(key, i));
+        }
       }
       if (NS_SUCCEEDED(gfxFontUtils::ReadCanonicalName(
               data, size, gfxFontUtils::NAME_ID_FULL, fullname))) {

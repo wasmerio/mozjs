@@ -17,7 +17,7 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "SHOW_OTHER_BOOKMARKS",
   "browser.toolbars.bookmarks.showOtherBookmarks",
   true,
-  (aPref, aPrevVal, aNewVal) => {
+  () => {
     BookmarkingUI.maybeShowOtherBookmarksFolder().then(() => {
       document
         .getElementById("PlacesToolbar")
@@ -115,12 +115,13 @@ var StarUI = {
             this.panel.hidePopup();
             break;
           // This case is for catching character-generating keypresses
-          case 0:
+          case 0: {
             let accessKey = document.getElementById("key_close");
             if (eventMatchesKey(aEvent, accessKey)) {
               this.panel.hidePopup();
             }
             break;
+          }
         }
         break;
       case "compositionend":
@@ -252,7 +253,7 @@ var StarUI = {
       }
       target.addEventListener(
         "popupshown",
-        function (event) {
+        function () {
           fn();
         },
         { capture: true, once: true }
@@ -391,7 +392,7 @@ var PlacesCommandHook = {
    */
   async bookmarkPage() {
     let browser = gBrowser.selectedBrowser;
-    let url = URL.fromURI(browser.currentURI);
+    let url = URL.fromURI(Services.io.createExposableURI(browser.currentURI));
     let info = await PlacesUtils.bookmarks.fetch({ url });
     let isNewBookmark = !info;
     let showEditUI = !isNewBookmark || StarUI.showForNewBookmarks;
@@ -489,6 +490,21 @@ var PlacesCommandHook = {
   },
 
   /**
+   * Bookmarks the given tabs loaded in the current browser.
+   * @param {Array} tabs
+   *        If no given tabs, bookmark all current tabs.
+   */
+  async bookmarkTabs(tabs) {
+    tabs = tabs ?? gBrowser.visibleTabs.filter(tab => !tab.pinned);
+    let pages = PlacesCommandHook.getUniquePages(tabs).map(
+      // Bookmark exposable url.
+      page =>
+        Object.assign(page, { uri: Services.io.createExposableURI(page.uri) })
+    );
+    await PlacesUIUtils.showBookmarkPagesDialog(pages);
+  },
+
+  /**
    * List of nsIURI objects characterizing tabs given in param.
    * Duplicates are discarded.
    */
@@ -507,24 +523,6 @@ var PlacesCommandHook = {
       }
     });
     return URIs;
-  },
-
-  /**
-   * List of nsIURI objects characterizing the tabs currently open in the
-   * browser, modulo pinned tabs. The URIs will be in the order in which their
-   * corresponding tabs appeared and duplicates are discarded.
-   */
-  get uniqueCurrentPages() {
-    let visibleUnpinnedTabs = gBrowser.visibleTabs.filter(tab => !tab.pinned);
-    return this.getUniquePages(visibleUnpinnedTabs);
-  },
-
-  /**
-   * List of nsIURI objects characterizing the tabs currently
-   * selected in the window. Duplicates are discarded.
-   */
-  get uniqueSelectedPages() {
-    return this.getUniquePages(gBrowser.selectedTabs);
   },
 
   /**
@@ -552,17 +550,19 @@ var PlacesCommandHook = {
   },
 
   async searchBookmarks() {
-    let win = BrowserWindowTracker.getTopWindow();
-    if (!win) {
-      win = await BrowserUIUtils.openNewBrowserWindow();
-    }
+    let win =
+      BrowserWindowTracker.getTopWindow() ??
+      (await BrowserWindowTracker.promiseOpenWindow());
     win.gURLBar.search(UrlbarTokenizer.RESTRICT.BOOKMARK, {
       searchModeEntry: "bookmarkmenu",
     });
   },
 
-  searchHistory() {
-    gURLBar.search(UrlbarTokenizer.RESTRICT.HISTORY, {
+  async searchHistory() {
+    let win =
+      BrowserWindowTracker.getTopWindow() ??
+      (await BrowserWindowTracker.promiseOpenWindow());
+    win.gURLBar.search(UrlbarTokenizer.RESTRICT.HISTORY, {
       searchModeEntry: "historymenu",
     });
   },
@@ -590,15 +590,6 @@ class HistoryMenu extends PlacesMenu {
     }
   }
 
-  _getClosedTabCount() {
-    try {
-      return SessionStore.getClosedTabCountForWindow(window);
-    } catch (ex) {
-      // SessionStore doesn't track the hidden window, so just return zero then.
-      return 0;
-    }
-  }
-
   toggleHiddenTabs() {
     const isShown =
       window.gBrowser && gBrowser.visibleTabs.length < gBrowser.tabs.length;
@@ -608,7 +599,7 @@ class HistoryMenu extends PlacesMenu {
   toggleRecentlyClosedTabs() {
     // enable/disable the Recently Closed Tabs sub menu
     // no restorable tabs, so disable menu
-    if (this._getClosedTabCount() == 0) {
+    if (SessionStore.getClosedTabCount() == 0) {
       this.undoTabMenu.setAttribute("disabled", true);
     } else {
       this.undoTabMenu.removeAttribute("disabled");
@@ -627,7 +618,7 @@ class HistoryMenu extends PlacesMenu {
     }
 
     // no restorable tabs, so make sure menu is disabled, and return
-    if (this._getClosedTabCount() == 0) {
+    if (SessionStore.getClosedTabCount() == 0) {
       this.undoTabMenu.setAttribute("disabled", true);
       return;
     }
@@ -703,7 +694,7 @@ class HistoryMenu extends PlacesMenu {
     super._onPopupShowing(aEvent);
 
     // Don't handle events for submenus.
-    if (aEvent.target != aEvent.currentTarget) {
+    if (aEvent.target != this.rootElement) {
       return;
     }
 
@@ -714,7 +705,7 @@ class HistoryMenu extends PlacesMenu {
   }
 
   _onCommand(aEvent) {
-    aEvent = getRootEvent(aEvent);
+    aEvent = BrowserUtils.getRootEvent(aEvent);
     let placesNode = aEvent.target._placesNode;
     if (placesNode) {
       if (!PrivateBrowsingUtils.isWindowPrivate(window)) {
@@ -812,6 +803,8 @@ var BookmarksEventHandler = {
       // Call onCommand in the cases where it's not called automatically:
       // Middle-clicks outside of menus.
       this.onCommand(aEvent);
+      aEvent.preventDefault();
+      aEvent.stopPropagation();
     }
   },
 
@@ -1181,7 +1174,7 @@ var PlacesToolbarHelper = {
     return null;
   },
 
-  onWidgetUnderflow(aNode, aContainer) {
+  onWidgetUnderflow(aNode) {
     // The view gets broken by being removed and reinserted by the overflowable
     // toolbar, so we have to force an uninit and reinit.
     let win = aNode.ownerGlobal;
@@ -1190,7 +1183,7 @@ var PlacesToolbarHelper = {
     }
   },
 
-  onWidgetAdded(aWidgetId, aArea, aPosition) {
+  onWidgetAdded(aWidgetId) {
     if (aWidgetId == "personal-bookmarks" && !this._isCustomizing) {
       // It's possible (with the "Add to Menu", "Add to Toolbar" context
       // options) that the Places Toolbar Items have been moved without
@@ -1385,7 +1378,7 @@ var BookmarkingUI = {
 
     this.updateLabel(
       "BMB_viewBookmarksSidebar",
-      SidebarUI.currentID == "viewBookmarksSidebar"
+      SidebarController.currentID == "viewBookmarksSidebar"
     );
     this.updateLabel("BMB_viewBookmarksToolbar", !this.toolbar.collapsed);
   },
@@ -1412,7 +1405,10 @@ var BookmarkingUI = {
     );
   },
 
-  isOnNewTabPage({ currentURI }) {
+  isOnNewTabPage(uri) {
+    if (!uri) {
+      return false;
+    }
     // Prevent loading AboutNewTab.sys.mjs during startup path if it
     // is only the newTabURL getter we are interested in.
     let newTabURL = Cu.isESModuleLoaded(
@@ -1427,12 +1423,28 @@ var BookmarkingUI = {
     if (newTabURL == "about:blank") {
       newTabURL = "about:newtab";
     }
-    let newTabURLs = [newTabURL, "about:home"];
+    let newTabURLs = [
+      newTabURL,
+      "about:home",
+      "chrome://browser/content/blanktab.html",
+    ];
     if (PrivateBrowsingUtils.isWindowPrivate(window)) {
       newTabURLs.push("about:privatebrowsing");
     }
-    return newTabURLs.some(uri => currentURI?.spec.startsWith(uri));
+    return newTabURLs.some(newTabUriString =>
+      this._newTabURI(newTabUriString)?.equalsExceptRef(uri)
+    );
   },
+
+  _newTabURI(uriString) {
+    let uri = this._newTabURICache.get(uriString);
+    if (uri === undefined) {
+      uri = Services.io.newURI(uriString);
+      this._newTabURICache.set(uriString, uri);
+    }
+    return uri;
+  },
+  _newTabURICache: new Map(),
 
   buildBookmarksToolbarSubmenu(toolbar) {
     let alwaysShowMenuItem = document.createXULElement("menuitem");
@@ -1647,13 +1659,13 @@ var BookmarkingUI = {
     }
   },
 
-  onWidgetReset: function BUI_widgetReset(aNode, aContainer) {
+  onWidgetReset: function BUI_widgetReset(aNode) {
     if (aNode == this.button) {
       this._onWidgetWasMoved();
     }
   },
 
-  onWidgetUndoMove: function BUI_undoWidgetUndoMove(aNode, aContainer) {
+  onWidgetUndoMove: function BUI_undoWidgetUndoMove(aNode) {
     if (aNode == this.button) {
       this._onWidgetWasMoved();
     }
@@ -1987,6 +1999,13 @@ var BookmarkingUI = {
       case "ViewHiding":
         this.onPanelMenuViewHiding(aEvent);
         break;
+      case "command":
+        if (aEvent.target.id == "panelMenu_searchBookmarks") {
+          PlacesCommandHook.searchBookmarks();
+        } else if (aEvent.target.id == "panelMenu_viewBookmarksToolbar") {
+          this.toggleBookmarksToolbar("bookmark-tools");
+        }
+        break;
     }
   },
 
@@ -2014,12 +2033,15 @@ var BookmarkingUI = {
       panelview
     );
     panelview.removeEventListener("ViewShowing", this);
+    panelview.addEventListener("command", this);
   },
 
   onPanelMenuViewHiding: function BUI_onViewHiding(aEvent) {
     this._panelMenuView.uninit();
     delete this._panelMenuView;
-    aEvent.target.removeEventListener("ViewHiding", this);
+    let panelview = aEvent.target;
+    panelview.removeEventListener("ViewHiding", this);
+    panelview.removeEventListener("command", this);
   },
 
   handlePlacesEvents(aEvents) {
@@ -2143,7 +2165,7 @@ var BookmarkingUI = {
     });
   },
 
-  onWidgetUnderflow(aNode, aContainer) {
+  onWidgetUnderflow(aNode) {
     let win = aNode.ownerGlobal;
     if (aNode.id != this.BOOKMARK_BUTTON_ID || win != window) {
       return;

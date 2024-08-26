@@ -128,7 +128,7 @@ function setResultGroups(groups) {
   });
 }
 
-add_task(async function setup() {
+add_setup(async function () {
   sandbox = lazy.sinon.createSandbox();
 
   let engine = await addTestSuggestionsEngine(searchStr => {
@@ -430,7 +430,7 @@ add_task(async function remoteSuggestionsDupeSearchString() {
 add_task(async function queryIsNotASubstring() {
   Services.prefs.setBoolPref(SUGGEST_PREF, true);
 
-  setSuggestionsFn(searchStr => {
+  setSuggestionsFn(() => {
     return ["aaa", "bbb"];
   });
 
@@ -896,7 +896,7 @@ add_task(async function prohibit_suggestions() {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${SEARCH_STRING}/`,
-        fallbackTitle: `http://${SEARCH_STRING}/`,
+        fallbackTitle: `${SEARCH_STRING}/`,
         iconUri: "",
         heuristic: true,
       }),
@@ -941,7 +941,7 @@ add_task(async function prohibit_suggestions() {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: `http://${SEARCH_STRING}/`,
-        fallbackTitle: `http://${SEARCH_STRING}/`,
+        fallbackTitle: `${SEARCH_STRING}/`,
         iconUri: "",
         heuristic: true,
       }),
@@ -960,7 +960,7 @@ add_task(async function prohibit_suggestions() {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: "http://somethingelse/",
-        fallbackTitle: "http://somethingelse/",
+        fallbackTitle: "somethingelse/",
         iconUri: "",
         heuristic: true,
       }),
@@ -1009,7 +1009,7 @@ add_task(async function prohibit_suggestions() {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: "http://[2001::1]:30/",
-        fallbackTitle: "http://[2001::1]:30/",
+        fallbackTitle: "[2001::1]:30/",
         iconUri: "",
         heuristic: true,
       }),
@@ -1023,7 +1023,7 @@ add_task(async function prohibit_suggestions() {
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
         uri: "http://user:pass@test/",
-        fallbackTitle: "http://user:pass@test/",
+        fallbackTitle: "user:pass@test/",
         iconUri: "",
         heuristic: true,
       }),
@@ -1070,7 +1070,7 @@ add_task(async function uri_like_queries() {
     matches: [
       makeVisitResult(context, {
         source: UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
-        fallbackTitle: `http://${query}/`,
+        fallbackTitle: `${query}/`,
         uri: `http://${query}/`,
         iconUri: "",
         heuristic: true,
@@ -1550,7 +1550,7 @@ add_task(async function restrict_remote_suggestions_after_no_results() {
   // maxCharsForSearchSuggestions returns 0 results. We set it to 4 here to
   // avoid constructing a 100+ character string.
   Services.prefs.setIntPref("browser.urlbar.maxCharsForSearchSuggestions", 4);
-  setSuggestionsFn(searchStr => {
+  setSuggestionsFn(() => {
     return [];
   });
 

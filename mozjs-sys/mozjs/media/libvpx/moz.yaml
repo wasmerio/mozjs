@@ -20,11 +20,11 @@ origin:
 
   # Human-readable identifier for this version/release
   # Generally "version NNN", "tag SSS", "bookmark SSS"
-  release: 19ec57e14938bcb12d87123b7c369212f19792eb (Mon May 08 20:52:52 2023).
+  release: a2508b5711b6eb7aee197c8de16a46bda6fdbe88 (Fri Jun 07 17:59:16 2024).
 
   # Revision to pull in
   # Must be a long or short commit SHA (long preferred)
-  revision: 19ec57e14938bcb12d87123b7c369212f19792eb
+  revision: a2508b5711b6eb7aee197c8de16a46bda6fdbe88
 
   # The package's license, where possible using the mnemonic from
   # https://spdx.org/licenses/
@@ -53,6 +53,7 @@ vendoring:
     - tools/
 
   patches:
+    - arm_cpu_runtime_detection_code_on_openbsd.patch
     - input_frame_validation.patch
     - input_frame_validation_vp9.patch
 

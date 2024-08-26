@@ -276,7 +276,7 @@ async function toggleOpacityReachesThreshold(
     for (let hiddenElement of toggleStylesForStage.hidden) {
       let el = shadowRoot.querySelector(hiddenElement);
       ok(
-        ContentTaskUtils.is_hidden(el),
+        ContentTaskUtils.isHidden(el),
         `Expected ${hiddenElement} to be hidden.`
       );
     }
@@ -395,6 +395,28 @@ async function assertSawMouseEvents(
   Assert.deepEqual(
     mouseEvents,
     expectedEvents,
+    "Expected to get the right mouse events."
+  );
+}
+
+/**
+ * Tests that a click event is fire in web content when clicking on the page.
+ *
+ * Note: This function will only work on pages that load the
+ * click-event-helper.js script.
+ *
+ * @param {Element} browser The <xul:browser> that will receive the mouse
+ * events.
+ * @return Promise
+ * @resolves When the check has completed.
+ */
+async function assertSawClickEventOnly(browser) {
+  let mouseEvents = await SpecialPowers.spawn(browser, [], async () => {
+    return this.content.wrappedJSObject.getRecordedEvents();
+  });
+  Assert.deepEqual(
+    mouseEvents,
+    ["click"],
     "Expected to get the right mouse events."
   );
 }
@@ -623,9 +645,10 @@ async function testToggle(testURL, expectations, prepFn = async () => {}) {
       await prepFn(browser);
       await ensureVideosReady(browser);
 
-      for (let [videoID, { canToggle, policy, toggleStyles }] of Object.entries(
-        expectations
-      )) {
+      for (let [
+        videoID,
+        { canToggle, policy, toggleStyles, shouldSeeClickEventAfterToggle },
+      ] of Object.entries(expectations)) {
         await SimpleTest.promiseFocus(browser);
         info(`Testing video with id: ${videoID}`);
 
@@ -634,7 +657,8 @@ async function testToggle(testURL, expectations, prepFn = async () => {}) {
           videoID,
           canToggle,
           policy,
-          toggleStyles
+          toggleStyles,
+          shouldSeeClickEventAfterToggle
         );
       }
     }
@@ -663,7 +687,8 @@ async function testToggleHelper(
   videoID,
   canToggle,
   policy,
-  toggleStyles
+  toggleStyles,
+  shouldSeeClickEventAfterToggle
 ) {
   let { controls } = await prepareForToggleClick(browser, videoID);
 
@@ -783,9 +808,16 @@ async function testToggleHelper(
 
     await BrowserTestUtils.closeWindow(win);
 
-    // Make sure that clicking on the toggle resulted in no mouse button events
-    // being fired in content.
-    await assertSawMouseEvents(browser, false);
+    // We do get a "Click" sometimes, it depends on many
+    // factors such as whether the video has control and
+    // the style of the toggle.
+    if (shouldSeeClickEventAfterToggle) {
+      await assertSawClickEventOnly(browser);
+    } else {
+      // Make sure that clicking on the toggle resulted in no mouse button events
+      // being fired in content.
+      await assertSawMouseEvents(browser, false);
+    }
   } else {
     info(
       "Clicking on toggle, and expecting no Picture-in-Picture window opens"

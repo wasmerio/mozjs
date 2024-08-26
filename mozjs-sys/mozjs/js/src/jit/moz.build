@@ -26,8 +26,10 @@ UNIFIED_SOURCES += [
     "BaselineIC.cpp",
     "BaselineJIT.cpp",
     "BitSet.cpp",
+    "BranchHinting.cpp",
     "BytecodeAnalysis.cpp",
     "CacheIR.cpp",
+    "CacheIRAOT.cpp",
     "CacheIRCompiler.cpp",
     "CacheIRHealth.cpp",
     "CacheIRSpewer.cpp",
@@ -52,6 +54,7 @@ UNIFIED_SOURCES += [
     "JitcodeMap.cpp",
     "JitContext.cpp",
     "JitFrames.cpp",
+    "JitHints.cpp",
     "JitOptions.cpp",
     "JitScript.cpp",
     "JitSpewer.cpp",
@@ -64,6 +67,7 @@ UNIFIED_SOURCES += [
     "LIR.cpp",
     "Lowering.cpp",
     "MacroAssembler.cpp",
+    "MIR-wasm.cpp",
     "MIR.cpp",
     "MIRGraph.cpp",
     "MoveResolver.cpp",
@@ -86,6 +90,7 @@ UNIFIED_SOURCES += [
     "Sink.cpp",
     "Snapshots.cpp",
     "Trampoline.cpp",
+    "TrampolineNatives.cpp",
     "TrialInlining.cpp",
     "TypePolicy.cpp",
     "ValueNumbering.cpp",
@@ -259,6 +264,13 @@ elif CONFIG["JS_CODEGEN_WASM32"]:
         "wasm32/Trampoline-wasm32.cpp",
     ]
 
+# Generate jit/ABIFunctionTypeGenerated.h from jit/ABIFunctionType.yaml
+GeneratedFile(
+    "ABIFunctionTypeGenerated.h",
+    script="GenerateABIFunctionType.py",
+    inputs=["ABIFunctionType.yaml"],
+)
+
 # Generate jit/MIROpsGenerated.h from jit/MIROps.yaml
 GeneratedFile(
     "MIROpsGenerated.h",
@@ -291,5 +303,19 @@ GeneratedFile(
     inputs=[],
 )
 
+if CONFIG["ENABLE_JS_AOT_ICS"]:
+    GeneratedFile(
+        "CacheIRAOTGenerated.h",
+        script="GenerateCacheIRFiles.py",
+        entry_point="generate_aot_ics_header",
+        inputs=["../ics/"],
+        force=True,  # depends on list of files in js/src/ics/; always rebuild
+    )
+
 if CONFIG["FUZZING_INTERFACES"] or CONFIG["FUZZING_JS_FUZZILLI"]:
     include("/tools/fuzzing/libfuzzer-config.mozbuild")
+
+if CONFIG["ENABLE_JS_PBL_WEVAL"]:
+    LOCAL_INCLUDES += [
+        "../../../third_party/weval"
+    ]

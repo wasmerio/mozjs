@@ -8,7 +8,6 @@
 
 #include "mozilla/dom/MimeTypeArrayBinding.h"
 #include "mozilla/dom/MimeTypeBinding.h"
-#include "nsGlobalWindowInner.h"
 #include "nsPluginArray.h"
 #include "mozilla/StaticPrefs_pdfjs.h"
 #include "nsContentUtils.h"
@@ -94,4 +93,8 @@ nsMimeType::~nsMimeType() = default;
 JSObject* nsMimeType::WrapObject(JSContext* aCx,
                                  JS::Handle<JSObject*> aGivenProto) {
   return MimeType_Binding::Wrap(aCx, this, aGivenProto);
+}
+
+already_AddRefed<nsPluginElement> nsMimeType::EnabledPlugin() const {
+  return do_AddRef(mPluginElement);
 }

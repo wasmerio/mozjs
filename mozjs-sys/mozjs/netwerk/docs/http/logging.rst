@@ -144,14 +144,14 @@ running on Linux.
 #. When the problem has been reproduced, exit Firefox and look for the
    generated log files, which you can find at ``/tmp/log.txt``.
 
-Mac OS X
-~~~~~~~~
+macOS
+~~~~~
 
-These instructions show how to log HTTP traffic in Firefox on Mac OS X.
+These instructions show how to log HTTP traffic in Firefox on macOS.
 
 #. Quit Firefox is if it's currently running, by using the Quit option
    in the File menu. Keep in mind that simply closing all windows does
-   **not** quit Firefox on Mac OS X (this is standard practice for Mac
+   **not** quit Firefox on macOS (this is standard practice for Mac
    applications).
 
 #. Run the Terminal application, which is located in the Utilities
@@ -165,7 +165,7 @@ These instructions show how to log HTTP traffic in Firefox on Mac OS X.
       export MOZ_LOG=timestamp,rotate:200,nsHttp:5,cache2:5,nsSocketTransport:5,nsHostResolver:5
       export MOZ_LOG_FILE=~/Desktop/log.txt
       cd /Applications/Firefox.app/Contents/MacOS
-      ./firefox-bin
+      ./firefox
 
    (The instructions assume that you've installed Firefox directly into
    your startup disk's Applications folder. If you've put it elsewhere,
@@ -311,6 +311,15 @@ For example:
 .. note::
 
    ``./mach try fuzzy --env "MOZ_LOG=nsHttp:5,SSLTokensCache:5"``
+
+How to enable QUIC logging
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The steps to enable QUIC logging (`QLOG <https://datatracker.ietf.org/doc/draft-ietf-quic-qlog-main-schema/>`__) are:
+
+#. Go to ``about:config``,  search for ``network.http.http3.enable_qlog`` and set it to true.
+#. Restart Firefox.
+#. QLOG files will be saved in the ``qlog_$PID`` directory located within your system's temporary directory.
+#. To visualize the QLOG data, visit https://qvis.quictools.info/. You can upload the QLOG files there to see the visual representation of the flows.
 
 See also
 --------

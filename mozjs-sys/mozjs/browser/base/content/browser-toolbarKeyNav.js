@@ -36,6 +36,9 @@ ToolbarKeyboardNavigator = {
   kSearchClearTimeout: 1000,
 
   _isButton(aElem) {
+    if (aElem.getAttribute("keyNav") === "false") {
+      return false;
+    }
     return (
       aElem.tagName == "toolbarbutton" || aElem.getAttribute("role") == "button"
     );
@@ -134,7 +137,7 @@ ToolbarKeyboardNavigator = {
   },
 
   // CustomizableUI event handler
-  onWidgetAdded(aWidgetId, aArea, aPosition) {
+  onWidgetAdded(aWidgetId, aArea) {
     if (!this.kToolbars.includes(aArea)) {
       return;
     }
@@ -402,8 +405,13 @@ ToolbarKeyboardNavigator = {
     if (!usesClickInsteadOfCommand) {
       return;
     }
+    const ClickEventConstructor = Services.prefs.getBoolPref(
+      "dom.w3c_pointer_events.dispatch_click_as_pointer_event"
+    )
+      ? PointerEvent
+      : MouseEvent;
     focus.dispatchEvent(
-      new MouseEvent("click", {
+      new ClickEventConstructor("click", {
         bubbles: true,
         ctrlKey: aEvent.ctrlKey,
         altKey: aEvent.altKey,

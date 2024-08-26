@@ -30,8 +30,8 @@ Please refer to the existing [UA widgets documentation](https://firefox-source-d
 
 ### How to use existing Mozilla Custom Elements
 
-The existing Mozilla Custom Elements are automatically imported into all chrome privileged documents.
-These existing elements do not need to be imported individually via `<script>` tag or by using `window.ensureCustomElements()` when in a privileged main process document.
+The existing Mozilla Custom Elements are either [automatically imported](https://searchfox.org/mozilla-central/rev/d23849dd6d83edbe681d3b4828700256ea34a654/toolkit/content/customElements.js#853-878) into all chrome privileged documents, or are [lazy loaded](https://searchfox.org/mozilla-central/rev/d23849dd6d83edbe681d3b4828700256ea34a654/toolkit/content/customElements.js#789-809) and get automatically imported when first used.
+In either case, these existing elements do not need to be imported individually via `<script>` tag.
 As long as you are working in a chrome privileged document, you will have access to the existing Mozilla Custom Elements.
 You can dynamically create one of the existing custom elements by using `document.createDocument("customElement)` or `document.createXULElement("customElement")` in the relevant JS file, or by using the custom element tag in the relevant XHTML document.
 For example, `document.createXULElement("checkbox")` creates an instance of [widgets/checkbox.js](https://searchfox.org/mozilla-central/source/toolkit/content/widgets/checkbox.js) while using `<checkbox>` declares an instance in the XUL document.
@@ -60,16 +60,12 @@ For example, the [login-timeline widget](https://searchfox.org/mozilla-central/s
 
 While we do have the `./mach addwidget` command, as noted in the [adding new design system components document](#adding-new-design-system-components), this command does not currently support the domain-specific widget case.
 [See Bug 1828181 for more details on supporting this case](https://bugzilla.mozilla.org/show_bug.cgi?id=1828181).
-Instead, you will need to do two things to have your new story appear in Storybook:
-1. Create `<your-team-or-project>/<your-widget>.stories.mjs` in `browser/components/storybook/stories`
-2. In this newly created story file, add the following default export:
-  ```js
-    export default {
-      title: "Domain-specific UI Widgets/<your-team-or-project>/<your-widget>"
-      component: "<your-widget>"
-    };
-  ```
-The next time you run `./mach storybook`, a blank story entry for your widget should appear in your local Storybook.
+Instead, you will need to use `./mach addstory your-widget "your-project-or-team-name"` to create a new story in `browser/components/storybook/stories`.
+You can also use `./mach addstory your-widget "your-project-or-team-name" --path <your-widget-path>/<widget-source>` so that your widget's source is imported correctly.
+
+If you specified a path and have Storybook running, a blank story entry for your widget will appear under the Domain-Specific UI Widgets/your-project section.
+Otherwise, if you have not added a path, Storybook will throw an error saying that it "Can't resolve 'None'" in the newly added story.
+This is expected and serves as a reminder that you need to update the newly created story with the widget source import.
 
 Since Storybook is unaware of how the actual code is added or built, we won't go into detail about adding your new widget to the codebase.
 It's recommended to have a `.html` test for your new widget since this lets you unit test the component directly rather than using integration tests with the domain.
@@ -78,11 +74,10 @@ Just like with the UI widgets, [the `browser_all_files_referenced.js` will fail 
 
 ### Using new domain-specific widgets
 
-This is effectively the same as [using new design system components](#using-new-design-system-components).
-You will need to import your widget into the relevant `html`/`xhtml` files via a `script` tag with `type="module"`:
+This is effectively the same as [using new design system components](#using-new-design-system-components). In general you should be able to rely on these elements getting lazily loaded at the time of first use, similar to how existing custom elements are imported.
+
+Outside of chrome privileged documents you may need to import your widget into the relevant `html`/`xhtml` files via a `script` tag with `type="module"`:
 
 ```html
 <script type="module" src="chrome://browser/content/<domain-directory>/<your-widget>.mjs"></script>
 ```
-
-Or use `window.ensureCustomElements("<your-widget>")` as previously stated in [the using new design system components section.](#using-new-design-system-components)

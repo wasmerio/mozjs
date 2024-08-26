@@ -12,11 +12,6 @@ const { showStreamSharingMenu, webrtcUI } = ChromeUtils.importESModule(
   "resource:///modules/webrtcUI.sys.mjs"
 );
 
-ChromeUtils.defineESModuleGetters(this, {
-  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
-  MacOSWebRTCStatusbarIndicator: "resource:///modules/webrtcUI.sys.mjs",
-});
-
 XPCOMUtils.defineLazyServiceGetter(
   this,
   "gScreenManager",
@@ -52,7 +47,7 @@ function closingInternally() {
  * Main control object for the WebRTC global indicator
  */
 const WebRTCIndicator = {
-  init(event) {
+  init() {
     addEventListener("load", this);
     addEventListener("unload", this);
 
@@ -73,10 +68,9 @@ const WebRTCIndicator = {
       false
     );
 
-    this.hideGlobalIndicator = Services.prefs.getBoolPref(
-      "privacy.webrtc.hideGlobalIndicator",
-      false
-    );
+    this.hideGlobalIndicator =
+      Services.prefs.getBoolPref("privacy.webrtc.hideGlobalIndicator", false) ||
+      Services.appinfo.isWayland;
 
     if (this.hideGlobalIndicator) {
       this.setVisibility(false);

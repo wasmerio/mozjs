@@ -20,31 +20,10 @@
 #include "js/TypeDecls.h"
 #include "vm/JSScript.h"
 #include "vm/Shape.h"
-#include "vm/StencilCache.h"  // js::StencilCache
+#include "vm/StencilCache.h"  // js::DelazificationCache
 #include "vm/StringType.h"
 
 namespace js {
-
-class SrcNote;
-
-/*
- * GetSrcNote cache to avoid O(n^2) growth in finding a source note for a
- * given pc in a script. We use the script->code pointer to tag the cache,
- * instead of the script address itself, so that source notes are always found
- * by offset from the bytecode with which they were generated.
- */
-struct GSNCache {
-  typedef HashMap<jsbytecode*, const SrcNote*, PointerHasher<jsbytecode*>,
-                  SystemAllocPolicy>
-      Map;
-
-  jsbytecode* code;
-  Map map;
-
-  GSNCache() : code(nullptr) {}
-
-  void purge();
-};
 
 struct EvalCacheEntry {
   JSLinearString* str;
@@ -64,10 +43,15 @@ struct EvalCacheEntry {
 };
 
 struct EvalCacheLookup {
-  explicit EvalCacheLookup(JSContext* cx) : str(cx), callerScript(cx) {}
-  Rooted<JSLinearString*> str;
-  RootedScript callerScript;
-  MOZ_INIT_OUTSIDE_CTOR jsbytecode* pc;
+  JSLinearString* str = nullptr;
+  JSScript* callerScript = nullptr;
+  MOZ_INIT_OUTSIDE_CTOR jsbytecode* pc = nullptr;
+
+  EvalCacheLookup() = default;
+  EvalCacheLookup(JSLinearString* str, JSScript* callerScript, jsbytecode* pc)
+      : str(str), callerScript(callerScript), pc(pc) {}
+
+  void trace(JSTracer* trc);
 };
 
 struct EvalCacheHashPolicy {
@@ -93,17 +77,26 @@ class MegamorphicCacheEntry {
   // This entry is valid iff the generation matches the cache's generation.
   uint16_t generation_ = 0;
 
-  // Number of hops on the proto chain to get to the holder object. If this is
-  // zero, the property exists on the receiver object. It can also be one of
-  // the sentinel values indicating a missing property lookup.
-  uint8_t numHops_ = 0;
+  // This encodes the number of hops on the prototype chain to get to the holder
+  // object, along with information about the kind of property. If the high bit
+  // is 0, the property is a data property. If the high bit is 1 and the value
+  // is <= MaxHopsForGetterProperty, the property is a getter. Otherwise, this
+  // is a sentinel value indicating a missing property lookup.
+  uint8_t hopsAndKind_ = 0;
 
   friend class MegamorphicCache;
 
  public:
-  static constexpr uint8_t MaxHopsForDataProperty = UINT8_MAX - 2;
-  static constexpr uint8_t NumHopsForMissingProperty = UINT8_MAX - 1;
-  static constexpr uint8_t NumHopsForMissingOwnProperty = UINT8_MAX;
+  // A simple flag for the JIT to check which, if false, lets it know that it's
+  // just a data property N hops up the prototype chain
+  static constexpr uint8_t NonDataPropertyFlag = 128;
+
+  static constexpr uint8_t MaxHopsForGetterProperty = 253;
+  static constexpr uint8_t NumHopsForMissingProperty = 254;
+  static constexpr uint8_t NumHopsForMissingOwnProperty = 255;
+
+  static constexpr uint8_t MaxHopsForDataProperty = 127;
+  static constexpr uint8_t MaxHopsForAccessorProperty = 125;
 
   void init(Shape* shape, PropertyKey key, uint16_t generation, uint8_t numHops,
             TaggedSlotOffset slotOffset) {
@@ -111,22 +104,30 @@ class MegamorphicCacheEntry {
     key_ = key;
     slotOffset_ = slotOffset;
     generation_ = generation;
-    numHops_ = numHops;
-    MOZ_ASSERT(numHops_ == numHops, "numHops must fit in numHops_");
+    hopsAndKind_ = numHops;
+    MOZ_ASSERT(hopsAndKind_ == numHops, "numHops must fit in hopsAndKind_");
   }
   bool isMissingProperty() const {
-    return numHops_ == NumHopsForMissingProperty;
+    return hopsAndKind_ == NumHopsForMissingProperty;
   }
   bool isMissingOwnProperty() const {
-    return numHops_ == NumHopsForMissingOwnProperty;
+    return hopsAndKind_ == NumHopsForMissingOwnProperty;
   }
-  bool isDataProperty() const { return numHops_ <= MaxHopsForDataProperty; }
+  bool isAccessorProperty() const {
+    return hopsAndKind_ >= NonDataPropertyFlag and
+           hopsAndKind_ <= MaxHopsForGetterProperty;
+  }
+  bool isDataProperty() const { return !(hopsAndKind_ & NonDataPropertyFlag); }
   uint16_t numHops() const {
-    MOZ_ASSERT(isDataProperty());
-    return numHops_;
+    if (isDataProperty()) {
+      return hopsAndKind_;
+    } else {
+      MOZ_ASSERT(isAccessorProperty());
+      return hopsAndKind_ & ~NonDataPropertyFlag;
+    }
   }
   TaggedSlotOffset slotOffset() const {
-    MOZ_ASSERT(isDataProperty());
+    MOZ_ASSERT(hopsAndKind_ <= MaxHopsForGetterProperty);
     return slotOffset_;
   }
 
@@ -146,8 +147,8 @@ class MegamorphicCacheEntry {
     return offsetof(MegamorphicCacheEntry, slotOffset_);
   }
 
-  static constexpr size_t offsetOfNumHops() {
-    return offsetof(MegamorphicCacheEntry, numHops_);
+  static constexpr size_t offsetOfHopsAndKind() {
+    return offsetof(MegamorphicCacheEntry, hopsAndKind_);
   }
 };
 
@@ -221,12 +222,16 @@ class MegamorphicCache {
       }
     }
   }
-  bool lookup(Shape* shape, PropertyKey key, Entry** entryp) {
-    Entry& entry = getEntry(shape, key);
-    *entryp = &entry;
+  bool isValidForLookup(const Entry& entry, Shape* shape, PropertyKey key) {
     return (entry.shape_ == shape && entry.key_ == key &&
             entry.generation_ == generation_);
   }
+  bool lookup(Shape* shape, PropertyKey key, Entry** entryp) {
+    Entry& entry = getEntry(shape, key);
+    *entryp = &entry;
+    return isValidForLookup(entry, shape, key);
+  }
+
   void initEntryForMissingProperty(Entry* entry, Shape* shape,
                                    PropertyKey key) {
     entry->init(shape, key, generation_, Entry::NumHopsForMissingProperty,
@@ -242,6 +247,15 @@ class MegamorphicCache {
     if (numHops > Entry::MaxHopsForDataProperty) {
       return;
     }
+    entry->init(shape, key, generation_, numHops, slotOffset);
+  }
+  void initEntryForAccessorProperty(Entry* entry, Shape* shape, PropertyKey key,
+                                    size_t numHops,
+                                    TaggedSlotOffset slotOffset) {
+    if (numHops > Entry::MaxHopsForAccessorProperty) {
+      return;
+    }
+    numHops |= MegamorphicCacheEntry::NonDataPropertyFlag;
     entry->init(shape, key, generation_, numHops, slotOffset);
   }
 
@@ -516,7 +530,6 @@ class RuntimeCaches {
  public:
   MegamorphicCache megamorphicCache;
   UniquePtr<MegamorphicSetPropCache> megamorphicSetPropCache;
-  GSNCache gsnCache;
   UncompressedSourceCache uncompressedSourceCache;
   EvalCache evalCache;
   StringToAtomCache stringToAtomCache;
@@ -525,15 +538,6 @@ class RuntimeCaches {
   // delazification to quickly resolve NameLocation of bindings without linearly
   // iterating over the list of bindings.
   frontend::RuntimeScopeBindingCache scopeCache;
-
-  // This cache is used to store the result of delazification compilations which
-  // might be happening off-thread. The main-thread will concurrently read the
-  // content of this cache to avoid delazification, or fallback on running the
-  // delazification on the main-thread.
-  //
-  // Main-thread results are not stored in the StencilCache as there is no other
-  // consumer.
-  StencilCache delazificationCache;
 
   void sweepAfterMinorGC(JSTracer* trc) { evalCache.traceWeak(trc); }
 #ifdef JSGC_HASH_TABLE_CHECKS
@@ -553,11 +557,13 @@ class RuntimeCaches {
     scopeCache.purge();
   }
 
-  void purgeStencils() { delazificationCache.clearAndDisable(); }
+  void purgeStencils() {
+    DelazificationCache& cache = DelazificationCache::getSingleton();
+    cache.clearAndDisable();
+  }
 
   void purge() {
     purgeForCompaction();
-    gsnCache.purge();
     uncompressedSourceCache.purge();
     purgeStencils();
   }

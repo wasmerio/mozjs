@@ -23,13 +23,14 @@
 #include "js/shadow/Zone.h"    // JS::shadow::Zone
 #include "js/Value.h"
 #include "vm/GetterSetter.h"
-#include "vm/JSAtom.h"
+#include "vm/JSAtomUtils.h"  // AtomIsMarked
 #include "vm/JSObject.h"
 #include "vm/Shape.h"
 #include "vm/StringType.h"
 
 namespace js {
 
+class JS_PUBLIC_API GenericPrinter;
 class PropertyResult;
 
 namespace gc {
@@ -286,9 +287,11 @@ class ObjectElements {
   /* 'length' property of array objects, unused for other objects. */
   uint32_t length;
 
+public:
   bool hasNonwritableArrayLength() const {
     return flags & NONWRITABLE_ARRAY_LENGTH;
   }
+private:
   void setNonwritableArrayLength() {
     // See ArrayObject::setNonWritableLength.
     MOZ_ASSERT(capacity == initializedLength);
@@ -332,13 +335,17 @@ class ObjectElements {
   void markNonPacked() { flags |= NON_PACKED; }
 
   void markMaybeInIteration() { flags |= MAYBE_IN_ITERATION; }
+public:
   bool maybeInIteration() { return flags & MAYBE_IN_ITERATION; }
+private:
 
   void setNotExtensible() {
     MOZ_ASSERT(!isNotExtensible());
     flags |= NOT_EXTENSIBLE;
   }
+public:
   bool isNotExtensible() { return flags & NOT_EXTENSIBLE; }
+private:
 
   void seal() {
     MOZ_ASSERT(isNotExtensible());
@@ -408,9 +415,6 @@ class ObjectElements {
 
   bool isPacked() const { return !(flags & NON_PACKED); }
 
-  uint32_t getLength() const { return length; }
-  uint32_t getInitializedLength() const { return initializedLength; }
-
   JS::PropertyAttributes elementAttributes() const {
     if (isFrozen()) {
       return {JS::PropertyAttribute::Enumerable};
@@ -438,6 +442,10 @@ class ObjectElements {
   // This is enough slots to store an object of this class. See the static
   // assertion below.
   static const size_t VALUES_PER_HEADER = 2;
+
+#if defined(DEBUG) || defined(JS_JITSPEW)
+  void dumpStringContent(js::GenericPrinter& out) const;
+#endif
 };
 
 static_assert(ObjectElements::VALUES_PER_HEADER * sizeof(HeapSlot) ==
@@ -464,6 +472,13 @@ class alignas(HeapSlot) ObjectSlots {
   static inline size_t allocCount(size_t slotCount) {
     static_assert(sizeof(ObjectSlots) ==
                   ObjectSlots::VALUES_PER_HEADER * sizeof(HeapSlot));
+#ifdef MOZ_VALGRIND
+    if (slotCount == 0) {
+      // Add an extra unused slot so that NativeObject::slots_ always points
+      // into the allocation otherwise valgrind thinks this is a leak.
+      slotCount = 1;
+    }
+#endif
     return slotCount + VALUES_PER_HEADER;
   }
 
@@ -571,6 +586,17 @@ class TaggedSlotOffset {
   bool operator!=(const TaggedSlotOffset& other) const {
     return !(*this == other);
   }
+};
+
+enum class CanReuseShape {
+  // The Shape can be reused. This implies CanReusePropMap.
+  CanReuseShape,
+
+  // Only the PropMap can be reused.
+  CanReusePropMap,
+
+  // Neither the PropMap nor Shape can be reused.
+  NoReuse,
 };
 
 /*
@@ -689,33 +715,36 @@ class NativeObject : public JSObject {
   void setShapeAndRemoveLastSlot(JSContext* cx, SharedShape* newShape,
                                  uint32_t slot);
 
-  MOZ_ALWAYS_INLINE bool canReuseShapeForNewProperties(
-      NativeShape* newShape) const {
+  MOZ_ALWAYS_INLINE CanReuseShape
+  canReuseShapeForNewProperties(NativeShape* newShape) const {
     NativeShape* oldShape = shape();
     MOZ_ASSERT(oldShape->propMapLength() == 0,
                "object must have no properties");
     MOZ_ASSERT(newShape->propMapLength() > 0,
                "new shape must have at least one property");
-    if (oldShape->numFixedSlots() != newShape->numFixedSlots()) {
-      return false;
-    }
     if (oldShape->isDictionary() || newShape->isDictionary()) {
-      return false;
+      return CanReuseShape::NoReuse;
     }
-    if (oldShape->base() != newShape->base()) {
-      return false;
-    }
-    MOZ_ASSERT(oldShape->getObjectClass() == newShape->getObjectClass());
-    MOZ_ASSERT(oldShape->proto() == newShape->proto());
-    MOZ_ASSERT(oldShape->realm() == newShape->realm());
     // We only handle the common case where the old shape has no object flags
     // (expected because it's an empty object) and the new shape has just the
     // HasEnumerable flag that we can copy safely.
     if (!oldShape->objectFlags().isEmpty()) {
-      return false;
+      return CanReuseShape::NoReuse;
     }
     MOZ_ASSERT(newShape->hasObjectFlag(ObjectFlag::HasEnumerable));
-    return newShape->objectFlags() == ObjectFlags({ObjectFlag::HasEnumerable});
+    if (newShape->objectFlags() != ObjectFlags({ObjectFlag::HasEnumerable})) {
+      return CanReuseShape::NoReuse;
+    }
+    // If the number of fixed slots or the BaseShape is different, we can't
+    // reuse the Shape but we can still reuse the PropMap.
+    if (oldShape->numFixedSlots() != newShape->numFixedSlots() ||
+        oldShape->base() != newShape->base()) {
+      return CanReuseShape::CanReusePropMap;
+    }
+    MOZ_ASSERT(oldShape->getObjectClass() == newShape->getObjectClass());
+    MOZ_ASSERT(oldShape->proto() == newShape->proto());
+    MOZ_ASSERT(oldShape->realm() == newShape->realm());
+    return CanReuseShape::CanReuseShape;
   }
 
   // Newly-created TypedArrays that map a SharedArrayBuffer are
@@ -731,6 +760,14 @@ class NativeObject : public JSObject {
   static inline NativeObject* create(JSContext* cx, gc::AllocKind kind,
                                      gc::Heap heap, Handle<SharedShape*> shape,
                                      gc::AllocSite* site = nullptr);
+
+  template <typename T>
+  static inline T* create(JSContext* cx, gc::AllocKind kind, gc::Heap heap,
+                          Handle<SharedShape*> shape,
+                          gc::AllocSite* site = nullptr) {
+    NativeObject* nobj = create(cx, kind, heap, shape, site);
+    return nobj ? &nobj->as<T>() : nullptr;
+  }
 
 #ifdef DEBUG
   static void enableShapeConsistencyChecks();
@@ -956,7 +993,7 @@ class NativeObject : public JSObject {
   bool growSlotsForNewSlot(JSContext* cx, uint32_t numFixed, uint32_t slot);
   void shrinkSlots(JSContext* cx, uint32_t oldCapacity, uint32_t newCapacity);
 
-  bool allocateSlots(JSContext* cx, uint32_t newCapacity);
+  bool allocateSlots(Nursery& nursery, uint32_t newCapacity);
 
   /*
    * This method is static because it's called from JIT code. On OOM, returns
@@ -1122,9 +1159,7 @@ class NativeObject : public JSObject {
     return slots_ + (slot - fixed);
   }
 
-  HeapSlot* getSlotsUnchecked() {
-    return slots_;
-  }
+  HeapSlot* getSlotsUnchecked() { return slots_; }
 
   HeapSlot* getSlotAddress(uint32_t slot) {
     /*
@@ -1228,7 +1263,7 @@ class NativeObject : public JSObject {
     return UndefinedValue();
   }
 
-  [[nodiscard]] bool setUniqueId(JSContext* cx, uint64_t uid);
+  [[nodiscard]] bool setUniqueId(JSRuntime* runtime, uint64_t uid);
   inline bool hasUniqueId() const { return getSlotsHeader()->hasUniqueId(); }
   inline uint64_t uniqueId() const { return getSlotsHeader()->uniqueId(); }
   inline uint64_t maybeUniqueId() const {

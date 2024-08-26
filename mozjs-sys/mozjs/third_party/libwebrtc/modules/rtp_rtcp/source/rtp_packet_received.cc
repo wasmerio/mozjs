@@ -48,7 +48,6 @@ void RtpPacketReceived::GetHeader(RTPHeader* header) const {
   }
   header->paddingLength = padding_size();
   header->headerLength = headers_size();
-  header->payload_type_frequency = payload_type_frequency();
   header->extension.hasTransmissionTimeOffset =
       GetExtension<TransmissionOffset>(
           &header->extension.transmissionTimeOffset);
@@ -62,8 +61,7 @@ void RtpPacketReceived::GetHeader(RTPHeader* header) const {
           &header->extension.feedback_request) ||
       GetExtension<TransportSequenceNumber>(
           &header->extension.transportSequenceNumber);
-  header->extension.hasAudioLevel = GetExtension<AudioLevel>(
-      &header->extension.voiceActivity, &header->extension.audioLevel);
+  header->extension.set_audio_level(GetExtension<AudioLevelExtension>());
   header->extension.hasVideoRotation =
       GetExtension<VideoOrientation>(&header->extension.videoRotation);
   header->extension.hasVideoContentType =

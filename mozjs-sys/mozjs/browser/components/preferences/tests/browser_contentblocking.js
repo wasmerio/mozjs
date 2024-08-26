@@ -31,6 +31,10 @@ const PRIVACY_PAGE = "about:preferences#privacy";
 const ISOLATE_UI_PREF =
   "browser.contentblocking.reject-and-isolate-cookies.preferences.ui.enabled";
 const FPI_PREF = "privacy.firstparty.isolate";
+const FPP_PREF = "privacy.fingerprintingProtection";
+const FPP_PBM_PREF = "privacy.fingerprintingProtection.pbmode";
+const THIRD_PARTY_COOKIE_DEPRECATION_PREF =
+  "network.cookie.cookieBehavior.optInPartitioning";
 
 const { EnterprisePolicyTesting, PoliciesPrefTracker } =
   ChromeUtils.importESModule(
@@ -89,6 +93,8 @@ add_task(async function testContentBlockingMainCategory() {
     ],
     [ISOLATE_UI_PREF, true],
     [FPI_PREF, false],
+    [FPP_PREF, false],
+    [FPP_PBM_PREF, true],
   ];
 
   for (let pref of prefs) {
@@ -105,6 +111,7 @@ add_task(async function testContentBlockingMainCategory() {
   let checkboxes = [
     "#contentBlockingTrackingProtectionCheckbox",
     "#contentBlockingBlockCookiesCheckbox",
+    "#contentBlockingFingerprintingProtectionCheckbox",
   ];
 
   await openPreferencesViaOpenPreferencesAPI("privacy", { leaveOpen: true });
@@ -332,6 +339,9 @@ add_task(async function testContentBlockingStandardCategory() {
     [OCSP_PREF]: null,
     [QUERY_PARAM_STRIP_PREF]: null,
     [QUERY_PARAM_STRIP_PBM_PREF]: null,
+    [FPP_PREF]: null,
+    [FPP_PBM_PREF]: null,
+    [THIRD_PARTY_COOKIE_DEPRECATION_PREF]: null,
   };
 
   for (let pref in prefs) {
@@ -392,6 +402,15 @@ add_task(async function testContentBlockingStandardCategory() {
   Services.prefs.setBoolPref(
     QUERY_PARAM_STRIP_PBM_PREF,
     !Services.prefs.getBoolPref(QUERY_PARAM_STRIP_PBM_PREF)
+  );
+  Services.prefs.setBoolPref(FPP_PREF, !Services.prefs.getBoolPref(FPP_PREF));
+  Services.prefs.setBoolPref(
+    FPP_PBM_PREF,
+    !Services.prefs.getBoolPref(FPP_PBM_PREF)
+  );
+  Services.prefs.setBoolPref(
+    THIRD_PARTY_COOKIE_DEPRECATION_PREF,
+    !Services.prefs.getBoolPref(THIRD_PARTY_COOKIE_DEPRECATION_PREF)
   );
 
   for (let pref in prefs) {
@@ -461,6 +480,8 @@ add_task(async function testContentBlockingStrictCategory() {
   Services.prefs.setBoolPref(OCSP_PREF, false);
   Services.prefs.setBoolPref(QUERY_PARAM_STRIP_PREF, false);
   Services.prefs.setBoolPref(QUERY_PARAM_STRIP_PBM_PREF, false);
+  Services.prefs.setBoolPref(FPP_PREF, false);
+  Services.prefs.setBoolPref(FPP_PBM_PREF, false);
   Services.prefs.setIntPref(
     NCB_PREF,
     Ci.nsICookieService.BEHAVIOR_LIMIT_FOREIGN
@@ -469,6 +490,7 @@ add_task(async function testContentBlockingStrictCategory() {
     NCBP_PREF,
     Ci.nsICookieService.BEHAVIOR_LIMIT_FOREIGN
   );
+  Services.prefs.setBoolPref(THIRD_PARTY_COOKIE_DEPRECATION_PREF, false);
   let strict_pref = Services.prefs.getStringPref(STRICT_PREF).split(",");
 
   await openPreferencesViaOpenPreferencesAPI("privacy", { leaveOpen: true });
@@ -667,6 +689,34 @@ add_task(async function testContentBlockingStrictCategory() {
           `${QUERY_PARAM_STRIP_PBM_PREF} has been set to false`
         );
         break;
+      case "fpp":
+        is(
+          Services.prefs.getBoolPref(FPP_PREF),
+          true,
+          `${FPP_PREF} has been set to true`
+        );
+        break;
+      case "-fpp":
+        is(
+          Services.prefs.getBoolPref(FPP_PREF),
+          false,
+          `${FPP_PREF} has been set to false`
+        );
+        break;
+      case "fppPrivate":
+        is(
+          Services.prefs.getBoolPref(FPP_PBM_PREF),
+          true,
+          `${FPP_PBM_PREF} has been set to true`
+        );
+        break;
+      case "-fppPrivate":
+        is(
+          Services.prefs.getBoolPref(FPP_PBM_PREF),
+          false,
+          `${FPP_PBM_PREF} has been set to false`
+        );
+        break;
       case "cookieBehavior0":
         is(
           Services.prefs.getIntPref(NCB_PREF),
@@ -749,6 +799,20 @@ add_task(async function testContentBlockingStrictCategory() {
           Services.prefs.getIntPref(NCBP_PREF),
           Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN,
           `${NCBP_PREF} has been set to ${Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN}`
+        );
+        break;
+      case "3pcd":
+        is(
+          Services.prefs.getBoolPref(THIRD_PARTY_COOKIE_DEPRECATION_PREF),
+          true,
+          `${THIRD_PARTY_COOKIE_DEPRECATION_PREF} has been set to true`
+        );
+        break;
+      case "-3pcd":
+        is(
+          Services.prefs.getBoolPref(THIRD_PARTY_COOKIE_DEPRECATION_PREF),
+          false,
+          `${THIRD_PARTY_COOKIE_DEPRECATION_PREF} has been set to false`
         );
         break;
       default:
@@ -979,7 +1043,7 @@ add_task(async function testDisableTPCheckBoxDisablesEmailTP() {
   // Verify the checkbox is unchecked after clicking.
   is(
     tpCheckbox.getAttribute("checked"),
-    "",
+    null,
     "Tracking protection checkbox is unchecked"
   );
 
@@ -1056,6 +1120,126 @@ add_task(async function testTPMenuForEmailTP() {
     true,
     `${EMAIL_TP_PBM_PREF} has been set to true`
   );
+
+  gBrowser.removeCurrentTab();
+});
+
+// Ensure the FPP checkbox in ETP custom works properly.
+add_task(async function testFPPCustomCheckBox() {
+  // Set the FPP prefs to the default state.
+  SpecialPowers.pushPrefEnv({
+    set: [
+      [FPP_PREF, false],
+      [FPP_PBM_PREF, true],
+      [CAT_PREF, "custom"],
+    ],
+  });
+
+  // Clear glean before testing.
+  Services.fog.testResetFOG();
+
+  await openPreferencesViaOpenPreferencesAPI("privacy", { leaveOpen: true });
+  let doc = gBrowser.contentDocument;
+
+  let fppCheckbox = doc.querySelector(
+    "#contentBlockingFingerprintingProtectionCheckbox"
+  );
+
+  // Verify the default state of the FPP checkbox.
+  ok(fppCheckbox, "FPP checkbox exists");
+  is(fppCheckbox.getAttribute("checked"), "true", "FPP checkbox is checked");
+
+  let menu = doc.querySelector("#fingerprintingProtectionMenu");
+  let alwaysMenuItem = doc.querySelector(
+    "#fingerprintingProtectionMenu > menupopup > menuitem[value=always]"
+  );
+  let privateMenuItem = doc.querySelector(
+    "#fingerprintingProtectionMenu > menupopup > menuitem[value=private]"
+  );
+
+  // Click the always option on the FPP drop down.
+  menu.selectedItem = alwaysMenuItem;
+  alwaysMenuItem.click();
+
+  // Verify the pref states and the telemetry.
+  is(
+    Services.prefs.getBoolPref(FPP_PREF),
+    true,
+    `${FPP_PREF} has been set to true`
+  );
+
+  is(
+    Services.prefs.getBoolPref(FPP_PBM_PREF),
+    true,
+    `${FPP_PBM_PREF} has been set to true`
+  );
+
+  let events = Glean.privacyUiFppClick.menu.testGetValue();
+  is(events.length, 1, "The event length is correct");
+  is(events[0].extra.value, "always", "The extra field is correct.");
+
+  // Click the private-only option on the FPP drop down.
+  menu.selectedItem = privateMenuItem;
+  privateMenuItem.click();
+
+  // Verify the pref states and the telemetry.
+  is(
+    Services.prefs.getBoolPref(FPP_PREF),
+    false,
+    `${FPP_PREF} has been set to true`
+  );
+
+  is(
+    Services.prefs.getBoolPref(FPP_PBM_PREF),
+    true,
+    `${FPP_PBM_PREF} has been set to true`
+  );
+
+  events = Glean.privacyUiFppClick.menu.testGetValue();
+  is(events.length, 2, "The event length is correct");
+  is(events[1].extra.value, "private", "The extra field is correct.");
+
+  // Uncheck the checkbox
+  fppCheckbox.click();
+
+  // Verify the pref states and the telemetry.
+  is(
+    Services.prefs.getBoolPref(FPP_PREF),
+    false,
+    `${FPP_PREF} has been set to true`
+  );
+
+  is(
+    Services.prefs.getBoolPref(FPP_PBM_PREF),
+    false,
+    `${FPP_PBM_PREF} has been set to true`
+  );
+  is(menu.disabled, true, "The menu is disabled as the checkbox is unchecked");
+
+  events = Glean.privacyUiFppClick.checkbox.testGetValue();
+  is(events.length, 1, "The event length is correct");
+  is(events[0].extra.checked, "false", "The extra field is correct.");
+
+  // Check the checkbox again.
+  fppCheckbox.click();
+
+  // Verify the pref states and telemetry.
+  is(
+    Services.prefs.getBoolPref(FPP_PREF),
+    false,
+    `${FPP_PREF} has been set to true`
+  );
+
+  is(
+    Services.prefs.getBoolPref(FPP_PBM_PREF),
+    true,
+    `${FPP_PBM_PREF} has been set to true`
+  );
+  is(menu.disabled, false, "The menu is enabled as the checkbox is checked");
+
+  events = Glean.privacyUiFppClick.checkbox.testGetValue();
+  is(events.length, 2, "The event length is correct");
+  is(events[1].extra.checked, "true", "The extra field is correct.");
 
   gBrowser.removeCurrentTab();
 });
@@ -1286,7 +1470,7 @@ add_task(async function testContentBlockingReloadWarning() {
     "#contentBlockingOptionStrict .content-blocking-warning.reload-tabs"
   );
   ok(
-    !BrowserTestUtils.is_hidden(strictWarning),
+    !BrowserTestUtils.isHidden(strictWarning),
     "The warning in the strict section should be showing"
   );
 
@@ -1298,7 +1482,10 @@ add_task(async function testContentBlockingReloadWarning() {
 // if it is the only tab.
 add_task(async function testContentBlockingReloadWarningSingleTab() {
   Services.prefs.setStringPref(CAT_PREF, "standard");
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, PRIVACY_PAGE);
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    PRIVACY_PAGE
+  );
   await BrowserTestUtils.browserLoaded(
     gBrowser.selectedBrowser,
     false,
@@ -1325,7 +1512,10 @@ add_task(async function testContentBlockingReloadWarningSingleTab() {
     "all of the warnings to reload tabs are still hidden"
   );
   Services.prefs.setStringPref(CAT_PREF, "standard");
-  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:newtab");
+  BrowserTestUtils.startLoadingURIString(
+    gBrowser.selectedBrowser,
+    "about:newtab"
+  );
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
 });
 
@@ -1352,7 +1542,7 @@ add_task(async function testReloadTabsMessage() {
 
   Services.prefs.setStringPref(CAT_PREF, "standard");
   ok(
-    !BrowserTestUtils.is_hidden(standardWarning),
+    !BrowserTestUtils.isHidden(standardWarning),
     "The warning in the standard section should be showing"
   );
 
@@ -1370,7 +1560,7 @@ add_task(async function testReloadTabsMessage() {
   await exampleTabBrowserDiscardedPromise;
 
   ok(
-    BrowserTestUtils.is_hidden(standardWarning),
+    BrowserTestUtils.isHidden(standardWarning),
     "The warning in the standard section should have hidden after being clicked"
   );
 
@@ -1378,5 +1568,67 @@ add_task(async function testReloadTabsMessage() {
   Services.prefs.setStringPref(CAT_PREF, "standard");
   gBrowser.removeTab(exampleTab);
   gBrowser.removeTab(examplePinnedTab);
+  gBrowser.removeCurrentTab();
+});
+
+// Checks that the RFP warning banner is properly shown when rfp prefs are enabled.
+add_task(async function testRFPWarningBanner() {
+  // Set the prefs to false before testing.
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["privacy.resistFingerprinting", false],
+      ["privacy.resistFingerprinting.pbmode", false],
+    ],
+  });
+
+  await openPreferencesViaOpenPreferencesAPI("privacy", { leaveOpen: true });
+  let doc = gBrowser.contentDocument;
+  let rfpWarningBanner = doc.getElementById("rfpIncompatibilityWarning");
+
+  // Verify if the banner is hidden at the beginning.
+  ok(
+    !BrowserTestUtils.isVisible(rfpWarningBanner),
+    "The RFP warning banner is hidden at the beginning."
+  );
+
+  // Enable the RFP pref
+  await SpecialPowers.pushPrefEnv({
+    set: [["privacy.resistFingerprinting", true]],
+  });
+
+  // Verify if the banner is shown.
+  ok(
+    BrowserTestUtils.isVisible(rfpWarningBanner),
+    "The RFP warning banner is shown."
+  );
+
+  // Enable the RFP pref for private windows
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["privacy.resistFingerprinting", false],
+      ["privacy.resistFingerprinting.pbmode", true],
+    ],
+  });
+
+  // Verify if the banner is shown.
+  ok(
+    BrowserTestUtils.isVisible(rfpWarningBanner),
+    "The RFP warning banner is shown."
+  );
+
+  // Enable both RFP prefs.
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["privacy.resistFingerprinting", true],
+      ["privacy.resistFingerprinting.pbmode", true],
+    ],
+  });
+
+  // Verify if the banner is shown.
+  ok(
+    BrowserTestUtils.isVisible(rfpWarningBanner),
+    "The RFP warning banner is shown."
+  );
+
   gBrowser.removeCurrentTab();
 });

@@ -9,7 +9,6 @@
 #include "builtin/streams/QueueWithSizes-inl.h"
 
 #include "mozilla/Assertions.h"     // MOZ_ASSERT
-#include "mozilla/FloatingPoint.h"  // mozilla::Is{Infinite,NaN}
 
 #include "builtin/streams/StreamController.h"  // js::StreamController
 #include "js/Class.h"                 // JSClass, JSCLASS_HAS_RESERVED_SLOTS

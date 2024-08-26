@@ -12,7 +12,7 @@ bitflags! {
     /// If we ever want to add some flags that shouldn't inherit for them,
     /// we might want to add a function to handle this.
     #[repr(C)]
-    #[derive(Clone, Copy, Eq, PartialEq)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct ComputedValueFlags: u32 {
         /// Whether the style or any of the ancestors has a text-decoration-line
         /// property that should get propagated to descendants.
@@ -97,8 +97,8 @@ bitflags! {
         /// Whether there are author-specified rules for `font-synthesis-style`.
         const HAS_AUTHOR_SPECIFIED_FONT_SYNTHESIS_STYLE = 1 << 18;
 
-        // (There's also font-synthesis-small-caps, but we don't currently need to
-        // keep track of that.)
+        // (There's also font-synthesis-small-caps and font-synthesis-position,
+        // but we don't currently need to keep track of those.)
 
         /// Whether there are author-specified rules for `letter-spacing`.
         const HAS_AUTHOR_SPECIFIED_LETTER_SPACING = 1 << 19;

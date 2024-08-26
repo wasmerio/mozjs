@@ -21,7 +21,7 @@
       return `
       <html:link rel="stylesheet" href="chrome://global/skin/toolbarbutton.css"/>
       <html:link rel="stylesheet" href="chrome://global/skin/arrowscrollbox.css"/>
-      <toolbarbutton id="scrollbutton-up" part="scrollbutton-up"/>
+      <toolbarbutton id="scrollbutton-up" part="scrollbutton-up" keyNav="false" data-l10n-id="overflow-scroll-button-backwards"/>
       <spacer part="overflow-start-indicator"/>
       <box class="scrollbox-clip" part="scrollbox-clip" flex="1">
         <scrollbox part="scrollbox" flex="1">
@@ -29,8 +29,8 @@
         </scrollbox>
       </box>
       <spacer part="overflow-end-indicator"/>
-      <toolbarbutton id="scrollbutton-down" part="scrollbutton-down"/>
-    `;
+      <toolbarbutton id="scrollbutton-down" part="scrollbutton-down" keyNav="false" data-l10n-id="overflow-scroll-button-forwards"/>
+      `;
     }
 
     constructor() {
@@ -42,6 +42,8 @@
       this._scrollButtonUp = this.shadowRoot.getElementById("scrollbutton-up");
       this._scrollButtonDown =
         this.shadowRoot.getElementById("scrollbutton-down");
+
+      MozXULElement.insertFTLIfNeeded("toolkit/global/arrowscrollbox.ftl");
 
       this._arrowScrollAnim = {
         scrollbox: this,
@@ -129,10 +131,14 @@
     }
 
     connectedCallback() {
+      this.removeAttribute("overflowing");
+
       if (this.hasConnected) {
         return;
       }
       this.hasConnected = true;
+
+      document.l10n.connectRoot(this.shadowRoot);
 
       if (!this.hasAttribute("smoothscroll")) {
         this.smoothScroll = Services.prefs.getBoolPref(
@@ -141,7 +147,6 @@
         );
       }
 
-      this.removeAttribute("overflowing");
       this.initializeAttributeInheritance();
       this._updateScrollButtonsDisabledState();
     }
@@ -639,6 +644,7 @@
         this._scrollTimer.cancel();
         this._scrollTimer = null;
       }
+      document.l10n.disconnectRoot(this.shadowRoot);
     }
 
     on_wheel(event) {
@@ -749,7 +755,7 @@
       }
     }
 
-    on_touchend(event) {
+    on_touchend() {
       this._touchStart = -1;
     }
 
@@ -804,12 +810,12 @@
       this._updateScrollButtonsDisabledState();
     }
 
-    on_scroll(event) {
+    on_scroll() {
       this._isScrolling = true;
       this._updateScrollButtonsDisabledState();
     }
 
-    on_scrollend(event) {
+    on_scrollend() {
       this._isScrolling = false;
       this._destination = 0;
       this._direction = 0;

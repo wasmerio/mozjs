@@ -100,6 +100,10 @@ class JS_PUBLIC_API Wrapper;
  * organized in the following hierarchy:
  *
  *     BaseProxyHandler
+ *     |  |
+ *     |  NurseryAllocableProxyHandler
+ *     |                         // allocated in the nursery; disallows
+ *     |                         // overriding finalize method
  *     |
  *     ForwardingProxyHandler    // has a target and forwards internal methods
  *     |
@@ -230,9 +234,9 @@ class JS_PUBLIC_API BaseProxyHandler {
    *
    * enter() allows the policy to specify whether the caller may perform |act|
    * on the proxy's |id| property. In the case when |act| is CALL, |id| is
-   * generally JSID_VOID.  The |mayThrow| parameter indicates whether a
-   * handler that wants to throw custom exceptions when denying should do so
-   * or not.
+   * generally JS::PropertyKey::isVoid.  The |mayThrow| parameter indicates
+   * whether a handler that wants to throw custom exceptions when denying
+   * should do so or not.
    *
    * The |act| parameter to enter() specifies the action being performed.
    * If |bp| is false, the method suggests that the caller throw (though it
@@ -376,6 +380,17 @@ class JS_PUBLIC_API BaseProxyHandler {
                            ElementAdder* adder) const;
 
   virtual bool isScripted() const { return false; }
+};
+
+class JS_PUBLIC_API NurseryAllocableProxyHandler : public BaseProxyHandler {
+  using BaseProxyHandler::BaseProxyHandler;
+
+  // Don't allow overriding the default finalize method.
+  void finalize(JS::GCContext* gcx, JSObject* proxy) const final {
+    BaseProxyHandler::finalize(gcx, proxy);
+  }
+  // Can allocate in the nursery as long as we use the default finalize method.
+  bool canNurseryAllocate() const override { return true; }
 };
 
 extern JS_PUBLIC_DATA const JSClass ProxyClass;
@@ -554,9 +569,8 @@ inline void SetProxyReservedSlot(JSObject* obj, size_t n,
 
 inline void SetProxyPrivate(JSObject* obj, const JS::Value& value) {
 #ifdef DEBUG
-  if (gc::detail::ObjectIsMarkedBlack(obj)) {
-    JS::AssertValueIsNotGray(value);
-  }
+  JS::AssertObjectIsNotGray(obj);
+  JS::AssertValueIsNotGray(value);
 #endif
 
   JS::Value* vp = &detail::GetProxyDataLayout(obj)->values()->privateSlot;
@@ -741,14 +755,14 @@ constexpr unsigned CheckProxyFlags() {
   return Flags;
 }
 
-#define PROXY_CLASS_DEF_WITH_CLASS_SPEC(name, flags, classSpec)            \
-  {                                                                        \
-    name,                                                                  \
-        JSClass::NON_NATIVE | JSCLASS_IS_PROXY |                           \
-            JSCLASS_DELAY_METADATA_BUILDER | js::CheckProxyFlags<flags>(), \
-        &js::ProxyClassOps, classSpec, &js::ProxyClassExtension,           \
-        &js::ProxyObjectOps                                                \
-  }
+#define PROXY_CLASS_DEF_WITH_CLASS_SPEC(name, flags, classSpec)              \
+  {name,                                                                     \
+   JSClass::NON_NATIVE | JSCLASS_IS_PROXY | JSCLASS_DELAY_METADATA_BUILDER | \
+       js::CheckProxyFlags<flags>(),                                         \
+   &js::ProxyClassOps,                                                       \
+   classSpec,                                                                \
+   &js::ProxyClassExtension,                                                 \
+   &js::ProxyObjectOps}
 
 #define PROXY_CLASS_DEF(name, flags) \
   PROXY_CLASS_DEF_WITH_CLASS_SPEC(name, flags, JS_NULL_CLASS_SPEC)

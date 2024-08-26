@@ -80,64 +80,106 @@ void DocAccessibleParent::SetBrowsingContext(
 }
 
 mozilla::ipc::IPCResult DocAccessibleParent::RecvShowEvent(
-    const ShowEventData& aData, const bool& aFromUser) {
+    nsTArray<AccessibleData>&& aNewTree, const bool& aEventSuppressed,
+    const bool& aComplete, const bool& aFromUser) {
   ACQUIRE_ANDROID_LOCK
   if (mShutdown) return IPC_OK();
 
   MOZ_ASSERT(CheckDocTree());
 
-  if (aData.NewTree().IsEmpty()) {
+  if (aNewTree.IsEmpty()) {
     return IPC_FAIL(this, "No children being added");
   }
 
-  RemoteAccessible* parent = GetAccessible(aData.ID());
-
-  // XXX This should really never happen, but sometimes we fail to fire the
-  // required show events.
-  if (!parent) {
-    NS_ERROR("adding child to unknown accessible");
+  RemoteAccessible* root = nullptr;
+  RemoteAccessible* rootParent = nullptr;
+  RemoteAccessible* lastParent = this;
+  uint64_t lastParentID = 0;
+  for (const auto& accData : aNewTree) {
+    // Avoid repeated hash lookups when there are multiple children of the same
+    // parent.
+    RemoteAccessible* parent = accData.ParentID() == lastParentID
+                                   ? lastParent
+                                   : GetAccessible(accData.ParentID());
+    // XXX This should really never happen, but sometimes we fail to fire the
+    // required show events.
+    if (!parent) {
+      NS_ERROR("adding child to unknown accessible");
 #ifdef DEBUG
-    return IPC_FAIL(this, "unknown parent accessible");
+      return IPC_FAIL(this, "unknown parent accessible");
 #else
-    return IPC_OK();
+      return IPC_OK();
 #endif
-  }
+    }
+    lastParent = parent;
+    lastParentID = accData.ParentID();
 
-  uint32_t newChildIdx = aData.Idx();
-  if (newChildIdx > parent->ChildCount()) {
-    NS_ERROR("invalid index to add child at");
+    uint32_t childIdx = accData.IndexInParent();
+    if (childIdx > parent->ChildCount()) {
+      NS_ERROR("invalid index to add child at");
 #ifdef DEBUG
-    return IPC_FAIL(this, "invalid index");
+      return IPC_FAIL(this, "invalid index");
 #else
-    return IPC_OK();
+      return IPC_OK();
 #endif
-  }
+    }
 
-  uint32_t consumed = AddSubtree(parent, aData.NewTree(), 0, newChildIdx);
-  MOZ_ASSERT(consumed == aData.NewTree().Length());
-
-  // XXX This shouldn't happen, but if we failed to add children then the below
-  // is pointless and can crash.
-  if (!consumed) {
-    return IPC_FAIL(this, "failed to add children");
+    RemoteAccessible* child = CreateAcc(accData);
+    if (!child) {
+      // This shouldn't happen.
+      return IPC_FAIL(this, "failed to add children");
+    }
+    if (!root && !mPendingShowChild) {
+      // This is the first Accessible, which is the root of the shown subtree.
+      root = child;
+      rootParent = parent;
+    }
+    // If this show event has been split across multiple messages and this is
+    // not the last message, don't attach the shown root to the tree yet.
+    // Otherwise, clients might crawl the incomplete subtree and they won't get
+    // mutation events for the remaining pieces.
+    if (aComplete || root != child) {
+      AttachChild(parent, childIdx, child);
+    }
   }
-
-#ifdef DEBUG
-  for (uint32_t i = 0; i < consumed; i++) {
-    uint64_t id = aData.NewTree()[i].ID();
-    MOZ_ASSERT(mAccessibles.GetEntry(id));
-  }
-#endif
 
   MOZ_ASSERT(CheckDocTree());
 
+  if (!aComplete && !mPendingShowChild) {
+    // This is the first message for a show event split across multiple
+    // messages. Save the show target for subsequent messages and return.
+    const auto& accData = aNewTree[0];
+    mPendingShowChild = accData.ID();
+    mPendingShowParent = accData.ParentID();
+    mPendingShowIndex = accData.IndexInParent();
+    return IPC_OK();
+  }
+  if (!aComplete) {
+    // This show event has been split into multiple messages, but this is
+    // neither the first nor the last message. There's nothing more to do here.
+    return IPC_OK();
+  }
+  MOZ_ASSERT(aComplete);
+  if (mPendingShowChild) {
+    // This is the last message for a show event split across multiple
+    // messages. Retrieve the saved show target, attach it to the tree and fire
+    // an event if appropriate.
+    rootParent = GetAccessible(mPendingShowParent);
+    MOZ_ASSERT(rootParent);
+    root = GetAccessible(mPendingShowChild);
+    MOZ_ASSERT(root);
+    AttachChild(rootParent, mPendingShowIndex, root);
+    mPendingShowChild = 0;
+    mPendingShowParent = 0;
+    mPendingShowIndex = 0;
+  }
+
   // Just update, no events.
-  if (aData.EventSuppressed()) {
+  if (aEventSuppressed) {
     return IPC_OK();
   }
 
-  RemoteAccessible* target = parent->RemoteChildAt(newChildIdx);
-  ProxyShowHideEvent(target, parent, true, aFromUser);
+  PlatformShowHideEvent(root, rootParent, true, aFromUser);
 
   if (nsCOMPtr<nsIObserverService> obsService =
           services::GetObserverService()) {
@@ -149,7 +191,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvShowEvent(
   }
 
   uint32_t type = nsIAccessibleEvent::EVENT_SHOW;
-  xpcAccessibleGeneric* xpcAcc = GetXPCAccessible(target);
+  xpcAccessibleGeneric* xpcAcc = GetXPCAccessible(root);
   xpcAccessibleDocument* doc = GetAccService()->GetXPCDocument(this);
   nsINode* node = nullptr;
   RefPtr<xpcAccEvent> event =
@@ -159,71 +201,60 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvShowEvent(
   return IPC_OK();
 }
 
-uint32_t DocAccessibleParent::AddSubtree(
-    RemoteAccessible* aParent, const nsTArray<a11y::AccessibleData>& aNewTree,
-    uint32_t aIdx, uint32_t aIdxInParent) {
-  if (aNewTree.Length() <= aIdx) {
-    NS_ERROR("bad index in serialized tree!");
-    return 0;
-  }
-
-  const AccessibleData& newChild = aNewTree[aIdx];
-
+RemoteAccessible* DocAccessibleParent::CreateAcc(
+    const AccessibleData& aAccData) {
   RemoteAccessible* newProxy;
-  if ((newProxy = GetAccessible(newChild.ID()))) {
+  if ((newProxy = GetAccessible(aAccData.ID()))) {
     // This is a move. Reuse the Accessible; don't destroy it.
     MOZ_ASSERT(!newProxy->RemoteParent());
-    aParent->AddChildAt(aIdxInParent, newProxy);
-    newProxy->SetParent(aParent);
-  } else {
-    if (!aria::IsRoleMapIndexValid(newChild.RoleMapEntryIndex())) {
-      MOZ_ASSERT_UNREACHABLE("Invalid role map entry index");
-      return 0;
-    }
-    newProxy = new RemoteAccessible(
-        newChild.ID(), aParent, this, newChild.Role(), newChild.Type(),
-        newChild.GenericTypes(), newChild.RoleMapEntryIndex());
+    return newProxy;
+  }
 
-    aParent->AddChildAt(aIdxInParent, newProxy);
-    mAccessibles.PutEntry(newChild.ID())->mProxy = newProxy;
-    ProxyCreated(newProxy);
+  if (!aria::IsRoleMapIndexValid(aAccData.RoleMapEntryIndex())) {
+    MOZ_ASSERT_UNREACHABLE("Invalid role map entry index");
+    return nullptr;
+  }
 
-    if (RefPtr<AccAttributes> fields = newChild.CacheFields()) {
-      newProxy->ApplyCache(CacheUpdateType::Initial, fields);
-    }
+  newProxy = new RemoteAccessible(aAccData.ID(), this, aAccData.Role(),
+                                  aAccData.Type(), aAccData.GenericTypes(),
+                                  aAccData.RoleMapEntryIndex());
+  mAccessibles.PutEntry(aAccData.ID())->mProxy = newProxy;
 
+  if (RefPtr<AccAttributes> fields = aAccData.CacheFields()) {
+    newProxy->ApplyCache(CacheUpdateType::Initial, fields);
+  }
+
+  return newProxy;
+}
+
+void DocAccessibleParent::AttachChild(RemoteAccessible* aParent,
+                                      uint32_t aIndex,
+                                      RemoteAccessible* aChild) {
+  aParent->AddChildAt(aIndex, aChild);
+  aChild->SetParent(aParent);
+  // ProxyCreated might have already been called if aChild is being moved.
+  if (!aChild->GetWrapper()) {
+    ProxyCreated(aChild);
+  }
+  if (aChild->IsTableCell()) {
+    CachedTableAccessible::Invalidate(aChild);
+  }
+  if (aChild->IsOuterDoc()) {
+    // We can only do this after ProxyCreated is called because it will fire an
+    // event on aChild.
     mPendingOOPChildDocs.RemoveIf([&](dom::BrowserBridgeParent* bridge) {
       MOZ_ASSERT(bridge->GetBrowserParent(),
                  "Pending BrowserBridgeParent should be alive");
-      if (bridge->GetEmbedderAccessibleId() != newChild.ID()) {
+      if (bridge->GetEmbedderAccessibleId() != aChild->ID()) {
         return false;
       }
       MOZ_ASSERT(bridge->GetEmbedderAccessibleDoc() == this);
       if (DocAccessibleParent* childDoc = bridge->GetDocAccessibleParent()) {
-        AddChildDoc(childDoc, newChild.ID(), false);
+        AddChildDoc(childDoc, aChild->ID(), false);
       }
       return true;
     });
   }
-
-  if (newProxy->IsTableCell()) {
-    CachedTableAccessible::Invalidate(newProxy);
-  }
-
-  DebugOnly<bool> isOuterDoc = newProxy->ChildCount() == 1;
-
-  uint32_t accessibles = 1;
-  uint32_t kids = newChild.ChildrenCount();
-  for (uint32_t i = 0; i < kids; i++) {
-    uint32_t consumed = AddSubtree(newProxy, aNewTree, aIdx + accessibles, i);
-    if (!consumed) return 0;
-
-    accessibles += consumed;
-  }
-
-  MOZ_ASSERT((isOuterDoc && kids == 0) || newProxy->ChildCount() == kids);
-
-  return accessibles;
 }
 
 void DocAccessibleParent::ShutdownOrPrepareForMove(RemoteAccessible* aAcc) {
@@ -286,7 +317,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvHideEvent(
   }
 
   RemoteAccessible* parent = root->RemoteParent();
-  ProxyShowHideEvent(root, parent, false, aFromUser);
+  PlatformShowHideEvent(root, parent, false, aFromUser);
 
   RefPtr<xpcAccHideEvent> event = nullptr;
   if (nsCoreUtils::AccEventObserversExist()) {
@@ -321,6 +352,10 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvEvent(
   if (mShutdown) {
     return IPC_OK();
   }
+  if (aEventType == 0 || aEventType >= nsIAccessibleEvent::EVENT_LAST_ENTRY) {
+    MOZ_ASSERT_UNREACHABLE("Invalid event");
+    return IPC_FAIL(this, "Invalid event");
+  }
 
   RemoteAccessible* remote = GetAccessible(aID);
   if (!remote) {
@@ -336,9 +371,9 @@ void DocAccessibleParent::FireEvent(RemoteAccessible* aAcc,
                                     const uint32_t& aEventType) {
   if (aEventType == nsIAccessibleEvent::EVENT_REORDER ||
       aEventType == nsIAccessibleEvent::EVENT_INNER_REORDER) {
-    for (RemoteAccessible* child = aAcc->RemoteFirstChild(); child;
-         child = child->RemoteNextSibling()) {
-      child->InvalidateGroupInfo();
+    uint32_t count = aAcc->ChildCount();
+    for (uint32_t c = 0; c < count; ++c) {
+      aAcc->RemoteChildAt(c)->InvalidateGroupInfo();
     }
   } else if (aEventType == nsIAccessibleEvent::EVENT_DOCUMENT_LOAD_COMPLETE &&
              aAcc == this) {
@@ -352,7 +387,7 @@ void DocAccessibleParent::FireEvent(RemoteAccessible* aAcc,
     UpdateStateCache(states::STALE | states::BUSY, false);
   }
 
-  ProxyEvent(aAcc, aEventType);
+  PlatformEvent(aAcc, aEventType);
 
   if (!nsCoreUtils::AccEventObserversExist()) {
     return;
@@ -385,7 +420,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvStateChangeEvent(
           services::GetObserverService()) {
     obsService->NotifyObservers(nullptr, NS_ACCESSIBLE_CACHE_TOPIC, nullptr);
   }
-  ProxyStateChangeEvent(target, aState, aEnabled);
+  PlatformStateChangeEvent(target, aState, aEnabled);
 
   if (!nsCoreUtils::AccEventObserversExist()) {
     return IPC_OK();
@@ -408,7 +443,8 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvStateChangeEvent(
 mozilla::ipc::IPCResult DocAccessibleParent::RecvCaretMoveEvent(
     const uint64_t& aID, const LayoutDeviceIntRect& aCaretRect,
     const int32_t& aOffset, const bool& aIsSelectionCollapsed,
-    const bool& aIsAtEndOfLine, const int32_t& aGranularity) {
+    const bool& aIsAtEndOfLine, const int32_t& aGranularity,
+    const bool& aFromUser) {
   ACQUIRE_ANDROID_LOCK
   if (mShutdown) {
     return IPC_OK();
@@ -431,8 +467,8 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvCaretMoveEvent(
     mTextSelections.AppendElement(TextRangeData(aID, aID, aOffset, aOffset));
   }
 
-  ProxyCaretMoveEvent(proxy, aOffset, aIsSelectionCollapsed, aGranularity,
-                      aCaretRect);
+  PlatformCaretMoveEvent(proxy, aOffset, aIsSelectionCollapsed, aGranularity,
+                         aCaretRect, aFromUser);
 
   if (!nsCoreUtils::AccEventObserversExist()) {
     return IPC_OK();
@@ -465,7 +501,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvTextChangeEvent(
     return IPC_OK();
   }
 
-  ProxyTextChangeEvent(target, aStr, aStart, aLen, aIsInsert, aFromUser);
+  PlatformTextChangeEvent(target, aStr, aStart, aLen, aIsInsert, aFromUser);
 
   if (!nsCoreUtils::AccEventObserversExist()) {
     return IPC_OK();
@@ -489,6 +525,10 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvSelectionEvent(
   if (mShutdown) {
     return IPC_OK();
   }
+  if (aType == 0 || aType >= nsIAccessibleEvent::EVENT_LAST_ENTRY) {
+    MOZ_ASSERT_UNREACHABLE("Invalid event");
+    return IPC_FAIL(this, "Invalid event");
+  }
 
   RemoteAccessible* target = GetAccessible(aID);
   RemoteAccessible* widget = GetAccessible(aWidgetID);
@@ -497,7 +537,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvSelectionEvent(
     return IPC_OK();
   }
 
-  ProxySelectionEvent(target, widget, aType);
+  PlatformSelectionEvent(target, widget, aType);
   if (!nsCoreUtils::AccEventObserversExist()) {
     return IPC_OK();
   }
@@ -505,45 +545,6 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvSelectionEvent(
   xpcAccessibleDocument* xpcDoc = GetAccService()->GetXPCDocument(this);
   RefPtr<xpcAccEvent> event =
       new xpcAccEvent(aType, xpcTarget, xpcDoc, nullptr, false);
-  nsCoreUtils::DispatchAccEvent(std::move(event));
-
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult DocAccessibleParent::RecvVirtualCursorChangeEvent(
-    const uint64_t& aID, const uint64_t& aOldPositionID,
-    const uint64_t& aNewPositionID, const int16_t& aReason,
-    const bool& aFromUser) {
-  ACQUIRE_ANDROID_LOCK
-  if (mShutdown) {
-    return IPC_OK();
-  }
-
-  RemoteAccessible* target = GetAccessible(aID);
-  RemoteAccessible* oldPosition = GetAccessible(aOldPositionID);
-  RemoteAccessible* newPosition = GetAccessible(aNewPositionID);
-
-  if (!target) {
-    NS_ERROR("no proxy for event!");
-    return IPC_OK();
-  }
-
-#if defined(ANDROID)
-  ProxyVirtualCursorChangeEvent(target, oldPosition, newPosition, aReason,
-                                aFromUser);
-#endif
-
-  if (!nsCoreUtils::AccEventObserversExist()) {
-    return IPC_OK();
-  }
-
-  xpcAccessibleDocument* doc = GetAccService()->GetXPCDocument(this);
-  RefPtr<xpcAccVirtualCursorChangeEvent> event =
-      new xpcAccVirtualCursorChangeEvent(
-          nsIAccessibleEvent::EVENT_VIRTUALCURSOR_CHANGED,
-          GetXPCAccessible(target), doc, nullptr, aFromUser,
-          GetXPCAccessible(oldPosition), GetXPCAccessible(newPosition),
-          aReason);
   nsCoreUtils::DispatchAccEvent(std::move(event));
 
   return IPC_OK();
@@ -557,6 +558,10 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvScrollingEvent(
   if (mShutdown) {
     return IPC_OK();
   }
+  if (aType == 0 || aType >= nsIAccessibleEvent::EVENT_LAST_ENTRY) {
+    MOZ_ASSERT_UNREACHABLE("Invalid event");
+    return IPC_FAIL(this, "Invalid event");
+  }
 
   RemoteAccessible* target = GetAccessible(aID);
   if (!target) {
@@ -565,10 +570,10 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvScrollingEvent(
   }
 
 #if defined(ANDROID)
-  ProxyScrollingEvent(target, aType, aScrollX, aScrollY, aMaxScrollX,
-                      aMaxScrollY);
+  PlatformScrollingEvent(target, aType, aScrollX, aScrollY, aMaxScrollX,
+                         aMaxScrollY);
 #else
-  ProxyEvent(target, aType);
+  PlatformEvent(target, aType);
 #endif
 
   if (!nsCoreUtils::AccEventObserversExist()) {
@@ -672,7 +677,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvAnnouncementEvent(
   }
 
 #  if defined(ANDROID)
-  ProxyAnnouncementEvent(target, aAnnouncement, aPriority);
+  PlatformAnnouncementEvent(target, aAnnouncement, aPriority);
 #  endif
 
   if (!nsCoreUtils::AccEventObserversExist()) {
@@ -707,9 +712,11 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvTextSelectionChangeEvent(
   mTextSelections.AppendElements(aSelection);
 
 #ifdef MOZ_WIDGET_COCOA
-  ProxyTextSelectionChangeEvent(target, aSelection);
+  AutoTArray<TextRange, 1> ranges;
+  SelectionRanges(&ranges);
+  PlatformTextSelectionChangeEvent(target, ranges);
 #else
-  ProxyEvent(target, nsIAccessibleEvent::EVENT_TEXT_SELECTION_CHANGED);
+  PlatformEvent(target, nsIAccessibleEvent::EVENT_TEXT_SELECTION_CHANGED);
 #endif
 
   if (!nsCoreUtils::AccEventObserversExist()) {
@@ -733,12 +740,16 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvRoleChangedEvent(
   if (mShutdown) {
     return IPC_OK();
   }
+  if (!aria::IsRoleMapIndexValid(aRoleMapEntryIndex)) {
+    MOZ_ASSERT_UNREACHABLE("Invalid role map entry index");
+    return IPC_FAIL(this, "Invalid role map entry index");
+  }
 
   mRole = aRole;
   mRoleMapEntryIndex = aRoleMapEntryIndex;
 
 #ifdef MOZ_WIDGET_COCOA
-  ProxyRoleChangedEvent(this, aRole, aRoleMapEntryIndex);
+  PlatformRoleChangedEvent(this, aRole, aRoleMapEntryIndex);
 #endif
 
   return IPC_OK();
@@ -1065,7 +1076,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvFocusEvent(
 #endif
 
   mFocus = aID;
-  ProxyFocusEvent(proxy, aCaretRect);
+  PlatformFocusEvent(proxy, aCaretRect);
 
   if (!nsCoreUtils::AccEventObserversExist()) {
     return IPC_OK();
@@ -1083,6 +1094,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvFocusEvent(
 }
 
 void DocAccessibleParent::SelectionRanges(nsTArray<TextRange>* aRanges) const {
+  aRanges->SetCapacity(mTextSelections.Length());
   for (const auto& data : mTextSelections) {
     // Selection ranges should usually be in sync with the tree. However, tree
     // and selection updates happen using separate IPDL calls, so it's possible
@@ -1152,7 +1164,7 @@ void DocAccessibleParent::URL(nsAString& aURL) const {
 
 void DocAccessibleParent::MimeType(nsAString& aMime) const {
   if (mCachedFields) {
-    mCachedFields->GetAttribute(nsGkAtoms::headerContentType, aMime);
+    mCachedFields->GetAttribute(CacheKey::MimeType, aMime);
   }
 }
 

@@ -1,7 +1,7 @@
 use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
 use quote::{format_ident, quote, ToTokens};
 use std::collections::BTreeSet as Set;
-use std::iter::FromIterator;
+use syn::parse::discouraged::Speculative;
 use syn::parse::ParseStream;
 use syn::{
     braced, bracketed, parenthesized, token, Attribute, Error, Ident, Index, LitInt, LitStr, Meta,
@@ -21,6 +21,7 @@ pub struct Display<'a> {
     pub original: &'a Attribute,
     pub fmt: LitStr,
     pub args: TokenStream,
+    pub requires_fmt_machinery: bool,
     pub has_bonus_display: bool,
     pub implied_bounds: Set<(usize, Trait)>,
 }
@@ -57,13 +58,13 @@ pub fn get(input: &[Attribute]) -> Result<Attrs> {
         if attr.path().is_ident("error") {
             parse_error_attribute(&mut attrs, attr)?;
         } else if attr.path().is_ident("source") {
-            require_empty_attribute(attr)?;
+            attr.meta.require_path_only()?;
             if attrs.source.is_some() {
                 return Err(Error::new_spanned(attr, "duplicate #[source] attribute"));
             }
             attrs.source = Some(attr);
         } else if attr.path().is_ident("backtrace") {
-            require_empty_attribute(attr)?;
+            attr.meta.require_path_only()?;
             if attrs.backtrace.is_some() {
                 return Err(Error::new_spanned(attr, "duplicate #[backtrace] attribute"));
             }
@@ -104,10 +105,24 @@ fn parse_error_attribute<'a>(attrs: &mut Attrs<'a>, attr: &'a Attribute) -> Resu
             return Ok(());
         }
 
+        let fmt: LitStr = input.parse()?;
+
+        let ahead = input.fork();
+        ahead.parse::<Option<Token![,]>>()?;
+        let args = if ahead.is_empty() {
+            input.advance_to(&ahead);
+            TokenStream::new()
+        } else {
+            parse_token_expr(input, false)?
+        };
+
+        let requires_fmt_machinery = !args.is_empty();
+
         let display = Display {
             original: attr,
-            fmt: input.parse()?,
-            args: parse_token_expr(input, false)?,
+            fmt,
+            args,
+            requires_fmt_machinery,
             has_bonus_display: false,
             implied_bounds: Set::new(),
         };
@@ -193,31 +208,40 @@ fn parse_token_expr(input: ParseStream, mut begin_expr: bool) -> Result<TokenStr
     Ok(TokenStream::from_iter(tokens))
 }
 
-fn require_empty_attribute(attr: &Attribute) -> Result<()> {
-    let error_span = match &attr.meta {
-        Meta::Path(_) => return Ok(()),
-        Meta::List(meta) => meta.delimiter.span().open(),
-        Meta::NameValue(meta) => meta.eq_token.span,
-    };
-    Err(Error::new(
-        error_span,
-        "unexpected token in thiserror attribute",
-    ))
-}
-
 impl ToTokens for Display<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let fmt = &self.fmt;
         let args = &self.args;
-        tokens.extend(quote! {
-            write!(__formatter, #fmt #args)
+
+        // Currently `write!(f, "text")` produces less efficient code than
+        // `f.write_str("text")`. We recognize the case when the format string
+        // has no braces and no interpolated values, and generate simpler code.
+        tokens.extend(if self.requires_fmt_machinery {
+            quote! {
+                ::core::write!(__formatter, #fmt #args)
+            }
+        } else {
+            quote! {
+                __formatter.write_str(#fmt)
+            }
         });
     }
 }
 
 impl ToTokens for Trait {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let trait_name = format_ident!("{}", format!("{:?}", self));
-        tokens.extend(quote!(std::fmt::#trait_name));
+        let trait_name = match self {
+            Trait::Debug => "Debug",
+            Trait::Display => "Display",
+            Trait::Octal => "Octal",
+            Trait::LowerHex => "LowerHex",
+            Trait::UpperHex => "UpperHex",
+            Trait::Pointer => "Pointer",
+            Trait::Binary => "Binary",
+            Trait::LowerExp => "LowerExp",
+            Trait::UpperExp => "UpperExp",
+        };
+        let ident = Ident::new(trait_name, Span::call_site());
+        tokens.extend(quote!(::core::fmt::#ident));
     }
 }

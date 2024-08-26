@@ -18,10 +18,8 @@
 #include <string>
 #include <vector>
 
+#include "api/rtc_error.h"
 #include "api/transport/data_channel_transport_interface.h"
-// For SendDataParams/ReceiveDataParams.
-// TODO(deadbeef): Use something else for SCTP. It's confusing that we use an
-// SSRC field for SID.
 #include "media/base/media_channel.h"
 #include "p2p/base/packet_transport_internal.h"
 #include "rtc_base/copy_on_write_buffer.h"
@@ -46,6 +44,8 @@ constexpr int kSctpSendBufferSize = 256 * 1024;
 constexpr uint16_t kMaxSctpStreams = 1024;
 constexpr uint16_t kMaxSctpSid = kMaxSctpStreams - 1;
 constexpr uint16_t kMinSctpSid = 0;
+// The maximum number of streams that can be negotiated according to spec.
+constexpr uint16_t kSpecMaxSctpSid = 65535;
 
 // This is the default SCTP port to use. It is passed along the wire and the
 // connectee and connector must be using the same port. It is not related to the
@@ -119,14 +119,12 @@ class SctpTransportInternal {
   // initiates it, and both SignalClosingProcedureStartedRemotely and
   // SignalClosingProcedureComplete on the other side.
   virtual bool ResetStream(int sid) = 0;
-  // Send data down this channel (will be wrapped as SCTP packets then given to
-  // usrsctp that will then post the network interface).
-  // Returns true iff successful data somewhere on the send-queue/network.
-  // Uses `params.ssrc` as the SCTP sid.
-  virtual bool SendData(int sid,
-                        const webrtc::SendDataParams& params,
-                        const rtc::CopyOnWriteBuffer& payload,
-                        SendDataResult* result = nullptr) = 0;
+  // Send data down this channel.
+  // Returns RTCError::OK() if successful an error otherwise. Notably
+  // RTCErrorType::RESOURCE_EXHAUSTED for blocked operations.
+  virtual webrtc::RTCError SendData(int sid,
+                                    const webrtc::SendDataParams& params,
+                                    const rtc::CopyOnWriteBuffer& payload) = 0;
 
   // Indicates when the SCTP socket is created and not blocked by congestion
   // control. This changes to false when SDR_BLOCK is returned from SendData,
@@ -142,6 +140,10 @@ class SctpTransportInternal {
   virtual absl::optional<int> max_outbound_streams() const = 0;
   // Returns the current negotiated max # of inbound streams.
   virtual absl::optional<int> max_inbound_streams() const = 0;
+  // Returns the amount of buffered data in the send queue for a stream.
+  virtual size_t buffered_amount(int sid) const = 0;
+  virtual size_t buffered_amount_low_threshold(int sid) const = 0;
+  virtual void SetBufferedAmountLowThreshold(int sid, size_t bytes) = 0;
 
   // Helper for debugging.
   virtual void set_debug_name_for_testing(const char* debug_name) = 0;

@@ -11,8 +11,10 @@
 #include "mozilla/dom/PointerEventBinding.h"
 #include "mozilla/dom/PointerEventHandler.h"
 #include "mozilla/MouseEvents.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "nsContentUtils.h"
 #include "prtime.h"
+#include "jsfriendapi.h"
 
 namespace mozilla::dom {
 
@@ -33,8 +35,12 @@ PointerEvent::PointerEvent(EventTarget* aOwner, nsPresContext* aPresContext,
     mouseEvent->mInputSource = MouseEvent_Binding::MOZ_SOURCE_UNKNOWN;
   }
   // 5.2 Pointer Event types, for all pointer events, |detail| attribute SHOULD
-  // be 0.
-  mDetail = 0;
+  // be 0.  However, UI Events defines that it should be click count if the
+  // event type is "click".
+  mDetail =
+      IsPointerEventMessageOriginallyMouseEventMessage(mouseEvent->mMessage)
+          ? mouseEvent->mClickCount
+          : 0;
 }
 
 JSObject* PointerEvent::WrapObjectInternal(JSContext* aCx,
@@ -42,7 +48,8 @@ JSObject* PointerEvent::WrapObjectInternal(JSContext* aCx,
   return PointerEvent_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-static uint16_t ConvertStringToPointerType(const nsAString& aPointerTypeArg) {
+static uint16_t ConvertStringToPointerType(const nsAString& aPointerTypeArg,
+                                           bool aForTrustedEvent) {
   if (aPointerTypeArg.EqualsLiteral("mouse")) {
     return MouseEvent_Binding::MOZ_SOURCE_MOUSE;
   }
@@ -51,6 +58,23 @@ static uint16_t ConvertStringToPointerType(const nsAString& aPointerTypeArg) {
   }
   if (aPointerTypeArg.EqualsLiteral("touch")) {
     return MouseEvent_Binding::MOZ_SOURCE_TOUCH;
+  }
+
+  // Some chrome script need to copy the input source of a source event to
+  // dispatching new event.  Therefore, we need to allow chrome script to
+  // set it to any input sources which we are supporting.  However, these
+  // types are not standardized by the specs.  Therefore, we should do this
+  // only when the event is a trusted one.
+  if (aForTrustedEvent) {
+    if (aPointerTypeArg.EqualsLiteral("eraser")) {
+      return MouseEvent_Binding::MOZ_SOURCE_ERASER;
+    }
+    if (aPointerTypeArg.EqualsLiteral("cursor")) {
+      return MouseEvent_Binding::MOZ_SOURCE_CURSOR;
+    }
+    if (aPointerTypeArg.EqualsLiteral("keyboard")) {
+      return MouseEvent_Binding::MOZ_SOURCE_KEYBOARD;
+    }
   }
 
   return MouseEvent_Binding::MOZ_SOURCE_UNKNOWN;
@@ -67,6 +91,14 @@ void ConvertPointerTypeToString(uint16_t aPointerTypeSrc,
       break;
     case MouseEvent_Binding::MOZ_SOURCE_TOUCH:
       aPointerTypeDest.AssignLiteral("touch");
+      break;
+    // In ConvertStringToPointerType(), we allow chrome script to set the
+    // input source from Gecko specific pointerType value.  However, we won't
+    // expose them to the web because they are not standardized.
+    case MouseEvent_Binding::MOZ_SOURCE_ERASER:
+    case MouseEvent_Binding::MOZ_SOURCE_CURSOR:
+    case MouseEvent_Binding::MOZ_SOURCE_KEYBOARD:
+      aPointerTypeDest.Truncate();
       break;
     default:
       aPointerTypeDest.Truncate();
@@ -97,7 +129,8 @@ already_AddRefed<PointerEvent> PointerEvent::Constructor(
   widgetEvent->tiltX = aParam.mTiltX;
   widgetEvent->tiltY = aParam.mTiltY;
   widgetEvent->twist = aParam.mTwist;
-  widgetEvent->mInputSource = ConvertStringToPointerType(aParam.mPointerType);
+  widgetEvent->mInputSource =
+      ConvertStringToPointerType(aParam.mPointerType, trusted);
   widgetEvent->mIsPrimary = aParam.mIsPrimary;
   widgetEvent->mButtons = aParam.mButtons;
 
@@ -204,6 +237,12 @@ int32_t PointerEvent::Twist() {
 }
 
 bool PointerEvent::IsPrimary() { return mEvent->AsPointerEvent()->mIsPrimary; }
+
+bool PointerEvent::EnableGetCoalescedEvents(JSContext* aCx, JSObject* aGlobal) {
+  return !StaticPrefs::
+             dom_w3c_pointer_events_getcoalescedevents_only_in_securecontext() ||
+         nsContentUtils::IsSecureContextOrWebExtension(aCx, aGlobal);
+}
 
 void PointerEvent::GetCoalescedEvents(
     nsTArray<RefPtr<PointerEvent>>& aPointerEvents) {

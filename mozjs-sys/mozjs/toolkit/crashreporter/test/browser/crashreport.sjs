@@ -9,6 +9,7 @@ const BinaryInputStream = CC(
 function parseHeaders(data, start) {
   let headers = {};
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     let end = data.indexOf("\r\n", start);
     if (end == -1) {
@@ -66,6 +67,7 @@ function parseMultipartForm(request) {
   }
   let formData = {};
   let start = 0;
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     // read first line
     let end = data.indexOf("\r\n", start);
@@ -151,6 +153,24 @@ function handleRequest(request, response) {
     }
   } else if (request.method == "POST") {
     let formData = parseMultipartForm(request);
+
+    if (
+      formData &&
+      formData.Comments &&
+      formData.Comments.startsWith("fail-me://")
+    ) {
+      dump("*** crashreport.sjs: Malformed request on purpose\n");
+      const reporting_data = formData.Comments.split("fail-me://")[1];
+      const code_to_report = reporting_data.split(":")[0];
+      const error_to_report = reporting_data.split(":")[1];
+      response.setStatusLine(
+        request.httpVersion,
+        code_to_report,
+        "Bad Request"
+      );
+      response.write(`Discarded=${error_to_report}`);
+      return;
+    }
 
     if (formData && "upload_file_minidump" in formData) {
       response.setHeader("Content-Type", "text/plain", false);

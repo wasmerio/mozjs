@@ -84,9 +84,24 @@ class MockRtpRtcpInterface : public RtpRtcpInterface {
               (uint32_t, int64_t, int, bool),
               (override));
   MOCK_METHOD(bool,
-              TrySendPacket,
-              (RtpPacketToSend * packet, const PacedPacketInfo& pacing_info),
+              CanSendPacket,
+              (const RtpPacketToSend& packet),
+              (const override));
+  MOCK_METHOD(void,
+              AssignSequenceNumber,
+              (RtpPacketToSend & packet),
               (override));
+  MOCK_METHOD(void,
+              SendPacket,
+              (std::unique_ptr<RtpPacketToSend> packet,
+               const PacedPacketInfo& pacing_info),
+              (override));
+  MOCK_METHOD(bool,
+              TrySendPacket,
+              (std::unique_ptr<RtpPacketToSend> packet,
+               const PacedPacketInfo& pacing_info),
+              (override));
+  MOCK_METHOD(void, OnBatchComplete, (), (override));
   MOCK_METHOD(void,
               SetFecProtectionParams,
               (const FecProtectionParams& delta_params,
@@ -117,23 +132,8 @@ class MockRtpRtcpInterface : public RtpRtcpInterface {
   MOCK_METHOD(RtcpMode, RTCP, (), (const, override));
   MOCK_METHOD(void, SetRTCPStatus, (RtcpMode method), (override));
   MOCK_METHOD(int32_t, SetCNAME, (absl::string_view cname), (override));
-  MOCK_METHOD(int32_t,
-              RemoteNTP,
-              (uint32_t * received_ntp_secs,
-               uint32_t* received_ntp_frac,
-               uint32_t* rtcp_arrival_time_secs,
-               uint32_t* rtcp_arrival_time_frac,
-               uint32_t* rtcp_timestamp),
-              (const, override));
-  MOCK_METHOD(int32_t,
-              RTT,
-              (uint32_t remote_ssrc,
-               int64_t* rtt,
-               int64_t* avg_rtt,
-               int64_t* min_rtt,
-               int64_t* max_rtt),
-              (const, override));
-  MOCK_METHOD(int64_t, ExpectedRetransmissionTimeMs, (), (const, override));
+  MOCK_METHOD(absl::optional<TimeDelta>, LastRtt, (), (const, override));
+  MOCK_METHOD(TimeDelta, ExpectedRetransmissionTime, (), (const, override));
   MOCK_METHOD(int32_t, SendRTCP, (RTCPPacketType packet_type), (override));
   MOCK_METHOD(void,
               GetSendStreamDataCounters,

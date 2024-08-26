@@ -24,6 +24,7 @@
 #include "builtin/Array.h"
 #include "builtin/SelfHostingDefines.h"
 #include "ds/Sort.h"
+#include "gc/GC.h"
 #include "gc/GCContext.h"
 #include "js/ForOfIterator.h"         // JS::ForOfIterator
 #include "js/friend/ErrorMessages.h"  // js::GetErrorMessage, JSMSG_*
@@ -38,7 +39,6 @@
 #include "vm/Shape.h"
 #include "vm/StringType.h"
 #include "vm/TypedArrayObject.h"
-#include "vm/WellKnownAtom.h"  // js_*_str
 
 #ifdef ENABLE_RECORD_TUPLE
 #  include "builtin/RecordObject.h"
@@ -324,7 +324,7 @@ bool PropertyEnumerator::enumerateNativeProperties(JSContext* cx) {
     // Collect any typed array or shared typed array elements from this
     // object.
     if (pobj->is<TypedArrayObject>()) {
-      size_t len = pobj->as<TypedArrayObject>().length();
+      size_t len = pobj->as<TypedArrayObject>().length().valueOr(0);
 
       // Fail early if the typed array is enormous, because this will be very
       // slow and will likely report OOM. This also means we don't need to
@@ -628,13 +628,6 @@ static void AssertNoEnumerableProperties(NativeObject* obj) {
 #endif  // DEBUG
 }
 
-// Typed arrays and classes with an enumerate hook can have extra properties not
-// included in the shape's property map or the object's dense elements.
-static bool ClassCanHaveExtraEnumeratedProperties(const JSClass* clasp) {
-  return IsTypedArrayClass(clasp) || clasp->getNewEnumerate() ||
-         clasp->getEnumerate();
-}
-
 static bool ProtoMayHaveEnumerableProperties(JSObject* obj) {
   if (!obj->is<NativeObject>()) {
     return true;
@@ -800,13 +793,11 @@ static PropertyIteratorObject* NewPropertyIteratorObject(JSContext* cx) {
     return nullptr;
   }
 
-  JSObject* obj = NativeObject::create(
+  auto* res = NativeObject::create<PropertyIteratorObject>(
       cx, ITERATOR_FINALIZE_KIND, GetInitialHeap(GenericObject, clasp), shape);
-  if (!obj) {
+  if (!res) {
     return nullptr;
   }
-
-  PropertyIteratorObject* res = &obj->as<PropertyIteratorObject>();
 
   // CodeGenerator::visitIteratorStartO assumes the iterator object is not
   // inside the nursery when deciding whether a barrier is necessary.
@@ -838,7 +829,7 @@ static PropertyIteratorObject* CreatePropertyIterator(
     bool supportsIndices, PropertyIndexVector* indices,
     uint32_t cacheableProtoChainLength) {
   MOZ_ASSERT_IF(indices, supportsIndices);
-  if (props.length() > NativeIterator::PropCountLimit) {
+  if (props.length() >= NativeIterator::PropCountLimit) {
     ReportAllocationOverflow(cx);
     return nullptr;
   }
@@ -972,9 +963,14 @@ NativeIterator::NativeIterator(JSContext* cx,
   }
   MOZ_ASSERT(static_cast<void*>(shapesEnd_) == propertyCursor_);
 
+  // Allocate any strings in the nursery until the first minor GC. After this
+  // point they will end up getting tenured anyway because they are reachable
+  // from |propIter| which will be tenured.
+  AutoSelectGCHeap gcHeap(cx);
+
   size_t numProps = props.length();
   for (size_t i = 0; i < numProps; i++) {
-    JSLinearString* str = IdToString(cx, props[i]);
+    JSLinearString* str = IdToString(cx, props[i], gcHeap);
     if (!str) {
       *hadError = true;
       return;
@@ -1944,10 +1940,113 @@ static const JSFunctionSpec iterator_methods_with_helpers[] = {
     JS_FS_END,
 };
 
+// https://tc39.es/proposal-iterator-helpers/#sec-SetterThatIgnoresPrototypeProperties
+static bool SetterThatIgnoresPrototypeProperties(JSContext* cx,
+                                                 Handle<Value> thisv,
+                                                 Handle<PropertyKey> prop,
+                                                 Handle<Value> value) {
+  // Step 1.
+  Rooted<JSObject*> thisObj(cx,
+                            RequireObject(cx, JSMSG_OBJECT_REQUIRED, thisv));
+  if (!thisObj) {
+    return false;
+  }
+
+  // Step 2.
+  Rooted<JSObject*> home(
+      cx, GlobalObject::getOrCreateIteratorPrototype(cx, cx->global()));
+  if (!home) {
+    return false;
+  }
+  if (thisObj == home) {
+    UniqueChars propName =
+        IdToPrintableUTF8(cx, prop, IdToPrintableBehavior::IdIsPropertyKey);
+    if (!propName) {
+      return false;
+    }
+
+    // Step 2.b.
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr, JSMSG_READ_ONLY,
+                              propName.get());
+    return false;
+  }
+
+  // Step 3.
+  Rooted<Maybe<PropertyDescriptor>> desc(cx);
+  if (!GetOwnPropertyDescriptor(cx, thisObj, prop, &desc)) {
+    return false;
+  }
+
+  // Step 4.
+  if (desc.isNothing()) {
+    // Step 4.a.
+    return DefineDataProperty(cx, thisObj, prop, value, JSPROP_ENUMERATE);
+  }
+
+  // Step 5.
+  return SetProperty(cx, thisObj, prop, value);
+}
+
+// https://tc39.es/proposal-iterator-helpers/#sec-get-iteratorprototype-@@tostringtag
+static bool toStringTagGetter(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  // Step 1.
+  args.rval().setString(cx->names().Iterator);
+  return true;
+}
+
+// https://tc39.es/proposal-iterator-helpers/#sec-set-iteratorprototype-@@tostringtag
+static bool toStringTagSetter(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  // Step 1.
+  Rooted<PropertyKey> prop(
+      cx, PropertyKey::Symbol(cx->wellKnownSymbols().toStringTag));
+  if (!SetterThatIgnoresPrototypeProperties(cx, args.thisv(), prop,
+                                            args.get(0))) {
+    return false;
+  }
+
+  // Step 2.
+  args.rval().setUndefined();
+  return true;
+}
+
+// https://tc39.es/proposal-iterator-helpers/#sec-get-iteratorprototype-constructor
+static bool constructorGetter(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  // Step 1.
+  Rooted<JSObject*> constructor(
+      cx, GlobalObject::getOrCreateConstructor(cx, JSProto_Iterator));
+  if (!constructor) {
+    return false;
+  }
+  args.rval().setObject(*constructor);
+  return true;
+}
+
+// https://tc39.es/proposal-iterator-helpers/#sec-set-iteratorprototype-constructor
+static bool constructorSetter(JSContext* cx, unsigned argc, Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+
+  // Step 1.
+  Rooted<PropertyKey> prop(cx, NameToId(cx->names().constructor));
+  if (!SetterThatIgnoresPrototypeProperties(cx, args.thisv(), prop,
+                                            args.get(0))) {
+    return false;
+  }
+
+  // Step 2.
+  args.rval().setUndefined();
+  return true;
+}
+
 static const JSPropertySpec iterator_properties[] = {
-    // NOTE: Contrary to most other @@toStringTag properties, this property is
-    // writable.
-    JS_STRING_SYM_PS(toStringTag, "Iterator", 0),
+    // NOTE: Contrary to most other @@toStringTag properties, this property
+    // has a special setter (and a getter).
+    JS_SYM_GETSET(toStringTag, toStringTagGetter, toStringTagSetter, 0),
     JS_PS_END,
 };
 
@@ -1981,7 +2080,7 @@ bool GlobalObject::initIteratorProto(JSContext* cx,
 
 /* static */
 template <GlobalObject::ProtoKind Kind, const JSClass* ProtoClass,
-          const JSFunctionSpec* Methods>
+          const JSFunctionSpec* Methods, const bool needsFuseProperty>
 bool GlobalObject::initObjectIteratorProto(JSContext* cx,
                                            Handle<GlobalObject*> global,
                                            Handle<JSAtom*> tag) {
@@ -2002,6 +2101,12 @@ bool GlobalObject::initObjectIteratorProto(JSContext* cx,
     return false;
   }
 
+  if constexpr (needsFuseProperty) {
+    if (!JSObject::setHasFuseProperty(cx, proto)) {
+      return false;
+    }
+  }
+
   global->initBuiltinProto(Kind, proto);
   return true;
 }
@@ -2011,10 +2116,10 @@ NativeObject* GlobalObject::getOrCreateArrayIteratorPrototype(
     JSContext* cx, Handle<GlobalObject*> global) {
   return MaybeNativeObject(getOrCreateBuiltinProto(
       cx, global, ProtoKind::ArrayIteratorProto,
-      cx->names().ArrayIterator.toHandle(),
-      initObjectIteratorProto<ProtoKind::ArrayIteratorProto,
-                              &ArrayIteratorPrototypeClass,
-                              array_iterator_methods>));
+      cx->names().Array_Iterator_.toHandle(),
+      initObjectIteratorProto<
+          ProtoKind::ArrayIteratorProto, &ArrayIteratorPrototypeClass,
+          array_iterator_methods, /* hasFuseProperty= */ true>));
 }
 
 /* static */
@@ -2022,7 +2127,7 @@ JSObject* GlobalObject::getOrCreateStringIteratorPrototype(
     JSContext* cx, Handle<GlobalObject*> global) {
   return getOrCreateBuiltinProto(
       cx, global, ProtoKind::StringIteratorProto,
-      cx->names().StringIterator.toHandle(),
+      cx->names().String_Iterator_.toHandle(),
       initObjectIteratorProto<ProtoKind::StringIteratorProto,
                               &StringIteratorPrototypeClass,
                               string_iterator_methods>);
@@ -2033,7 +2138,7 @@ JSObject* GlobalObject::getOrCreateRegExpStringIteratorPrototype(
     JSContext* cx, Handle<GlobalObject*> global) {
   return getOrCreateBuiltinProto(
       cx, global, ProtoKind::RegExpStringIteratorProto,
-      cx->names().RegExpStringIterator.toHandle(),
+      cx->names().RegExp_String_Iterator_.toHandle(),
       initObjectIteratorProto<ProtoKind::RegExpStringIteratorProto,
                               &RegExpStringIteratorPrototypeClass,
                               regexp_string_iterator_methods>);
@@ -2046,14 +2151,14 @@ static bool IteratorConstructor(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
   // Step 1.
-  if (!ThrowIfNotConstructing(cx, args, js_Iterator_str)) {
+  if (!ThrowIfNotConstructing(cx, args, "Iterator")) {
     return false;
   }
   // Throw TypeError if NewTarget is the active function object, preventing the
   // Iterator constructor from being used directly.
   if (args.callee() == args.newTarget().toObject()) {
     JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                              JSMSG_BOGUS_CONSTRUCTOR, js_Iterator_str);
+                              JSMSG_BOGUS_CONSTRUCTOR, "Iterator");
     return false;
   }
 
@@ -2079,11 +2184,11 @@ static const ClassSpec IteratorObjectClassSpec = {
     nullptr,
     iterator_methods_with_helpers,
     iterator_properties,
-    nullptr,
+    IteratorObject::finishInit,
 };
 
 const JSClass IteratorObject::class_ = {
-    js_Iterator_str,
+    "Iterator",
     JSCLASS_HAS_CACHED_PROTO(JSProto_Iterator),
     JS_NULL_CLASS_OPS,
     &IteratorObjectClassSpec,
@@ -2095,6 +2200,13 @@ const JSClass IteratorObject::protoClass_ = {
     JS_NULL_CLASS_OPS,
     &IteratorObjectClassSpec,
 };
+
+/* static */ bool IteratorObject::finishInit(JSContext* cx, HandleObject ctor,
+                                             HandleObject proto) {
+  Rooted<PropertyKey> id(cx, NameToId(cx->names().constructor));
+  return JS_DefinePropertyById(cx, proto, id, constructorGetter,
+                               constructorSetter, 0);
+}
 
 // Set up WrapForValidIteratorObject class and its prototype.
 static const JSFunctionSpec wrap_for_valid_iterator_methods[] = {
@@ -2150,7 +2262,7 @@ NativeObject* GlobalObject::getOrCreateIteratorHelperPrototype(
     JSContext* cx, Handle<GlobalObject*> global) {
   return MaybeNativeObject(getOrCreateBuiltinProto(
       cx, global, ProtoKind::IteratorHelperProto,
-      cx->names().IteratorHelper.toHandle(),
+      cx->names().Iterator_Helper_.toHandle(),
       initObjectIteratorProto<ProtoKind::IteratorHelperProto,
                               &IteratorHelperPrototypeClass,
                               iterator_helper_methods>));

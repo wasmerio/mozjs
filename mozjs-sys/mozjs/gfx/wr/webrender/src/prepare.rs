@@ -6,40 +6,41 @@
 //!
 //! TODO: document this!
 
-use api::{ColorF, PremultipliedColorF, PropertyBinding};
+use api::{PremultipliedColorF, PropertyBinding};
 use api::{BoxShadowClipMode, BorderStyle, ClipMode};
 use api::units::*;
 use euclid::Scale;
 use smallvec::SmallVec;
-use crate::command_buffer::{PrimitiveCommand, QuadFlags, CommandBufferIndex};
+use crate::composite::CompositorSurfaceKind;
+use crate::command_buffer::{PrimitiveCommand, CommandBufferIndex};
 use crate::image_tiling::{self, Repetition};
 use crate::border::{get_max_scale_for_border, build_border_instances};
-use crate::clip::{ClipStore};
+use crate::clip::{ClipStore, ClipNodeRange};
 use crate::spatial_tree::{SpatialNodeIndex, SpatialTree};
 use crate::clip::{ClipDataStore, ClipNodeFlags, ClipChainInstance, ClipItemKind};
 use crate::frame_builder::{FrameBuildingContext, FrameBuildingState, PictureContext, PictureState};
 use crate::gpu_cache::{GpuCacheHandle, GpuDataRequest};
-use crate::gpu_types::{BrushFlags, TransformPaletteId, QuadSegment};
-use crate::internal_types::{FastHashMap, PlaneSplitAnchor};
-use crate::picture::{PicturePrimitive, SliceId, ClusterFlags};
+use crate::gpu_types::BrushFlags;
+use crate::internal_types::{FastHashMap, PlaneSplitAnchor, Filter};
+use crate::picture::{PicturePrimitive, SliceId, ClusterFlags, PictureCompositeMode};
 use crate::picture::{PrimitiveList, PrimitiveCluster, SurfaceIndex, TileCacheInstance, SubpixelMode, Picture3DContext};
 use crate::prim_store::line_dec::MAX_LINE_DECORATION_RESOLUTION;
 use crate::prim_store::*;
-use crate::prim_store::gradient::GradientGpuBlockBuilder;
+use crate::quad;
+use crate::pattern::Pattern;
+use crate::prim_store::gradient::{radial_gradient_pattern, conic_gradient_pattern, GradientGpuBlockBuilder};
 use crate::render_backend::DataStores;
-use crate::render_task_graph::{RenderTaskId};
+use crate::render_task_graph::RenderTaskId;
 use crate::render_task_cache::RenderTaskCacheKeyKind;
 use crate::render_task_cache::{RenderTaskCacheKey, to_cache_size, RenderTaskParent};
-use crate::render_task::{RenderTaskKind, RenderTask};
-use crate::renderer::{GpuBufferBuilder, GpuBufferAddress};
-use crate::segment::{EdgeAaSegmentMask, SegmentBuilder};
-use crate::util::{clamp_to_scale_factor, pack_as_float};
+use crate::render_task::{RenderTaskKind, RenderTask, SubPass, MaskSubPass, EmptyTask};
+use crate::segment::SegmentBuilder;
+use crate::util::{clamp_to_scale_factor, pack_as_float, ScaleOffset};
 use crate::visibility::{compute_conservative_visible_rect, PrimitiveVisibility, VisibilityState};
 
 
-const MAX_MASK_SIZE: f32 = 4096.0;
+const MAX_MASK_SIZE: i32 = 4096;
 
-const MIN_BRUSH_SPLIT_SIZE: f32 = 256.0;
 const MIN_BRUSH_SPLIT_AREA: f32 = 128.0 * 128.0;
 
 pub fn prepare_primitives(
@@ -107,7 +108,6 @@ pub fn prepare_primitives(
 
 fn can_use_clip_chain_for_quad_path(
     clip_chain: &ClipChainInstance,
-    prim_spatial_node_index: SpatialNodeIndex,
     clip_store: &ClipStore,
     data_stores: &DataStores,
 ) -> bool {
@@ -119,16 +119,7 @@ fn can_use_clip_chain_for_quad_path(
         let clip_instance = clip_store.get_instance_from_range(&clip_chain.clips_range, i);
         let clip_node = &data_stores.clip[clip_instance.handle];
 
-        // Temporary hack only for landing next stage...
-        if prim_spatial_node_index != clip_node.item.spatial_node_index {
-            return false;
-        }
-
         match clip_node.item.kind {
-            ClipItemKind::Rectangle { mode: ClipMode::ClipOut, .. } |
-            ClipItemKind::RoundedRectangle { mode: ClipMode::ClipOut, .. } => {
-                return false;
-            }
             ClipItemKind::RoundedRectangle { .. } | ClipItemKind::Rectangle { .. } => {}
             ClipItemKind::BoxShadow { .. } => {
                 // legacy path for box-shadows for now (move them to a separate primitive next)
@@ -141,76 +132,6 @@ fn can_use_clip_chain_for_quad_path(
     }
 
     true
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum QuadRenderStrategy {
-    Direct,
-    Indirect,
-    NinePatch {
-        radius: LayoutVector2D,
-        clip_rect: LayoutRect,
-    },
-    Tiled {
-        x_tiles: u16,
-        y_tiles: u16,
-    }
-}
-
-fn get_prim_render_strategy(
-    clip_chain: &ClipChainInstance,
-    clip_store: &ClipStore,
-    data_stores: &DataStores,
-    can_use_nine_patch: bool,
-) -> QuadRenderStrategy {
-    if clip_chain.needs_mask {
-        fn tile_count_for_size(size: f32) -> u16 {
-            (size / MIN_BRUSH_SPLIT_SIZE).min(4.0).max(1.0).ceil() as u16
-        }
-
-        let prim_coverage_size = clip_chain.pic_coverage_rect.size();
-        let x_tiles = tile_count_for_size(prim_coverage_size.width);
-        let y_tiles = tile_count_for_size(prim_coverage_size.height);
-        let try_split_prim = x_tiles > 1 || y_tiles > 1;
-
-        if try_split_prim {
-            if can_use_nine_patch {
-                if clip_chain.clips_range.count == 1 {
-                    let clip_instance = clip_store.get_instance_from_range(&clip_chain.clips_range, 0);
-                    let clip_node = &data_stores.clip[clip_instance.handle];
-
-                    if let ClipItemKind::RoundedRectangle { ref radius, mode: ClipMode::Clip, rect, .. } = clip_node.item.kind {
-                        let max_corner_width = radius.top_left.width
-                                                    .max(radius.bottom_left.width)
-                                                    .max(radius.top_right.width)
-                                                    .max(radius.bottom_right.width);
-                        let max_corner_height = radius.top_left.height
-                                                    .max(radius.bottom_left.height)
-                                                    .max(radius.top_right.height)
-                                                    .max(radius.bottom_right.height);
-
-                        if max_corner_width <= 0.5 * rect.size().width &&
-                           max_corner_height <= 0.5 * rect.size().height {
-
-                            return QuadRenderStrategy::NinePatch {
-                                radius: LayoutVector2D::new(max_corner_width, max_corner_height),
-                                clip_rect: rect,
-                            };
-                        }
-                    }
-                }
-            }
-
-            QuadRenderStrategy::Tiled {
-                x_tiles,
-                y_tiles,
-            }
-        } else {
-            QuadRenderStrategy::Indirect
-        }
-    } else {
-        QuadRenderStrategy::Direct
-    }
 }
 
 fn prepare_prim_for_render(
@@ -249,6 +170,7 @@ fn prepare_prim_for_render(
             pic_context.subpixel_mode,
             frame_state,
             frame_context,
+            data_stores,
             scratch,
             tile_caches,
         ) {
@@ -286,6 +208,33 @@ fn prepare_prim_for_render(
     let prim_instance = &mut prim_instances[prim_instance_index];
 
     if !is_passthrough {
+        fn may_need_repetition(stretch_size: LayoutSize, prim_rect: LayoutRect) -> bool {
+            stretch_size.width < prim_rect.width() ||
+                stretch_size.height < prim_rect.height()
+        }
+        // Bug 1887841: At the moment the quad shader does not support repetitions.
+        // Bug 1888349: Some primitives have brush segments that aren't handled by
+        // the quad infrastructure yet.
+        let disable_quad_path = match &prim_instance.kind {
+            PrimitiveInstanceKind::Rectangle { .. } => false,
+            PrimitiveInstanceKind::LinearGradient { data_handle, .. } => {
+                let prim_data = &data_stores.linear_grad[*data_handle];
+                !prim_data.brush_segments.is_empty() ||
+                    may_need_repetition(prim_data.stretch_size, prim_data.common.prim_rect)
+            }
+            PrimitiveInstanceKind::RadialGradient { data_handle, .. } => {
+                let prim_data = &data_stores.radial_grad[*data_handle];
+                !prim_data.brush_segments.is_empty() ||
+                    may_need_repetition(prim_data.stretch_size, prim_data.common.prim_rect)
+            }
+            // TODO(bug 1899546) Enable quad conic gradients with SWGL.
+            PrimitiveInstanceKind::ConicGradient { data_handle, .. } if !frame_context.fb_config.is_software => {
+                let prim_data = &data_stores.conic_grad[*data_handle];
+                !prim_data.brush_segments.is_empty() ||
+                    may_need_repetition(prim_data.stretch_size, prim_data.common.prim_rect)
+            }
+            _ => true,
+        };
 
         // In this initial patch, we only support non-masked primitives through the new
         // quad rendering path. Follow up patches will extend this to support masks, and
@@ -293,16 +242,19 @@ fn prepare_prim_for_render(
         // to skip the entry point to `update_clip_task` as that does old-style segmenting
         // and mask generation.
         let should_update_clip_task = match prim_instance.kind {
-            PrimitiveInstanceKind::Rectangle { ref mut use_legacy_path, .. } => {
-                *use_legacy_path = !can_use_clip_chain_for_quad_path(
+            PrimitiveInstanceKind::Rectangle { use_legacy_path: ref mut no_quads, .. }
+            | PrimitiveInstanceKind::RadialGradient { cached: ref mut no_quads, .. }
+            | PrimitiveInstanceKind::ConicGradient { cached: ref mut no_quads, .. }
+            => {
+                *no_quads = disable_quad_path || !can_use_clip_chain_for_quad_path(
                     &prim_instance.vis.clip_chain,
-                    cluster.spatial_node_index,
                     frame_state.clip_store,
                     data_stores,
                 );
 
-                *use_legacy_path
+                *no_quads
             }
+            PrimitiveInstanceKind::Picture { .. } => false,
             _ => true,
         };
 
@@ -434,11 +386,11 @@ fn prepare_interned_prim_for_render(
                         kind: RenderTaskCacheKeyKind::LineDecoration(cache_key.clone()),
                     },
                     frame_state.gpu_cache,
-                    frame_state.frame_gpu_data,
+                    &mut frame_state.frame_gpu_data.f32,
                     frame_state.rg_builder,
                     None,
                     false,
-                    RenderTaskParent::Surface(pic_context.surface_index),
+                    RenderTaskParent::Surface,
                     &mut frame_state.surface_builder,
                     |rg_builder, _| {
                         rg_builder.add().init(RenderTask::new_dynamic(
@@ -489,10 +441,11 @@ fn prepare_interned_prim_for_render(
                         match pic_context.subpixel_mode {
                             SubpixelMode::Allow => true,
                             SubpixelMode::Deny => false,
-                            SubpixelMode::Conditional { allowed_rect } => {
+                            SubpixelMode::Conditional { allowed_rect, prohibited_rect } => {
                                 // Conditional mode allows subpixel AA to be enabled for this
                                 // text run, so long as it's inside the allowed rect.
-                                allowed_rect.contains_box(&prim_instance.vis.clip_chain.pic_coverage_rect)
+                                allowed_rect.contains_box(&prim_instance.vis.clip_chain.pic_coverage_rect) &&
+                                !prohibited_rect.intersects(&prim_instance.vis.clip_chain.pic_coverage_rect)
                             }
                         }
                     } else {
@@ -588,11 +541,11 @@ fn prepare_interned_prim_for_render(
                 handles.push(frame_state.resource_cache.request_render_task(
                     cache_key,
                     frame_state.gpu_cache,
-                    frame_state.frame_gpu_data,
+                    &mut frame_state.frame_gpu_data.f32,
                     frame_state.rg_builder,
                     None,
                     false,          // TODO(gw): We don't calculate opacity for borders yet!
-                    RenderTaskParent::Surface(pic_context.surface_index),
+                    RenderTaskParent::Surface,
                     &mut frame_state.surface_builder,
                     |rg_builder, _| {
                         rg_builder.add().init(RenderTask::new_dynamic(
@@ -677,329 +630,31 @@ fn prepare_interned_prim_for_render(
                     }
                 );
             } else {
-                let map_prim_to_surface = frame_context.spatial_tree.get_relative_transform(
-                    prim_spatial_node_index,
-                    pic_context.raster_spatial_node_index,
-                );
-                let prim_is_2d_scale_translation = map_prim_to_surface.is_2d_scale_translation();
-                let prim_is_2d_axis_aligned = map_prim_to_surface.is_2d_axis_aligned();
-
-                let strategy = get_prim_render_strategy(
-                    &prim_instance.vis.clip_chain,
-                    frame_state.clip_store,
-                    data_stores,
-                    prim_is_2d_scale_translation,
-                );
-
                 let prim_data = &data_stores.prim[*data_handle];
 
-                let (color, is_opaque) = match prim_data.kind {
-                    PrimitiveTemplateKind::Clear => {
-                        // Opaque black with operator dest out
-                        (ColorF::BLACK, false)
-                    }
+                let pattern = match prim_data.kind {
+                    PrimitiveTemplateKind::Clear => Pattern::clear(),
                     PrimitiveTemplateKind::Rectangle { ref color, .. } => {
                         let color = frame_context.scene_properties.resolve_color(color);
-
-                        (color, color.a >= 1.0)
+                        Pattern::color(color)
                     }
                 };
 
-                let premul_color = color.premultiplied();
-
-                let mut quad_flags = QuadFlags::empty();
-                if is_opaque {
-                    quad_flags |= QuadFlags::IS_OPAQUE;
-                }
-                let needs_scissor = !prim_is_2d_scale_translation;
-                if !needs_scissor {
-                    quad_flags |= QuadFlags::APPLY_DEVICE_CLIP;
-                }
-
-                // TODO(gw): For now, we don't select per-edge AA at all if the primitive
-                //           has a 2d transform, which matches existing behavior. However,
-                //           as a follow up, we can now easily check if we have a 2d-aligned
-                //           primitive on a subpixel boundary, and enable AA along those edge(s).
-                let aa_flags = if prim_is_2d_axis_aligned {
-                    EdgeAaSegmentMask::empty()
-                } else {
-                    EdgeAaSegmentMask::all()
-                };
-
-                let transform_id = frame_state.transforms.get_id(
+                quad::prepare_quad(
+                    &pattern,
+                    &prim_data.common.prim_rect,
+                    prim_instance_index,
                     prim_spatial_node_index,
-                    pic_context.raster_spatial_node_index,
-                    frame_context.spatial_tree,
+                    &prim_instance.vis.clip_chain,
+                    device_pixel_scale,
+                    frame_context,
+                    pic_context,
+                    targets,
+                    &data_stores.clip,
+                    frame_state,
+                    pic_state,
+                    scratch,
                 );
-
-                // TODO(gw): Perhaps rather than writing untyped data here (we at least do validate
-                //           the written block count) to gpu-buffer, we could add a trait for
-                //           writing typed data?
-                let main_prim_address = write_prim_blocks(
-                    frame_state.frame_gpu_data,
-                    prim_data.common.prim_rect,
-                    prim_instance.vis.clip_chain.local_clip_rect,
-                    premul_color,
-                    &[],
-                );
-
-                match strategy {
-                    QuadRenderStrategy::Direct => {
-                        frame_state.push_prim(
-                            &PrimitiveCommand::quad(
-                                prim_instance_index,
-                                main_prim_address,
-                                transform_id,
-                                quad_flags,
-                                aa_flags,
-                            ),
-                            prim_spatial_node_index,
-                            targets,
-                        );
-                    }
-                    QuadRenderStrategy::Indirect => {
-                        let surface = &frame_state.surfaces[pic_context.surface_index.0];
-                        let clipped_surface_rect = surface.get_surface_rect(
-                            &prim_instance.vis.clip_chain.pic_coverage_rect,
-                            frame_context.spatial_tree,
-                        ).expect("bug: what can cause this?");
-
-                        let p0 = clipped_surface_rect.min.floor();
-                        let p1 = clipped_surface_rect.max.ceil();
-
-                        let x0 = p0.x;
-                        let y0 = p0.y;
-                        let x1 = p1.x;
-                        let y1 = p1.y;
-
-                        let segment = add_segment(
-                            x0,
-                            y0,
-                            x1,
-                            y1,
-                            true,
-                            prim_instance,
-                            prim_spatial_node_index,
-                            main_prim_address,
-                            transform_id,
-                            aa_flags,
-                            quad_flags,
-                            device_pixel_scale,
-                            needs_scissor,
-                            frame_state,
-                        );
-
-                        add_composite_prim(
-                            prim_instance_index,
-                            LayoutRect::new(LayoutPoint::new(x0, y0), LayoutPoint::new(x1, y1)),
-                            premul_color,
-                            quad_flags,
-                            frame_state,
-                            targets,
-                            &[segment],
-                        );
-                    }
-                    QuadRenderStrategy::Tiled { x_tiles, y_tiles } => {
-                        let surface = &frame_state.surfaces[pic_context.surface_index.0];
-
-                        let clipped_surface_rect = surface.get_surface_rect(
-                            &prim_instance.vis.clip_chain.pic_coverage_rect,
-                            frame_context.spatial_tree,
-                        ).expect("bug: what can cause this?");
-
-                        let unclipped_surface_rect = surface.map_to_device_rect(
-                            &prim_instance.vis.clip_chain.pic_coverage_rect,
-                            frame_context.spatial_tree,
-                        );
-
-                        scratch.quad_segments.clear();
-
-                        let mut x_coords = vec![clipped_surface_rect.min.x.round()];
-                        let mut y_coords = vec![clipped_surface_rect.min.y.round()];
-
-                        let dx = (clipped_surface_rect.max.x - clipped_surface_rect.min.x) / x_tiles as f32;
-                        let dy = (clipped_surface_rect.max.y - clipped_surface_rect.min.y) / y_tiles as f32;
-
-                        for x in 1 .. x_tiles {
-                            x_coords.push((clipped_surface_rect.min.x + x as f32 * dx).round());
-                        }
-                        for y in 1 .. y_tiles {
-                            y_coords.push((clipped_surface_rect.min.y + y as f32 * dy).round());
-                        }
-
-                        x_coords.push(clipped_surface_rect.max.x.round());
-                        y_coords.push(clipped_surface_rect.max.y.round());
-
-                        for y in 0 .. y_coords.len()-1 {
-                            let y0 = y_coords[y];
-                            let y1 = y_coords[y+1];
-
-                            if y1 <= y0 {
-                                continue;
-                            }
-
-                            for x in 0 .. x_coords.len()-1 {
-                                let x0 = x_coords[x];
-                                let x1 = x_coords[x+1];
-
-                                if x1 <= x0 {
-                                    continue;
-                                }
-
-                                let create_task = true;
-
-                                let r = DeviceRect::new(DevicePoint::new(x0, y0), DevicePoint::new(x1, y1));
-
-                                let x0 = r.min.x;
-                                let y0 = r.min.y;
-                                let x1 = r.max.x;
-                                let y1 = r.max.y;
-
-                                let segment = add_segment(
-                                    x0,
-                                    y0,
-                                    x1,
-                                    y1,
-                                    create_task,
-                                    prim_instance,
-                                    prim_spatial_node_index,
-                                    main_prim_address,
-                                    transform_id,
-                                    aa_flags,
-                                    quad_flags,
-                                    device_pixel_scale,
-                                    needs_scissor,
-                                    frame_state,
-                                );
-                                scratch.quad_segments.push(segment);
-                            }
-                        }
-
-                        add_composite_prim(
-                            prim_instance_index,
-                            unclipped_surface_rect.cast_unit(),
-                            premul_color,
-                            quad_flags,
-                            frame_state,
-                            targets,
-                            &scratch.quad_segments,
-                        );
-                    }
-                    QuadRenderStrategy::NinePatch { clip_rect, radius } => {
-                        let surface = &frame_state.surfaces[pic_context.surface_index.0];
-                        let clipped_surface_rect = surface.get_surface_rect(
-                            &prim_instance.vis.clip_chain.pic_coverage_rect,
-                            frame_context.spatial_tree,
-                        ).expect("bug: what can cause this?");
-
-                        let unclipped_surface_rect = surface.map_to_device_rect(
-                            &prim_instance.vis.clip_chain.pic_coverage_rect,
-                            frame_context.spatial_tree,
-                        );
-
-                        let local_corner_0 = LayoutRect::new(
-                            clip_rect.min,
-                            clip_rect.min + radius,
-                        );
-
-                        let local_corner_1 = LayoutRect::new(
-                            clip_rect.max - radius,
-                            clip_rect.max,
-                        );
-
-                        let pic_corner_0 = pic_state.map_local_to_pic.map(&local_corner_0).unwrap();
-                        let pic_corner_1 = pic_state.map_local_to_pic.map(&local_corner_1).unwrap();
-
-                        let surface_rect_0 = surface.map_to_device_rect(
-                            &pic_corner_0,
-                            frame_context.spatial_tree,
-                        );
-
-                        let surface_rect_1 = surface.map_to_device_rect(
-                            &pic_corner_1,
-                            frame_context.spatial_tree,
-                        );
-
-                        let p0 = surface_rect_0.min.floor();
-                        let p1 = surface_rect_0.max.ceil();
-                        let p2 = surface_rect_1.min.floor();
-                        let p3 = surface_rect_1.max.ceil();
-
-                        let mut x_coords = [p0.x, p1.x, p2.x, p3.x];
-                        let mut y_coords = [p0.y, p1.y, p2.y, p3.y];
-
-                        x_coords.sort_by(|a, b| a.partial_cmp(b).unwrap());
-                        y_coords.sort_by(|a, b| a.partial_cmp(b).unwrap());
-
-                        scratch.quad_segments.clear();
-
-                        for y in 0 .. y_coords.len()-1 {
-                            let y0 = y_coords[y];
-                            let y1 = y_coords[y+1];
-
-                            if y1 <= y0 {
-                                continue;
-                            }
-
-                            for x in 0 .. x_coords.len()-1 {
-                                let x0 = x_coords[x];
-                                let x1 = x_coords[x+1];
-
-                                if x1 <= x0 {
-                                    continue;
-                                }
-
-                                let create_task = if x == 1 || y == 1 {
-                                    false
-                                } else {
-                                    true
-                                };
-
-                                let r = DeviceRect::new(DevicePoint::new(x0, y0), DevicePoint::new(x1, y1));
-
-                                let r = match r.intersection(&clipped_surface_rect) {
-                                    Some(r) => r,
-                                    None => {
-                                        continue;
-                                    }
-                                };
-
-                                let x0 = r.min.x;
-                                let y0 = r.min.y;
-                                let x1 = r.max.x;
-                                let y1 = r.max.y;
-
-                                let segment = add_segment(
-                                    x0,
-                                    y0,
-                                    x1,
-                                    y1,
-                                    create_task,
-                                    prim_instance,
-                                    prim_spatial_node_index,
-                                    main_prim_address,
-                                    transform_id,
-                                    aa_flags,
-                                    quad_flags,
-                                    device_pixel_scale,
-                                    false,
-                                    frame_state,
-                                );
-                                scratch.quad_segments.push(segment);
-                            }
-                        }
-
-                        add_composite_prim(
-                            prim_instance_index,
-                            unclipped_surface_rect.cast_unit(),
-                            premul_color,
-                            quad_flags,
-                            frame_state,
-                            targets,
-                            &scratch.quad_segments,
-                        );
-                    }
-                }
 
                 return;
             }
@@ -1039,7 +694,6 @@ fn prepare_interned_prim_for_render(
             image_data.update(
                 common_data,
                 image_instance,
-                pic_context.surface_index,
                 prim_spatial_node_index,
                 frame_state,
                 frame_context,
@@ -1062,7 +716,7 @@ fn prepare_interned_prim_for_render(
 
             // Update the template this instane references, which may refresh the GPU
             // cache with any shared template data.
-            prim_data.update(frame_state, pic_context.surface_index);
+            prim_data.update(frame_state);
 
             if prim_data.stretch_size.width >= prim_data.common.prim_rect.width() &&
                 prim_data.stretch_size.height >= prim_data.common.prim_rect.height() {
@@ -1107,7 +761,7 @@ fn prepare_interned_prim_for_render(
 
             let stops_address = GradientGpuBlockBuilder::build(
                 prim_data.reverse_stops,
-                frame_state.frame_gpu_data,
+                &mut frame_state.frame_gpu_data.f32,
                 &prim_data.stops,
             );
 
@@ -1128,7 +782,7 @@ fn prepare_interned_prim_for_render(
 
             // Update the template this instance references, which may refresh the GPU
             // cache with any shared template data.
-            prim_data.update(frame_state, pic_context.surface_index);
+            prim_data.update(frame_state);
 
             if prim_data.tile_spacing != LayoutSize::zero() {
                 prim_data.common.may_need_repetition = false;
@@ -1150,16 +804,49 @@ fn prepare_interned_prim_for_render(
                 }
             }
         }
-        PrimitiveInstanceKind::RadialGradient { data_handle, ref mut visible_tiles_range, .. } => {
+        PrimitiveInstanceKind::RadialGradient { data_handle, ref mut visible_tiles_range, cached, .. } => {
             profile_scope!("RadialGradient");
             let prim_data = &mut data_stores.radial_grad[*data_handle];
 
+            if !*cached {
+                // The scaling parameter is used to compensate for when we reduce the size
+                // of the render task for cached gradients. Here we aren't applying any.
+                let no_scale = DeviceVector2D::one();
+
+                let pattern = radial_gradient_pattern(
+                    prim_data.center,
+                    no_scale,
+                    &prim_data.params,
+                    prim_data.extend_mode,
+                    &prim_data.stops,
+                    &mut frame_state.frame_gpu_data,
+                );
+
+                quad::prepare_quad(
+                    &pattern,
+                    &prim_data.common.prim_rect,
+                    prim_instance_index,
+                    prim_spatial_node_index,
+                    &prim_instance.vis.clip_chain,
+                    device_pixel_scale,
+                    frame_context,
+                    pic_context,
+                    targets,
+                    &data_stores.clip,
+                    frame_state,
+                    pic_state,
+                    scratch,
+                );
+
+                return;
+            }
+
             prim_data.common.may_need_repetition = prim_data.stretch_size.width < prim_data.common.prim_rect.width()
-                || prim_data.stretch_size.height < prim_data.common.prim_rect.height();
+            || prim_data.stretch_size.height < prim_data.common.prim_rect.height();
 
             // Update the template this instane references, which may refresh the GPU
             // cache with any shared template data.
-            prim_data.update(frame_state, pic_context.surface_index);
+            prim_data.update(frame_state);
 
             if prim_data.tile_spacing != LayoutSize::zero() {
                 prim_data.common.may_need_repetition = false;
@@ -1180,20 +867,50 @@ fn prepare_interned_prim_for_render(
                     prim_instance.clear_visibility();
                 }
             }
-
-            // TODO(gw): Consider whether it's worth doing segment building
-            //           for gradient primitives.
         }
-        PrimitiveInstanceKind::ConicGradient { data_handle, ref mut visible_tiles_range, .. } => {
+        PrimitiveInstanceKind::ConicGradient { data_handle, ref mut visible_tiles_range, cached, .. } => {
             profile_scope!("ConicGradient");
             let prim_data = &mut data_stores.conic_grad[*data_handle];
 
+            if !*cached {
+                // The scaling parameter is used to compensate for when we reduce the size
+                // of the render task for cached gradients. Here we aren't applying any.
+                let no_scale = DeviceVector2D::one();
+
+                let pattern = conic_gradient_pattern(
+                    prim_data.center,
+                    no_scale,
+                    &prim_data.params,
+                    prim_data.extend_mode,
+                    &prim_data.stops,
+                    &mut frame_state.frame_gpu_data,
+                );
+
+                quad::prepare_quad(
+                    &pattern,
+                    &prim_data.common.prim_rect,
+                    prim_instance_index,
+                    prim_spatial_node_index,
+                    &prim_instance.vis.clip_chain,
+                    device_pixel_scale,
+                    frame_context,
+                    pic_context,
+                    targets,
+                    &data_stores.clip,
+                    frame_state,
+                    pic_state,
+                    scratch,
+                );
+
+                return;
+            }
+
             prim_data.common.may_need_repetition = prim_data.stretch_size.width < prim_data.common.prim_rect.width()
                 || prim_data.stretch_size.height < prim_data.common.prim_rect.height();
 
             // Update the template this instane references, which may refresh the GPU
             // cache with any shared template data.
-            prim_data.update(frame_state, pic_context.surface_index);
+            prim_data.update(frame_state);
 
             if prim_data.tile_spacing != LayoutSize::zero() {
                 prim_data.common.may_need_repetition = false;
@@ -1218,9 +935,174 @@ fn prepare_interned_prim_for_render(
             // TODO(gw): Consider whether it's worth doing segment building
             //           for gradient primitives.
         }
-        PrimitiveInstanceKind::Picture { pic_index, segment_instance_index, .. } => {
+        PrimitiveInstanceKind::Picture { pic_index, .. } => {
             profile_scope!("Picture");
             let pic = &mut store.pictures[pic_index.0];
+
+            if prim_instance.vis.clip_chain.needs_mask {
+                // TODO(gw): Much of the code in this branch could be moved in to a common
+                //           function as we move more primitives to the new clip-mask paths.
+
+                // We are going to split the clip mask tasks in to a list to be rendered
+                // on the source picture, and those to be rendered in to a mask for
+                // compositing the picture in to the target.
+                let mut source_masks = Vec::new();
+                let mut target_masks = Vec::new();
+
+                // For some composite modes, we force target mask due to limitations. That
+                // might results in artifacts for these modes (which are already an existing
+                // problem) but we can handle these cases as follow ups.
+                let force_target_mask = match pic.composite_mode {
+                    // We can't currently render over top of these filters as their size
+                    // may have changed due to downscaling. We could handle this separate
+                    // case as a follow up.
+                    Some(PictureCompositeMode::Filter(Filter::Blur { .. })) |
+                    Some(PictureCompositeMode::Filter(Filter::DropShadows { .. })) |
+                    Some(PictureCompositeMode::SVGFEGraph( .. )) => {
+                        true
+                    }
+                    _ => {
+                        false
+                    }
+                };
+
+                // Work out which clips get drawn in to the source / target mask
+                for i in 0 .. prim_instance.vis.clip_chain.clips_range.count {
+                    let clip_instance = frame_state.clip_store.get_instance_from_range(&prim_instance.vis.clip_chain.clips_range, i);
+
+                    if !force_target_mask && clip_instance.flags.contains(ClipNodeFlags::SAME_COORD_SYSTEM) {
+                        source_masks.push(i);
+                    } else {
+                        target_masks.push(i);
+                    }
+                }
+
+                let pic_surface_index = pic.raster_config.as_ref().unwrap().surface_index;
+                let prim_local_rect = frame_state
+                    .surfaces[pic_surface_index.0]
+                    .clipped_local_rect
+                    .cast_unit();
+
+                let prim_address_f = quad::write_prim_blocks(
+                    &mut frame_state.frame_gpu_data.f32,
+                    prim_local_rect,
+                    prim_instance.vis.clip_chain.local_clip_rect,
+                    PremultipliedColorF::WHITE,
+                    &[],
+                    ScaleOffset::identity(),
+                );
+
+                // Handle masks on the source. This is the common case, and occurs for:
+                // (a) Any masks in the same coord space as the surface
+                // (b) All masks if the surface and parent are axis-aligned
+                if !source_masks.is_empty() {
+                    let first_clip_node_index = frame_state.clip_store.clip_node_instances.len() as u32;
+                    let parent_task_id = pic.primary_render_task_id.expect("bug: no composite mode");
+
+                    // Construct a new clip node range, also add image-mask dependencies as needed
+                    for instance in source_masks {
+                        let clip_instance = frame_state.clip_store.get_instance_from_range(&prim_instance.vis.clip_chain.clips_range, instance);
+
+                        for tile in frame_state.clip_store.visible_mask_tiles(clip_instance) {
+                            frame_state.rg_builder.add_dependency(
+                                parent_task_id,
+                                tile.task_id,
+                            );
+                        }
+
+                        frame_state.clip_store.clip_node_instances.push(clip_instance.clone());
+                    }
+
+                    let clip_node_range = ClipNodeRange {
+                        first: first_clip_node_index,
+                        count: frame_state.clip_store.clip_node_instances.len() as u32 - first_clip_node_index,
+                    };
+
+                    let masks = MaskSubPass {
+                        clip_node_range,
+                        prim_spatial_node_index,
+                        prim_address_f,
+                    };
+
+                    // Add the mask as a sub-pass of the picture
+                    let pic_task_id = pic.primary_render_task_id.expect("uh oh");
+                    let pic_task = frame_state.rg_builder.get_task_mut(pic_task_id);
+                    pic_task.add_sub_pass(SubPass::Masks {
+                        masks,
+                    });
+                }
+
+                // Handle masks on the target. This is the rare case, and occurs for:
+                // Masks in parent space when non-axis-aligned to source space
+                if !target_masks.is_empty() {
+                    let surface = &frame_state.surfaces[pic_context.surface_index.0];
+                    let coverage_rect = prim_instance.vis.clip_chain.pic_coverage_rect;
+
+                    let device_pixel_scale = surface.device_pixel_scale;
+                    let raster_spatial_node_index = surface.raster_spatial_node_index;
+
+                    let Some(clipped_surface_rect) = surface.get_surface_rect(
+                        &coverage_rect,
+                        frame_context.spatial_tree,
+                    ) else {
+                        return;
+                    };
+
+                    // Draw a normal screens-space mask to an alpha target that
+                    // can be sampled when compositing this picture.
+                    let empty_task = EmptyTask {
+                        content_origin: clipped_surface_rect.min.to_f32(),
+                        device_pixel_scale,
+                        raster_spatial_node_index,
+                    };
+
+                    let task_size = clipped_surface_rect.size();
+
+                    let clip_task_id = frame_state.rg_builder.add().init(RenderTask::new_dynamic(
+                        task_size,
+                        RenderTaskKind::Empty(empty_task),
+                    ));
+
+                    // Construct a new clip node range, also add image-mask dependencies as needed
+                    let first_clip_node_index = frame_state.clip_store.clip_node_instances.len() as u32;
+                    for instance in target_masks {
+                        let clip_instance = frame_state.clip_store.get_instance_from_range(&prim_instance.vis.clip_chain.clips_range, instance);
+
+                        for tile in frame_state.clip_store.visible_mask_tiles(clip_instance) {
+                            frame_state.rg_builder.add_dependency(
+                                clip_task_id,
+                                tile.task_id,
+                            );
+                        }
+
+                        frame_state.clip_store.clip_node_instances.push(clip_instance.clone());
+                    }
+
+                    let clip_node_range = ClipNodeRange {
+                        first: first_clip_node_index,
+                        count: frame_state.clip_store.clip_node_instances.len() as u32 - first_clip_node_index,
+                    };
+
+                    let masks = MaskSubPass {
+                        clip_node_range,
+                        prim_spatial_node_index,
+                        prim_address_f,
+                    };
+
+                    let clip_task = frame_state.rg_builder.get_task_mut(clip_task_id);
+                    clip_task.add_sub_pass(SubPass::Masks {
+                        masks,
+                    });
+
+                    let clip_task_index = ClipTaskIndex(scratch.clip_mask_instances.len() as _);
+                    scratch.clip_mask_instances.push(ClipMaskKind::Mask(clip_task_id));
+                    prim_instance.vis.clip_task_index = clip_task_index;
+                    frame_state.surface_builder.add_child_render_task(
+                        clip_task_id,
+                        frame_state.rg_builder,
+                    );
+                }
+            }
 
             if pic.prepare_for_render(
                 frame_state,
@@ -1241,29 +1123,6 @@ fn prepare_interned_prim_for_render(
                         &prim_instance.vis.clip_chain.local_clip_rect,
                         dirty_rect,
                         plane_split_anchor,
-                    );
-                }
-
-                // If this picture uses segments, ensure the GPU cache is
-                // up to date with segment local rects.
-                // TODO(gw): This entire match statement above can now be
-                //           refactored into prepare_interned_prim_for_render.
-                if pic.can_use_segments() {
-                    write_segment(
-                        *segment_instance_index,
-                        frame_state,
-                        &mut scratch.segments,
-                        &mut scratch.segment_instances,
-                        |request| {
-                            request.push(PremultipliedColorF::WHITE);
-                            request.push(PremultipliedColorF::WHITE);
-                            request.push([
-                                -1.0,       // -ve means use prim rect for stretch size
-                                0.0,
-                                0.0,
-                                0.0,
-                            ]);
-                        }
                     );
                 }
             } else {
@@ -1409,6 +1268,7 @@ fn update_clip_task_for_brush(
     device_pixel_scale: DevicePixelScale,
 ) -> Option<ClipTaskIndex> {
     let segments = match instance.kind {
+        PrimitiveInstanceKind::Picture { .. } |
         PrimitiveInstanceKind::TextRun { .. } |
         PrimitiveInstanceKind::Clear { .. } |
         PrimitiveInstanceKind::LineDecoration { .. } |
@@ -1427,18 +1287,6 @@ fn update_clip_task_for_brush(
 
             let segment_instance = &segment_instances_store[segment_instance_index];
 
-            &segments_store[segment_instance.segments_range]
-        }
-        PrimitiveInstanceKind::Picture { segment_instance_index, .. } => {
-            // Pictures may not support segment rendering at all (INVALID)
-            // or support segment rendering but choose not to due to size
-            // or some other factor (UNUSED).
-            if segment_instance_index == SegmentInstanceIndex::UNUSED ||
-               segment_instance_index == SegmentInstanceIndex::INVALID {
-                return None;
-            }
-
-            let segment_instance = &segment_instances_store[segment_instance_index];
             &segments_store[segment_instance.segments_range]
         }
         PrimitiveInstanceKind::YuvImage { segment_instance_index, .. } => {
@@ -1567,6 +1415,7 @@ fn update_clip_task_for_brush(
                     device_pixel_scale,
                     &dirty_world_rect,
                     &mut data_stores.clip,
+                    frame_state.rg_builder,
                     false,
                 );
 
@@ -1645,13 +1494,19 @@ pub fn update_clip_task(
             unadjusted_device_rect,
             device_pixel_scale,
         );
+
+        if device_rect.size().to_i32().is_empty() {
+            log::warn!("Bad adjusted clip task size {:?} (was {:?})", device_rect.size(), unadjusted_device_rect.size());
+            return false;
+        }
+
         let clip_task_id = RenderTaskKind::new_mask(
             device_rect,
             instance.vis.clip_chain.clips_range,
             root_spatial_node_index,
             frame_state.clip_store,
             frame_state.gpu_cache,
-            frame_state.frame_gpu_data,
+            &mut frame_state.frame_gpu_data.f32,
             frame_state.resource_cache,
             frame_state.rg_builder,
             &mut data_stores.clip,
@@ -1696,7 +1551,7 @@ pub fn update_brush_segment_clip_task(
         return ClipMaskKind::None;
     }
 
-    let device_rect = match frame_state.surfaces[surface_index.0].get_surface_rect(
+    let unadjusted_device_rect = match frame_state.surfaces[surface_index.0].get_surface_rect(
         &clip_chain.pic_coverage_rect,
         frame_context.spatial_tree,
     ) {
@@ -1704,7 +1559,12 @@ pub fn update_brush_segment_clip_task(
         None => return ClipMaskKind::Clipped,
     };
 
-    let (device_rect, device_pixel_scale) = adjust_mask_scale_for_max_size(device_rect, device_pixel_scale);
+    let (device_rect, device_pixel_scale) = adjust_mask_scale_for_max_size(unadjusted_device_rect, device_pixel_scale);
+
+    if device_rect.size().to_i32().is_empty() {
+        log::warn!("Bad adjusted mask size {:?} (was {:?})", device_rect.size(), unadjusted_device_rect.size());
+        return ClipMaskKind::Clipped;
+    }
 
     let clip_task_id = RenderTaskKind::new_mask(
         device_rect,
@@ -1712,7 +1572,7 @@ pub fn update_brush_segment_clip_task(
         root_spatial_node_index,
         frame_state.clip_store,
         frame_state.gpu_cache,
-        frame_state.frame_gpu_data,
+        &mut frame_state.frame_gpu_data.f32,
         frame_state.resource_cache,
         frame_state.rg_builder,
         clip_data_store,
@@ -1804,13 +1664,7 @@ fn write_brush_segment_description(
                 continue;
             }
             ClipItemKind::Image { .. } => {
-                // If we encounter an image mask, bail out from segment building.
-                // It's not possible to know which parts of the primitive are affected
-                // by the mask (without inspecting the pixels). We could do something
-                // better here in the future if it ever shows up as a performance issue
-                // (for instance, at least segment based on the bounding rect of the
-                // image mask if it's non-repeating).
-                return false;
+                panic!("bug: masks not supported on old segment path");
             }
         };
 
@@ -1843,43 +1697,33 @@ fn build_segments_if_needed(
             assert!(use_legacy_path);
             segment_instance_index
         }
-        PrimitiveInstanceKind::YuvImage { ref mut segment_instance_index, .. } => {
+        PrimitiveInstanceKind::YuvImage { ref mut segment_instance_index, compositor_surface_kind, .. } => {
+            // Only use segments for YUV images if not drawing as a compositor surface
+            if !compositor_surface_kind.supports_segments() {
+                *segment_instance_index = SegmentInstanceIndex::UNUSED;
+                return;
+            }
+
             segment_instance_index
         }
-        PrimitiveInstanceKind::Image { data_handle, image_instance_index, .. } => {
+        PrimitiveInstanceKind::Image { data_handle, image_instance_index, compositor_surface_kind, .. } => {
             let image_data = &data_stores.image[data_handle].kind;
             let image_instance = &mut prim_store.images[image_instance_index];
+
             //Note: tiled images don't support automatic segmentation,
             // they strictly produce one segment per visible tile instead.
-            if frame_state
-                .resource_cache
-                .get_image_properties(image_data.key)
-                .and_then(|properties| properties.tiling)
-                .is_some()
+            if !compositor_surface_kind.supports_segments() ||
+                frame_state.resource_cache
+                    .get_image_properties(image_data.key)
+                    .and_then(|properties| properties.tiling)
+                    .is_some()
             {
                 image_instance.segment_instance_index = SegmentInstanceIndex::UNUSED;
                 return;
             }
             &mut image_instance.segment_instance_index
         }
-        PrimitiveInstanceKind::Picture { ref mut segment_instance_index, pic_index, .. } => {
-            let pic = &mut prim_store.pictures[pic_index.0];
-
-            // If this picture supports segment rendering
-            if pic.can_use_segments() {
-                // If the segments have been invalidated, ensure the current
-                // index of segments is invalid. This ensures that the segment
-                // building logic below will be run.
-                if !pic.segments_are_valid {
-                    *segment_instance_index = SegmentInstanceIndex::INVALID;
-                    pic.segments_are_valid = true;
-                }
-
-                segment_instance_index
-            } else {
-                return;
-            }
-        }
+        PrimitiveInstanceKind::Picture { .. } |
         PrimitiveInstanceKind::TextRun { .. } |
         PrimitiveInstanceKind::NormalBorder { .. } |
         PrimitiveInstanceKind::ImageBorder { .. } |
@@ -1948,141 +1792,29 @@ fn build_segments_if_needed(
 }
 
 // Ensures that the size of mask render tasks are within MAX_MASK_SIZE.
-fn adjust_mask_scale_for_max_size(device_rect: DeviceRect, device_pixel_scale: DevicePixelScale) -> (DeviceRect, DevicePixelScale) {
+fn adjust_mask_scale_for_max_size(device_rect: DeviceIntRect, device_pixel_scale: DevicePixelScale) -> (DeviceIntRect, DevicePixelScale) {
     if device_rect.width() > MAX_MASK_SIZE || device_rect.height() > MAX_MASK_SIZE {
         // round_out will grow by 1 integer pixel if origin is on a
         // fractional position, so keep that margin for error with -1:
-        let scale = (MAX_MASK_SIZE - 1.0) /
-            f32::max(device_rect.width(), device_rect.height());
+        let device_rect_f = device_rect.to_f32();
+        let scale = (MAX_MASK_SIZE - 1) as f32 /
+            f32::max(device_rect_f.width(), device_rect_f.height());
         let new_device_pixel_scale = device_pixel_scale * Scale::new(scale);
-        let new_device_rect = (device_rect.to_f32() * Scale::new(scale))
-            .round_out();
+        let new_device_rect = (device_rect_f * Scale::new(scale))
+            .round_out()
+            .to_i32();
         (new_device_rect, new_device_pixel_scale)
     } else {
         (device_rect, device_pixel_scale)
     }
 }
 
-fn write_prim_blocks(
-    builder: &mut GpuBufferBuilder,
-    prim_rect: LayoutRect,
-    clip_rect: LayoutRect,
-    color: PremultipliedColorF,
-    segments: &[QuadSegment],
-) -> GpuBufferAddress {
-    let mut writer = builder.write_blocks(3 + segments.len() * 2);
-
-    writer.push_one(prim_rect);
-    writer.push_one(clip_rect);
-    writer.push_one(color);
-
-    for segment in segments {
-        writer.push_one(segment.rect);
-        match segment.task_id {
-            RenderTaskId::INVALID => {
-                writer.push_one([0.0; 4]);
-            }
-            task_id => {
-                writer.push_render_task(task_id);
-            }
+impl CompositorSurfaceKind {
+    /// Returns true if the compositor surface strategy supports segment rendering
+    fn supports_segments(&self) -> bool {
+        match self {
+            CompositorSurfaceKind::Underlay | CompositorSurfaceKind::Overlay => false,
+            CompositorSurfaceKind::Blit => true,
         }
     }
-
-    writer.finish()
-}
-
-fn add_segment(
-    x0: f32,
-    y0: f32,
-    x1: f32,
-    y1: f32,
-    create_task: bool,
-    prim_instance: &PrimitiveInstance,
-    prim_spatial_node_index: SpatialNodeIndex,
-    main_prim_address: GpuBufferAddress,
-    transform_id: TransformPaletteId,
-    aa_flags: EdgeAaSegmentMask,
-    quad_flags: QuadFlags,
-    device_pixel_scale: DevicePixelScale,
-    needs_scissor_rect: bool,
-    frame_state: &mut FrameBuildingState,
-) -> QuadSegment {
-    let task_size = DeviceSize::new(x1 - x0, y1 - y0).round().to_i32();
-    let content_origin = DevicePoint::new(x0, y0);
-
-    let rect = LayoutRect::new(
-        LayoutPoint::new(x0, y0),
-        LayoutPoint::new(x1, y1),
-    );
-
-    let task_id = if create_task {
-        let task_id = frame_state.rg_builder.add().init(RenderTask::new_dynamic(
-            task_size,
-            RenderTaskKind::new_prim(
-                prim_spatial_node_index,
-                device_pixel_scale,
-                content_origin,
-                main_prim_address,
-                transform_id,
-                aa_flags,
-                quad_flags,
-                prim_instance.vis.clip_chain.clips_range,
-                needs_scissor_rect,
-            ),
-        ));
-
-        frame_state.surface_builder.add_child_render_task(
-            task_id,
-            frame_state.rg_builder,
-        );
-
-        task_id
-    } else {
-        RenderTaskId::INVALID
-    };
-
-    QuadSegment {
-        rect,
-        task_id,
-    }
-}
-
-fn add_composite_prim(
-    prim_instance_index: PrimitiveInstanceIndex,
-    rect: LayoutRect,
-    color: PremultipliedColorF,
-    quad_flags: QuadFlags,
-    frame_state: &mut FrameBuildingState,
-    targets: &[CommandBufferIndex],
-    segments: &[QuadSegment],
-) {
-    let composite_prim_address = write_prim_blocks(
-        frame_state.frame_gpu_data,
-        rect,
-        rect,
-        color,
-        segments,
-    );
-
-    frame_state.set_segments(
-        segments,
-        targets,
-    );
-
-    let mut composite_quad_flags = QuadFlags::IGNORE_DEVICE_PIXEL_SCALE;
-    if quad_flags.contains(QuadFlags::IS_OPAQUE) {
-        composite_quad_flags |= QuadFlags::IS_OPAQUE;
-    }
-
-    frame_state.push_cmd(
-        &PrimitiveCommand::quad(
-            prim_instance_index,
-            composite_prim_address,
-            TransformPaletteId::IDENTITY,
-            composite_quad_flags,
-            // TODO(gw): No AA on composite, unless we use it to apply 2d clips
-            EdgeAaSegmentMask::empty(),
-        ),
-        targets,
-    );
 }

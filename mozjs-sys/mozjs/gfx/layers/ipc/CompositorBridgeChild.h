@@ -45,8 +45,8 @@ class CompositorManagerChild;
 class CompositorOptions;
 class WebRenderLayerManager;
 class TextureClient;
-class TextureClientPool;
 struct FrameMetrics;
+struct FwdTransactionCounter;
 
 class CompositorBridgeChild final : public PCompositorBridgeChild,
                                     public TextureForwarder {
@@ -97,12 +97,18 @@ class CompositorBridgeChild final : public PCompositorBridgeChild,
       nsTArray<AsyncParentMessageData>&& aMessages);
   PTextureChild* CreateTexture(
       const SurfaceDescriptor& aSharedData, ReadLockDescriptor&& aReadLock,
-      LayersBackend aLayersBackend, TextureFlags aFlags, uint64_t aSerial,
+      LayersBackend aLayersBackend, TextureFlags aFlags,
+      const dom::ContentParentId& aContentId, uint64_t aSerial,
       wr::MaybeExternalImageId& aExternalImageId) override;
 
   already_AddRefed<CanvasChild> GetCanvasChild() final;
 
   void EndCanvasTransaction();
+
+  /**
+   * Release resources until they are next required.
+   */
+  void ClearCachedResources();
 
   // Beware that these methods don't override their super-class equivalent
   // (which are not virtual), they just overload them. All of these Send*
@@ -128,8 +134,7 @@ class CompositorBridgeChild final : public PCompositorBridgeChild,
 
   static void ShutDown();
 
-  void UpdateFwdTransactionId() { ++mFwdTransactionId; }
-  uint64_t GetFwdTransactionId() { return mFwdTransactionId; }
+  FwdTransactionCounter& GetFwdTransactionCounter();
 
   /**
    * Hold TextureClient ref until end of usage on host side if
@@ -189,9 +194,8 @@ class CompositorBridgeChild final : public PCompositorBridgeChild,
 
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  mozilla::ipc::IPCResult RecvObserveLayersUpdate(
-      const LayersId& aLayersId, const LayersObserverEpoch& aEpoch,
-      const bool& aActive);
+  mozilla::ipc::IPCResult RecvObserveLayersUpdate(const LayersId& aLayersId,
+                                                  const bool& aActive);
 
   mozilla::ipc::IPCResult RecvCompositorOptionsChanged(
       const LayersId& aLayersId, const CompositorOptions& aNewOptions);
@@ -220,13 +224,6 @@ class CompositorBridgeChild final : public PCompositorBridgeChild,
   bool mPaused;
 
   /**
-   * Transaction id of ShadowLayerForwarder.
-   * It is incremented by UpdateFwdTransactionId() in each BeginTransaction()
-   * call.
-   */
-  uint64_t mFwdTransactionId;
-
-  /**
    * Hold TextureClients refs until end of their usages on host side.
    * It defer calling of TextureClient recycle callback.
    */
@@ -234,8 +231,6 @@ class CompositorBridgeChild final : public PCompositorBridgeChild,
       mTexturesWaitingNotifyNotUsed;
 
   nsCOMPtr<nsISerialEventTarget> mThread;
-
-  AutoTArray<RefPtr<TextureClientPool>, 2> mTexturePools;
 
   uint64_t mProcessToken;
 

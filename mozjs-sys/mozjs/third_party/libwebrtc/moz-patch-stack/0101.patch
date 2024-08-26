@@ -1,52 +1,33 @@
 From: Andreas Pehrson <apehrson@mozilla.com>
-Date: Wed, 10 May 2023 08:01:00 +0000
-Subject: Bug 1828065 - cherry-pick upstream libwebrtc commit adf55790b6.
- r=webrtc-reviewers,mjf
+Date: Fri, 2 Feb 2024 18:43:00 +0000
+Subject: Bug 1878010 - Fix webrtc::VideoCaptureFactory for BSD.
+ r=grulja,gaston,webrtc-reviewers,mjf
 
-Upstream commit: https://webrtc.googlesource.com/src/+/adf55790b6ecf50c4bb2b2cf7d58441303b9d946
-    In DeviceInfoDS free the frame duration list after use
-
-    Per the docs, the caller is responsible for freeing the memory.
-
-    Bug: chromium:1441804
-    Change-Id: I9aaae493a1a86d8ab4f03930715a643a3c9fb61b
-    Reviewed-on: https://webrtc-review.googlesource.com/c/src/+/304061
-    Reviewed-by: Per Kjellander <perkj@webrtc.org>
-    Commit-Queue: Ilya Nikolaevskiy <ilnik@webrtc.org>
-    Reviewed-by: Ilya Nikolaevskiy <ilnik@webrtc.org>
-    Cr-Commit-Position: refs/heads/main@{#39983}
-
-Differential Revision: https://phabricator.services.mozilla.com/D177237
-Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/854cc79e99130e6537eebe8433a6a7adf5e1578d
+Differential Revision: https://phabricator.services.mozilla.com/D200427
+Mercurial Revision: https://hg.mozilla.org/mozilla-central/rev/f890637efe5abc0020fab83ff2224313cd0c8460
 ---
- modules/video_capture/windows/device_info_ds.cc | 11 +++++++++--
- 1 file changed, 9 insertions(+), 2 deletions(-)
+ modules/video_capture/video_capture_factory.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
 
-diff --git a/modules/video_capture/windows/device_info_ds.cc b/modules/video_capture/windows/device_info_ds.cc
-index 2c192fe4f6..2b01fc6930 100644
---- a/modules/video_capture/windows/device_info_ds.cc
-+++ b/modules/video_capture/windows/device_info_ds.cc
-@@ -520,11 +520,18 @@ int32_t DeviceInfoDS::CreateCapabilityMap(const char* deviceUniqueIdUTF8)
-         hrVC = videoControlConfig->GetFrameRateList(
-             outputCapturePin, tmp, size, &listSize, &frameDurationList);
- 
-+        if (hrVC == S_OK) {
-+          maxFPS = GetMaxOfFrameArray(frameDurationList, listSize);
-+        }
-+
-+        CoTaskMemFree(frameDurationList);
-+        frameDurationList = NULL;
-+        listSize = 0;
-+
-         // On some odd cameras, you may get a 0 for duration. Some others may
-         // not update the out vars. GetMaxOfFrameArray returns the lowest
-         // duration (highest FPS), or 0 if there was no list with elements.
--        if (hrVC == S_OK &&
--            0 != (maxFPS = GetMaxOfFrameArray(frameDurationList, listSize))) {
-+        if (0 != maxFPS) {
-           capability.maxFPS = static_cast<int>(10000000 / maxFPS);
-           capability.supportFrameRateControl = true;
-         } else  // use existing method
--- 
-2.34.1
-
+diff --git a/modules/video_capture/video_capture_factory.cc b/modules/video_capture/video_capture_factory.cc
+index e085ac2df8..2790fbbe1c 100644
+--- a/modules/video_capture/video_capture_factory.cc
++++ b/modules/video_capture/video_capture_factory.cc
+@@ -24,7 +24,7 @@ rtc::scoped_refptr<VideoCaptureModule> VideoCaptureFactory::Create(
+     const char* deviceUniqueIdUTF8) {
+ // This is only implemented on pure Linux and WEBRTC_LINUX is defined for
+ // Android as well
+-#if !defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID)
++#if (!defined(WEBRTC_LINUX) && !defined(WEBRTC_BSD)) || defined(WEBRTC_ANDROID)
+   return nullptr;
+ #else
+   return videocapturemodule::VideoCaptureImpl::Create(options,
+@@ -40,7 +40,7 @@ VideoCaptureModule::DeviceInfo* VideoCaptureFactory::CreateDeviceInfo(
+     VideoCaptureOptions* options) {
+ // This is only implemented on pure Linux and WEBRTC_LINUX is defined for
+ // Android as well
+-#if !defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID)
++#if (!defined(WEBRTC_LINUX) && !defined(WEBRTC_BSD)) || defined(WEBRTC_ANDROID)
+   return nullptr;
+ #else
+   return videocapturemodule::VideoCaptureImpl::CreateDeviceInfo(options);

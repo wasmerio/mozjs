@@ -19,7 +19,7 @@
         this.setAttribute("value", val);
       }
       get value() {
-        return this.getAttribute("value");
+        return this.getAttribute("value") || "";
       }
 
       // nsIDOMXULSelectControlItemElement
@@ -129,7 +129,7 @@
   };
 
   // The <menucaption> element is used for rendering <html:optgroup> inside of <html:select>,
-  // See SelectParentHelper.jsm.
+  // See SelectParentHelper.sys.mjs.
   class MozMenuCaption extends MozMenuBaseMixin(MozXULElement) {
     static get inheritedAttributes() {
       return {

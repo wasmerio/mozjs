@@ -1,0 +1,1 @@
+Compare, 2, 4, 5, JSVAL_TYPE_UNKNOWN, 8, STUBFIELD(RawInt32) , LASTUSED(0) LASTUSED(1) LASTUSED(3) LASTUSED(3) , OP(GuardBooleanToInt32) ID(0) ID(2) OP(GuardIsNull) ID(1) OP(LoadInt32Constant) OFFSET(0) ID(3) OP(CompareInt32Result) JSOP(Le) ID(2) ID(3) OP(ReturnFromIC)  

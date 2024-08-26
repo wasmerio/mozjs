@@ -77,6 +77,7 @@
 #include "mozilla/dom/quota/Client.h"
 #include "mozilla/dom/quota/ClientImpl.h"
 #include "mozilla/dom/quota/DirectoryLock.h"
+#include "mozilla/dom/quota/DirectoryLockInlines.h"
 #include "mozilla/dom/quota/FirstInitializationAttemptsImpl.h"
 #include "mozilla/dom/quota/OriginScope.h"
 #include "mozilla/dom/quota/PersistenceType.h"
@@ -1530,9 +1531,7 @@ class Datastore final
   uint32_t PrivateBrowsingId() const { return mPrivateBrowsingId; }
 
   bool IsPersistent() const {
-    // Private-browsing is forbidden from touching disk, but
-    // StorageAccess::eSessionScoped is allowed to touch disk because
-    // QuotaManager's storage for such origins is wiped at shutdown.
+    // Private-browsing is forbidden from touching disk.
     return mPrivateBrowsingId == 0;
   }
 
@@ -1813,7 +1812,7 @@ class Database final
 
   void Stringify(nsACString& aResult) const;
 
-  NS_INLINE_DECL_REFCOUNTING(mozilla::dom::Database)
+  NS_INLINE_DECL_REFCOUNTING(mozilla::dom::Database, override)
 
  private:
   // Reference counted.
@@ -2184,7 +2183,6 @@ class LSRequestBase : public DatastoreOperationBase,
 
 class PrepareDatastoreOp
     : public LSRequestBase,
-      public OpenDirectoryListener,
       public SupportsCheckedUnsafePtr<CheckIf<DiagnosticAssertEnabled>> {
   class LoadDataOp;
 
@@ -2234,7 +2232,7 @@ class PrepareDatastoreOp
   };
 
   RefPtr<PrepareDatastoreOp> mDelayedOp;
-  RefPtr<DirectoryLock> mPendingDirectoryLock;
+  RefPtr<ClientDirectoryLock> mPendingDirectoryLock;
   RefPtr<DirectoryLock> mDirectoryLock;
   RefPtr<Connection> mConnection;
   RefPtr<Datastore> mDatastore;
@@ -2346,15 +2344,12 @@ class PrepareDatastoreOp
 
   void CleanupMetadata();
 
-  NS_DECL_ISUPPORTS_INHERITED
-
   // IPDL overrides.
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  // OpenDirectoryListener overrides.
-  void DirectoryLockAcquired(DirectoryLock* aLock) override;
+  void DirectoryLockAcquired(DirectoryLock* aLock);
 
-  void DirectoryLockFailed() override;
+  void DirectoryLockFailed();
 };
 
 class PrepareDatastoreOp::LoadDataOp final
@@ -2846,9 +2841,6 @@ nsresult LoadArchivedOrigins() {
   QuotaManager* quotaManager = QuotaManager::Get();
   MOZ_ASSERT(quotaManager);
 
-  // Ensure that the webappsstore.sqlite is moved to new place.
-  QM_TRY(MOZ_TO_RESULT(quotaManager->EnsureStorageIsInitialized()));
-
   QM_TRY_INSPECT(const auto& connection, CreateArchiveStorageConnection(
                                              quotaManager->GetStoragePath()));
 
@@ -3197,7 +3189,7 @@ void InitializeLocalStorage() {
 #endif
 }
 
-PBackgroundLSDatabaseParent* AllocPBackgroundLSDatabaseParent(
+already_AddRefed<PBackgroundLSDatabaseParent> AllocPBackgroundLSDatabaseParent(
     const PrincipalInfo& aPrincipalInfo, const uint32_t& aPrivateBrowsingId,
     const uint64_t& aDatastoreId) {
   AssertIsOnBackgroundThread();
@@ -3228,7 +3220,7 @@ PBackgroundLSDatabaseParent* AllocPBackgroundLSDatabaseParent(
                    preparedDatastore->Origin(), aPrivateBrowsingId);
 
   // Transfer ownership to IPDL.
-  return database.forget().take();
+  return database.forget();
 }
 
 bool RecvPBackgroundLSDatabaseConstructor(PBackgroundLSDatabaseParent* aActor,
@@ -3259,16 +3251,6 @@ bool RecvPBackgroundLSDatabaseConstructor(PBackgroundLSDatabaseParent* aActor,
   if (preparedDatastore->IsInvalidated()) {
     database->RequestAllowToClose();
   }
-
-  return true;
-}
-
-bool DeallocPBackgroundLSDatabaseParent(PBackgroundLSDatabaseParent* aActor) {
-  AssertIsOnBackgroundThread();
-  MOZ_ASSERT(aActor);
-
-  // Transfer ownership back from IPDL.
-  RefPtr<Database> actor = dont_AddRef(static_cast<Database*>(aActor));
 
   return true;
 }
@@ -4433,7 +4415,7 @@ void Datastore::Close() {
     // There's no connection, so it's safe to release the directory lock and
     // unregister itself from the hashtable.
 
-    mDirectoryLock = nullptr;
+    DropDirectoryLock(mDirectoryLock);
 
     CleanupMetadata();
   }
@@ -5216,7 +5198,7 @@ void Datastore::ConnectionClosedCallback() {
   // Now it's safe to release the directory lock and unregister itself from
   // the hashtable.
 
-  mDirectoryLock = nullptr;
+  DropDirectoryLock(mDirectoryLock);
 
   CleanupMetadata();
 
@@ -6851,20 +6833,23 @@ nsresult PrepareDatastoreOp::BeginDatastorePreparationInternal() {
   QuotaManager* quotaManager = QuotaManager::Get();
   MOZ_ASSERT(quotaManager);
 
-  // Open directory
-  mPendingDirectoryLock = quotaManager->CreateDirectoryLock(
-      mOriginMetadata.mPersistenceType, mOriginMetadata,
-      mozilla::dom::quota::Client::LS,
-      /* aExclusive */ false);
-
   mNestedState = NestedState::DirectoryOpenPending;
 
-  {
-    // Pin the directory lock, because Acquire might clear mPendingDirectoryLock
-    // during the Acquire call.
-    RefPtr pinnedDirectoryLock = mPendingDirectoryLock;
-    pinnedDirectoryLock->Acquire(this);
-  }
+  quotaManager
+      ->OpenClientDirectory({mOriginMetadata, mozilla::dom::quota::Client::LS},
+                            SomeRef(mPendingDirectoryLock))
+      ->Then(
+          GetCurrentSerialEventTarget(), __func__,
+          [self = RefPtr(this)](
+              const ClientDirectoryLockPromise::ResolveOrRejectValue& aValue) {
+            self->mPendingDirectoryLock = nullptr;
+
+            if (aValue.IsResolve()) {
+              self->DirectoryLockAcquired(aValue.ResolveValue());
+            } else {
+              self->DirectoryLockFailed();
+            }
+          });
 
   return NS_OK;
 }
@@ -6920,12 +6905,10 @@ nsresult PrepareDatastoreOp::DatabaseWork() {
     QuotaManager* quotaManager = QuotaManager::Get();
     MOZ_ASSERT(quotaManager);
 
-    // This must be called before EnsureTemporaryStorageIsInitialized.
-    QM_TRY(MOZ_TO_RESULT(quotaManager->EnsureStorageIsInitialized()));
-
     // This ensures that usages for existings origin directories are cached in
     // memory.
-    QM_TRY(MOZ_TO_RESULT(quotaManager->EnsureTemporaryStorageIsInitialized()));
+    QM_TRY(MOZ_TO_RESULT(
+        quotaManager->EnsureTemporaryStorageIsInitializedInternal()));
 
     const UsageInfo usageInfo = quotaManager->GetUsageForClient(
         PERSISTENCE_TYPE_DEFAULT, mOriginMetadata,
@@ -7556,7 +7539,7 @@ void PrepareDatastoreOp::Cleanup() {
     // There's no connection, so it's safe to release the directory lock and
     // unregister itself from the array.
 
-    mDirectoryLock = nullptr;
+    SafeDropDirectoryLock(mDirectoryLock);
 
     CleanupMetadata();
   }
@@ -7569,7 +7552,8 @@ void PrepareDatastoreOp::ConnectionClosedCallback() {
   MOZ_ASSERT(mConnection);
 
   mConnection = nullptr;
-  mDirectoryLock = nullptr;
+
+  DropDirectoryLock(mDirectoryLock);
 
   CleanupMetadata();
 }
@@ -7592,8 +7576,6 @@ void PrepareDatastoreOp::CleanupMetadata() {
   }
 }
 
-NS_IMPL_ISUPPORTS_INHERITED0(PrepareDatastoreOp, LSRequestBase)
-
 void PrepareDatastoreOp::ActorDestroy(ActorDestroyReason aWhy) {
   AssertIsOnOwningThread();
 
@@ -7612,6 +7594,8 @@ void PrepareDatastoreOp::DirectoryLockAcquired(DirectoryLock* aLock) {
 
   mPendingDirectoryLock = nullptr;
 
+  mDirectoryLock = aLock;
+
   if (NS_WARN_IF(QuotaClient::IsShuttingDownOnBackgroundThread()) ||
       !MayProceed()) {
     MaybeSetFailureCode(NS_ERROR_ABORT);
@@ -7620,8 +7604,6 @@ void PrepareDatastoreOp::DirectoryLockAcquired(DirectoryLock* aLock) {
 
     return;
   }
-
-  mDirectoryLock = aLock;
 
   SendToIOThread();
 }

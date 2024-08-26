@@ -117,7 +117,7 @@ add_task(function test_gifft_memory_dist() {
   Glean.testOnlyIpc.aMemoryDist.accumulate(Math.pow(2, 31));
   Assert.throws(
     () => Glean.testOnlyIpc.aMemoryDist.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Did not accumulate correctly"
   );
 });
@@ -176,10 +176,7 @@ add_task(async function test_gifft_timing_dist() {
   // But we can guarantee it's only two samples.
   Assert.equal(
     2,
-    Object.entries(data.values).reduce(
-      (acc, [bucket, count]) => acc + count,
-      0
-    ),
+    Object.entries(data.values).reduce((acc, [, count]) => acc + count, 0),
     "Only two buckets with samples"
   );
 
@@ -188,10 +185,7 @@ add_task(async function test_gifft_timing_dist() {
   Assert.greaterOrEqual(data.sum, 13, "Histogram's in milliseconds");
   Assert.equal(
     2,
-    Object.entries(data.values).reduce(
-      (acc, [bucket, count]) => acc + count,
-      0
-    ),
+    Object.entries(data.values).reduce((acc, [, count]) => acc + count, 0),
     "Only two samples"
   );
 });
@@ -232,7 +226,15 @@ add_task(function test_gifft_events() {
   Assert.equal("test_only.ipc", events[0].category);
   Assert.equal("no_extra_event", events[0].name);
 
-  let extra = { extra1: "can set extras", extra2: "passing more data" };
+  let extra = {
+    value: "a value for Telemetry",
+    extra1: "can set extras",
+    extra2: "passing more data",
+  };
+  // Since `value` will be stripped and used for the value in the Legacy Telemetry API, we need
+  // a copy without it in order to test with `assertEvents` later.
+  let { extra1, extra2 } = extra;
+  let telExtra = { extra1, extra2 };
   Glean.testOnlyIpc.anEvent.record(extra);
   events = Glean.testOnlyIpc.anEvent.testGetValue();
   Assert.equal(1, events.length);
@@ -243,7 +245,7 @@ add_task(function test_gifft_events() {
   TelemetryTestUtils.assertEvents(
     [
       ["telemetry.test", "not_expired_optout", "object1", undefined, undefined],
-      ["telemetry.test", "mirror_with_extra", "object1", null, extra],
+      ["telemetry.test", "mirror_with_extra", "object1", extra.value, telExtra],
     ],
     { category: "telemetry.test" }
   );
@@ -278,7 +280,7 @@ add_task(function test_gifft_labeled_counter() {
   Glean.testOnlyIpc.aLabeledCounter["1".repeat(72)].add(3);
   Assert.throws(
     () => Glean.testOnlyIpc.aLabeledCounter.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Can't get the value when you're error'd"
   );
 
@@ -345,7 +347,7 @@ add_task(async function test_gifft_labeled_boolean() {
   Glean.testOnly.mirrorsForLabeledBools["1".repeat(72)].set(true);
   Assert.throws(
     () => Glean.testOnly.mirrorsForLabeledBools.__other__.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Should throw because of a recording error."
   );
 
@@ -397,7 +399,7 @@ add_task(function test_gifft_numeric_limits() {
   // (chutten blames chutten for his shortsightedness)
   Assert.throws(
     () => Glean.testOnlyIpc.aCounter.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Can't get the value when you're error'd"
   );
   Assert.equal(undefined, scalarValue("telemetry.test.mirror_for_counter"));
@@ -422,7 +424,7 @@ add_task(function test_gifft_numeric_limits() {
   // Glean will error on this.
   Assert.throws(
     () => Glean.testOnly.meaningOfLife.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Can't get the value when you're error'd"
   );
   // GIFFT doesn't tell Telemetry about the weird value at all.
@@ -445,7 +447,7 @@ add_task(function test_gifft_numeric_limits() {
   Glean.testOnlyIpc.irate.addToDenominator(7);
   Assert.throws(
     () => Glean.testOnlyIpc.irate.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Can't get the value when you're error'd"
   );
   Assert.deepEqual(
@@ -462,7 +464,7 @@ add_task(function test_gifft_numeric_limits() {
   Glean.testOnlyIpc.irate.addToDenominator(-7);
   Assert.throws(
     () => Glean.testOnlyIpc.irate.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Can't get the value when you're error'd"
   );
   Assert.deepEqual(
@@ -488,7 +490,7 @@ add_task(function test_gifft_numeric_limits() {
   Glean.testOnlyIpc.aTimingDist.testAccumulateRawMillis(Math.pow(2, 32) + 1);
   Assert.throws(
     () => Glean.testOnlyIpc.aTimingDist.testGetValue(),
-    /NS_ERROR_LOSS_OF_SIGNIFICANT_DATA/,
+    /DataError/,
     "Can't get the value when you're error'd"
   );
   let snapshot = Telemetry.getHistogramById(

@@ -114,7 +114,11 @@ class NodeChannel final : public IPC::Channel::Listener {
   const NodeName& GetName() { return mName; }
 #endif
 
-#ifdef XP_MACOSX
+  // Update the known PID for the remote process. MUST BE CALLED FROM THE IO
+  // THREAD.
+  void SetOtherPid(base::ProcessId aNewPid);
+
+#ifdef XP_DARWIN
   // Called by the GeckoChildProcessHost to provide the task_t for the peer
   // process. MUST BE CALLED FROM THE IO THREAD.
   void SetMachTaskPort(task_t aTask);
@@ -125,9 +129,6 @@ class NodeChannel final : public IPC::Channel::Listener {
 
   void Destroy();
   void FinalDestroy();
-
-  // Update the known PID for the remote process. IO THREAD ONLY
-  void SetOtherPid(base::ProcessId aNewPid);
 
   void SendMessage(UniquePtr<IPC::Message> aMessage);
 

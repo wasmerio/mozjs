@@ -159,6 +159,7 @@
 #include "mozilla/HashFunctions.h"
 #include "mozilla/HashTable.h"
 #include "mozilla/HoldDropJSObjects.h"
+#include "mozilla/Maybe.h"
 /* This must occur *after* base/process_util.h to avoid typedefs conflicts. */
 #include <stdint.h>
 #include <stdio.h>
@@ -167,7 +168,6 @@
 
 #include "js/SliceBudget.h"
 #include "mozilla/Attributes.h"
-#include "mozilla/AutoGlobalTimelineMarker.h"
 #include "mozilla/Likely.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/MemoryReporting.h"
@@ -197,6 +197,8 @@
 #include "xpcpublic.h"
 
 using namespace mozilla;
+
+using JS::SliceBudget;
 
 struct NurseryPurpleBufferEntry {
   void* mPtr;
@@ -270,6 +272,11 @@ static void SuspectUsingNurseryPurpleBuffer(
 // MOZ_CC_LOG_DIRECTORY: The directory in which logs are placed (such as
 // logs from MOZ_CC_LOG_ALL and MOZ_CC_LOG_SHUTDOWN, or other uses
 // of nsICycleCollectorListener)
+//
+// MOZ_CC_DISABLE_GC_LOG: If defined, don't make a GC log whenever we make a
+// cycle collector log. This can be useful for leaks that go away when shutdown
+// gets slower, when the JS heap is not involved in the leak. The default is to
+// make the GC log.
 
 // Various parameters of this collector can be tuned using environment
 // variables.
@@ -280,13 +287,15 @@ struct nsCycleCollectorParams {
   bool mAllTracesAll;
   bool mAllTracesShutdown;
   bool mLogThisThread;
+  bool mLogGC;
   int32_t mLogShutdownSkip = 0;
 
   nsCycleCollectorParams()
       : mLogAll(PR_GetEnv("MOZ_CC_LOG_ALL") != nullptr),
         mLogShutdown(PR_GetEnv("MOZ_CC_LOG_SHUTDOWN") != nullptr),
         mAllTracesAll(false),
-        mAllTracesShutdown(false) {
+        mAllTracesShutdown(false),
+        mLogGC(!PR_GetEnv("MOZ_CC_DISABLE_GC_LOG")) {
     if (const char* lssEnv = PR_GetEnv("MOZ_CC_LOG_SHUTDOWN_SKIP")) {
       mLogShutdown = true;
       nsDependentCString lssString(lssEnv);
@@ -353,6 +362,8 @@ struct nsCycleCollectorParams {
   bool AllTracesThisCC(bool aIsShutdown) {
     return mAllTracesAll || (aIsShutdown && mAllTracesShutdown);
   }
+
+  bool LogThisGC() const { return mLogGC; }
 };
 
 #ifdef COLLECT_TIME_DEBUG
@@ -568,8 +579,7 @@ class PtrInfo final {
         mParticipant(aParticipant),
         mColor(grey),
         mInternalRefs(0),
-        mRefCount(kInitialRefCount),
-        mFirstChild() {
+        mRefCount(kInitialRefCount) {
     MOZ_ASSERT(aParticipant);
 
     // We initialize mRefCount to a large non-zero value so
@@ -630,8 +640,8 @@ void PtrInfo::AnnotatedReleaseAssert(bool aCondition, const char* aMessage) {
   }
   nsPrintfCString msg("%s, for class %s", aMessage, piName);
   NS_WARNING(msg.get());
-  CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::CycleCollector,
-                                     msg);
+  CrashReporter::RecordAnnotationNSCString(
+      CrashReporter::Annotation::CycleCollector, msg);
 
   MOZ_CRASH();
 }
@@ -1041,7 +1051,7 @@ struct nsPurpleBuffer {
   // (4) If aRemoveChildlessNodes is true, then any nodes in the purple buffer
   //     that will have no children in the cycle collector graph will also be
   //     removed. CanSkip() may be run on these children.
-  void RemoveSkippable(nsCycleCollector* aCollector, js::SliceBudget& aBudget,
+  void RemoveSkippable(nsCycleCollector* aCollector, SliceBudget& aBudget,
                        bool aRemoveChildlessNodes, bool aAsyncSnowWhiteFreeing,
                        CC_ForgetSkippableCallback aCb);
 
@@ -1111,8 +1121,6 @@ enum ccIsManual { CCIsNotManual = false, CCIsManual = true };
 // Top level structure for the cycle collector.
 ////////////////////////////////////////////////////////////////////////
 
-using js::SliceBudget;
-
 class JSPurpleBuffer;
 
 class nsCycleCollector : public nsIMemoryReporter {
@@ -1178,10 +1186,10 @@ class nsCycleCollector : public nsIMemoryReporter {
                nsCycleCollectingAutoRefCnt* aRefCnt);
   void SuspectNurseryEntries();
   uint32_t SuspectedCount();
-  void ForgetSkippable(js::SliceBudget& aBudget, bool aRemoveChildlessNodes,
+  void ForgetSkippable(SliceBudget& aBudget, bool aRemoveChildlessNodes,
                        bool aAsyncSnowWhiteFreeing);
   bool FreeSnowWhite(bool aUntilNoSWInPurpleBuffer);
-  bool FreeSnowWhiteWithBudget(js::SliceBudget& aBudget);
+  bool FreeSnowWhiteWithBudget(SliceBudget& aBudget);
 
   // This method assumes its argument is already canonicalized.
   void RemoveObjectFromGraph(void* aPtr);
@@ -1378,10 +1386,12 @@ class nsCycleCollectorLogSinkToFile final : public nsICycleCollectorLogSink {
  public:
   NS_DECL_ISUPPORTS
 
-  nsCycleCollectorLogSinkToFile()
-      : mProcessIdentifier(base::GetCurrentProcId()),
-        mGCLog("gc-edges"),
-        mCCLog("cc-edges") {}
+  explicit nsCycleCollectorLogSinkToFile(bool aLogGC)
+      : mProcessIdentifier(base::GetCurrentProcId()), mCCLog("cc-edges") {
+    if (aLogGC) {
+      mGCLog.emplace("gc-edges");
+    }
+  }
 
   NS_IMETHOD GetFilenameIdentifier(nsAString& aIdentifier) override {
     aIdentifier = mFilenameIdentifier;
@@ -1404,7 +1414,10 @@ class nsCycleCollectorLogSinkToFile final : public nsICycleCollectorLogSink {
   }
 
   NS_IMETHOD GetGcLog(nsIFile** aPath) override {
-    NS_IF_ADDREF(*aPath = mGCLog.mFile);
+    if (mGCLog.isNothing()) {
+      return NS_ERROR_UNEXPECTED;
+    }
+    NS_IF_ADDREF(*aPath = mGCLog.ref().mFile);
     return NS_OK;
   }
 
@@ -1416,13 +1429,21 @@ class nsCycleCollectorLogSinkToFile final : public nsICycleCollectorLogSink {
   NS_IMETHOD Open(FILE** aGCLog, FILE** aCCLog) override {
     nsresult rv;
 
-    if (mGCLog.mStream || mCCLog.mStream) {
+    if (mCCLog.mStream) {
       return NS_ERROR_UNEXPECTED;
     }
 
-    rv = OpenLog(&mGCLog);
-    NS_ENSURE_SUCCESS(rv, rv);
-    *aGCLog = mGCLog.mStream;
+    if (mGCLog.isSome()) {
+      if (mGCLog.ref().mStream) {
+        return NS_ERROR_UNEXPECTED;
+      }
+
+      rv = OpenLog(&mGCLog.ref());
+      NS_ENSURE_SUCCESS(rv, rv);
+      *aGCLog = mGCLog.ref().mStream;
+    } else {
+      *aGCLog = nullptr;
+    }
 
     rv = OpenLog(&mCCLog);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -1432,10 +1453,13 @@ class nsCycleCollectorLogSinkToFile final : public nsICycleCollectorLogSink {
   }
 
   NS_IMETHOD CloseGCLog() override {
-    if (!mGCLog.mStream) {
+    if (mGCLog.isNothing()) {
+      return NS_OK;
+    }
+    if (!mGCLog.ref().mStream) {
       return NS_ERROR_UNEXPECTED;
     }
-    CloseLog(&mGCLog, u"Garbage"_ns);
+    CloseLog(&mGCLog.ref(), u"Garbage"_ns);
     return NS_OK;
   }
 
@@ -1449,9 +1473,9 @@ class nsCycleCollectorLogSinkToFile final : public nsICycleCollectorLogSink {
 
  private:
   ~nsCycleCollectorLogSinkToFile() {
-    if (mGCLog.mStream) {
-      MozillaUnRegisterDebugFILE(mGCLog.mStream);
-      fclose(mGCLog.mStream);
+    if (mGCLog.isSome() && mGCLog.ref().mStream) {
+      MozillaUnRegisterDebugFILE(mGCLog.ref().mStream);
+      fclose(mGCLog.ref().mStream);
     }
     if (mCCLog.mStream) {
       MozillaUnRegisterDebugFILE(mCCLog.mStream);
@@ -1568,7 +1592,7 @@ class nsCycleCollectorLogSinkToFile final : public nsICycleCollectorLogSink {
 
   int32_t mProcessIdentifier;
   nsString mFilenameIdentifier;
-  FileInfo mGCLog;
+  Maybe<FileInfo> mGCLog;
   FileInfo mCCLog;
 };
 
@@ -1578,8 +1602,8 @@ class nsCycleCollectorLogger final : public nsICycleCollectorListener {
   ~nsCycleCollectorLogger() { ClearDescribers(); }
 
  public:
-  nsCycleCollectorLogger()
-      : mLogSink(nsCycleCollector_createLogSink()),
+  explicit nsCycleCollectorLogger(bool aLogGC)
+      : mLogSink(nsCycleCollector_createLogSink(aLogGC)),
         mWantAllTraces(false),
         mDisableLog(false),
         mWantAfterProcessing(false),
@@ -1648,13 +1672,14 @@ class nsCycleCollectorLogger final : public nsICycleCollectorListener {
     rv = mLogSink->Open(&gcLog, &mCCLog);
     NS_ENSURE_SUCCESS(rv, rv);
     // Dump the JS heap.
-    CollectorData* data = sCollectorData.get();
-    if (data && data->mContext) {
-      data->mContext->Runtime()->DumpJSHeap(gcLog);
+    if (gcLog) {
+      CollectorData* data = sCollectorData.get();
+      if (data && data->mContext) {
+        data->mContext->Runtime()->DumpJSHeap(gcLog);
+      }
+      rv = mLogSink->CloseGCLog();
+      NS_ENSURE_SUCCESS(rv, rv);
     }
-    rv = mLogSink->CloseGCLog();
-    NS_ENSURE_SUCCESS(rv, rv);
-
     fprintf(mCCLog, "# WantAllTraces=%s\n", mWantAllTraces ? "true" : "false");
     return NS_OK;
   }
@@ -1824,7 +1849,8 @@ class nsCycleCollectorLogger final : public nsICycleCollectorListener {
 NS_IMPL_ISUPPORTS(nsCycleCollectorLogger, nsICycleCollectorListener)
 
 already_AddRefed<nsICycleCollectorListener> nsCycleCollector_createLogger() {
-  nsCOMPtr<nsICycleCollectorListener> logger = new nsCycleCollectorLogger();
+  nsCOMPtr<nsICycleCollectorListener> logger =
+      new nsCycleCollectorLogger(/* aLogGC = */ true);
   return logger.forget();
 }
 
@@ -2456,7 +2482,7 @@ class SnowWhiteKiller : public TraceCallbacks {
       ObjectsVector;
 
  public:
-  SnowWhiteKiller(nsCycleCollector* aCollector, js::SliceBudget* aBudget)
+  SnowWhiteKiller(nsCycleCollector* aCollector, SliceBudget* aBudget)
       : mCollector(aCollector),
         mObjects(kSegmentSize),
         mBudget(aBudget),
@@ -2564,13 +2590,13 @@ class SnowWhiteKiller : public TraceCallbacks {
  private:
   RefPtr<nsCycleCollector> mCollector;
   ObjectsVector mObjects;
-  js::SliceBudget* mBudget;
+  SliceBudget* mBudget;
   bool mSawSnowWhiteObjects;
 };
 
 class RemoveSkippableVisitor : public SnowWhiteKiller {
  public:
-  RemoveSkippableVisitor(nsCycleCollector* aCollector, js::SliceBudget& aBudget,
+  RemoveSkippableVisitor(nsCycleCollector* aCollector, SliceBudget& aBudget,
                          bool aRemoveChildlessNodes,
                          bool aAsyncSnowWhiteFreeing,
                          CC_ForgetSkippableCallback aCb)
@@ -2623,7 +2649,7 @@ class RemoveSkippableVisitor : public SnowWhiteKiller {
   }
 
  private:
-  js::SliceBudget& mBudget;
+  SliceBudget& mBudget;
   bool mRemoveChildlessNodes;
   bool mAsyncSnowWhiteFreeing;
   bool mDispatchedDeferredDeletion;
@@ -2631,7 +2657,7 @@ class RemoveSkippableVisitor : public SnowWhiteKiller {
 };
 
 void nsPurpleBuffer::RemoveSkippable(nsCycleCollector* aCollector,
-                                     js::SliceBudget& aBudget,
+                                     SliceBudget& aBudget,
                                      bool aRemoveChildlessNodes,
                                      bool aAsyncSnowWhiteFreeing,
                                      CC_ForgetSkippableCallback aCb) {
@@ -2664,7 +2690,7 @@ bool nsCycleCollector::FreeSnowWhite(bool aUntilNoSWInPurpleBuffer) {
   return hadSnowWhiteObjects;
 }
 
-bool nsCycleCollector::FreeSnowWhiteWithBudget(js::SliceBudget& aBudget) {
+bool nsCycleCollector::FreeSnowWhiteWithBudget(SliceBudget& aBudget) {
   CheckThreadSafety();
 
   if (mFreeingSnowWhite) {
@@ -2681,19 +2707,13 @@ bool nsCycleCollector::FreeSnowWhiteWithBudget(js::SliceBudget& aBudget) {
   ;
 }
 
-void nsCycleCollector::ForgetSkippable(js::SliceBudget& aBudget,
+void nsCycleCollector::ForgetSkippable(SliceBudget& aBudget,
                                        bool aRemoveChildlessNodes,
                                        bool aAsyncSnowWhiteFreeing) {
   CheckThreadSafety();
 
   if (mFreeingSnowWhite) {
     return;
-  }
-
-  mozilla::Maybe<mozilla::AutoGlobalTimelineMarker> marker;
-  if (NS_IsMainThread()) {
-    marker.emplace("nsCycleCollector::ForgetSkippable",
-                   MarkerStackRequest::NO_STACK);
   }
 
   // If we remove things from the purple buffer during graph building, we may
@@ -3291,7 +3311,11 @@ void nsCycleCollector::SuspectNurseryEntries() {
   while (gNurseryPurpleBufferEntryCount) {
     NurseryPurpleBufferEntry& entry =
         gNurseryPurpleBufferEntry[--gNurseryPurpleBufferEntryCount];
-    mPurpleBuf.Put(entry.mPtr, entry.mParticipant, entry.mRefCnt);
+    if (!entry.mRefCnt->IsPurple() && IsIdle()) {
+      entry.mRefCnt->RemoveFromPurpleBuffer();
+    } else {
+      mPurpleBuf.Put(entry.mPtr, entry.mParticipant, entry.mRefCnt);
+    }
   }
 }
 
@@ -3398,8 +3422,8 @@ void nsCycleCollector::CleanupAfterCollection() {
 
   if (mCCJSRuntime) {
     mCCJSRuntime->FinalizeDeferredThings(
-        mResults.mAnyManual ? CycleCollectedJSContext::FinalizeNow
-                            : CycleCollectedJSContext::FinalizeIncrementally);
+        mResults.mAnyManual ? CycleCollectedJSRuntime::FinalizeNow
+                            : CycleCollectedJSRuntime::FinalizeIncrementally);
     mCCJSRuntime->EndCycleCollectionCallback(mResults);
     timeLog.Checkpoint("CleanupAfterCollection::EndCycleCollectionCallback()");
   }
@@ -3453,11 +3477,6 @@ bool nsCycleCollector::Collect(CCReason aReason, ccIsManual aIsManual,
   mActivelyCollecting = true;
 
   MOZ_ASSERT(!IsIncrementalGCInProgress());
-
-  mozilla::Maybe<mozilla::AutoGlobalTimelineMarker> marker;
-  if (NS_IsMainThread()) {
-    marker.emplace("nsCycleCollector::Collect", MarkerStackRequest::NO_STACK);
-  }
 
   bool startedIdle = IsIdle();
   bool collectedAny = false;
@@ -3519,7 +3538,7 @@ bool nsCycleCollector::Collect(CCReason aReason, ccIsManual aIsManual,
         break;
     }
     if (continueSlice) {
-      aBudget.stepAndForceCheck();
+      aBudget.forceCheck();
       continueSlice = !aBudget.isOverBudget();
     }
   } while (continueSlice);
@@ -3641,7 +3660,7 @@ void nsCycleCollector::BeginCollection(
 
   aManualListener = nullptr;
   if (!mLogger && mParams.LogThisCC(mShutdownCount)) {
-    mLogger = new nsCycleCollectorLogger();
+    mLogger = new nsCycleCollectorLogger(mParams.LogThisGC());
     if (mParams.AllTracesThisCC(isShutdown)) {
       mLogger->SetAllTraces();
     }
@@ -3832,6 +3851,19 @@ MOZ_NEVER_INLINE static void SuspectAfterShutdown(
 void NS_CycleCollectorSuspect3(void* aPtr, nsCycleCollectionParticipant* aCp,
                                nsCycleCollectingAutoRefCnt* aRefCnt,
                                bool* aShouldDelete) {
+  if ((
+#ifdef HAVE_64BIT_BUILD
+          aRefCnt->IsOnMainThread() ||
+#endif
+          NS_IsMainThread()) &&
+      gNurseryPurpleBufferEnabled) {
+    // The next time the object is passed to the purple buffer, we can do faster
+    // IsOnMainThread() check.
+    aRefCnt->SetIsOnMainThread();
+    SuspectUsingNurseryPurpleBuffer(aPtr, aCp, aRefCnt);
+    return;
+  }
+
   CollectorData* data = sCollectorData.get();
 
   // This assertion will happen if you AddRef or Release a cycle collected
@@ -3858,19 +3890,6 @@ void ClearNurseryPurpleBuffer() {
   MOZ_ASSERT(data);
   MOZ_ASSERT(data->mCollector);
   data->mCollector->SuspectNurseryEntries();
-}
-
-void NS_CycleCollectorSuspectUsingNursery(void* aPtr,
-                                          nsCycleCollectionParticipant* aCp,
-                                          nsCycleCollectingAutoRefCnt* aRefCnt,
-                                          bool* aShouldDelete) {
-  MOZ_ASSERT(NS_IsMainThread(), "Wrong thread!");
-  if (!gNurseryPurpleBufferEnabled) {
-    NS_CycleCollectorSuspect3(aPtr, aCp, aRefCnt, aShouldDelete);
-    return;
-  }
-
-  SuspectUsingNurseryPurpleBuffer(aPtr, aCp, aRefCnt);
 }
 
 uint32_t nsCycleCollector_suspectedCount() {
@@ -3931,7 +3950,7 @@ void nsCycleCollector_setForgetSkippableCallback(
   data->mCollector->SetForgetSkippableCallback(aCB);
 }
 
-void nsCycleCollector_forgetSkippable(js::SliceBudget& aBudget,
+void nsCycleCollector_forgetSkippable(SliceBudget& aBudget,
                                       bool aRemoveChildlessNodes,
                                       bool aAsyncSnowWhiteFreeing) {
   CollectorData* data = sCollectorData.get();
@@ -3965,7 +3984,7 @@ bool nsCycleCollector_doDeferredDeletion() {
   return data->mCollector->FreeSnowWhite(false);
 }
 
-bool nsCycleCollector_doDeferredDeletionWithBudget(js::SliceBudget& aBudget) {
+bool nsCycleCollector_doDeferredDeletionWithBudget(SliceBudget& aBudget) {
   CollectorData* data = sCollectorData.get();
 
   // We should have started the cycle collector by now.
@@ -3976,8 +3995,10 @@ bool nsCycleCollector_doDeferredDeletionWithBudget(js::SliceBudget& aBudget) {
   return data->mCollector->FreeSnowWhiteWithBudget(aBudget);
 }
 
-already_AddRefed<nsICycleCollectorLogSink> nsCycleCollector_createLogSink() {
-  nsCOMPtr<nsICycleCollectorLogSink> sink = new nsCycleCollectorLogSinkToFile();
+already_AddRefed<nsICycleCollectorLogSink> nsCycleCollector_createLogSink(
+    bool aLogGC) {
+  nsCOMPtr<nsICycleCollectorLogSink> sink =
+      new nsCycleCollectorLogSinkToFile(aLogGC);
   return sink.forget();
 }
 

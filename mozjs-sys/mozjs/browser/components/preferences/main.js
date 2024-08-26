@@ -10,8 +10,11 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   BackgroundUpdate: "resource://gre/modules/BackgroundUpdate.sys.mjs",
+  UpdateListener: "resource://gre/modules/UpdateListener.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   TranslationsParent: "resource://gre/actors/TranslationsParent.sys.mjs",
+  WindowsLaunchOnLogin: "resource://gre/modules/WindowsLaunchOnLogin.sys.mjs",
+  NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
 });
 
 // Constants & Enumeration Values
@@ -84,6 +87,8 @@ Preferences.addAll([
   { id: "browser.warnOnQuitShortcut", type: "bool" },
   { id: "browser.tabs.warnOnOpen", type: "bool" },
   { id: "browser.ctrlTab.sortByRecentlyUsed", type: "bool" },
+  { id: "browser.tabs.hoverPreview.enabled", type: "bool" },
+  { id: "browser.tabs.hoverPreview.showThumbnails", type: "bool" },
 
   // CFR
   {
@@ -128,7 +133,9 @@ Preferences.addAll([
   { id: "general.autoScroll", type: "bool" },
   { id: "general.smoothScroll", type: "bool" },
   { id: "widget.gtk.overlay-scrollbars.enabled", type: "bool", inverted: true },
+  { id: "layout.css.always_underline_links", type: "bool" },
   { id: "layout.spellcheckDefault", type: "int" },
+  { id: "accessibility.tabfocus", type: "int" },
 
   {
     id: "browser.preferences.defaultPerformanceSettings.enabled",
@@ -186,13 +193,9 @@ if (AppConstants.MOZ_UPDATER) {
   if (AppConstants.NIGHTLY_BUILD) {
     Preferences.addAll([{ id: "app.update.suppressPrompts", type: "bool" }]);
   }
-
-  if (AppConstants.MOZ_MAINTENANCE_SERVICE) {
-    Preferences.addAll([{ id: "app.update.service.enabled", type: "bool" }]);
-  }
 }
 
-XPCOMUtils.defineLazyGetter(this, "gIsPackagedApp", () => {
+ChromeUtils.defineLazyGetter(this, "gIsPackagedApp", () => {
   return Services.sysinfo.getProperty("isPackagedApp");
 });
 
@@ -276,7 +279,10 @@ var gMainPane = {
         let uri = win.gBrowser.currentURI.spec;
 
         if (
-          (uri == "about:preferences" || uri == "about:preferences#general") &&
+          (uri == "about:preferences" ||
+            uri == "about:preferences#general" ||
+            uri == "about:settings" ||
+            uri == "about:settings#general") &&
           document.visibilityState == "visible"
         ) {
           this.updateSetDefaultBrowser();
@@ -350,6 +356,15 @@ var gMainPane = {
       } catch (ex) {}
     }
 
+    let thumbsCheckbox = document.getElementById("tabPreviewShowThumbnails");
+    let cardPreviewEnabledPref = Preferences.get(
+      "browser.tabs.hoverPreview.enabled"
+    );
+    let maybeShowThumbsCheckbox = () =>
+      (thumbsCheckbox.hidden = !cardPreviewEnabledPref.value);
+    cardPreviewEnabledPref.on("change", maybeShowThumbsCheckbox);
+    maybeShowThumbsCheckbox();
+
     // The "opening multiple tabs might slow down Firefox" warning provides
     // an option for not showing this warning again. When the user disables it,
     // we provide checkboxes to re-enable the warning.
@@ -410,6 +425,36 @@ var gMainPane = {
       "command",
       gMainPane.onBrowserRestoreSessionChange
     );
+    if (AppConstants.platform == "win") {
+      setEventListener(
+        "windowsLaunchOnLogin",
+        "command",
+        gMainPane.onWindowsLaunchOnLoginChange
+      );
+      // We do a check here for startWithLastProfile as we could
+      // have disabled the pref for the user before they're ever
+      // exposed to the experiment on a new profile.
+      // If we're using MSIX, we don't show the checkbox as MSIX
+      // can't write to the registry.
+      if (
+        Cc["@mozilla.org/toolkit/profile-service;1"].getService(
+          Ci.nsIToolkitProfileService
+        ).startWithLastProfile
+      ) {
+        NimbusFeatures.windowsLaunchOnLogin.recordExposureEvent({
+          once: true,
+        });
+
+        if (
+          Services.prefs.getBoolPref(
+            "browser.startup.windowsLaunchOnLogin.enabled",
+            false
+          )
+        ) {
+          document.getElementById("windowsLaunchOnLoginBox").hidden = false;
+        }
+      }
+    }
     gMainPane.updateBrowserStartupUI =
       gMainPane.updateBrowserStartupUI.bind(gMainPane);
     Preferences.get("browser.privatebrowsing.autostart").on(
@@ -486,11 +531,18 @@ var gMainPane = {
       document.getElementById("dataMigrationGroup").remove();
     }
 
-    // For media control toggle button, we support it on Windows 8.1+ (NT6.3),
-    // MacOs 10.4+ (darwin8.0, but we already don't support that) and
+    if (
+      Services.prefs.getBoolPref("browser.backup.preferences.ui.enabled", false)
+    ) {
+      let backupGroup = document.getElementById("dataBackupGroup");
+      backupGroup.hidden = false;
+      backupGroup.removeAttribute("data-hidden-from-search");
+    }
+
+    // For media control toggle button, we support it on Windows, macOS and
     // gtk-based Linux.
     if (
-      AppConstants.isPlatformAndVersionAtLeast("win", "6.3") ||
+      AppConstants.platform == "win" ||
       AppConstants.platform == "macosx" ||
       AppConstants.MOZ_WIDGET_GTK
     ) {
@@ -499,8 +551,6 @@ var gMainPane = {
 
     // Initializes the fonts dropdowns displayed in this pane.
     this._rebuildFonts();
-
-    this.updateOnScreenKeyboardVisibility();
 
     // Firefox Translations settings panel
     // TODO (Bug 1817084) Remove this code when we disable the extension
@@ -612,9 +662,6 @@ var gMainPane = {
       ) {
         document.getElementById("updateAllowDescription").hidden = true;
         document.getElementById("updateSettingsContainer").hidden = true;
-        if (updateDisabled && AppConstants.MOZ_MAINTENANCE_SERVICE) {
-          document.getElementById("useService").hidden = true;
-        }
       } else {
         // Start with no option selected since we are still reading the value
         document.getElementById("autoDesktop").removeAttribute("selected");
@@ -636,6 +683,26 @@ var gMainPane = {
       }
 
       if (AppConstants.platform == "win") {
+        // Check for a launch on login registry key
+        // This accounts for if a user manually changes it in the registry
+        // Disabling in Task Manager works outside of just deleting the registry key
+        // in HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run
+        // but it is not possible to change it back to enabled as the disabled value is just a random
+        // hexadecimal number
+        let launchOnLoginCheckbox = document.getElementById(
+          "windowsLaunchOnLogin"
+        );
+        WindowsLaunchOnLogin.getLaunchOnLoginEnabled().then(enabled => {
+          launchOnLoginCheckbox.checked = enabled;
+        });
+        WindowsLaunchOnLogin.getLaunchOnLoginApproved().then(
+          approvedByWindows => {
+            launchOnLoginCheckbox.disabled = !approvedByWindows;
+            document.getElementById("windowsLaunchOnLoginDisabledBox").hidden =
+              approvedByWindows;
+          }
+        );
+
         // On Windows, the Application Update setting is an installation-
         // specific preference, not a profile-specific one. Show a warning to
         // inform users of this.
@@ -646,27 +713,6 @@ var gMainPane = {
         document.getElementById(
           "updateSettingCrossUserWarningDesc"
         ).hidden = false;
-      }
-
-      if (AppConstants.MOZ_MAINTENANCE_SERVICE) {
-        // Check to see if the maintenance service is installed.
-        // If it isn't installed, don't show the preference at all.
-        let installed;
-        try {
-          let wrk = Cc["@mozilla.org/windows-registry-key;1"].createInstance(
-            Ci.nsIWindowsRegKey
-          );
-          wrk.open(
-            wrk.ROOT_KEY_LOCAL_MACHINE,
-            "SOFTWARE\\Mozilla\\MaintenanceService",
-            wrk.ACCESS_READ | wrk.WOW64_64
-          );
-          installed = wrk.readIntValue("Installed");
-          wrk.close();
-        } catch (e) {}
-        if (installed != 1) {
-          document.getElementById("useService").hidden = true;
-        }
       }
     }
 
@@ -708,13 +754,15 @@ var gMainPane = {
       this._sortColumn = document.getElementById("typeColumn");
     }
 
-    let browserBundle = document.getElementById("browserBundle");
-    appendSearchKeywords("browserContainersSettings", [
-      browserBundle.getString("userContextPersonal.label"),
-      browserBundle.getString("userContextWork.label"),
-      browserBundle.getString("userContextBanking.label"),
-      browserBundle.getString("userContextShopping.label"),
-    ]);
+    appendSearchKeywords(
+      "browserContainersSettings",
+      [
+        "user-context-personal",
+        "user-context-work",
+        "user-context-banking",
+        "user-context-shopping",
+      ].map(ContextualIdentityService.formatContextLabel)
+    );
 
     AppearanceChooser.init();
 
@@ -725,6 +773,18 @@ var gMainPane = {
       document.getElementById("defaultFont"),
       element => FontBuilder.readFontSelection(element)
     );
+    if (AppConstants.platform == "macosx") {
+      // We only expose this control on macOS, so don't try
+      // to add listeners if it doesn't exist.
+      Preferences.addSyncFromPrefListener(
+        document.getElementById("useFullKeyboardNavigation"),
+        () => this.readUseFullKeyboardNavigation()
+      );
+      Preferences.addSyncToPrefListener(
+        document.getElementById("useFullKeyboardNavigation"),
+        () => this.writeUseFullKeyboardNavigation()
+      );
+    }
     Preferences.addSyncFromPrefListener(
       document.getElementById("checkSpelling"),
       () => this.readCheckSpelling()
@@ -844,7 +904,7 @@ var gMainPane = {
     this.readBrowserContainersCheckbox();
   },
 
-  async onGetStarted(aEvent) {
+  async onGetStarted() {
     if (!AppConstants.MOZ_DEV_EDITION) {
       return;
     }
@@ -934,6 +994,8 @@ var gMainPane = {
 
     setEventListener("zoomText", "command", function () {
       win.ZoomManager.toggleZoom();
+      document.getElementById("text-zoom-override-warning").hidden =
+        !document.getElementById("zoomText").checked;
     });
 
     let zoomValues = win.ZoomManager.zoomValues.map(a => {
@@ -956,7 +1018,8 @@ var gMainPane = {
 
     let checkbox = document.getElementById("zoomText");
     checkbox.checked = !win.ZoomManager.useFullZoom;
-
+    document.getElementById("text-zoom-override-warning").hidden =
+      !checkbox.checked;
     document.getElementById("zoomBox").hidden = false;
   },
 
@@ -999,7 +1062,7 @@ var gMainPane = {
         const supportedLanguages =
           await TranslationsParent.getSupportedLanguages();
         const languageList =
-          TranslationsState.getLanguageList(supportedLanguages);
+          TranslationsParent.getLanguageList(supportedLanguages);
         const downloadPhases = await TranslationsState.createDownloadPhases(
           languageList
         );
@@ -1015,38 +1078,6 @@ var gMainPane = {
           languageList,
           downloadPhases
         );
-      }
-
-      /**
-       * Create a unique list of languages, sorted by the display name.
-       *
-       * @param {Object} supportedLanguages
-       * @returns {Array<{ langTag: string, displayName: string}}
-       */
-      static getLanguageList(supportedLanguages) {
-        const displayNames = new Map();
-        for (const languages of [
-          supportedLanguages.fromLanguages,
-          supportedLanguages.toLanguages,
-        ]) {
-          for (const { langTag, displayName } of languages) {
-            displayNames.set(langTag, displayName);
-          }
-        }
-
-        let appLangTag = new Intl.Locale(Services.locale.appLocaleAsBCP47)
-          .language;
-
-        // Don't offer to download the app's language.
-        displayNames.delete(appLangTag);
-
-        // Sort the list of languages by the display names.
-        return [...displayNames.entries()]
-          .map(([langTag, displayName]) => ({
-            langTag,
-            displayName,
-          }))
-          .sort((a, b) => a.displayName.localeCompare(b.displayName));
       }
 
       /**
@@ -1137,7 +1168,7 @@ var gMainPane = {
           await TranslationsParent.deleteAllLanguageFiles();
           this.markAllDownloadPhases("uninstalled");
         } catch (error) {
-          TranslationsView.showError("translations-manage-error-delete", error);
+          TranslationsView.showError("translations-manage-error-remove", error);
           // The download phases are invalidated with the error and must be reloaded.
           await this.reloadDownloadPhases();
           console.error(error);
@@ -1179,7 +1210,7 @@ var gMainPane = {
             this.updateDownloadPhase(langTag, "uninstalled");
           } catch (error) {
             TranslationsView.showError(
-              "translations-manage-error-delete",
+              "translations-manage-error-remove",
               error
             );
             // The download phases are invalidated with the error and must be reloaded.
@@ -1216,7 +1247,7 @@ var gMainPane = {
           );
           document.l10n.setAttributes(
             deleteButton,
-            "translations-manage-language-delete-button"
+            "translations-manage-language-remove-button"
           );
 
           downloadButton.hidden = true;
@@ -1614,6 +1645,27 @@ var gMainPane = {
     startupPref.value = newValue;
   },
 
+  async onWindowsLaunchOnLoginChange(event) {
+    if (AppConstants.platform !== "win") {
+      return;
+    }
+    if (event.target.checked) {
+      // windowsLaunchOnLogin has been checked: create registry key or shortcut
+      // The shortcut is created with the same AUMID as Firefox itself. However,
+      // this is not set during browser tests and the fallback of checking the
+      // registry fails. As such we pass an arbitrary AUMID for the purpose
+      // of testing.
+      await WindowsLaunchOnLogin.createLaunchOnLogin();
+      Services.prefs.setBoolPref(
+        "browser.startup.windowsLaunchOnLogin.disableLaunchOnLoginPrompt",
+        true
+      );
+    } else {
+      // windowsLaunchOnLogin has been unchecked: delete registry key and shortcut
+      await WindowsLaunchOnLogin.removeLaunchOnLogin();
+    }
+  },
+
   // TABS
 
   /*
@@ -1698,7 +1750,7 @@ var gMainPane = {
   /**
    * Set browser as the operating system default browser.
    */
-  setDefaultBrowser() {
+  async setDefaultBrowser() {
     if (AppConstants.HAVE_SHELL_SERVICE) {
       let alwaysCheckPref = Preferences.get(
         "browser.shell.checkDefaultBrowser"
@@ -1712,11 +1764,20 @@ var gMainPane = {
       if (!shellSvc) {
         return;
       }
+
+      // Disable the set default button, so that the user doesn't try to hit it again
+      // while awaiting on setDefaultBrowser
+      let setDefaultButton = document.getElementById("setDefaultButton");
+      setDefaultButton.disabled = true;
+
       try {
-        shellSvc.setDefaultBrowser(true, false);
+        await shellSvc.setDefaultBrowser(false);
       } catch (ex) {
         console.error(ex);
         return;
+      } finally {
+        // Make sure to re-enable the default button when we're finished, regardless of the outcome
+        setDefaultButton.disabled = false;
       }
 
       let isDefault = shellSvc.isDefaultBrowser(false, true);
@@ -1879,9 +1940,20 @@ var gMainPane = {
   },
 
   showTranslationsSettings() {
-    gSubDialog.open(
-      "chrome://browser/content/preferences/dialogs/translations.xhtml"
-    );
+    if (
+      Services.prefs.getBoolPref("browser.translations.newSettingsUI.enable")
+    ) {
+      const translationsSettings = document.getElementById(
+        "translations-settings-page"
+      );
+      translationsSettings.setAttribute("data-hidden-from-search", "false");
+      translationsSettings.hidden = false;
+      gotoPref("translations");
+    } else {
+      gSubDialog.open(
+        "chrome://browser/content/preferences/dialogs/translations.xhtml"
+      );
+    }
   },
 
   /**
@@ -1941,7 +2013,7 @@ var gMainPane = {
     }
   },
 
-  async checkBrowserContainers(event) {
+  async checkBrowserContainers() {
     let checkbox = document.getElementById("browserContainersCheckbox");
     if (checkbox.checked) {
       Services.prefs.setBoolPref("privacy.userContext.enabled", true);
@@ -1990,28 +2062,6 @@ var gMainPane = {
    */
   showContainerSettings() {
     gotoPref("containers");
-  },
-
-  /**
-   * ui.osk.enabled
-   * - when set to true, subject to other conditions, we may sometimes invoke
-   *   an on-screen keyboard when a text input is focused.
-   *   (Currently Windows-only, and depending on prefs, may be Windows-8-only)
-   */
-  updateOnScreenKeyboardVisibility() {
-    if (AppConstants.platform == "win") {
-      let minVersion = Services.prefs.getBoolPref("ui.osk.require_win10")
-        ? 10
-        : 6.2;
-      if (
-        Services.vc.compare(
-          Services.sysinfo.getProperty("version"),
-          minVersion
-        ) >= 0
-      ) {
-        document.getElementById("useOnScreenKeyboard").hidden = false;
-      }
-    }
   },
 
   updateHardwareAcceleration() {
@@ -2118,23 +2168,15 @@ var gMainPane = {
     })().catch(console.error);
   },
 
-  onMigrationButtonCommand(command) {
-    // When browser.migrate.content-modal.enabled is enabled by default,
-    // the event handler can just call showMigrationWizardDialog directly,
-    // but for now, we delegate to MigrationUtils to open the native modal
-    // in case that's the dialog we're still using.
-    //
-    // Enabling the pref by default will be part of bug 1822156.
-    const browser = window.docShell.chromeEventHandler;
-    const browserWindow = browser.ownerGlobal;
+  onMigrationButtonCommand() {
+    // Even though we're going to be showing the migration wizard here in
+    // about:preferences, we'll delegate the call to
+    // `MigrationUtils.showMigrationWizard`, as this will allow us to
+    // properly measure entering the dialog from the PREFERENCES entrypoint.
+    const browserWindow = window.browsingContext.topChromeWindow;
 
-    // showMigrationWizard blocks on some platforms. We'll dispatch the request
-    // to open to a runnable on the main thread so that we don't have to block
-    // this function call.
-    Services.tm.dispatchToMainThread(() => {
-      MigrationUtils.showMigrationWizard(browserWindow, {
-        entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.PREFERENCES,
-      });
+    MigrationUtils.showMigrationWizard(browserWindow, {
+      entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.PREFERENCES,
     });
   },
 
@@ -2157,12 +2199,6 @@ var gMainPane = {
     if (!migrationWizardDialog.firstElementChild) {
       let wizard = document.createElement("migration-wizard");
       wizard.toggleAttribute("dialog-mode", true);
-
-      let panelList = document.createElement("panel-list");
-      let panel = document.createXULElement("panel");
-      panel.appendChild(panelList);
-      wizard.appendChild(panel);
-
       migrationWizardDialog.appendChild(wizard);
     }
     migrationWizardDialog.firstElementChild.requestState();
@@ -2185,6 +2221,49 @@ var gMainPane = {
     );
 
     migrationWizardDialog.showModal();
+  },
+
+  /**
+   * Stores the original value of the tabfocus preference to enable proper
+   * restoration if unchanged (since we're mapping an int pref onto a checkbox).
+   */
+  _storedFullKeyboardNavigation: Preferences.get("accessibility.tabfocus"),
+
+  /**
+   * Returns true if any full keyboard nav is enabled and false otherwise, caching
+   * the current value to enable proper pref restoration if the checkbox is
+   * never changed.
+   *
+   * accessibility.tabfocus
+   * - an integer controlling the focusability of:
+   *     1  text controls
+   *     2  form elements
+   *     4  links
+   *     7  all of the above
+   */
+  readUseFullKeyboardNavigation() {
+    var pref = Preferences.get("accessibility.tabfocus");
+    this._storedFullKeyboardNavigation = pref.value;
+
+    return pref.value == 7;
+  },
+
+  /**
+   * Returns the value of the full keyboard nav preference represented by UI,
+   * preserving the preference's "hidden" value if the preference is
+   * unchanged and represents a value not strictly allowed in UI.
+   */
+  writeUseFullKeyboardNavigation() {
+    var checkbox = document.getElementById("useFullKeyboardNavigation");
+    if (checkbox.checked) {
+      return 7;
+    }
+    if (this._storedFullKeyboardNavigation != 7) {
+      // 1/2/4 values set via about:config should persist
+      return this._storedFullKeyboardNavigation;
+    }
+    // When the checkbox is unchecked, default to just text controls.
+    return 1;
   },
 
   /**
@@ -2241,7 +2320,7 @@ var gMainPane = {
     }
   },
 
-  updatePerformanceSettingsBox({ duringChangeEvent }) {
+  updatePerformanceSettingsBox() {
     let defaultPerformancePref = Preferences.get(
       "browser.preferences.defaultPerformanceSettings.enabled"
     );
@@ -2464,10 +2543,16 @@ var gMainPane = {
   },
 
   async checkUpdateInProgress() {
+    const aus = Cc["@mozilla.org/updates/update-service;1"].getService(
+      Ci.nsIApplicationUpdateService
+    );
     let um = Cc["@mozilla.org/updates/update-manager;1"].getService(
       Ci.nsIUpdateManager
     );
-    if (!um.readyUpdate && !um.downloadingUpdate) {
+    // We don't want to see an idle state just because the updater hasn't
+    // initialized yet.
+    await aus.init();
+    if (aus.currentState == Ci.nsIApplicationUpdateService.STATE_IDLE) {
       return;
     }
 
@@ -2499,12 +2584,9 @@ var gMainPane = {
       {}
     );
     if (rv != 1) {
-      let aus = Cc["@mozilla.org/updates/update-service;1"].getService(
-        Ci.nsIApplicationUpdateService
-      );
       await aus.stopDownload();
-      um.cleanupReadyUpdate();
-      um.cleanupDownloadingUpdate();
+      await um.cleanupActiveUpdates();
+      UpdateListener.clearPendingAndActiveNotifications();
     }
   },
 
@@ -3286,7 +3368,7 @@ var gMainPane = {
 
       // Prompt the user to pick an app.  If they pick one, and it's a valid
       // selection, then add it to the list of possible handlers.
-      fp.init(window, winTitle, Ci.nsIFilePicker.modeOpen);
+      fp.init(window.browsingContext, winTitle, Ci.nsIFilePicker.modeOpen);
       fp.appendFilters(Ci.nsIFilePicker.filterApps);
       fp.open(fpCallback);
     }
@@ -3404,7 +3486,7 @@ var gMainPane = {
     let defDownloads = await this._indexToFolder(1);
     let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
 
-    fp.init(window, title, Ci.nsIFilePicker.modeGetFolder);
+    fp.init(window.browsingContext, title, Ci.nsIFilePicker.modeGetFolder);
     fp.appendFilters(Ci.nsIFilePicker.filterAll);
     // First try to open what's currently configured
     if (currentDirPref && currentDirPref.exists()) {
@@ -3551,7 +3633,7 @@ var gMainPane = {
         // so if those are in use just display them. On other platforms
         // only do so if the folder matches the localized name.
         if (
-          AppConstants.platform == "mac" ||
+          AppConstants.platform == "macosx" ||
           leafName == firefoxLocalizedName
         ) {
           return { file, folderDisplayName: firefoxLocalizedName };
@@ -3679,7 +3761,7 @@ let gHandlerListItemFragment = MozXULElement.parseXULToFragment(`
       <label class="actionDescription" flex="1" crop="end"/>
     </hbox>
     <hbox class="actionsMenuContainer" flex="1">
-      <menulist class="actionsMenu" flex="1" crop="end" selectedIndex="1">
+      <menulist class="actionsMenu" flex="1" crop="end" selectedIndex="1" aria-labelledby="actionColumn">
         <menupopup/>
       </menulist>
     </hbox>
@@ -4120,22 +4202,10 @@ const AppearanceChooser = {
       });
     }
 
-    // Forward the click to the "colors" button.
-    document
-      .getElementById("web-appearance-manage-colors-link")
-      .addEventListener("click", function (e) {
-        document.getElementById("colors").click();
-        e.preventDefault();
-      });
-
-    document
-      .getElementById("web-appearance-manage-themes-link")
-      .addEventListener("click", function (e) {
-        window.browsingContext.topChromeWindow.BrowserOpenAddonsMgr(
-          "addons://list/theme"
-        );
-        e.preventDefault();
-      });
+    let webAppearanceSettings = document.getElementById(
+      "webAppearanceSettings"
+    );
+    webAppearanceSettings.addEventListener("click", this);
 
     this.warning = document.getElementById("web-appearance-override-warning");
 
@@ -4151,10 +4221,27 @@ const AppearanceChooser = {
   },
 
   handleEvent(e) {
+    if (e.type == "click") {
+      switch (e.target.id) {
+        // Forward the click to the "colors" button.
+        case "web-appearance-manage-colors-button":
+          document.getElementById("colors").click();
+          e.preventDefault();
+          break;
+        case "web-appearance-manage-themes-link":
+          window.browsingContext.topChromeWindow.BrowserAddonUI.openAddonsMgr(
+            "addons://list/theme"
+          );
+          e.preventDefault();
+          break;
+        default:
+          break;
+      }
+    }
     this._update();
   },
 
-  observe(subject, topic, data) {
+  observe() {
     this._update();
   },
 

@@ -75,7 +75,7 @@ export class UrlbarValueFormatter {
     this.urlbarInput.removeAttribute("domaindir");
     this.scheme.value = "";
 
-    if (!this.inputField.value) {
+    if (!this.urlbarInput.value) {
       return;
     }
 
@@ -86,46 +86,40 @@ export class UrlbarValueFormatter {
     // Apply new formatting.  Formatter methods should return true if they
     // successfully formatted the value and false if not.  We apply only
     // one formatter at a time, so we stop at the first successful one.
-    this._formattingApplied = this._formatURL() || this._formatSearchAlias();
+    this.window.requestAnimationFrame(() => {
+      if (this._updateInstance != instance) {
+        return;
+      }
+      this._formattingApplied = this._formatURL() || this._formatSearchAlias();
+    });
   }
 
-  _ensureFormattedHostVisible(urlMetaData) {
-    // Used to avoid re-entrance in the requestAnimationFrame callback.
-    let instance = (this._formatURLInstance = {});
-
+  #ensureFormattedHostVisible(urlMetaData) {
     // Make sure the host is always visible. Since it is aligned on
     // the first strong directional character, we set scrollLeft
     // appropriately to ensure the domain stays visible in case of an
     // overflow.
-    this.window.requestAnimationFrame(() => {
-      // Check for re-entrance. On focus change this formatting code is
-      // invoked regardless, thus this should be enough.
-      if (this._formatURLInstance != instance) {
-        return;
-      }
-
-      // In the future, for example in bug 525831, we may add a forceRTL
-      // char just after the domain, and in such a case we should not
-      // scroll to the left.
-      urlMetaData = urlMetaData || this._getUrlMetaData();
-      if (!urlMetaData) {
-        this.urlbarInput.removeAttribute("domaindir");
-        return;
-      }
-      let { url, preDomain, domain } = urlMetaData;
-      let directionality = this.window.windowUtils.getDirectionFromText(domain);
-      if (
-        directionality == this.window.windowUtils.DIRECTION_RTL &&
-        url[preDomain.length + domain.length] != "\u200E"
-      ) {
-        this.urlbarInput.setAttribute("domaindir", "rtl");
-        this.inputField.scrollLeft = this.inputField.scrollLeftMax;
-      } else {
-        this.urlbarInput.setAttribute("domaindir", "ltr");
-        this.inputField.scrollLeft = 0;
-      }
-      this.urlbarInput.updateTextOverflow();
-    });
+    // In the future, for example in bug 525831, we may add a forceRTL
+    // char just after the domain, and in such a case we should not
+    // scroll to the left.
+    urlMetaData = urlMetaData || this._getUrlMetaData();
+    if (!urlMetaData) {
+      this.urlbarInput.removeAttribute("domaindir");
+      return;
+    }
+    let { url, preDomain, domain } = urlMetaData;
+    let directionality = this.window.windowUtils.getDirectionFromText(domain);
+    if (
+      directionality == this.window.windowUtils.DIRECTION_RTL &&
+      url[preDomain.length + domain.length] != "\u200E"
+    ) {
+      this.urlbarInput.setAttribute("domaindir", "rtl");
+      this.inputField.scrollLeft = this.inputField.scrollLeftMax;
+    } else {
+      this.urlbarInput.setAttribute("domaindir", "ltr");
+      this.inputField.scrollLeft = 0;
+    }
+    this.urlbarInput.updateTextOverflow();
   }
 
   _getUrlMetaData() {
@@ -133,21 +127,30 @@ export class UrlbarValueFormatter {
       return null;
     }
 
-    let inputValue = this.inputField.value;
+    let inputValue = this.urlbarInput.value;
     // getFixupURIInfo logs an error if the URL is empty. Avoid that by
     // returning early.
     if (!inputValue) {
       return null;
     }
     let browser = this.window.gBrowser.selectedBrowser;
+    let browserState = this.urlbarInput.getBrowserState(browser);
 
     // Since doing a full URIFixup and offset calculations is expensive, we
     // keep the metadata cached in the browser itself, so when switching tabs
     // we can skip most of this.
-    if (browser._urlMetaData && browser._urlMetaData.inputValue == inputValue) {
-      return browser._urlMetaData.data;
+    if (
+      browserState.urlMetaData &&
+      browserState.urlMetaData.inputValue == inputValue &&
+      browserState.urlMetaData.untrimmedValue == this.urlbarInput.untrimmedValue
+    ) {
+      return browserState.urlMetaData.data;
     }
-    browser._urlMetaData = { inputValue, data: null };
+    browserState.urlMetaData = {
+      inputValue,
+      untrimmedValue: this.urlbarInput.untrimmedValue,
+      data: null,
+    };
 
     // Get the URL from the fixup service:
     let flags =
@@ -175,20 +178,28 @@ export class UrlbarValueFormatter {
       return null;
     }
 
-    // If we trimmed off the http scheme, ensure we stick it back on before
-    // trying to figure out what domain we're accessing, so we don't get
-    // confused by user:pass@host http URLs. We later use
-    // trimmedLength to ensure we don't count the length of a trimmed protocol
-    // when determining which parts of the URL to highlight as "preDomain".
+    // We must ensure the protocol is present in the parsed string, so we don't
+    // get confused by user:pass@host. It may not have been present originally,
+    // or it may have been trimmed. We later use trimmedLength to ensure we
+    // don't count the length of a trimmed protocol when determining which parts
+    // of the input value to de-emphasize as `preDomain`.
     let url = inputValue;
     let trimmedLength = 0;
     let trimmedProtocol = lazy.BrowserUIUtils.trimURLProtocol;
     if (
-      uriInfo.fixedURI.spec.startsWith(trimmedProtocol) &&
+      this.urlbarInput.untrimmedValue.startsWith(trimmedProtocol) &&
       !inputValue.startsWith(trimmedProtocol)
     ) {
+      // The protocol has been trimmed, so we add it back.
       url = trimmedProtocol + inputValue;
       trimmedLength = trimmedProtocol.length;
+    } else if (uriInfo.wasSchemelessInput) {
+      // The original string didn't have a protocol, but it was identified as
+      // a URL. It's not important which scheme we use for parsing, so we'll
+      // just copy URIFixup.
+      let scheme = uriInfo.fixedURI.scheme + "://";
+      url = scheme + url;
+      trimmedLength = scheme.length;
     }
 
     // This RegExp is not a perfect match, and for specially crafted URLs it may
@@ -228,7 +239,7 @@ export class UrlbarValueFormatter {
       }
     }
 
-    return (browser._urlMetaData.data = {
+    return (browserState.urlMetaData.data = {
       domain,
       origin: uriInfo.fixedURI.host,
       preDomain,
@@ -253,6 +264,36 @@ export class UrlbarValueFormatter {
   }
 
   /**
+   * Whether formatting is enabled.
+   *
+   * @returns {boolean}
+   */
+  get formattingEnabled() {
+    return lazy.UrlbarPrefs.get("formatting.enabled");
+  }
+
+  /**
+   * Whether value would show strike-through mixed content protocol.
+   *
+   * @param {string} val The value to evaluate. It should normally be the
+   *   input field value, otherwise this returns false.
+   * @returns {boolean}
+   */
+  willShowFormattedMixedContentProtocol(val) {
+    let shownUrlIsMixedContentLoadedPage =
+      this.urlbarInput.getAttribute("pageproxystate") == "valid" &&
+      this.window.gBrowser.securityUI.state &
+        Ci.nsIWebProgressListener.STATE_LOADED_MIXED_ACTIVE_CONTENT;
+    return (
+      this.formattingEnabled &&
+      !lazy.UrlbarPrefs.get("security.insecure_connection_text.enabled") &&
+      val.startsWith("https://") &&
+      val == this.urlbarInput.value &&
+      shownUrlIsMixedContentLoadedPage
+    );
+  }
+
+  /**
    * If the input value is a URL and the input is not focused, this
    * formatter method highlights the domain, and if mixed content is present,
    * it crosses out the https scheme.  It also ensures that the host is
@@ -263,14 +304,30 @@ export class UrlbarValueFormatter {
    */
   _formatURL() {
     let urlMetaData = this._getUrlMetaData();
-    if (!urlMetaData) {
+    if (!urlMetaData || this.window.gBrowser.selectedBrowser.searchTerms) {
       return false;
     }
 
     let { domain, origin, preDomain, schemeWSlashes, trimmedLength, url } =
       urlMetaData;
-    // We strip http, so we should not show the scheme box for it.
-    if (!lazy.UrlbarPrefs.get("trimURLs") || schemeWSlashes != "http://") {
+
+    let showMixedContentProtocol = this.willShowFormattedMixedContentProtocol(
+      this.urlbarInput.value
+    );
+
+    // When RTL domains cause the address bar to overflow to the left, the
+    // protocol may get hidden, if it was not trimmed. We then set the
+    // `--urlbar-scheme-size` property to show the protocol in a floating box.
+    // We don't show the floating protocol box if:
+    //  - The protocol was trimmed.
+    //  - We're in mixed mode, but formatting is disabled. The not struck out
+    //    box may make the user think the connection is fully secure.
+    //  - The insecure label is active. The label is a sufficient indicator.
+    if (
+      this.urlbarInput.value.startsWith(schemeWSlashes) &&
+      showMixedContentProtocol &&
+      this.formattingEnabled
+    ) {
       this.scheme.value = schemeWSlashes;
       this.inputField.style.setProperty(
         "--urlbar-scheme-size",
@@ -278,9 +335,9 @@ export class UrlbarValueFormatter {
       );
     }
 
-    this._ensureFormattedHostVisible(urlMetaData);
+    this.#ensureFormattedHostVisible(urlMetaData);
 
-    if (!lazy.UrlbarPrefs.get("formatting.enabled")) {
+    if (!this.formattingEnabled) {
       return false;
     }
 
@@ -291,13 +348,9 @@ export class UrlbarValueFormatter {
 
     let textNode = editor.rootElement.firstChild;
 
-    // Strike out the "https" part if mixed active content is loaded.
-    if (
-      this.urlbarInput.getAttribute("pageproxystate") == "valid" &&
-      url.startsWith("https:") &&
-      this.window.gBrowser.securityUI.state &
-        Ci.nsIWebProgressListener.STATE_LOADED_MIXED_ACTIVE_CONTENT
-    ) {
+    // Strike out the "https" part if mixed active content status should be
+    // shown.
+    if (showMixedContentProtocol) {
       let range = this.document.createRange();
       range.setStart(textNode, 0);
       range.setEnd(textNode, 5);
@@ -377,7 +430,7 @@ export class UrlbarValueFormatter {
    *   True if formatting was applied and false if not.
    */
   _formatSearchAlias() {
-    if (!lazy.UrlbarPrefs.get("formatting.enabled")) {
+    if (!this.formattingEnabled) {
       return false;
     }
 
@@ -501,7 +554,12 @@ export class UrlbarValueFormatter {
     }
     this._resizeThrottleTimeout = this.window.setTimeout(() => {
       this._resizeThrottleTimeout = null;
-      this._ensureFormattedHostVisible();
+      let instance = (this._resizeInstance = {});
+      this.window.requestAnimationFrame(() => {
+        if (instance == this._resizeInstance) {
+          this.#ensureFormattedHostVisible();
+        }
+      });
     }, 100);
   }
 }
