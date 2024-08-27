@@ -1636,6 +1636,14 @@ static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp);
   //         HostPromiseRejectionTracker(promise, "reject").
   PromiseObject::onSettled(cx, promise, unwrappedRejectionStack);
 
+  // The resolve callback is triggered before the beginning of
+  // resolve or reject functions as per the V8 documentation.
+  // https://docs.google.com/document/d/1rda3yKGHimKIhg5YeoAmCOtyURgsbTH_qaYR79FELlk
+  if (cx->promiseLifecycleCallbacks) {
+    RootedObject promiseObj(cx, promise);
+    cx->promiseLifecycleCallbacks->onPromiseSettled(cx, promiseObj);
+  }
+
   // FulfillPromise
   // Step 7. Return TriggerPromiseReactions(reactions, value).
   // RejectPromise
@@ -1715,6 +1723,11 @@ CreatePromiseObjectWithoutResolutionFunctions(JSContext* cx) {
   }
 
   AddPromiseFlags(*promise, PROMISE_FLAG_DEFAULT_RESOLVING_FUNCTIONS);
+
+  if (cx->promiseLifecycleCallbacks) {
+    RootedObject promiseObj(cx, promise);
+    cx->promiseLifecycleCallbacks->onNewPromise(cx, promiseObj);
+  }
 
   // Step 11. Return promise.
   return promise;
@@ -2172,20 +2185,62 @@ static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp) {
   // Optimized/special cases.
   Handle<PromiseReactionRecord*> reaction =
       reactionObj.as<PromiseReactionRecord>();
+  
+  if (cx->promiseLifecycleCallbacks && reaction->promise()) {
+    RootedObject promiseObj(cx, reaction->promise());
+    cx->promiseLifecycleCallbacks->onBeforePromiseReaction(cx, promiseObj);
+  }
+
+  bool result = false;
+  bool handled = false;
+
   if (reaction->isDefaultResolvingHandler()) {
-    return DefaultResolvingPromiseReactionJob(cx, reaction);
+    result = DefaultResolvingPromiseReactionJob(cx, reaction);
+    handled = true;
   }
   if (reaction->isAsyncFunction()) {
-    return AsyncFunctionPromiseReactionJob(cx, reaction);
+    result = AsyncFunctionPromiseReactionJob(cx, reaction);
+    handled = true;
   }
   if (reaction->isAsyncGenerator()) {
     RootedValue argument(cx, reaction->handlerArg());
     Rooted<AsyncGeneratorObject*> generator(cx, reaction->asyncGenerator());
     auto handler = static_cast<PromiseHandler>(reaction->handler().toInt32());
-    return AsyncGeneratorPromiseReactionJob(cx, handler, generator, argument);
+    result = AsyncGeneratorPromiseReactionJob(cx, handler, generator, argument);
+    handled = true;
   }
   if (reaction->isDebuggerDummy()) {
-    return true;
+    result = true;
+    handled = true;
+  }
+
+  if (handled) {
+    if (cx->promiseLifecycleCallbacks && reaction->promise()) {
+      // Store and clear the pending exception for the duration of
+      // the callback
+      bool hadPendingException = false;
+      RootedValue exception(cx);
+      Rooted<SavedFrame*> exceptionStack(cx);
+      if (!result && cx->isExceptionPending())
+      {
+        if (cx->getPendingException(&exception))
+        {
+          exceptionStack = cx->getPendingExceptionStack();
+          hadPendingException = true;
+        }
+
+        cx->clearPendingException();
+      }
+
+      RootedObject promiseObj(cx, reaction->promise());
+      cx->promiseLifecycleCallbacks->onAfterPromiseReaction(cx, promiseObj);
+
+      if (hadPendingException) {
+        cx->setPendingException(exception, exceptionStack);
+      }
+    }
+
+    return result;
   }
 
   // Step 1.a. Let promiseCapability be reaction.[[Capability]].
@@ -2258,14 +2313,40 @@ static bool PromiseReactionJob(JSContext* cx, unsigned argc, Value* vp) {
     callee =
         reaction->getFixedSlot(ReactionRecordSlot_Resolve).toObjectOrNull();
 
-    return CallPromiseResolveFunction(cx, callee, handlerResult, promiseObj);
+    result = CallPromiseResolveFunction(cx, callee, handlerResult, promiseObj);
+  } else {
+    callee = reaction->getFixedSlot(ReactionRecordSlot_Reject).toObjectOrNull();
+
+    result = CallPromiseRejectFunction(cx, callee, handlerResult, promiseObj,
+                                    unwrappedRejectionStack,
+                                    reaction->unhandledRejectionBehavior());
   }
 
-  callee = reaction->getFixedSlot(ReactionRecordSlot_Reject).toObjectOrNull();
+  if (cx->promiseLifecycleCallbacks && reaction->promise()) {
+    // Store and clear the pending exception for the duration of
+    // the callback
+    bool hadPendingException = false;
+    RootedValue exception(cx);
+    Rooted<SavedFrame*> exceptionStack(cx);
+    if (!result && cx->isExceptionPending())
+    {
+      if (cx->getPendingException(&exception))
+      {
+        exceptionStack = cx->getPendingExceptionStack();
+        hadPendingException = true;
+      }
 
-  return CallPromiseRejectFunction(cx, callee, handlerResult, promiseObj,
-                                   unwrappedRejectionStack,
-                                   reaction->unhandledRejectionBehavior());
+      cx->clearPendingException();
+    }
+
+    cx->promiseLifecycleCallbacks->onAfterPromiseReaction(cx, promiseObj);
+
+    if (hadPendingException) {
+      cx->setPendingException(exception, exceptionStack);
+    }
+  }
+  
+  return result;
 }
 
 /**
@@ -2899,6 +2980,10 @@ PromiseObject* PromiseObject::create(JSContext* cx, HandleObject executor,
 
   // Let the Debugger know about this Promise.
   DebugAPI::onNewPromise(cx, promise);
+
+  if (cx->promiseLifecycleCallbacks) {
+    cx->promiseLifecycleCallbacks->onNewPromise(cx, promiseObj);
+  }
 
   // Step 11. Return promise.
   return promise;
@@ -5147,7 +5232,8 @@ static bool PromiseThenNewPromiseCapability(
   }
 
   if (createDependent != CreateDependentPromise::Always &&
-      IsNativeFunction(C, PromiseConstructor)) {
+      IsNativeFunction(C, PromiseConstructor) &&
+      cx->promiseLifecycleCallbacks == nullptr) {
     return true;
   }
 
@@ -5550,7 +5636,20 @@ template <typename T>
   auto extra = [&](Handle<PromiseReactionRecord*> reaction) {
     reaction->setIsAsyncGenerator(generator);
   };
-  return InternalAwait(cx, value, nullptr, onFulfilled, onRejected, extra);
+
+  // Invented by Wasmer
+  //
+  // See comments in AsyncFunctionAwait, below.
+  RootedObject resultPromise(cx);
+  if (cx->promiseLifecycleCallbacks) {
+    JSObject* promise = CreatePromiseObjectWithoutResolutionFunctions(cx);
+    if (!promise) {
+      return false;
+    }
+    resultPromise = promise;
+  }
+
+  return InternalAwait(cx, value, resultPromise, onFulfilled, onRejected, extra);
 }
 
 /**
@@ -5565,7 +5664,63 @@ template <typename T>
   auto extra = [&](Handle<PromiseReactionRecord*> reaction) {
     reaction->setIsAsyncFunction(genObj);
   };
-  if (!InternalAwait(cx, value, nullptr,
+
+  // Invented by Wasmer:
+  //
+  // Normally, JS code cannot observe await points in async functions. However, 
+  // since we're implementing promise lifecycle callbacks, now it's possible to 
+  // do that.
+  // `Promise.then` creates a new promise alongside its original argument, and that
+  // promise gets its own set of callbacks. However, since `await`ing a promise (which
+  // is otherwise analogous to `Promise.then`) doesn't create an intermediate
+  // promise, the promise callbacks will not be raised before continuing at an await
+  // point.
+  //
+  // Consider this code (this is not a perfect example, but it's the best I can think
+  // of to illustrate the issue more clearly):
+  // ```
+  // let p1 = fooAsync();
+  // let p2 = barAsync();
+  // let p3 = p1.then(() => p2);
+  // let p4 = bazAsync();
+  // let p5 = p3.then(() => p4);
+  // ```
+  //
+  // And compare it with:
+  // ```
+  // function doStuff() {
+  //   let p1 = fooAsync();
+  //   await p1;
+  //   let p2 = barAsync();
+  //   await p2;
+  //   let p4 = bazAsync();
+  //   await p4;
+  // }
+  // let p5 = await doStuff(); // Where is p3?
+  // ```
+  //
+  // Here, the promise that would have been assigned to `p3` is skipped and unobservable.
+  // This is undesirable since we want the hooks to be raised for all promises, whether
+  // implicit or not.
+  // To remedy the situation, we create a "dummy" promise and pass it into
+  // `InternalAwait`. This promise will only be visible to callback code, but that's
+  // exactly what we want; this is also why we don't create the promise if callbacks
+  // haven't been registered. This has the side effect that if callbacks are registered
+  // while an async function is waiting, the intermediate promises won't be observed
+  // for that function. However, we expect this edge case to be inconsequential for
+  // all code, since callback registration can always be moved earlier. It's also very
+  // difficult to count on the semantics of callbacks when they're registered
+  // asynchronously, which should make it unusable anyway.
+  RootedObject resultPromise(cx);
+  if (cx->promiseLifecycleCallbacks) {
+    JSObject* promise = CreatePromiseObjectWithoutResolutionFunctions(cx);
+    if (!promise) {
+      return nullptr;
+    }
+    resultPromise = promise;
+  }
+
+  if (!InternalAwait(cx, value, resultPromise,
                      PromiseHandler::AsyncFunctionAwaitedFulfilled,
                      PromiseHandler::AsyncFunctionAwaitedRejected, extra)) {
     return nullptr;

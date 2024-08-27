@@ -45,6 +45,31 @@
 #include "vm/JSObject-inl.h"
 #include "vm/NativeObject-inl.h"
 
+#ifdef __wasi__
+namespace mozilla::intl {
+SpanResult<char> KeywordValueToBcp47Extension3(const char* aKeyword,
+                                               int32_t aLength) {
+  if (aKeyword == nullptr) {
+    return Err(InternalError{});
+  }
+  return MakeStringSpan(uloc_toUnicodeLocaleType("co", aKeyword));
+}
+using Bcp47ExtEnumeration3 =
+    Enumeration<char, SpanResult<char>, KeywordValueToBcp47Extension3>;
+
+static Result<Bcp47ExtEnumeration3, ICUError> GetBcp47KeywordValues() {
+  UErrorCode status = U_ZERO_ERROR;
+  UEnumeration* enumeration = ucol_getKeywordValues("collation", &status);
+
+  if (U_SUCCESS(status)) {
+    return Bcp47ExtEnumeration3(enumeration);
+  }
+
+  return Err(ToICUError(status));
+}
+}  // namespace mozilla::intl
+#endif
+
 using namespace js;
 
 /******************** Intl ********************/
@@ -636,7 +661,12 @@ static ArrayObject* AvailableCollations(JSContext* cx) {
     // GC function, which is unsound when returning an unrooted value. Work
     // around this issue by restricting the lifetime of |keywords| to a
     // separate block.
-    auto keywords = mozilla::intl::Collator::GetBcp47KeywordValues();
+    auto keywords =
+#ifdef __wasi__
+        mozilla::intl::GetBcp47KeywordValues();
+#else
+        mozilla::intl::Collator::GetBcp47KeywordValues();
+#endif
     if (keywords.isErr()) {
       intl::ReportInternalError(cx, keywords.unwrapErr());
       return nullptr;

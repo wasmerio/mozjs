@@ -152,6 +152,14 @@ JS_PUBLIC_API bool JS::IsReadableStreamDefaultReader(JSObject* obj) {
   return obj->canUnwrapAs<ReadableStreamDefaultReader>();
 }
 
+JS_PUBLIC_API bool JS::IsReadableStreamController(JSObject* obj) {
+  return obj->canUnwrapAs<ReadableStreamController>();
+}
+
+JS_PUBLIC_API bool JS::IsReadableByteStreamController(JSObject* obj) {
+  return obj->canUnwrapAs<ReadableByteStreamController>();
+}
+
 template <class T>
 [[nodiscard]] static T* APIUnwrapAndDowncast(JSContext* cx, JSObject* obj) {
   cx->check(obj);
@@ -635,6 +643,18 @@ JS_PUBLIC_API bool JS::ReadableStreamReaderIsClosed(JSContext* cx,
   }
 
   *result = unwrappedReader->isClosed();
+  return true;
+}
+
+JS_PUBLIC_API bool JS::ReadableStreamReaderGetClosedPromise(
+    JSContext* cx, Handle<JSObject*> readerObj, MutableHandle<JSObject*> result) {
+  Rooted<ReadableStreamReader*> unwrappedReader(
+      cx, APIUnwrapAndDowncast<ReadableStreamReader>(cx, readerObj));
+  if (!unwrappedReader) {
+    return false;
+  }
+
+  result.set(unwrappedReader->closedPromise());
   return true;
 }
 

@@ -1043,6 +1043,7 @@ JSContext::JSContext(JSRuntime* runtime, const JS::ContextOptions& options)
       jobQueue(this, nullptr),
       internalJobQueue(this),
       canSkipEnqueuingJobs(this, false),
+      promiseLifecycleCallbacks(this),
       promiseRejectionTrackerCallback(this, nullptr),
       promiseRejectionTrackerCallbackData(this, nullptr),
       insideExclusiveDebuggerOnEval(this, nullptr) {

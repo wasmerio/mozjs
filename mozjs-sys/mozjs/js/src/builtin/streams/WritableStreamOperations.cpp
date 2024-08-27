@@ -420,7 +420,7 @@ static bool AbortRequestPromiseFulfilledHandler(JSContext* cx, unsigned argc,
   }
 
   args.rval().setUndefined();
-  return false;
+  return true;
 }
 
 /**
@@ -451,7 +451,7 @@ static bool AbortRequestPromiseRejectedHandler(JSContext* cx, unsigned argc,
   }
 
   args.rval().setUndefined();
-  return false;
+  return true;
 }
 
 /**

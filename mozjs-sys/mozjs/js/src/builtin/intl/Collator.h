@@ -15,7 +15,7 @@
 
 namespace mozilla::intl {
 class Collator;
-}
+}  // namespace mozilla::intl
 
 namespace js {
 

@@ -167,6 +167,7 @@ class Collator final {
     Yes,
   };
 
+#ifndef __wasi__
   using Bcp47ExtEnumeration =
       Enumeration<char, SpanResult<char>,
                   Collator::KeywordValueToBcp47Extension>;
@@ -193,6 +194,7 @@ class Collator final {
    * http://cldr.unicode.org/core-spec/#Key_Type_Definitions
    */
   static Result<Bcp47ExtEnumeration, ICUError> GetBcp47KeywordValues();
+#endif
 
   /**
    * Returns an iterator over all supported collator locales.
