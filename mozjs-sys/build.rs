@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use bindgen::Formatter;
-use std::collections::HashSet;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs;
@@ -42,6 +41,8 @@ const EXTRA_FILES: &[&str] = &[
 const MOZTOOLS_VERSION: &str = "4.0";
 
 fn main() {
+    env_logger::init();
+
     // https://github.com/servo/mozjs/issues/113
     env::set_var("MOZCONFIG", "");
 
@@ -58,15 +59,7 @@ fn main() {
 
     build_jsapi(&build_dir);
     build_jsglue(&build_dir);
-
-    let target = env::var("TARGET").unwrap();
-    if target.contains("wasi") {
-        // We just copy the ones, as some of the things are not in the c files generated,
-        // but they are in the jsextended.o file
-        copy_jsapi_bindings(&build_dir);
-    } else {
-        build_jsapi_bindings(&build_dir);
-    }
+    build_jsapi_bindings(&build_dir);
 
     if env::var_os("MOZJS_FORCE_RERUN").is_none() {
         for var in ENV_VARS {
@@ -422,6 +415,12 @@ fn build_jsapi_bindings(build_dir: &Path) {
         let wasi_sysroot_path = env::var("WASI_SYSROOT")
             .expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
         builder = builder.clang_arg(format!("--sysroot={}", wasi_sysroot_path));
+        // For some reason, when we configure bindgen for WASIX, all functions have
+        // hidden visibility by default, which is why they get skipped. Hence, we
+        // need to tell it to use default visibility by default (does that even make
+        // sense?)
+        // This was, as @michael-f-bryan used to put it, written in blood.
+        builder = builder.clang_arg("-fvisibility=default")
     }
 
     if let Ok(flags) = env::var("CLANGFLAGS") {
@@ -630,70 +629,4 @@ fn ignore(path: &Path) -> bool {
             .iter()
             .any(|&ignored| extension == ignored)
     })
-}
-
-fn copy_jsapi_bindings(build_dir: &Path) {
-    let contents = std::fs::read_to_string("wasi-jsapi.rs").unwrap();
-
-    if std::env::var("WASI_VALIDATE_SYMBOLS").is_ok() {
-        let binding_symbols = get_binding_symbols(contents.as_str());
-        let build_symbols = get_build_symbols(build_dir);
-
-        for s in build_symbols
-            .iter()
-            .filter(|s| !binding_symbols.contains(*s))
-        {
-            println!(
-            "cargo:warning=Symbol {s} exists in the build but is missing from the WASIX bindings"
-        );
-        }
-
-        let mut bad_binding_symbols = vec![];
-
-        for s in binding_symbols
-            .iter()
-            .filter(|s| !build_symbols.contains(*s))
-        {
-            bad_binding_symbols.push(s.clone());
-        }
-
-        if !bad_binding_symbols.is_empty() {
-            panic!(
-                "The following symbols from wasi-jsapi.rs are missing from the built artifact:\n{}",
-                bad_binding_symbols.join("\n")
-            );
-        }
-    }
-
-    let path = build_dir.join("jsapi.rs");
-    std::fs::write(path, contents).expect("Should write bindings to file OK");
-}
-
-fn get_binding_symbols(bindings_file_contents: &str) -> HashSet<String> {
-    let rx = regex::RegexBuilder::new(r##"^\s*#\[link_name = "\\u\{1\}(.*)"\]$"##)
-        .build()
-        .unwrap();
-
-    bindings_file_contents
-        .lines()
-        .filter_map(|l| rx.captures(l))
-        .map(|m| m.get(1).unwrap().as_str().to_string())
-        .collect()
-}
-
-fn get_build_symbols(build_dir: &Path) -> HashSet<String> {
-    let rx = regex::RegexBuilder::new(r##"^[0-9a-zA-Z]*\s*T (.*)$"##)
-        .build()
-        .unwrap();
-    let cmd_output = std::process::Command::new("llvm-nm")
-        .arg(build_dir.join("mozjs-libs/libjs_static_extended.a"))
-        .output()
-        .unwrap()
-        .stdout;
-    String::from_utf8(cmd_output)
-        .unwrap()
-        .lines()
-        .filter_map(|l| rx.captures(l))
-        .map(|m| m.get(1).unwrap().as_str().to_string())
-        .collect()
 }

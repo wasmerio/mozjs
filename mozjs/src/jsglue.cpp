@@ -15,6 +15,7 @@
 #endif
 
 #include "assert.h"
+#include "js/ArrayBuffer.h"
 #include "js/BuildId.h"
 #include "js/Class.h"
 #include "js/Id.h"
@@ -27,8 +28,8 @@
 #include "js/Stream.h"
 #include "js/StructuredClone.h"
 #include "js/Wrapper.h"
-#include "js/experimental/JitInfo.h"
 #include "js/experimental/JSStencil.h"
+#include "js/experimental/JitInfo.h"
 #include "js/experimental/TypedData.h"
 #include "js/friend/ErrorMessages.h"
 #include "jsapi.h"
@@ -47,6 +48,7 @@ struct JobQueueTraps {
                             JS::HandleObject allocationSite,
                             JS::HandleObject incumbentGlobal) = 0;
   bool (*empty)(const void* queue);
+  bool (*isDrainingStopped)(const void* queue);
 };
 
 class RustJobQueue : public JS::JobQueue {
@@ -71,6 +73,10 @@ class RustJobQueue : public JS::JobQueue {
 
   virtual bool empty() const { return mTraps.empty(mQueue); }
 
+  virtual bool isDrainingStopped() const {
+    return mTraps.isDrainingStopped(mQueue);
+  }
+
   virtual void runJobs(JSContext* cx) {
     MOZ_ASSERT(false, "runJobs should not be invoked");
   }
@@ -83,10 +89,14 @@ class RustJobQueue : public JS::JobQueue {
 };
 
 struct PromiseLifecycleTraps {
-  void (*onNewPromise)(const void* state, JSContext* cx, JS::HandleObject promise);
-  void (*onBeforePromiseReaction)(const void* state, JSContext* cx, JS::HandleObject promise);
-  void (*onAfterPromiseReaction)(const void* state, JSContext* cx, JS::HandleObject promise);
-  void (*onPromiseSettled)(const void* state, JSContext* cx, JS::HandleObject promise);
+  void (*onNewPromise)(const void* state, JSContext* cx,
+                       JS::HandleObject promise);
+  void (*onBeforePromiseReaction)(const void* state, JSContext* cx,
+                                  JS::HandleObject promise);
+  void (*onAfterPromiseReaction)(const void* state, JSContext* cx,
+                                 JS::HandleObject promise);
+  void (*onPromiseSettled)(const void* state, JSContext* cx,
+                           JS::HandleObject promise);
 };
 
 class RustPromiseLifecycleCallbacks : public JS::PromiseLifecycleCallbacks {
@@ -94,7 +104,8 @@ class RustPromiseLifecycleCallbacks : public JS::PromiseLifecycleCallbacks {
   const void* mState;
 
  public:
-  RustPromiseLifecycleCallbacks(const PromiseLifecycleTraps& aTraps, const void* aState)
+  RustPromiseLifecycleCallbacks(const PromiseLifecycleTraps& aTraps,
+                                const void* aState)
       : mTraps(aTraps), mState(aState) {}
 
   virtual void onNewPromise(JSContext* cx, JS::HandleObject promise) {
@@ -103,7 +114,8 @@ class RustPromiseLifecycleCallbacks : public JS::PromiseLifecycleCallbacks {
     }
   }
 
-  virtual void onBeforePromiseReaction(JSContext* cx, JS::HandleObject promise) {
+  virtual void onBeforePromiseReaction(JSContext* cx,
+                                       JS::HandleObject promise) {
     if (mTraps.onBeforePromiseReaction) {
       mTraps.onBeforePromiseReaction(mState, cx, promise);
     }
@@ -123,11 +135,12 @@ class RustPromiseLifecycleCallbacks : public JS::PromiseLifecycleCallbacks {
 };
 
 struct ReadableStreamUnderlyingSourceTraps {
-  void (*requestData)(const void* source, JSContext* cx, JS::HandleObject stream,
-                      size_t desiredSize);
+  void (*requestData)(const void* source, JSContext* cx,
+                      JS::HandleObject stream, size_t desiredSize);
   void (*writeIntoReadRequestBuffer)(const void* source, JSContext* cx,
-                                     JS::HandleObject stream, JS::HandleObject chunk,
-                                     size_t length, size_t* bytesWritten);
+                                     JS::HandleObject stream,
+                                     JS::HandleObject chunk, size_t length,
+                                     size_t* bytesWritten);
   void (*cancel)(const void* source, JSContext* cx, JS::HandleObject stream,
                  JS::HandleValue reason, JS::Value* resolve_to);
   void (*onClosed)(const void* source, JSContext* cx, JS::HandleObject stream);
@@ -152,10 +165,11 @@ class RustReadableStreamUnderlyingSource
   }
 
   virtual void writeIntoReadRequestBuffer(JSContext* cx,
-                                          JS::HandleObject stream, JS::HandleObject chunk,
-                                          size_t length, size_t* bytesWritten) {
-	return mTraps.writeIntoReadRequestBuffer(mSource, cx, stream, chunk,
-                                             length, bytesWritten);
+                                          JS::HandleObject stream,
+                                          JS::HandleObject chunk, size_t length,
+                                          size_t* bytesWritten) {
+    return mTraps.writeIntoReadRequestBuffer(mSource, cx, stream, chunk, length,
+                                             bytesWritten);
   }
 
   virtual JS::Value cancel(JSContext* cx, JS::HandleObject stream,
@@ -181,8 +195,12 @@ class RustReadableStreamUnderlyingSource
 
 struct JSExternalStringCallbacksTraps {
   void (*finalize)(const void* privateData, char16_t* chars);
+  void (*finalize_latin1char)(const void* privateData, JS::Latin1Char* chars);
   size_t (*sizeOfBuffer)(const void* privateData, const char16_t* chars,
                          mozilla::MallocSizeOf mallocSizeOf);
+  size_t (*sizeOfBuffer_latin1char)(const void* privateData,
+                                    const JS::Latin1Char* chars,
+                                    mozilla::MallocSizeOf mallocSizeOf);
 };
 
 class RustJSExternalStringCallbacks final : public JSExternalStringCallbacks {
@@ -198,9 +216,18 @@ class RustJSExternalStringCallbacks final : public JSExternalStringCallbacks {
     return mTraps.finalize(privateData, chars);
   }
 
+  void finalize(JS::Latin1Char* chars) const override {
+    return mTraps.finalize_latin1char(privateData, chars);
+  }
+
   size_t sizeOfBuffer(const char16_t* chars,
                       mozilla::MallocSizeOf mallocSizeOf) const override {
     return mTraps.sizeOfBuffer(privateData, chars, mallocSizeOf);
+  }
+
+  size_t sizeOfBuffer(const JS::Latin1Char* chars,
+                      mozilla::MallocSizeOf mallocSizeOf) const override {
+    return mTraps.sizeOfBuffer_latin1char(privateData, chars, mallocSizeOf);
   }
 };
 
@@ -210,7 +237,7 @@ struct ProxyTraps {
 
   bool (*getOwnPropertyDescriptor)(
       JSContext* cx, JS::HandleObject proxy, JS::HandleId id,
-      JS::MutableHandle<JS::PropertyDescriptor> desc, bool *isNone);
+      JS::MutableHandle<JS::PropertyDescriptor> desc, bool* isNone);
   bool (*defineProperty)(JSContext* cx, JS::HandleObject proxy, JS::HandleId id,
                          JS::Handle<JS::PropertyDescriptor> desc,
                          JS::ObjectOpResult& result);
@@ -266,7 +293,7 @@ struct ProxyTraps {
   bool (*defaultValue)(JSContext* cx, JS::HandleObject obj, JSType hint,
                        JS::MutableHandleValue vp);
   void (*trace)(JSTracer* trc, JSObject* proxy);
-  void (*finalize)(JS::GCContext *cx, JSObject* proxy);
+  void (*finalize)(JS::GCContext* cx, JSObject* proxy);
   size_t (*objectMoved)(JSObject* proxy, JSObject* old);
 
   bool (*isCallable)(JSObject* obj);
@@ -365,7 +392,8 @@ static int HandlerFamily;
     mTraps.trace ? mTraps.trace(trc, proxy) : _base::trace(trc, proxy);       \
   }                                                                           \
                                                                               \
-  virtual void finalize(JS::GCContext* context, JSObject* proxy) const override { \
+  virtual void finalize(JS::GCContext* context, JSObject* proxy)              \
+      const override {                                                        \
     mTraps.finalize ? mTraps.finalize(context, proxy)                         \
                     : _base::finalize(context, proxy);                        \
   }                                                                           \
@@ -421,11 +449,13 @@ class WrapperProxyHandler : public js::Wrapper {
 
   virtual bool getOwnPropertyDescriptor(
       JSContext* cx, JS::HandleObject proxy, JS::HandleId id,
-      JS::MutableHandle<mozilla::Maybe<JS::PropertyDescriptor>> desc) const override {
+      JS::MutableHandle<mozilla::Maybe<JS::PropertyDescriptor>> desc)
+      const override {
     if (mTraps.getOwnPropertyDescriptor) {
       JS::Rooted<JS::PropertyDescriptor> pd(cx);
       bool isNone = true;
-      bool result = mTraps.getOwnPropertyDescriptor(cx, proxy, id, &pd, &isNone);
+      bool result =
+          mTraps.getOwnPropertyDescriptor(cx, proxy, id, &pd, &isNone);
       if (isNone) {
         desc.set(mozilla::Nothing());
       } else {
@@ -491,7 +521,8 @@ class ForwardingProxyHandler : public js::BaseProxyHandler {
 
   virtual bool getOwnPropertyDescriptor(
       JSContext* cx, JS::HandleObject proxy, JS::HandleId id,
-      JS::MutableHandle<mozilla::Maybe<JS::PropertyDescriptor>> desc) const override {
+      JS::MutableHandle<mozilla::Maybe<JS::PropertyDescriptor>> desc)
+      const override {
     JS::Rooted<JS::PropertyDescriptor> pd(cx);
     bool isNone = true;
     bool result = mTraps.getOwnPropertyDescriptor(cx, proxy, id, &pd, &isNone);
@@ -615,10 +646,10 @@ void* GetRustJSPrincipalsPrivate(JSPrincipals* principals) {
 
 bool InvokeGetOwnPropertyDescriptor(
     const void* handler, JSContext* cx, JS::HandleObject proxy, JS::HandleId id,
-    JS::MutableHandle<JS::PropertyDescriptor> desc, bool *isNone) {
+    JS::MutableHandle<JS::PropertyDescriptor> desc, bool* isNone) {
   JS::Rooted<mozilla::Maybe<JS::PropertyDescriptor>> mpd(cx);
   bool result = static_cast<const ForwardingProxyHandler*>(handler)
-      ->getOwnPropertyDescriptor(cx, proxy, id, &mpd);
+                    ->getOwnPropertyDescriptor(cx, proxy, id, &mpd);
   *isNone = mpd.isNothing();
   if (!*isNone) {
     desc.set(*mpd);
@@ -829,7 +860,8 @@ JSObject* UnwrapObjectStatic(JSObject* obj) {
   return js::CheckedUnwrapStatic(obj);
 }
 
-JSObject* UnwrapObjectDynamic(JSObject* obj, JSContext* cx, bool stopAtWindowProxy) {
+JSObject* UnwrapObjectDynamic(JSObject* obj, JSContext* cx,
+                              bool stopAtWindowProxy) {
   return js::CheckedUnwrapDynamic(obj, cx, stopAtWindowProxy);
 }
 
@@ -1097,7 +1129,8 @@ JS::ReadableStreamUnderlyingSource* CreateReadableStreamUnderlyingSource(
 
 const void* ReadableStreamUnderlyingSourceGetSource(
     const JS::ReadableStreamUnderlyingSource* source) {
-  return static_cast<const RustReadableStreamUnderlyingSource*>(source)->getSource();
+  return static_cast<const RustReadableStreamUnderlyingSource*>(source)
+      ->getSource();
 }
 
 void DeleteReadableStreamUnderlyingSource(
@@ -1139,38 +1172,39 @@ void StreamConsumerNoteResponseURLs(JS::StreamConsumer* sc,
 bool DescribeScriptedCaller(JSContext* cx, char* buffer, size_t buflen,
                             uint32_t* line, uint32_t* col) {
   JS::AutoFilename filename;
-  if (!JS::DescribeScriptedCaller(cx, &filename, line, col)) {
+  JS::ColumnNumberOneOrigin colnum;
+  if (!JS::DescribeScriptedCaller(cx, &filename, line, &colnum)) {
     return false;
   }
   strncpy(buffer, filename.get(), buflen);
+  *col = colnum.oneOriginValue();
   return true;
 }
 
-void SetDataPropertyDescriptor(
-  JS::MutableHandle<JS::PropertyDescriptor> desc,
-  JS::HandleValue value,
-  uint32_t attrs
-) {
+void SetDataPropertyDescriptor(JS::MutableHandle<JS::PropertyDescriptor> desc,
+                               JS::HandleValue value, uint32_t attrs) {
   desc.set(JS::PropertyDescriptor::Data(value, attrs));
 }
 
 void SetAccessorPropertyDescriptor(
-    JS::MutableHandle<JS::PropertyDescriptor> desc,
-    JS::HandleObject getter,
-    JS::HandleObject setter,
-    uint32_t attrs
-) {
+    JS::MutableHandle<JS::PropertyDescriptor> desc, JS::HandleObject getter,
+    JS::HandleObject setter, uint32_t attrs) {
   desc.set(JS::PropertyDescriptor::Accessor(getter, setter, attrs));
 }
 
-void FinishOffThreadStencil(
-  JSContext* cx,
-  JS::OffThreadToken* token,
-  JS::InstantiationStorage* storage,
-  already_AddRefed<JS::Stencil>* stencil
-) {
-  already_AddRefed<JS::Stencil> retval = JS::FinishOffThreadStencil(cx, token, storage);
-  *stencil = std::move(retval);
+JSObject* NewArrayBufferWithContents_Compat(JSContext* cx, size_t nbytes,
+                                            void* contents) {
+  mozilla::UniquePtr<void, JS::FreePolicy> ptr(contents);
+  return NewArrayBufferWithContents(cx, nbytes, std::move(ptr));
 }
 
+JSObject* NewExternalArrayBuffer_Compat(JSContext* cx, size_t nbytes,
+                                        void* contents,
+                                        void (*freeFunc)(void* contents,
+                                                         void* userData),
+                                        void* freeUserData = nullptr) {
+  JS::BufferContentsDeleter deleter(freeFunc, freeUserData);
+  mozilla::UniquePtr<void, JS::BufferContentsDeleter> ptr(contents, deleter);
+  return NewExternalArrayBuffer(cx, nbytes, std::move(ptr));
+}
 }  // extern "C"

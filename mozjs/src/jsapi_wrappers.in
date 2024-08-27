@@ -68,7 +68,7 @@ wrap!(jsapi: pub fn ModuleEvaluate(cx: *mut JSContext, moduleRecord: HandleObjec
 wrap!(jsapi: pub fn ThrowOnModuleEvaluationFailure(cx: *mut JSContext, evaluationPromise: HandleObject, errorBehaviour: ModuleErrorBehaviour) -> bool);
 wrap!(jsapi: pub fn GetRequestedModulesCount(cx: *mut JSContext, moduleRecord: HandleObject) -> u32);
 wrap!(jsapi: pub fn GetRequestedModuleSpecifier(cx: *mut JSContext, moduleRecord: HandleObject, index: u32) -> *mut JSString);
-wrap!(jsapi: pub fn GetRequestedModuleSourcePos(cx: *mut JSContext, moduleRecord: HandleObject, index: u32, lineNumber: *mut u32, columnNumber: *mut u32));
+wrap!(jsapi: pub fn GetRequestedModuleSourcePos(cx: *mut JSContext, moduleRecord: HandleObject, index: u32, lineNumber: *mut u32, columnNumber: *mut ColumnNumberOneOrigin));
 wrap!(jsapi: pub fn GetModuleScript(moduleRecord: HandleObject) -> *mut JSScript);
 wrap!(jsapi: pub fn CreateModuleRequest(cx: *mut JSContext, specifierArg: Handle<*mut JSString>) -> *mut JSObject);
 wrap!(jsapi: pub fn GetModuleRequestSpecifier(cx: *mut JSContext, moduleRequestArg: HandleObject) -> *mut JSString);
@@ -97,7 +97,6 @@ wrap!(jsapi: pub fn AddPromiseReactionsIgnoringUnhandledRejection(cx: *mut JSCon
 wrap!(jsapi: pub fn GetPromiseUserInputEventHandlingState(promise: HandleObject) -> PromiseUserInputEventHandlingState);
 wrap!(jsapi: pub fn SetPromiseUserInputEventHandlingState(promise: HandleObject, state: PromiseUserInputEventHandlingState) -> bool);
 wrap!(jsapi: pub fn GetWaitForAllPromise(cx: *mut JSContext, promises: HandleObjectVector) -> *mut JSObject);
-wrap!(jsapi: pub fn ObjectToCompletePropertyDescriptor(cx: *mut JSContext, obj: HandleObject, descriptor: Handle<Value>, desc: MutableHandle<PropertyDescriptor>) -> bool);
 wrap!(jsapi: pub fn NewSymbol(cx: *mut JSContext, description: Handle<*mut JSString>) -> *mut Symbol);
 wrap!(jsapi: pub fn GetSymbolFor(cx: *mut JSContext, key: Handle<*mut JSString>) -> *mut Symbol);
 wrap!(jsapi: pub fn GetSymbolDescription(symbol: Handle<*mut Symbol>) -> *mut JSString);
@@ -120,7 +119,7 @@ wrap!(jsapi: pub fn CheckRegExpSyntax(cx: *mut JSContext, chars: *const u16, len
 wrap!(jsapi: pub fn GetSavedFrameSource(cx: *mut JSContext, principals: *mut JSPrincipals, savedFrame: HandleObject, sourcep: MutableHandle<*mut JSString>, selfHosted: SavedFrameSelfHosted) -> SavedFrameResult);
 wrap!(jsapi: pub fn GetSavedFrameSourceId(cx: *mut JSContext, principals: *mut JSPrincipals, savedFrame: HandleObject, sourceIdp: *mut u32, selfHosted: SavedFrameSelfHosted) -> SavedFrameResult);
 wrap!(jsapi: pub fn GetSavedFrameLine(cx: *mut JSContext, principals: *mut JSPrincipals, savedFrame: HandleObject, linep: *mut u32, selfHosted: SavedFrameSelfHosted) -> SavedFrameResult);
-wrap!(jsapi: pub fn GetSavedFrameColumn(cx: *mut JSContext, principals: *mut JSPrincipals, savedFrame: HandleObject, columnp: *mut u32, selfHosted: SavedFrameSelfHosted) -> SavedFrameResult);
+wrap!(jsapi: pub fn GetSavedFrameColumn(cx: *mut JSContext, principals: *mut JSPrincipals, savedFrame: HandleObject, columnp: *mut TaggedColumnNumberOneOrigin, selfHosted: SavedFrameSelfHosted) -> SavedFrameResult);
 wrap!(jsapi: pub fn GetSavedFrameFunctionDisplayName(cx: *mut JSContext, principals: *mut JSPrincipals, savedFrame: HandleObject, namep: MutableHandle<*mut JSString>, selfHosted: SavedFrameSelfHosted) -> SavedFrameResult);
 wrap!(jsapi: pub fn GetSavedFrameAsyncCause(cx: *mut JSContext, principals: *mut JSPrincipals, savedFrame: HandleObject, asyncCausep: MutableHandle<*mut JSString>, selfHosted: SavedFrameSelfHosted) -> SavedFrameResult);
 wrap!(jsapi: pub fn GetSavedFrameAsyncParent(cx: *mut JSContext, principals: *mut JSPrincipals, savedFrame: HandleObject, asyncParentp: MutableHandleObject, selfHosted: SavedFrameSelfHosted) -> SavedFrameResult);
@@ -172,8 +171,8 @@ wrap!(jsapi: pub fn SetKeys(cx: *mut JSContext, obj: HandleObject, rval: Mutable
 wrap!(jsapi: pub fn SetValues(cx: *mut JSContext, obj: HandleObject, rval: MutableHandleValue) -> bool);
 wrap!(jsapi: pub fn SetEntries(cx: *mut JSContext, obj: HandleObject, rval: MutableHandleValue) -> bool);
 wrap!(jsapi: pub fn SetForEach(cx: *mut JSContext, obj: HandleObject, callbackFn: HandleValue, thisVal: HandleValue) -> bool);
-wrap!(jsapi: pub fn GetWeakMapEntry(cx: *mut JSContext, mapObj: HandleObject, key: HandleObject, val: MutableHandleValue) -> bool);
-wrap!(jsapi: pub fn SetWeakMapEntry(cx: *mut JSContext, mapObj: HandleObject, key: HandleObject, val: HandleValue) -> bool);
+wrap!(jsapi: pub fn GetWeakMapEntry(cx: *mut JSContext, mapObj: HandleObject, key: HandleValue, val: MutableHandleValue) -> bool);
+wrap!(jsapi: pub fn SetWeakMapEntry(cx: *mut JSContext, mapObj: HandleObject, key: HandleValue, val: HandleValue) -> bool);
 wrap!(jsapi: pub fn ProtoKeyToId(cx: *mut JSContext, key: JSProtoKey, idp: MutableHandleId));
 wrap!(jsapi: pub fn ToPrimitive(cx: *mut JSContext, obj: HandleObject, hint: JSType, vp: MutableHandleValue) -> bool);
 wrap!(jsapi: pub fn OrdinaryHasInstance(cx: *mut JSContext, objArg: HandleObject, v: HandleValue, bp: *mut bool) -> bool);
@@ -297,7 +296,7 @@ wrap!(jsapi: pub fn JS_DeletePropertyById(cx: *mut JSContext, obj: HandleObject,
 wrap!(jsapi: pub fn JS_DeleteProperty(cx: *mut JSContext, obj: HandleObject, name: *const ::std::os::raw::c_char, result: *mut ObjectOpResult) -> bool);
 wrap!(jsapi: pub fn JS_DeleteUCProperty(cx: *mut JSContext, obj: HandleObject, name: *const u16, namelen: usize, result: *mut ObjectOpResult) -> bool);
 wrap!(jsapi: pub fn JS_DeleteElement(cx: *mut JSContext, obj: HandleObject, index: u32, result: *mut ObjectOpResult) -> bool);
-wrap!(jsapi: pub fn JS_DeletePropertyById1(cx: *mut JSContext, obj: HandleObject, id: jsid) -> bool);
+wrap!(jsapi: pub fn JS_DeletePropertyById1(cx: *mut JSContext, obj: HandleObject, id: Handle<jsid>) -> bool);
 wrap!(jsapi: pub fn JS_DeleteProperty1(cx: *mut JSContext, obj: HandleObject, name: *const ::std::os::raw::c_char) -> bool);
 wrap!(jsapi: pub fn JS_DeleteElement1(cx: *mut JSContext, obj: HandleObject, index: u32) -> bool);
 wrap!(jsapi: pub fn JS_DefineObject(cx: *mut JSContext, obj: HandleObject, name: *const ::std::os::raw::c_char, clasp: *const JSClass, attrs: ::std::os::raw::c_uint) -> *mut JSObject);

@@ -223,7 +223,9 @@ bool CreateError(JSContext* cx, JSExnType type, JS::HandleObject stack,
                  JS::HandleString message, JS::HandleValue cause,
                  JS::MutableHandleValue rval) {
   return JS::CreateError(
-      cx, type, stack, fileName, lineNumber, columnNumber, report, message,
+      cx, type, stack, fileName, lineNumber,
+      JS::ColumnNumberOneOrigin::fromZeroOrigin(columnNumber + 1), report,
+      message,
       JS::Rooted<mozilla::Maybe<JS::Value>>(cx, mozilla::ToMaybe(&cause)),
       rval);
 }

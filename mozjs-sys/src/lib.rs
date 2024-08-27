@@ -7,7 +7,7 @@
 // This extern crates are needed for linking
 extern crate encoding_c;
 extern crate encoding_c_mem;
-extern crate libz_sys;
+extern crate icu_capi;
 
 // The jsimpls module just implements traits so can be private
 mod jsimpls;
@@ -57,3 +57,13 @@ mod oom_hook {
         set_alloc_error_hook(hook);
     }
 }
+
+// Somewhere deep in icu_capi, something requires this function.
+// However, I'm pretty sure it's not actually used unless we're
+// compiling to WASM, running in the browser and being invoked
+// from JS, which we're not, so it should be safe to provide a
+// placeholder implementation.
+#[no_mangle]
+extern "C" fn diplomat_throw_error_js(_ptr: *const u8, _len: usize) {
+    panic!("diplomat_throw_error_js should never run");
+ }

@@ -43,8 +43,9 @@ use crate::jsapi::JS_AddExtraGCRootsTracer;
 use crate::jsapi::MutableHandleIdVector as RawMutableHandleIdVector;
 use crate::jsapi::{already_AddRefed, jsid};
 use crate::jsapi::{BuildStackString, CaptureCurrentStack, StackFormat};
+use crate::jsapi::{ColumnNumberOneOrigin, TaggedColumnNumberOneOrigin};
 use crate::jsapi::{Evaluate2, HandleValueArray, StencilRelease};
-use crate::jsapi::{InitSelfHostedCode, InstantiationStorage, IsWindowSlow, OffThreadToken};
+use crate::jsapi::{InitSelfHostedCode, InstantiationStorage, IsWindowSlow};
 use crate::jsapi::{
     JSAutoRealm, JS_SetGCParameter, JS_SetNativeStackQuota, JS_WrapObject, JS_WrapValue,
 };
@@ -522,19 +523,6 @@ impl Stencil {
     }
 }
 
-pub unsafe fn FinishOffThreadStencil(
-    cx: *mut JSContext,
-    token: *mut OffThreadToken,
-    storage: *mut InstantiationStorage,
-) -> Stencil {
-    let mut stencil = already_AddRefed {
-        mRawPtr: std::ptr::null_mut(),
-        _phantom_0: PhantomData,
-    };
-    crate::glue::FinishOffThreadStencil(cx, token, storage, &mut stencil);
-    return Stencil { inner: stencil };
-}
-
 // ___________________________________________________________________________
 // Fast inline converters
 
@@ -655,10 +643,8 @@ pub unsafe extern "C" fn report_warning(_cx: *mut JSContext, report: *mut JSErro
     }
 
     let fnptr = (*report)._base.filename;
-    #[cfg(not(target_vendor = "wasmer"))]
-    let fnptr = fnptr.data_;
-    let fname = if !fnptr.is_null() {
-        let c_str = CStr::from_ptr(fnptr);
+    let fname = if !fnptr.data_.is_null() {
+        let c_str = CStr::from_ptr(fnptr.data_);
         latin1_to_string(c_str.to_bytes())
     } else {
         "none".to_string()
@@ -674,7 +660,10 @@ pub unsafe extern "C" fn report_warning(_cx: *mut JSContext, report: *mut JSErro
     let msg_slice = slice::from_raw_parts(msg_ptr, msg_len);
     let msg = str::from_utf8_unchecked(msg_slice);
 
-    warn!("Warning at {}:{}:{}: {}\n", fname, lineno, column, msg);
+    warn!(
+        "Warning at {}:{}:{}: {}\n",
+        fname, lineno, column._base, msg
+    );
 }
 
 pub struct IdVector(*mut PersistentRootedIdVector);

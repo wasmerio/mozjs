@@ -31,11 +31,16 @@ streams = []
 [dependencies]
 encoding_c = "0.9.8"
 encoding_c_mem = "0.2.6"
+icu_capi = { version = "1.5.0", default-features = false, features = [
+  "any_provider",
+  "compiled_data",
+  "icu_segmenter",
+] }
 libc.workspace = true
-libz-sys = "1.1"
 
 [build-dependencies]
 bindgen.workspace = true
 cc.workspace = true
 regex = "1.10.2"
 walkdir = "2"
+env_logger = "0.11"
