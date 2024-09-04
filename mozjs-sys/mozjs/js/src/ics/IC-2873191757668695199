@@ -1,1 +1,0 @@
-OptimizeSpreadCall, 1, 1, 2, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(809145624) , OP(LoadUndefinedResult)  OP(ReturnFromIC)  

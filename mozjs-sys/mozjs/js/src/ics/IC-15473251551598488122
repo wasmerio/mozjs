@@ -1,1 +1,0 @@
-OptimizeGetIterator, 1, 1, 2, JSVAL_TYPE_UNKNOWN, 0, , LASTUSED(4015309049) , OP(LoadBooleanResult) BOOL(0) OP(ReturnFromIC)  
