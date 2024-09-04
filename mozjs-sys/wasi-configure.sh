@@ -9,6 +9,8 @@ mode="${1:-release}"
 mozconfig="${working_dir}/mozconfig-${mode}"
 objdir="obj-$mode"
 
+bash ./fetch-mozjs.sh
+
 cd mozjs
 
 ./mach --no-interactive bootstrap --application-choice=js --no-system-changes

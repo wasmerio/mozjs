@@ -11,6 +11,8 @@
 *.dylib
 
 # We are skipping the mozjs wasi dir
-mozjs-sys/obj-release
-mozjs-sys/mozjs-wasi
+mozjs-sys/mozjs
+mozjs-sys/mozconfig-debug
 mozjs-sys/mozconfig-release
+mozjs-sys/obj-debug
+mozjs-sys/obj-release
