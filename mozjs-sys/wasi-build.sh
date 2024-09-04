@@ -31,8 +31,18 @@ ac_add_options --disable-export-js
 ac_add_options --disable-shared-js
 ac_add_options --build-backends=RecursiveMake
 ac_add_options --sysroot=${WASI_SYSROOT}
+ac_add_options --enable-portable-baseline-interp
 EOF
 
+CARGO_FEATURE_WEVAL="${CARGO_FEATURE_WEVAL:-}"
+if test -n $CARGO_FEATURE_WEVAL; then
+cat << EOF >> "$mozconfig"
+ac_add_options --enable-portable-baseline-interp-force
+ac_add_options --enable-aot-ics
+ac_add_options --enable-aot-ics-force
+ac_add_options --enable-pbl-weval
+EOF
+fi
 
 target="$(uname)"
 case "$target" in

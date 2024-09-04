@@ -11,7 +11,8 @@ CONFIGURE_FLAGS := \
 	--disable-shared-js \
 	--build-backends=RecursiveMake \
 	--enable-js-streams \
-	--with-intl-api
+	--with-intl-api \
+	--enable-portable-baseline-interp
 
 ifneq (,$(CARGO_FEATURE_JITSPEW))
     CONFIGURE_FLAGS += --enable-jitspew
@@ -23,6 +24,13 @@ endif
 
 ifneq (,$(CARGO_FEATURE_PROFILEMOZJS))
 	CONFIGURE_FLAGS += --enable-profiling
+endif
+
+ifneq (,$(CARGO_FEATURE_WEVAL))
+	CONFIGURE_FLAGS += --enable-portable-baseline-interp-force
+	CONFIGURE_FLAGS += --enable-aot-ics
+	CONFIGURE_FLAGS += --enable-aot-ics-force
+	CONFIGURE_FLAGS += --enable-pbl-weval
 endif
 
 ifeq (wasi,$(findstring wasi,$(TARGET)))
