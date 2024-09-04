@@ -4,6 +4,7 @@ set -euo pipefail
 set -x
 
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+cd $script_dir
 
 fetch_commits=
 if [[ ! -a mozjs ]]; then

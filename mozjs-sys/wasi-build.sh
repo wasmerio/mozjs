@@ -34,8 +34,7 @@ ac_add_options --sysroot=${WASI_SYSROOT}
 ac_add_options --enable-portable-baseline-interp
 EOF
 
-CARGO_FEATURE_WEVAL="${CARGO_FEATURE_WEVAL:-}"
-if test -n $CARGO_FEATURE_WEVAL; then
+if test -n "${CARGO_FEATURE_WEVAL+x}"; then
 cat << EOF >> "$mozconfig"
 ac_add_options --enable-portable-baseline-interp-force
 ac_add_options --enable-aot-ics
