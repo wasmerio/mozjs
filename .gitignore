@@ -1,0 +1,18 @@
+/doc
+/target
+/Cargo.lock
+
+# Keep this in sync with ignore() in build.rs
+
+*.pyc
+*.o
+*.so
+*.dll
+*.dylib
+
+# We are skipping the mozjs wasi dir
+mozjs-sys/mozjs
+mozjs-sys/mozconfig-debug
+mozjs-sys/mozconfig-release
+mozjs-sys/obj-debug
+mozjs-sys/obj-release

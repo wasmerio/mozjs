@@ -1,0 +1,47 @@
+[package]
+name = "mozjs_sys"
+description = "System crate for the Mozilla SpiderMonkey JavaScript engine."
+repository.workspace = true
+version = "0.68.2"
+authors = ["Mozilla"]
+links = "mozjs"
+build = "build.rs"
+license.workspace = true
+exclude = [
+  "mozjs/js/src/tests/**",
+  "mozjs/js/src/octane/**",
+  "mozjs/js/src/jit-test/**",
+  "mozjs/js/src/jsapi-tests/**",
+  "mozjs/js/src/doc/**",
+]
+edition.workspace = true
+
+[lib]
+name = "mozjs_sys"
+# The generated jsapi.rs contains #[doc] strings which look like
+# doctests but are definitely not.
+doctest = false
+
+[features]
+debugmozjs = []
+profilemozjs = []
+jitspew = []
+streams = []
+weval = []
+
+[dependencies]
+encoding_c = "0.9.8"
+encoding_c_mem = "0.2.6"
+icu_capi = { version = "1.5.0", default-features = false, features = [
+  "any_provider",
+  "compiled_data",
+  "icu_segmenter",
+] }
+libc.workspace = true
+
+[build-dependencies]
+bindgen.workspace = true
+cc.workspace = true
+regex = "1.10.2"
+walkdir = "2"
+env_logger = "0.11"
