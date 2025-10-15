@@ -18,6 +18,10 @@ fn callback() {
     let engine = JSEngine::init().unwrap();
     let runtime = Runtime::new(engine.handle());
     let context = runtime.cx();
+    #[cfg(feature = "debugmozjs")]
+    unsafe {
+        mozjs::jsapi::SetGCZeal(context, 2, 1);
+    }
     let h_option = OnNewGlobalHookOption::FireOnNewGlobalHook;
     let c_option = RealmOptions::default();
 
@@ -34,7 +38,7 @@ fn callback() {
         let function = JS_DefineFunction(
             context,
             global.handle().into(),
-            b"puts\0".as_ptr() as *const libc::c_char,
+            c"puts".as_ptr(),
             Some(puts),
             1,
             0,
@@ -43,8 +47,9 @@ fn callback() {
 
         let javascript = "puts('Test Iñtërnâtiônàlizætiøn ┬─┬ノ( º _ ºノ) ');";
         rooted!(in(context) let mut rval = UndefinedValue());
+        let options = runtime.new_compile_options("test.js", 0);
         assert!(runtime
-            .evaluate_script(global.handle(), javascript, "test.js", 0, rval.handle_mut())
+            .evaluate_script(global.handle(), javascript, rval.handle_mut(), options)
             .is_ok());
     }
 }
@@ -53,22 +58,20 @@ unsafe extern "C" fn puts(context: *mut JSContext, argc: u32, vp: *mut Value) ->
     let args = CallArgs::from_vp(vp, argc);
 
     if args.argc_ != 1 {
-        JS_ReportErrorASCII(
-            context,
-            b"puts() requires exactly 1 argument\0".as_ptr() as *const libc::c_char,
-        );
+        JS_ReportErrorASCII(context, c"puts() requires exactly 1 argument".as_ptr());
         return false;
     }
 
     let arg = mozjs::rust::Handle::from_raw(args.get(0));
     let js = mozjs::rust::ToString(context, arg);
     rooted!(in(context) let message_root = js);
-    EncodeStringToUTF8(context, message_root.handle().into(), |message| {
+    unsafe extern "C" fn cb(message: *const core::ffi::c_char) {
         let message = CStr::from_ptr(message);
         let message = str::from_utf8(message.to_bytes()).unwrap();
         assert_eq!(message, "Test Iñtërnâtiônàlizætiøn ┬─┬ノ( º _ ºノ) ");
         println!("{}", message);
-    });
+    }
+    EncodeStringToUTF8(context, message_root.handle().into(), cb);
 
     args.rval().set(UndefinedValue());
     true

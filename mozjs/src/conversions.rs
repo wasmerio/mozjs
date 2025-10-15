@@ -29,7 +29,6 @@
 #![deny(missing_docs)]
 
 use crate::error::throw_type_error;
-use crate::glue::RUST_JS_NumberValue;
 use crate::jsapi::AssertSameCompartment;
 use crate::jsapi::JS;
 use crate::jsapi::{ForOfIterator, ForOfIterator_NonIterableBehavior};
@@ -37,7 +36,7 @@ use crate::jsapi::{Heap, JS_DefineElement, JS_GetLatin1StringCharsAndLength};
 use crate::jsapi::{JSContext, JSObject, JSString, RootedObject, RootedValue};
 use crate::jsapi::{JS_DeprecatedStringHasLatin1Chars, JS_NewUCStringCopyN, JSPROP_ENUMERATE};
 use crate::jsapi::{JS_GetTwoByteStringCharsAndLength, NewArrayObject1};
-use crate::jsval::{BooleanValue, Int32Value, NullValue, UInt32Value, UndefinedValue};
+use crate::jsval::{BooleanValue, DoubleValue, Int32Value, NullValue, UInt32Value, UndefinedValue};
 use crate::jsval::{JSVal, ObjectOrNullValue, ObjectValue, StringValue, SymbolValue};
 use crate::rooted;
 use crate::rust::maybe_wrap_value;
@@ -46,9 +45,10 @@ use crate::rust::{HandleValue, MutableHandleValue};
 use crate::rust::{ToBoolean, ToInt32, ToInt64, ToNumber, ToUint16, ToUint32, ToUint64};
 use libc;
 use log::debug;
-use num_traits::{Bounded, Zero};
+use mozjs_sys::jsgc::Rooted;
 use std::borrow::Cow;
 use std::mem;
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::{ptr, slice};
 
@@ -93,6 +93,40 @@ impl_as!(u32, u32);
 impl_as!(i64, i64);
 impl_as!(u64, u64);
 
+/// Similar to num_traits, but we use need to be able to customize values
+pub trait Number {
+    /// Zero value of this type
+    const ZERO: Self;
+    /// Smallest finite number this type can represent
+    const MIN: Self;
+    /// Largest finite number this type can represent
+    const MAX: Self;
+}
+
+macro_rules! impl_num {
+    ($N:ty, $zero:expr, $min:expr, $max:expr) => {
+        impl Number for $N {
+            const ZERO: $N = $zero;
+            const MIN: $N = $min;
+            const MAX: $N = $max;
+        }
+    };
+}
+
+// lower upper bound per: https://webidl.spec.whatwg.org/#abstract-opdef-converttoint
+impl_num!(u8, 0, u8::MIN, u8::MAX);
+impl_num!(u16, 0, u16::MIN, u16::MAX);
+impl_num!(u32, 0, u32::MIN, u32::MAX);
+impl_num!(u64, 0, 0, (1 << 53) - 1);
+
+impl_num!(i8, 0, i8::MIN, i8::MAX);
+impl_num!(i16, 0, i16::MIN, i16::MAX);
+impl_num!(i32, 0, i32::MIN, i32::MAX);
+impl_num!(i64, 0, -(1 << 53) + 1, (1 << 53) - 1);
+
+impl_num!(f32, 0.0, f32::MIN, f32::MAX);
+impl_num!(f64, 0.0, f64::MIN, f64::MAX);
+
 /// A trait to convert Rust types to `JSVal`s.
 pub trait ToJSValConvertible {
     /// Convert `self` to a `JSVal`. JSAPI failure causes a panic.
@@ -134,6 +168,29 @@ pub trait FromJSValConvertible: Sized {
     ) -> Result<ConversionResult<Self>, ()>;
 }
 
+/// A trait to convert `JSVal`s to Rust types inside of Rc wrappers.
+pub trait FromJSValConvertibleRc: Sized {
+    /// Convert `val` to type `Self`.
+    /// If it returns `Err(())`, a JSAPI exception is pending.
+    /// If it returns `Ok(Failure(reason))`, there is no pending JSAPI exception.
+    unsafe fn from_jsval(
+        cx: *mut JSContext,
+        val: HandleValue,
+    ) -> Result<ConversionResult<Rc<Self>>, ()>;
+}
+
+impl<T: FromJSValConvertibleRc> FromJSValConvertible for Rc<T> {
+    type Config = ();
+
+    unsafe fn from_jsval(
+        cx: *mut JSContext,
+        val: HandleValue,
+        _option: (),
+    ) -> Result<ConversionResult<Rc<T>>, ()> {
+        <T as FromJSValConvertibleRc>::from_jsval(cx, val)
+    }
+}
+
 /// Behavior for converting out-of-range integers.
 #[derive(PartialEq, Eq, Clone)]
 pub enum ConversionBehavior {
@@ -147,9 +204,10 @@ pub enum ConversionBehavior {
 
 /// Try to cast the number to a smaller type, but
 /// if it doesn't fit, it will return an error.
+// https://searchfox.org/mozilla-esr128/rev/1aa97f9d67f7a7231e62af283eaa02a6b31380e1/dom/bindings/PrimitiveConversions.h#166
 unsafe fn enforce_range<D>(cx: *mut JSContext, d: f64) -> Result<ConversionResult<D>, ()>
 where
-    D: Bounded + As<f64>,
+    D: Number + As<f64>,
     f64: As<D>,
 {
     if d.is_infinite() {
@@ -157,8 +215,8 @@ where
         return Err(());
     }
 
-    let rounded = d.round();
-    if D::min_value().cast() <= rounded && rounded <= D::max_value().cast() {
+    let rounded = d.signum() * d.abs().floor();
+    if D::MIN.cast() <= rounded && rounded <= D::MAX.cast() {
         Ok(ConversionResult::Success(rounded.cast()))
     } else {
         throw_type_error(cx, "value out of range in an EnforceRange argument");
@@ -171,15 +229,15 @@ where
 /// the destination type.
 fn clamp_to<D>(d: f64) -> D
 where
-    D: Bounded + As<f64> + Zero,
+    D: Number + As<f64>,
     f64: As<D>,
 {
     if d.is_nan() {
-        D::zero()
-    } else if d > D::max_value().cast() {
-        D::max_value()
-    } else if d < D::min_value().cast() {
-        D::min_value()
+        D::ZERO
+    } else if d > D::MAX.cast() {
+        D::MAX
+    } else if d < D::MIN.cast() {
+        D::MIN
     } else {
         d.cast()
     }
@@ -236,8 +294,8 @@ unsafe fn convert_int_from_jsval<T, M>(
     convert_fn: unsafe fn(*mut JSContext, HandleValue) -> Result<M, ()>,
 ) -> Result<ConversionResult<T>, ()>
 where
-    T: Bounded + Zero + As<f64>,
-    M: Zero + As<T>,
+    T: Number + As<f64>,
+    M: Number + As<T>,
     f64: As<T>,
 {
     match option {
@@ -391,7 +449,7 @@ impl FromJSValConvertible for u32 {
 impl ToJSValConvertible for i64 {
     #[inline]
     unsafe fn to_jsval(&self, _cx: *mut JSContext, mut rval: MutableHandleValue) {
-        RUST_JS_NumberValue(*self as f64, &mut *rval);
+        rval.set(DoubleValue(*self as f64));
     }
 }
 
@@ -411,7 +469,7 @@ impl FromJSValConvertible for i64 {
 impl ToJSValConvertible for u64 {
     #[inline]
     unsafe fn to_jsval(&self, _cx: *mut JSContext, mut rval: MutableHandleValue) {
-        RUST_JS_NumberValue(*self as f64, &mut *rval);
+        rval.set(DoubleValue(*self as f64));
     }
 }
 
@@ -431,7 +489,7 @@ impl FromJSValConvertible for u64 {
 impl ToJSValConvertible for f32 {
     #[inline]
     unsafe fn to_jsval(&self, _cx: *mut JSContext, mut rval: MutableHandleValue) {
-        RUST_JS_NumberValue(*self as f64, &mut *rval);
+        rval.set(DoubleValue(*self as f64));
     }
 }
 
@@ -452,7 +510,7 @@ impl FromJSValConvertible for f32 {
 impl ToJSValConvertible for f64 {
     #[inline]
     unsafe fn to_jsval(&self, _cx: *mut JSContext, mut rval: MutableHandleValue) {
-        RUST_JS_NumberValue(*self, &mut *rval);
+        rval.set(DoubleValue(*self))
     }
 }
 
@@ -470,27 +528,37 @@ impl FromJSValConvertible for f64 {
 
 /// Converts a `JSString`, encoded in "Latin1" (i.e. U+0000-U+00FF encoded as 0x00-0xFF) into a
 /// `String`.
-pub unsafe fn latin1_to_string(cx: *mut JSContext, s: *mut JSString) -> String {
-    assert!(JS_DeprecatedStringHasLatin1Chars(s));
+pub unsafe fn latin1_to_string(cx: *mut JSContext, s: NonNull<JSString>) -> String {
+    assert!(JS_DeprecatedStringHasLatin1Chars(s.as_ptr()));
 
     let mut length = 0;
-    let chars = JS_GetLatin1StringCharsAndLength(cx, ptr::null(), s, &mut length);
-    assert!(!chars.is_null());
+    let chars = unsafe {
+        let chars = JS_GetLatin1StringCharsAndLength(cx, ptr::null(), s.as_ptr(), &mut length);
+        assert!(!chars.is_null());
 
-    let chars = slice::from_raw_parts(chars, length as usize);
-    let mut s = String::with_capacity(length as usize);
-    s.extend(chars.iter().map(|&c| c as char));
-    s
+        slice::from_raw_parts(chars, length as usize)
+    };
+    // The `encoding.rs` documentation for `convert_latin1_to_utf8` states that:
+    // > The length of the destination buffer must be at least the length of the source
+    // > buffer times two.
+    let mut v = vec![0; chars.len() * 2];
+    let real_size = encoding_rs::mem::convert_latin1_to_utf8(chars, v.as_mut_slice());
+
+    v.truncate(real_size);
+
+    // Safety: convert_latin1_to_utf8 converts the raw bytes to utf8 and the
+    // buffer is the size specified in the documentation, so this should be safe.
+    unsafe { String::from_utf8_unchecked(v) }
 }
 
 /// Converts a `JSString` into a `String`, regardless of used encoding.
-pub unsafe fn jsstr_to_string(cx: *mut JSContext, jsstr: *mut JSString) -> String {
-    if JS_DeprecatedStringHasLatin1Chars(jsstr) {
+pub unsafe fn jsstr_to_string(cx: *mut JSContext, jsstr: NonNull<JSString>) -> String {
+    if JS_DeprecatedStringHasLatin1Chars(jsstr.as_ptr()) {
         return latin1_to_string(cx, jsstr);
     }
 
     let mut length = 0;
-    let chars = JS_GetTwoByteStringCharsAndLength(cx, ptr::null(), jsstr, &mut length);
+    let chars = JS_GetTwoByteStringCharsAndLength(cx, ptr::null(), jsstr.as_ptr(), &mut length);
     assert!(!chars.is_null());
     let char_vec = slice::from_raw_parts(chars, length as usize);
     String::from_utf16_lossy(char_vec)
@@ -531,10 +599,10 @@ impl FromJSValConvertible for String {
         _: (),
     ) -> Result<ConversionResult<String>, ()> {
         let jsstr = ToString(cx, value);
-        if jsstr.is_null() {
+        let Some(jsstr) = NonNull::new(jsstr) else {
             debug!("ToString failed");
             return Err(());
-        }
+        };
         Ok(jsstr_to_string(cx, jsstr)).map(ConversionResult::Success)
     }
 }
@@ -631,7 +699,7 @@ struct ForOfIteratorGuard<'a> {
 impl<'a> ForOfIteratorGuard<'a> {
     fn new(cx: *mut JSContext, root: &'a mut ForOfIterator) -> Self {
         unsafe {
-            root.iterator.add_to_root_stack(cx);
+            Rooted::add_to_root_stack(&raw mut root.iterator, cx);
         }
         ForOfIteratorGuard { root }
     }
@@ -665,8 +733,8 @@ impl<C: Clone, T: FromJSValConvertible<Config = C>> FromJSValConvertible for Vec
         let zero = mem::zeroed();
         let mut iterator = ForOfIterator {
             cx_: cx,
-            iterator: RootedObject::new_unrooted(),
-            nextMethod: RootedValue::new_unrooted(),
+            iterator: RootedObject::new_unrooted(ptr::null_mut()),
+            nextMethod: RootedValue::new_unrooted(JSVal { asBits_: 0 }),
             index: ::std::u32::MAX, // NOT_ARRAY
             ..zero
         };
@@ -680,7 +748,7 @@ impl<C: Clone, T: FromJSValConvertible<Config = C>> FromJSValConvertible for Vec
             return Err(());
         }
 
-        if iterator.iterator.ptr.is_null() {
+        if iterator.iterator.data.is_null() {
             return Ok(ConversionResult::Failure("Value is not iterable".into()));
         }
 

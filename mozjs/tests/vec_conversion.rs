@@ -12,13 +12,18 @@ use mozjs::jsapi::{
 };
 use mozjs::jsval::UndefinedValue;
 use mozjs::rooted;
-use mozjs::rust::{JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS};
+use mozjs::rust::{CompileOptionsWrapper, JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS};
 
 #[test]
 fn vec_conversion() {
     let engine = JSEngine::init().unwrap();
     let runtime = Runtime::new(engine.handle());
     let context = runtime.cx();
+
+    #[cfg(feature = "debugmozjs")]
+    unsafe {
+        mozjs::jsapi::SetGCZeal(context, 2, 1);
+    }
 
     let h_option = OnNewGlobalHookOption::FireOnNewGlobalHook;
     let c_option = RealmOptions::default();
@@ -49,13 +54,13 @@ fn vec_conversion() {
 
         assert_eq!(&orig_vec, converted.get_success_value().unwrap());
 
+        let options = runtime.new_compile_options("test", 1);
         assert!(runtime
             .evaluate_script(
                 global.handle(),
                 "new Set([1, 2, 3])",
-                "test",
-                1,
-                rval.handle_mut()
+                rval.handle_mut(),
+                options,
             )
             .is_ok());
         let converted =
@@ -63,8 +68,9 @@ fn vec_conversion() {
 
         assert_eq!(&orig_vec, converted.get_success_value().unwrap());
 
+        let options = runtime.new_compile_options("test", 1);
         assert!(runtime
-            .evaluate_script(global.handle(), "({})", "test", 1, rval.handle_mut())
+            .evaluate_script(global.handle(), "({})", rval.handle_mut(), options)
             .is_ok());
         let converted = Vec::<i32>::from_jsval(context, rval.handle(), ConversionBehavior::Default);
         assert!(match converted {

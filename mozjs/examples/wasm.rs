@@ -6,7 +6,9 @@
 //! and do some setup on both of these. You also need to enter a "realm"
 //! (environment within one global object) before you can execute code.
 
-use ::std::ffi::{c_char, c_uchar};
+// The wasm example does not work on wasm32 targets.
+#![cfg(not(target_arch = "wasm32"))]
+
 use ::std::ptr;
 use ::std::ptr::null_mut;
 
@@ -14,10 +16,14 @@ use mozjs::jsapi::*;
 use mozjs::jsval::ObjectValue;
 use mozjs::jsval::UndefinedValue;
 use mozjs::rooted;
-use mozjs::rust::jsapi_wrapped::{Construct1, JS_GetProperty, JS_SetProperty};
+use mozjs::rust::wrappers::{Construct1, JS_GetProperty, JS_SetProperty};
 use mozjs::rust::SIMPLE_GLOBAL_CLASS;
-use mozjs::rust::{JSEngine, RealmOptions, Runtime};
+use mozjs::rust::{IntoHandle, JSEngine, RealmOptions, Runtime};
 use mozjs_sys::jsgc::ValueArray;
+
+#[repr(align(8))]
+/// Wrapper that enforces alignment of 8
+struct Aligned8<T>(T);
 
 /// hi.wat:
 /// ```
@@ -28,12 +34,12 @@ use mozjs_sys::jsgc::ValueArray;
 ///    call $bar
 ///  ))
 ///```
-const HI_WASM: [c_uchar; 56] = [
+const HI_WASM: Aligned8<[u8; 56]> = Aligned8([
     0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x0a, 0x02, 0x60, 0x01, 0x7f, 0x01, 0x7f,
     0x60, 0x00, 0x01, 0x7f, 0x02, 0x0b, 0x01, 0x03, 0x65, 0x6e, 0x76, 0x03, 0x62, 0x61, 0x72, 0x00,
     0x00, 0x03, 0x02, 0x01, 0x01, 0x07, 0x07, 0x01, 0x03, 0x66, 0x6f, 0x6f, 0x00, 0x01, 0x0a, 0x08,
     0x01, 0x06, 0x00, 0x41, 0x2a, 0x10, 0x00, 0x0b,
-];
+]);
 
 unsafe extern "C" fn bar(_cx: *mut JSContext, argc: u32, vp: *mut Value) -> bool {
     let args = CallArgs::from_vp(vp, argc);
@@ -59,44 +65,44 @@ fn run(rt: Runtime) {
         assert!(JS_GetProperty(
             rt.cx(),
             global.handle(),
-            b"WebAssembly\0".as_ptr() as *const c_char,
-            &mut wasm.handle_mut()
+            c"WebAssembly".as_ptr(),
+            wasm.handle_mut()
         ));
         rooted!(in(rt.cx()) let mut wasm_obj = wasm.to_object());
         assert!(JS_GetProperty(
             rt.cx(),
             wasm_obj.handle(),
-            b"Module\0".as_ptr() as *const c_char,
-            &mut wasm_module.handle_mut()
+            c"Module".as_ptr(),
+            wasm_module.handle_mut()
         ));
         assert!(JS_GetProperty(
             rt.cx(),
             wasm_obj.handle(),
-            b"Instance\0".as_ptr() as *const c_char,
-            &mut wasm_instance.handle_mut()
+            c"Instance".as_ptr(),
+            wasm_instance.handle_mut()
         ));
+
+        // ptr needs to be aligned to 8
+        assert!(HI_WASM.0.as_ptr() as usize % 8 == 0);
 
         // Construct Wasm module from bytes.
         rooted!(in(rt.cx()) let mut module = null_mut::<JSObject>());
         {
             let array_buffer = JS::NewArrayBufferWithUserOwnedContents(
                 rt.cx(),
-                HI_WASM.len(),
-                HI_WASM.as_ptr() as _,
+                HI_WASM.0.len(),
+                HI_WASM.0.as_ptr() as _,
             );
             assert!(!array_buffer.is_null());
 
             rooted!(in(rt.cx()) let val = ObjectValue(array_buffer));
-            let args = HandleValueArray {
-                length_: 1,
-                elements_: &*val,
-            };
+            let args = HandleValueArray::from(val.handle().into_handle());
 
             assert!(Construct1(
                 rt.cx(),
                 wasm_module.handle(),
                 &args,
-                &mut module.handle_mut()
+                module.handle_mut()
             ))
         }
 
@@ -109,7 +115,7 @@ fn run(rt: Runtime) {
             let function = JS_DefineFunction(
                 rt.cx(),
                 env_import_obj.handle().into(),
-                b"bar\0".as_ptr() as *const c_char,
+                c"bar".as_ptr(),
                 Some(bar),
                 1,
                 0,
@@ -122,18 +128,17 @@ fn run(rt: Runtime) {
             assert!(JS_SetProperty(
                 rt.cx(),
                 imports.handle(),
-                b"env\0".as_ptr() as *const c_char,
+                c"env".as_ptr(),
                 env_import.handle()
             ));
 
             rooted!(in(rt.cx()) let mut args = ValueArray::new([ObjectValue(module.get()), ObjectValue(imports.get())]));
-            let handle = args.handle();
 
             assert!(Construct1(
                 rt.cx(),
                 wasm_instance.handle(),
-                &handle.to_handle_value_array(),
-                &mut instance.handle_mut()
+                &HandleValueArray::from(&args),
+                instance.handle_mut()
             ));
         }
 
@@ -143,8 +148,8 @@ fn run(rt: Runtime) {
         assert!(JS_GetProperty(
             rt.cx(),
             instance.handle(),
-            b"exports\0".as_ptr() as *const c_char,
-            &mut exports.handle_mut()
+            c"exports".as_ptr(),
+            exports.handle_mut()
         ));
 
         rooted!(in(rt.cx()) let mut exports_obj = exports.to_object());
@@ -152,8 +157,8 @@ fn run(rt: Runtime) {
         assert!(JS_GetProperty(
             rt.cx(),
             exports_obj.handle(),
-            b"foo\0".as_ptr() as *const c_char,
-            &mut foo.handle_mut()
+            c"foo".as_ptr(),
+            foo.handle_mut()
         ));
 
         // call foo and get its result
@@ -162,7 +167,7 @@ fn run(rt: Runtime) {
             rt.cx(),
             JS::UndefinedHandleValue,
             foo.handle().into(),
-            &HandleValueArray::new(),
+            &HandleValueArray::empty(),
             rval.handle_mut().into()
         ));
 

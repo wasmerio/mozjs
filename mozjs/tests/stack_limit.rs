@@ -14,6 +14,10 @@ fn stack_limit() {
     let engine = JSEngine::init().unwrap();
     let runtime = Runtime::new(engine.handle());
     let context = runtime.cx();
+    #[cfg(feature = "debugmozjs")]
+    unsafe {
+        mozjs::jsapi::SetGCZeal(context, 2, 1);
+    }
     let h_option = OnNewGlobalHookOption::FireOnNewGlobalHook;
     let c_option = RealmOptions::default();
 
@@ -26,13 +30,13 @@ fn stack_limit() {
             &*c_option,
         ));
         rooted!(in(context) let mut rval = UndefinedValue());
+        let options = runtime.new_compile_options("test", 1);
         assert!(runtime
             .evaluate_script(
                 global.handle(),
                 "function f() { f.apply() } f()",
-                "test",
-                1,
-                rval.handle_mut()
+                rval.handle_mut(),
+                options,
             )
             .is_err());
     }

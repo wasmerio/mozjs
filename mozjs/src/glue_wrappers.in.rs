@@ -17,7 +17,14 @@ wrap!(glue: pub fn RUST_INTERNED_STRING_TO_JSID(cx: *mut JSContext, str_: *mut J
 wrap!(glue: pub fn AppendToIdVector(v: MutableHandleIdVector, id: HandleId) -> bool);
 wrap!(glue: pub fn JS_GetPromiseResult(promise: HandleObject, dest: MutableHandleValue));
 wrap!(glue: pub fn JS_GetScriptPrivate(script: *mut JSScript, dest: MutableHandleValue));
+wrap!(glue: pub fn JS_MaybeGetScriptPrivate(obj: *mut JSObject, dest: MutableHandleValue));
 wrap!(glue: pub fn JS_GetModulePrivate(module: *mut JSObject, dest: MutableHandleValue));
+wrap!(glue: pub fn JS_GetScriptedCallerPrivate(cx: *mut JSContext, dest: MutableHandleValue));
+wrap!(glue: pub fn JS_GetRegExpFlags(cx: *mut JSContext, obj: HandleObject, flags: *mut RegExpFlags));
 wrap!(glue: pub fn EncodeStringToUTF8(cx: *mut JSContext, str_: HandleString, cb: EncodedStringCallback));
 wrap!(glue: pub fn SetDataPropertyDescriptor(desc: MutableHandle<PropertyDescriptor>, value: HandleValue, attrs: u32));
 wrap!(glue: pub fn SetAccessorPropertyDescriptor(desc: MutableHandle<PropertyDescriptor>, getter: HandleObject, setter: HandleObject, attrs: u32));
+wrap!(glue: pub fn StackGCVectorValueLength(vec: Handle<StackGCVector<Value, TempAllocPolicy>>) -> u32);
+wrap!(glue: pub fn StackGCVectorStringLength(vec: Handle<StackGCVector<*mut JSString, TempAllocPolicy>>) -> u32);
+wrap!(glue: pub fn StackGCVectorValueAtIndex(vec: Handle<StackGCVector<Value, TempAllocPolicy>>, index: u32) -> *const Value);
+wrap!(glue: pub fn StackGCVectorStringAtIndex(vec: Handle<StackGCVector<*mut JSString, TempAllocPolicy>>, index: u32) -> *const *mut JSString);

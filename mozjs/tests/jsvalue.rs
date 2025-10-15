@@ -4,11 +4,8 @@
 
 use std::ptr;
 
-use mozjs::jsapi::{JSAutoRealm, JSObject, JS_NewGlobalObject, OnNewGlobalHookOption, Type};
-use mozjs::jsval::{
-    BigIntValue, BooleanValue, DoubleValue, Int32Value, NullValue, ObjectValue, StringValue,
-    UndefinedValue,
-};
+use mozjs::jsapi::{JS_NewGlobalObject, OnNewGlobalHookOption};
+use mozjs::jsval::{BooleanValue, DoubleValue, Int32Value, NullValue, UndefinedValue};
 use mozjs::rooted;
 use mozjs::rust::{
     HandleObject, JSEngine, RealmOptions, RootedGuard, Runtime, SIMPLE_GLOBAL_CLASS,
@@ -26,8 +23,9 @@ unsafe fn tester<F: Fn(RootedGuard<JSVal>)>(
 ) {
     let cx = rt.cx();
     rooted!(in(cx) let mut rval = UndefinedValue());
+    let options = rt.new_compile_options("test", 1);
     assert!(rt
-        .evaluate_script(global, js, "test", 1, rval.handle_mut())
+        .evaluate_script(global, js, rval.handle_mut(), options)
         .is_ok());
     test(rval);
 
@@ -40,6 +38,10 @@ fn jsvalues() {
     let engine = JSEngine::init().unwrap();
     let runtime = Runtime::new(engine.handle());
     let context = runtime.cx();
+    #[cfg(feature = "debugmozjs")]
+    unsafe {
+        mozjs::jsapi::SetGCZeal(context, 2, 1);
+    }
     let h_option = OnNewGlobalHookOption::FireOnNewGlobalHook;
     let c_option = RealmOptions::default();
 

@@ -5,6 +5,7 @@
 use crate::jsapi::glue::JS_ForOfIteratorInit;
 use crate::jsapi::glue::JS_ForOfIteratorNext;
 use crate::jsapi::jsid;
+use crate::jsapi::mozilla;
 use crate::jsapi::JSAutoRealm;
 use crate::jsapi::JSContext;
 use crate::jsapi::JSErrNum;
@@ -18,14 +19,13 @@ use crate::jsapi::JSPropertySpec;
 use crate::jsapi::JSPropertySpec_Kind;
 use crate::jsapi::JSPropertySpec_Name;
 use crate::jsapi::JS;
-use crate::jsgc::RootKind;
+use crate::jsapi::JS::Scalar::Type;
+use crate::jsgc::{RootKind, Rooted, RootedBase, ValueArray};
 use crate::jsid::VoidId;
-use crate::jsval::UndefinedValue;
+use crate::jsval::{JSVal, UndefinedValue};
 
-use crate::jsapi::JS::{ObjectOpResult, ObjectOpResult_SpecialCodes};
+use std::marker::PhantomData;
 use std::ops::Deref;
-use std::ops::DerefMut;
-use std::os::raw::c_void;
 use std::ptr;
 
 impl<T> Deref for JS::Handle<T> {
@@ -41,12 +41,6 @@ impl<T> Deref for JS::MutableHandle<T> {
 
     fn deref<'a>(&'a self) -> &'a T {
         unsafe { &*self.ptr }
-    }
-}
-
-impl<T> DerefMut for JS::MutableHandle<T> {
-    fn deref_mut<'a>(&'a mut self) -> &'a mut T {
-        unsafe { &mut *self.ptr }
     }
 }
 
@@ -87,7 +81,7 @@ impl<T> JS::Handle<T> {
     pub unsafe fn from_marked_location(ptr: *const T) -> JS::Handle<T> {
         JS::Handle {
             ptr: ptr as *mut T,
-            _phantom_0: ::std::marker::PhantomData,
+            _phantom_0: PhantomData,
         }
     }
 }
@@ -96,7 +90,7 @@ impl<T> JS::MutableHandle<T> {
     pub unsafe fn from_marked_location(ptr: *mut T) -> JS::MutableHandle<T> {
         JS::MutableHandle {
             ptr,
-            _phantom_0: ::std::marker::PhantomData,
+            _phantom_0: PhantomData,
         }
     }
 
@@ -117,6 +111,13 @@ impl<T> JS::MutableHandle<T> {
     {
         unsafe { *self.ptr = v }
     }
+
+    /// The returned pointer is aliased by a pointer that the GC will read
+    /// through, and thus `&mut` references created from it must not be held
+    /// across GC pauses.
+    pub fn as_ptr(self) -> *mut T {
+        self.ptr
+    }
 }
 
 impl JS::HandleValue {
@@ -130,17 +131,37 @@ impl JS::HandleValue {
 }
 
 impl JS::HandleValueArray {
-    pub fn new() -> JS::HandleValueArray {
+    pub fn empty() -> JS::HandleValueArray {
         JS::HandleValueArray {
             length_: 0,
             elements_: ptr::null(),
         }
     }
+}
 
-    pub unsafe fn from_rooted_slice(values: &[JS::Value]) -> JS::HandleValueArray {
+impl<const N: usize> From<&Rooted<ValueArray<N>>> for JS::HandleValueArray {
+    fn from(array: &Rooted<ValueArray<N>>) -> JS::HandleValueArray {
         JS::HandleValueArray {
-            length_: values.len(),
-            elements_: values.as_ptr(),
+            length_: N,
+            elements_: array.data.get_ptr(),
+        }
+    }
+}
+
+impl From<&JS::CallArgs> for JS::HandleValueArray {
+    fn from(args: &JS::CallArgs) -> JS::HandleValueArray {
+        JS::HandleValueArray {
+            length_: args.argc_ as usize,
+            elements_: args.argv_ as *const _,
+        }
+    }
+}
+
+impl From<JS::Handle<JSVal>> for JS::HandleValueArray {
+    fn from(handle: JS::Handle<JSVal>) -> JS::HandleValueArray {
+        JS::HandleValueArray {
+            length_: 1,
+            elements_: handle.ptr,
         }
     }
 }
@@ -178,7 +199,7 @@ impl JS::AutoGCRooter {
         #[allow(non_snake_case)]
         let autoGCRooters: *mut _ = {
             let rooting_cx = cx as *mut JS::RootingContext;
-            &mut (*rooting_cx).autoGCRooters_[self.kind_ as usize]
+            &mut (*rooting_cx).autoGCRooters_.0[self.kind_ as usize]
         };
         self.stackTop = autoGCRooters as *mut *mut _;
         self.down = *autoGCRooters as *mut _;
@@ -302,6 +323,11 @@ impl JS::CallArgs {
             JS::MutableHandleValue::from_marked_location(self.argv_.offset(self.argc_ as isize))
         }
     }
+
+    #[inline]
+    pub fn is_constructing(&self) -> bool {
+        unsafe { (*self.argv_.offset(-1)).is_magic() }
+    }
 }
 
 impl JSJitSetterCallArgs {
@@ -377,42 +403,50 @@ impl JSNativeWrapper {
     }
 }
 
-impl<T> JS::Rooted<T> {
-    pub fn new_unrooted() -> JS::Rooted<T> {
-        JS::Rooted {
-            stack: ::std::ptr::null_mut(),
-            prev: ::std::ptr::null_mut(),
-            ptr: unsafe { ::std::mem::zeroed() },
-        }
+impl RootedBase {
+    unsafe fn add_to_root_stack(this: *mut Self, cx: *mut JSContext, kind: JS::RootKind) {
+        let stack = Self::get_root_stack(cx, kind);
+        (*this).stack = stack;
+        (*this).prev = *stack;
+
+        *stack = this as usize as _;
+    }
+
+    unsafe fn remove_from_root_stack(&mut self) {
+        assert!(*self.stack == self as *mut _ as usize as _);
+        *self.stack = self.prev;
+    }
+
+    unsafe fn get_root_stack(cx: *mut JSContext, kind: JS::RootKind) -> *mut *mut RootedBase {
+        let kind = kind as usize;
+        let rooting_cx = Self::get_rooting_context(cx);
+        &mut (*rooting_cx).stackRoots_.0[kind] as *mut _ as *mut _
     }
 
     unsafe fn get_rooting_context(cx: *mut JSContext) -> *mut JS::RootingContext {
         cx as *mut JS::RootingContext
     }
+}
 
-    unsafe fn get_root_stack(cx: *mut JSContext) -> *mut *mut JS::Rooted<*mut c_void>
-    where
-        T: RootKind,
-    {
-        let kind = T::rootKind() as usize;
-        let rooting_cx = Self::get_rooting_context(cx);
-        &mut (*rooting_cx).stackRoots_[kind] as *mut _ as *mut _
+impl<T: RootKind> JS::Rooted<T> {
+    pub fn new_unrooted(initial: T) -> JS::Rooted<T> {
+        JS::Rooted {
+            vtable: T::VTABLE,
+            base: RootedBase {
+                stack: ptr::null_mut(),
+                prev: ptr::null_mut(),
+            },
+            data: initial,
+        }
     }
 
-    pub unsafe fn add_to_root_stack(&mut self, cx: *mut JSContext)
-    where
-        T: RootKind,
-    {
-        let stack = Self::get_root_stack(cx);
-        self.stack = stack;
-        self.prev = *stack;
-
-        *stack = self as *mut _ as usize as _;
+    pub unsafe fn add_to_root_stack(this: *mut Self, cx: *mut JSContext) {
+        let base = unsafe { &raw mut (*this).base };
+        RootedBase::add_to_root_stack(base, cx, T::KIND)
     }
 
     pub unsafe fn remove_from_root_stack(&mut self) {
-        assert!(*self.stack == self as *mut _ as usize as _);
-        *self.stack = self.prev;
+        self.base.remove_from_root_stack()
     }
 }
 
@@ -524,10 +558,10 @@ impl JS::ObjectOpResult {
     }
 }
 
-impl Default for ObjectOpResult {
-    fn default() -> ObjectOpResult {
-        ObjectOpResult {
-            code_: ObjectOpResult_SpecialCodes::Uninitialized as usize,
+impl Default for JS::ObjectOpResult {
+    fn default() -> JS::ObjectOpResult {
+        JS::ObjectOpResult {
+            code_: JS::ObjectOpResult_SpecialCodes::Uninitialized as usize,
         }
     }
 }
@@ -543,5 +577,45 @@ impl JS::ForOfIterator {
 
     pub unsafe fn next(&mut self, val: JS::MutableHandleValue, done: *mut bool) -> bool {
         JS_ForOfIteratorNext(self, val, done)
+    }
+}
+
+impl<T> mozilla::Range<T> {
+    pub fn new(start: &mut T, end: &mut T) -> mozilla::Range<T> {
+        mozilla::Range {
+            mStart: mozilla::RangedPtr {
+                mPtr: start,
+                #[cfg(feature = "debugmozjs")]
+                mRangeStart: start,
+                #[cfg(feature = "debugmozjs")]
+                mRangeEnd: end,
+                _phantom_0: PhantomData,
+            },
+            mEnd: mozilla::RangedPtr {
+                mPtr: end,
+                #[cfg(feature = "debugmozjs")]
+                mRangeStart: start,
+                #[cfg(feature = "debugmozjs")]
+                mRangeEnd: end,
+                _phantom_0: PhantomData,
+            },
+            _phantom_0: PhantomData,
+        }
+    }
+}
+
+impl Type {
+    /// Returns byte size of Type (if possible to determine)
+    ///
+    /// <https://searchfox.org/mozilla-central/rev/396a6123691f7ab3ffb449dcbe95304af6f9df3c/js/public/ScalarType.h#66>
+    pub const fn byte_size(&self) -> Option<usize> {
+        match self {
+            Type::Int8 | Type::Uint8 | Type::Uint8Clamped => Some(1),
+            Type::Int16 | Type::Uint16 | Type::Float16 => Some(2),
+            Type::Int32 | Type::Uint32 | Type::Float32 => Some(4),
+            Type::Int64 | Type::Float64 | Type::BigInt64 | Type::BigUint64 => Some(8),
+            Type::Simd128 => Some(16),
+            Type::MaxTypedArrayViewType => None,
+        }
     }
 }

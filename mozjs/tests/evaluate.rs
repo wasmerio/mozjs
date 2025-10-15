@@ -14,6 +14,10 @@ fn evaluate() {
     let engine = JSEngine::init().unwrap();
     let runtime = Runtime::new(engine.handle());
     let context = runtime.cx();
+    #[cfg(feature = "debugmozjs")]
+    unsafe {
+        mozjs::jsapi::SetGCZeal(context, 2, 1);
+    }
     let h_option = OnNewGlobalHookOption::FireOnNewGlobalHook;
     let c_option = RealmOptions::default();
 
@@ -27,8 +31,9 @@ fn evaluate() {
         ));
 
         rooted!(in(context) let mut rval = UndefinedValue());
+        let options = runtime.new_compile_options("test", 1);
         assert!(runtime
-            .evaluate_script(global.handle(), "1 + 1", "test", 1, rval.handle_mut())
+            .evaluate_script(global.handle(), "1 + 1", rval.handle_mut(), options)
             .is_ok());
         assert_eq!(rval.get().to_int32(), 2);
     }

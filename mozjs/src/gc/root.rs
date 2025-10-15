@@ -1,80 +1,132 @@
 use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
+use std::mem::MaybeUninit;
+use std::ops::Deref;
 use std::ptr;
 
-use crate::jsapi::{jsid, JSContext, JSFunction, JSObject, JSScript, JSString, Symbol, Value};
-use mozjs_sys::jsgc::{GCMethods, RootKind, Rooted};
+use crate::jsapi::{jsid, JSContext, JSFunction, JSObject, JSScript, JSString, Symbol, Value, JS};
+use mozjs_sys::jsgc::{RootKind, Rooted};
 
 use crate::jsapi::Handle as RawHandle;
 use crate::jsapi::HandleValue as RawHandleValue;
 use crate::jsapi::MutableHandle as RawMutableHandle;
 use mozjs_sys::jsgc::IntoHandle as IntoRawHandle;
 use mozjs_sys::jsgc::IntoMutableHandle as IntoRawMutableHandle;
+use mozjs_sys::jsgc::ValueArray;
 
 /// Rust API for keeping a Rooted value in the context's root stack.
 /// Example usage: `rooted!(in(cx) let x = UndefinedValue());`.
 /// `RootedGuard::new` also works, but the macro is preferred.
-pub struct RootedGuard<'a, T: 'a + RootKind + GCMethods> {
-    root: &'a mut Rooted<T>,
+#[cfg_attr(
+    feature = "crown",
+    crown::unrooted_must_root_lint::allow_unrooted_interior
+)]
+pub struct RootedGuard<'a, T: 'a + RootKind> {
+    root: *mut Rooted<T>,
+    anchor: PhantomData<&'a mut Rooted<T>>,
 }
 
-impl<'a, T: 'a + RootKind + GCMethods> RootedGuard<'a, T> {
-    pub fn new(cx: *mut JSContext, root: &'a mut Rooted<T>, initial: T) -> Self {
-        root.ptr = initial;
+impl<'a, T: 'a + RootKind> RootedGuard<'a, T> {
+    pub fn new(cx: *mut JSContext, root: &'a mut MaybeUninit<Rooted<T>>, initial: T) -> Self {
+        let root: *mut Rooted<T> = root.write(Rooted::new_unrooted(initial));
+
         unsafe {
-            root.add_to_root_stack(cx);
+            Rooted::add_to_root_stack(root, cx);
+            RootedGuard {
+                root,
+                anchor: PhantomData,
+            }
         }
-        RootedGuard { root }
     }
 
     pub fn handle(&'a self) -> Handle<'a, T> {
-        Handle::new(&self.root.ptr)
+        Handle::new(&self)
     }
 
     pub fn handle_mut(&mut self) -> MutableHandle<T> {
-        unsafe { MutableHandle::from_marked_location(&mut self.root.ptr) }
+        unsafe { MutableHandle::from_marked_location(self.as_ptr()) }
+    }
+
+    pub fn as_ptr(&self) -> *mut T {
+        // SAFETY: self.root points to an inbounds allocation
+        unsafe { (&raw mut (*self.root).data) }
+    }
+
+    /// Safety: GC must not run during the lifetime of the returned reference.
+    pub unsafe fn as_mut<'b>(&'b mut self) -> &'b mut T
+    where
+        'a: 'b,
+    {
+        &mut *(self.as_ptr())
     }
 
     pub fn get(&self) -> T
     where
         T: Copy,
     {
-        self.root.ptr
+        *self.deref()
     }
 
     pub fn set(&mut self, v: T) {
-        self.root.ptr = v;
+        // SAFETY: GC does not run during this block
+        unsafe { *self.as_mut() = v };
     }
 }
 
-impl<'a, T: 'a + RootKind + GCMethods> Deref for RootedGuard<'a, T> {
+impl<'a, T> RootedGuard<'a, Option<T>>
+where
+    Option<T>: RootKind,
+{
+    pub fn take(&mut self) -> Option<T> {
+        // Safety: No GC occurs during take call
+        unsafe { self.as_mut().take() }
+    }
+}
+
+impl<'a, T: 'a + RootKind> Deref for RootedGuard<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
-        &self.root.ptr
+        unsafe { &(*self.root).data }
     }
 }
 
-impl<'a, T: 'a + RootKind + GCMethods> DerefMut for RootedGuard<'a, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.root.ptr
-    }
-}
-
-impl<'a, T: 'a + RootKind + GCMethods> Drop for RootedGuard<'a, T> {
+impl<'a, T: 'a + RootKind> Drop for RootedGuard<'a, T> {
     fn drop(&mut self) {
+        // SAFETY: The `drop_in_place` invariants are upheld:
+        // https://doc.rust-lang.org/std/ptr/fn.drop_in_place.html#safety
         unsafe {
-            self.root.ptr = T::initial();
-            self.root.remove_from_root_stack();
+            let ptr = self.as_ptr();
+            ptr::drop_in_place(ptr);
+            ptr.write_bytes(0, 1);
+        }
+
+        unsafe {
+            (*self.root).remove_from_root_stack();
         }
     }
 }
 
-#[derive(Clone, Copy)]
+impl<'a, const N: usize> From<&RootedGuard<'a, ValueArray<N>>> for JS::HandleValueArray {
+    fn from(array: &RootedGuard<'a, ValueArray<N>>) -> JS::HandleValueArray {
+        JS::HandleValueArray::from(unsafe { &*array.root })
+    }
+}
+
 pub struct Handle<'a, T: 'a> {
     pub(crate) ptr: &'a T,
 }
 
-#[derive(Copy, Clone)]
+impl<T> Clone for Handle<'_, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for Handle<'_, T> {}
+
+#[cfg_attr(
+    feature = "crown",
+    crown::unrooted_must_root_lint::allow_unrooted_interior
+)]
 pub struct MutableHandle<'a, T: 'a> {
     pub(crate) ptr: *mut T,
     anchor: PhantomData<&'a mut T>,
@@ -158,7 +210,7 @@ impl<'a, T> MutableHandle<'a, T> {
         unsafe { Handle::new(&*self.ptr) }
     }
 
-    pub fn new(ptr: &'a mut T) -> Self {
+    pub(crate) fn new(ptr: &'a mut T) -> Self {
         Self {
             ptr,
             anchor: PhantomData,
@@ -179,8 +231,43 @@ impl<'a, T> MutableHandle<'a, T> {
         unsafe { *self.ptr = v }
     }
 
+    /// Safety: GC must not run during the lifetime of the returned reference.
+    pub unsafe fn as_mut<'b>(&'b mut self) -> &'b mut T
+    where
+        'a: 'b,
+    {
+        &mut *(self.ptr)
+    }
+
+    /// Creates a copy of this object, with a shorter lifetime, that holds a
+    /// mutable borrow on the original object. When you write code that wants
+    /// to use a `MutableHandle` more than once, you will typically need to
+    /// call `reborrow` on all but the last usage. The same way that you might
+    /// naively clone a type to allow it to be passed to multiple functions.
+    ///
+    /// This is the same thing that happens with regular mutable references,
+    /// except there the compiler implicitly inserts the reborrow calls. Until
+    /// rust gains a feature to implicitly reborrow other types, we have to do
+    /// it by hand.
+    pub fn reborrow<'b>(&'b mut self) -> MutableHandle<'b, T>
+    where
+        'a: 'b,
+    {
+        MutableHandle {
+            ptr: self.ptr,
+            anchor: PhantomData,
+        }
+    }
+
     pub(crate) fn raw(&mut self) -> RawMutableHandle<T> {
         unsafe { RawMutableHandle::from_marked_location(self.ptr) }
+    }
+}
+
+impl<'a, T> MutableHandle<'a, Option<T>> {
+    pub fn take(&mut self) -> Option<T> {
+        // Safety: No GC occurs during take call
+        unsafe { self.as_mut().take() }
     }
 }
 
@@ -189,12 +276,6 @@ impl<'a, T> Deref for MutableHandle<'a, T> {
 
     fn deref(&self) -> &T {
         unsafe { &*self.ptr }
-    }
-}
-
-impl<'a, T> DerefMut for MutableHandle<'a, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.ptr }
     }
 }
 

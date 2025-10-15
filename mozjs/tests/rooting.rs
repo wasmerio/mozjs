@@ -8,7 +8,7 @@ use std::ptr;
 
 use mozjs::jsapi::JSPROP_ENUMERATE;
 use mozjs::jsapi::{
-    GetRealmObjectPrototype, JS_NewGlobalObject, JS_NewObjectWithGivenProto, JS_SetGCZeal,
+    GetRealmObjectPrototype, JS_NewGlobalObject, JS_NewObjectWithGivenProto, SetGCZeal,
 };
 use mozjs::jsapi::{
     JSAutoRealm, JSClass, JSContext, JSFunction, JSFunctionSpec, JSNativeWrapper, JSObject,
@@ -27,7 +27,7 @@ fn rooting() {
     let c_option = RealmOptions::default();
 
     unsafe {
-        JS_SetGCZeal(context, 2, 1);
+        SetGCZeal(context, 2, 1);
         rooted!(in(context) let global = JS_NewGlobalObject(
             context,
             &SIMPLE_GLOBAL_CLASS,
@@ -62,7 +62,7 @@ unsafe extern "C" fn generic_method(_: *mut JSContext, _: u32, _: *mut Value) ->
 const METHODS: &'static [JSFunctionSpec] = &[
     JSFunctionSpec {
         name: JSPropertySpec_Name {
-            string_: b"addEventListener\0" as *const u8 as *const libc::c_char,
+            string_: c"addEventListener".as_ptr(),
         },
         call: JSNativeWrapper {
             op: Some(generic_method),
@@ -74,7 +74,7 @@ const METHODS: &'static [JSFunctionSpec] = &[
     },
     JSFunctionSpec {
         name: JSPropertySpec_Name {
-            string_: b"removeEventListener\0" as *const u8 as *const libc::c_char,
+            string_: c"removeEventListener".as_ptr(),
         },
         call: JSNativeWrapper {
             op: Some(generic_method),
@@ -86,7 +86,7 @@ const METHODS: &'static [JSFunctionSpec] = &[
     },
     JSFunctionSpec {
         name: JSPropertySpec_Name {
-            string_: b"dispatchEvent\0" as *const u8 as *const libc::c_char,
+            string_: c"dispatchEvent".as_ptr(),
         },
         call: JSNativeWrapper {
             op: Some(generic_method),
@@ -100,7 +100,7 @@ const METHODS: &'static [JSFunctionSpec] = &[
 ];
 
 static CLASS: JSClass = JSClass {
-    name: b"EventTargetPrototype\0" as *const u8 as *const libc::c_char,
+    name: c"EventTargetPrototype".as_ptr(),
     flags: 0,
     cOps: 0 as *const _,
     spec: ptr::null(),

@@ -11,6 +11,8 @@ js/src/irregexp/*.o
 js/src/jit/*.o
 js/src/util/*.o
 js/src/wasm/*.o
+js/src/xsum/*.o
+js/src/zydis/*.o
 memory/build/*.o
 memory/mozalloc/*.o
 mfbt/*.o

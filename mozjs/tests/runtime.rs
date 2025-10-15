@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#![cfg(not(target_arch = "wasm32"))]
+
 use std::ptr;
 use std::sync::mpsc::channel;
 use std::thread;
@@ -17,6 +19,10 @@ fn runtime() {
     let engine = JSEngine::init().unwrap();
     let runtime = Runtime::new(engine.handle());
     let context = runtime.cx();
+    #[cfg(feature = "debugmozjs")]
+    unsafe {
+        mozjs::jsapi::SetGCZeal(context, 2, 1);
+    }
     let h_option = OnNewGlobalHookOption::FireOnNewGlobalHook;
     let c_option = RealmOptions::default();
 
@@ -36,7 +42,7 @@ fn runtime() {
     let (sender, receiver) = channel();
     thread::spawn(move || {
         let runtime = unsafe { Runtime::create_with_parent(parent) };
-        assert!(!Runtime::get().is_null());
+        assert!(Runtime::get().is_some());
         drop(runtime);
         let _ = sender.send(());
     });
@@ -44,7 +50,7 @@ fn runtime() {
 }
 
 unsafe extern "C" fn finalize(_fop: *mut GCContext, _object: *mut JSObject) {
-    assert!(!Runtime::get().is_null());
+    assert!(Runtime::get().is_some());
 }
 
 static CLASS_OPS: JSClassOps = JSClassOps {
@@ -61,7 +67,7 @@ static CLASS_OPS: JSClassOps = JSClassOps {
 };
 
 static CLASS: JSClass = JSClass {
-    name: b"EventTargetPrototype\0" as *const u8 as *const libc::c_char,
+    name: c"EventTargetPrototype".as_ptr(),
     flags: JSCLASS_FOREGROUND_FINALIZE,
     cOps: &CLASS_OPS as *const JSClassOps,
     spec: ptr::null(),

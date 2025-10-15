@@ -6,17 +6,53 @@ that are battle-tested in [Servo](https://servo.org/), split in two crates:
 - `mozjs-sys`:  SpiderMonkey and low-level Rust bindings to its C++ API.
 - `mozjs`: Higher-level bindings to the SpiderMonkey API.
 
-Mozjs is currently tracking SpiderMonkey on [ESR-115](https://searchfox.org/mozilla-esr115/source/) branch
-(currently version 115.3).
+Mozjs is currently tracking SpiderMonkey on [mozilla-esr140](https://searchfox.org/mozilla-esr140/source/) branch
+(currently version 140.0).
 
-## Building
+## Building from Pre-built Archive
+
+SpiderMonkey is very large and can take a long time to compile. If building with default
+features, `mozjs` provides a pre-built archive which can be linked against. You can also create
+your own archive and link to it. `mozjs` currently offers two environment variables to enable
+this feature:
+
+- `MOZJS_CREATE_ARCHIVE=1` will create a SpiderMonkey binary archive for release usage. It will
+   be created in the `target` directory.
+- `MOZJS_ARCHIVE` can be used to build against a pre-built archive. Using this flag, compiling
+   SpiderMonkey and the bindgen wrappers is unnecessary. There are two ways to use it:
+   - `MOZJS_ARCHIVE=path/to/libmozjs.tar.gz`: This option will look for the archive at the local
+      path, extract it, and then link against the static libraries included in the archive.
+   - `MOZJS_ARCHIVE=https://url/to/release/page`: This option will download the archive from
+      the provided base URL, extract it, and then link against the static libraries included in the
+      archive. The base URL should  be similar to `https://github.com/servo/mozjs/releases`.
+      The build script will append the version and target accordingly. See the files at the example
+      URL for more details.
+- `MOZJS_ATTESTATION` allows uses [Github Attestations] to verify the integrity of the prebuilt archive
+  and that the archive was built by in CI, for a valid commit on the main branch of the servo/mozjs repo.
+  Attestation verification requires having a recent version of the github cli tool [gh] installed.
+  If artifact verification is enabled and reports an error, the prebuilt archive will be discarded and 
+  mozjs will be built from source instead.
+  Available values are:
+  - unset (default): Equivalent to `off`.
+  - `MOZJS_ATTESTATION=<0|false|off>`: Disable artifact verification.
+  - `MOZJS_ATTESTATION=<1|true|on|lenient>`: Enable artifact verification and fallback to compiling from source if 
+      verification fails or is not possible.
+  - `MOZJS_ATTESTATION=<2|strict|force>`: Fail the build if artifact verification fails.
+
+[Github Attestations]: https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds
+[gh]: https://cli.github.com/
+
+## Building from Source
+
+If `MOZJS_FROM_SOURCE=1` or `MOZJS_CREATE_ARCHIVE` are enabled or linking against a
+pre-built archive fails, `mozjs` will build SpiderMonkey from source.
 
 ### Linux
 
 Install Python, Clang and `build-essential`, for example on a Debian-based Linux:
 
 ```sh
-sudo apt-get install build-essential python3 python3-distutils llvm libclang-dev clang
+sudo apt-get install build-essential python3 python3-distutils llvm libclang-dev clang curl
 ```
 
 If you have more than one version of Clang installed, you can set the `LIBCLANG_PATH`
@@ -27,25 +63,50 @@ export LIBCLANG_PATH=/usr/lib/clang/4.0/lib
 ```
 
 ### Windows
-
 1. Download and unzip [MozTools 4.0](https://github.com/servo/servo-build-deps/releases/download/msvc-deps/moztools-4.0.zip).
 
-2. Download and install Clang for Windows (64 bit) from <https://releases.llvm.org/download.html>.
+2. Download and install Clang (LLVM version 14 or greater) for Windows (64 bit) from <https://releases.llvm.org/download.html>. 
+ 
+3. Download and install `Visual Studio 2019` or `Visual Studio 2022` with the `C++ desktop development` component and the following features:
 
-3. Open up a shell configured to use Visual Studio. This could be the
-   one included with Visual Studio (e.g. Visual Studio 2017 / X64 Native
-   Tools Command Prompt for VS 2017) or a shell in which you have run:
+   - Windows 10 SDK
+   - ATL
+   - MFC
+  
+   To install these dependencies from the command line, you can download 
+   [vs_buildtools.exe](https://aka.ms/vs/17/release/vs_buildtools.exe)
+   and run the following command:
 
-   ```shell
-   "c:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+   ```
+   vs_BuildTools.exe^
+      --add Microsoft.Component.MSBuild^
+      --add Microsoft.VisualStudio.Component.CoreBuildTools^
+      --add Microsoft.VisualStudio.Workload.MSBuildTools^
+      --add Microsoft.VisualStudio.Component.Windows11SDK^
+      --add Microsoft.VisualStudio.Component.VC.CoreBuildTools^
+      --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64^
+      --add Microsoft.VisualStudio.Component.VC.Redist.14.Latest^
+      --add Microsoft.VisualStudio.Component.VC.ATL^
+      --add Microsoft.VisualStudio.Component.VC.ATLMFC^
+      --add Microsoft.VisualStudio.Component.VC.CoreIde^
+      --add Microsoft.VisualStudio.ComponentGroup.NativeDesktop.Core^
+      --add Microsoft.VisualStudio.Workload.VCTools
    ```
 
-4. Set the following environment variables according to where you installed
-   the dependencies above:
+4. Install [Python 3.11](https://www.python.org/downloads/windows/).
 
-   ```shell
-    set LIBCLANG_PATH=C:\Program Files\LLVM\lib
-    set MOZTOOLS_PATH=C:\path\to\moztools-4.0
+  - Ensure that Python is added to the system `PATH`
+  - Ensure that a `PYTHON` and `PYTHON3` environment variable point to the Python binary (ie `C:\Python311\python.exe`
+
+5. Set the following environment variables according to where you installed
+   the dependencies above:
+   
+   ```powershell
+    $env:LIBCLANG_PATH="C:\Program Files\LLVM\lib"
+    $env:MOZTOOLS_PATH="C:\path\to\moztools-4.0"
+    $env:CC="clang-cl"
+    $env:CXX="clang-cl"
+    $env:LD="lld-link"
    ```
 
 ### Run Cargo
@@ -80,8 +141,8 @@ mozjs = { path = "../mozjs/mozjs" }
 
 In order to upgrade to a new version of SpiderMonkey:
 
-1. Find the mozilla-esr115 commit for the desired version of SpiderMonkey, at
-   <https://treeherder.mozilla.org/#/jobs?repo=mozilla-esr115&filter-searchStr=spidermonkey%20pkg>.
+1. Find the mozilla-release commit for the desired version of SpiderMonkey, at
+   <https://treeherder.mozilla.org/#/jobs?repo=mozilla-release&filter-searchStr=spidermonkey%20pkg>.
    You are looking for an SM(pkg) tagged with FIREFOX_RELEASE.
    Take a note of the commit number to the left (a hex number such as ac4fbb7aaca0).
 
@@ -94,11 +155,15 @@ In order to upgrade to a new version of SpiderMonkey:
 
 4. Run `python3 ./mozjs-sys/etc/update.py path/to/tarball`.
 
-5. Update `mozjs-sys/etc/COMMIT` with the commit number.
+5. Update `mozjs-sys/etc/COMMIT` with the commit number and mozjs-sys version with SpiderMonkey version.
 
 6. Run `./mozjs/src/generate_wrappers.sh` to regenerate wrappers.
 
-7. Build and test the bindings as above, then submit a PR!
+7. Build and test the bindings as above.
+
+8. Create a new release on github with the .tar.xz that you saved earlier. Name the new tag `mozjs-source-${COMMIT}` where `${COMMIT}` is the value stored in `mozjs/etc/COMMIT`.
+
+9. Submit a PR!
 
 8. Send companion PR to servo, as SpiderMonkey bump PR will not be merged
 until it's tested against servo.
