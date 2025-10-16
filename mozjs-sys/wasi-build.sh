@@ -30,7 +30,7 @@ ac_add_options --disable-js-shell
 ac_add_options --disable-export-js
 ac_add_options --disable-shared-js
 ac_add_options --build-backends=RecursiveMake
-ac_add_options --sysroot=${WASI_SYSROOT}
+ac_add_options --sysroot=$(wasixcc --print-sysroot)
 ac_add_options --enable-portable-baseline-interp
 EOF
 
@@ -76,10 +76,8 @@ esac
 
 cd mozjs
 
-MOZCONFIG="${mozconfig}" \
-CXXFLAGS="-matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix -ftls-model=local-exec -fno-trapping-math -lwasi-emulated-process-clocks -Wall" \
-CFLAGS="-matomics -mbulk-memory -mmutable-globals -pthread -mthread-model posix -ftls-model=local-exec -fno-trapping-math -lwasi-emulated-process-clocks -Wall" \
-  ./mach build
+MOZCONFIG="${mozconfig}" WASIXCC_RUN_WASM_OPT=no ./mach configure
+MOZCONFIG="${mozconfig}" ./mach build
 
 mkdir -p "${MOZ_OBJDIR}/mozjs-libs"
 
@@ -87,5 +85,5 @@ while read -r file; do
   cp ${MOZ_OBJDIR}/$file "${MOZ_OBJDIR}/mozjs-libs/"
 done < "${script_dir}/wasi-object-files.list"
 
-llvm-ar -r ${MOZ_OBJDIR}/mozjs-libs/libjs_static_extended.a ${MOZ_OBJDIR}/mozjs-libs/*.o
-llvm-ranlib ${MOZ_OBJDIR}/mozjs-libs/libjs_static_extended.a
+wasixar -scr ${MOZ_OBJDIR}/mozjs-libs/libjs_static_extended.a ${MOZ_OBJDIR}/mozjs-libs/*.o
+wasixranlib ${MOZ_OBJDIR}/mozjs-libs/libjs_static_extended.a

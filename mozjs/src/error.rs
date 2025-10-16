@@ -7,7 +7,6 @@
 #![deny(missing_docs)]
 
 use crate::jsapi::{JSContext, JSErrorFormatString, JSExnType, JS_ReportErrorNumberUTF8};
-use core::ptr::addr_of;
 use libc;
 use std::ffi::{CStr, CString};
 use std::{mem, os, ptr};

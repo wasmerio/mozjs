@@ -27,6 +27,7 @@
 #include "js/Proxy.h"
 #include "js/RegExp.h"
 #include "js/ScalarType.h"
+#include "js/Stream.h"
 #include "js/StructuredClone.h"
 #include "js/Wrapper.h"
 #include "js/experimental/JSStencil.h"

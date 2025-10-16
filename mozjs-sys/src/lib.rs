@@ -12,10 +12,10 @@ extern crate encoding_c;
 extern crate encoding_c_mem;
 #[cfg(feature = "intl")]
 extern crate icu_capi;
-#[cfg(feature = "libz-sys")]
-extern crate icu_capi;
 #[cfg(feature = "libz-rs")]
 extern crate libz_rs_sys;
+#[cfg(feature = "libz-sys")]
+extern crate libz_sys;
 
 // The jsimpls module just implements traits so can be private
 mod jsimpls;

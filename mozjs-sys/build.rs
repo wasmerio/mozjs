@@ -33,7 +33,7 @@ const ENV_VARS: &[&str] = &[
 
 // For `cc-rs`, `TARGET_XX` variables override non prefixed variables,
 // so we should mimic this behavior when building spidermonkey to have a consistent experience.
-const SM_TARGET_ENV_VARS: &'static [&'static str] = &[
+const SM_TARGET_ENV_VARS: &[&str] = &[
     "AR",
     "AS",
     "CC",
@@ -48,8 +48,7 @@ const SM_TARGET_ENV_VARS: &'static [&'static str] = &[
     "WASI_SDK_PATH",
 ];
 
-const EXTRA_FILES: &'static [&'static str] =
-    &["makefile.cargo", "makefile-wasi.cargo", "src/jsglue.cpp"];
+const EXTRA_FILES: &[&str] = &["makefile.cargo", "makefile-wasi.cargo", "src/jsglue.cpp"];
 
 /// The version of moztools we expect.
 #[cfg(windows)]
@@ -69,6 +68,9 @@ fn main() {
         if target.contains("wasmer") {
             env::set_var("TARGET_CC", "wasixcc");
             env::set_var("TARGET_CXX", "wasix++");
+            env::set_var("HOST_CC", "clang");
+            env::set_var("HOST_CXX", "clang++");
+            env::set_var("HOST_AR", "llvm-ar");
         } else if let Some(path) = wasi_sdk() {
             env::set_var(
                 "WASI_SYSROOT",
@@ -287,7 +289,7 @@ fn build_spidermonkey(build_dir: &Path) {
         .env("MOZ_OBJDIR", build_dir)
         .env("NO_RUST_PANIC_HOOK", "1")
         .output()
-        .expect(&format!("Failed to run `{:?}`", make));
+        .unwrap_or_else(|_| panic!("Failed to run `{:?}`", make));
 
     if !result.status.success() {
         println!(
@@ -351,7 +353,7 @@ fn build(build_dir: &Path, target: BuildTarget) {
     }
 
     build.flag(include_file_flag(build.get_compiler().is_like_msvc()));
-    build.flag(&js_config_path(build_dir));
+    build.flag(js_config_path(build_dir));
 
     for path in target.include_paths(build_dir) {
         build.include(path);
@@ -389,7 +391,7 @@ fn build_bindings(build_dir: &Path, target: BuildTarget) {
 
     if target == BuildTarget::JSGlue {
         builder = builder
-            .parse_callbacks(Box::new(JSGlueCargoCallbacks::default()))
+            .parse_callbacks(Box::new(JSGlueCargoCallbacks))
             .allowlist_file(target.path())
             .allowlist_recursively(false);
     }
@@ -405,9 +407,22 @@ fn build_bindings(build_dir: &Path, target: BuildTarget) {
     }
     let build_target = env::var("TARGET").unwrap();
     if build_target.contains("wasi") {
-        let wasi_sysroot_path = env::var("WASI_SYSROOT")
-            .expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
-        builder = builder.clang_arg(format!("--sysroot={}", wasi_sysroot_path));
+        if build_target.contains("wasmer") {
+            let wasix_sysroot_path = String::from_utf8(
+                Command::new("wasixcc")
+                    .arg("--print-sysroot")
+                    .output()
+                    .expect("The wasm32-wasi target with wasmer requires wasixcc to be installed")
+                    .stdout,
+            )
+            .unwrap();
+            let wasix_sysroot_path = wasix_sysroot_path.trim();
+            builder = builder.clang_arg(format!("--sysroot={wasix_sysroot_path}"));
+        } else {
+            let wasi_sysroot_path = env::var("WASI_SYSROOT")
+                .expect("The wasm32-wasi target requires WASI_SYSROOT to be set");
+            builder = builder.clang_arg(format!("--sysroot={wasi_sysroot_path}"));
+        }
         // For some reason, when we configure bindgen for WASIX, all functions have
         // hidden visibility by default, which is why they get skipped. Hence, we
         // need to tell it to use default visibility by default (does that even make
@@ -491,13 +506,16 @@ fn link_static_lib_binaries(build_dir: &Path) {
         println!("cargo:rustc-link-lib=Dbghelp");
         println!("cargo:rustc-link-lib=advapi32");
     } else if target.contains("wasi") && target.contains("wasmer") {
-        let wasi_sysroot = PathBuf::from(unsafe{OsString::from_encoded_bytes_unchecked(
+        let wasi_sysroot = String::from_utf8(
             Command::new("wasixcc")
                 .arg("--print-sysroot")
-                   .output()
+                .output()
                 .expect("Failed to run wasixcc to get sysroot")
                 .stdout,
-        )});
+        )
+        .expect("Failed to convert wasixcc output to String");
+        let wasi_sysroot = wasi_sysroot.trim();
+        let wasi_sysroot = PathBuf::from(wasi_sysroot);
 
         // js_static_extended (the extra functions)
         println!(
@@ -523,7 +541,7 @@ fn link_static_lib_binaries(build_dir: &Path) {
         println!("cargo:rustc-link-lib=clang_rt.builtins-wasm32");
     }
 
-    if let Some(cxxstdlib) = env::var("CXXSTDLIB").ok() {
+    if let Ok(cxxstdlib) = env::var("CXXSTDLIB") {
         println!("cargo:rustc-link-lib={cxxstdlib}");
     } else if target.contains("apple") || target.contains("freebsd") || target.contains("ohos") {
         println!("cargo:rustc-link-lib=c++");
@@ -815,7 +833,7 @@ fn ignore(path: &Path) -> bool {
 
     let ignored_extensions = ["pyc", "o", "so", "dll", "dylib"];
 
-    path.extension().map_or(false, |extension| {
+    path.extension().is_some_and(|extension| {
         ignored_extensions
             .iter()
             .any(|&ignored| extension == ignored)
@@ -946,8 +964,6 @@ impl BuildTarget {
                 "JS::GetExceptionCause",
                 "JS::GetModulePrivate",
                 "JS::GetOptimizedEncodingBuildId",
-                "JS::GetPromiseResult",
-                "JS::GetRegExpFlags",
                 "JS::GetScriptPrivate",
                 "JS::GetScriptTranscodingBuildId",
                 "JS::GetScriptedCallerPrivate",
@@ -1235,7 +1251,7 @@ mod archive {
         attestation_cmd
             .arg("attestation")
             .arg("verify")
-            .arg(&archive_path)
+            .arg(archive_path)
             .arg("-R")
             .arg("servo/mozjs");
 
@@ -1248,7 +1264,7 @@ mod archive {
         if let Err(output) = attestation_cmd.output() {
             println!("cargo:warning=Failed to verify the artifact downloaded from CI: {output:?}");
             // Remove the file so the build-script will redownload next time.
-            let _ = fs::remove_file(&archive_path).inspect_err(|e| {
+            let _ = fs::remove_file(archive_path).inspect_err(|e| {
                 println!("cargo:warning=Failed to delete archive: {e}");
             });
             match kind {

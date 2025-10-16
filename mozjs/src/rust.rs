@@ -47,9 +47,8 @@ use crate::jsapi::JS_AddExtraGCRootsTracer;
 use crate::jsapi::MutableHandleIdVector as RawMutableHandleIdVector;
 use crate::jsapi::{already_AddRefed, jsid};
 use crate::jsapi::{BuildStackString, CaptureCurrentStack, StackFormat};
-use crate::jsapi::{ColumnNumberOneOrigin, TaggedColumnNumberOneOrigin};
 use crate::jsapi::{Evaluate2, HandleValueArray, StencilRelease};
-use crate::jsapi::{InitSelfHostedCode, InstantiationStorage, IsWindowSlow};
+use crate::jsapi::{InitSelfHostedCode, IsWindowSlow};
 use crate::jsapi::{
     JSAutoRealm, JS_SetGCParameter, JS_SetNativeStackQuota, JS_WrapObject, JS_WrapValue,
 };
@@ -758,10 +757,7 @@ pub unsafe extern "C" fn report_warning(_cx: *mut JSContext, report: *mut JSErro
     let msg_slice = slice::from_raw_parts(msg_ptr, msg_len);
     let msg = str::from_utf8_unchecked(msg_slice);
 
-    warn!(
-        "Warning at {}:{}:{}: {}\n",
-        fname, lineno, column._base, msg
-    );
+    warn!("Warning at {}:{}:{}: {}\n", fname, lineno, column, msg);
 }
 
 pub struct IdVector(*mut PersistentRootedIdVector);
@@ -1321,6 +1317,9 @@ pub mod wrappers {
     use crate::jsapi::PromiseState;
     use crate::jsapi::PromiseUserInputEventHandlingState;
     use crate::jsapi::ReadOnlyCompileOptions;
+    use crate::jsapi::ReadableStreamMode;
+    use crate::jsapi::ReadableStreamReaderMode;
+    use crate::jsapi::ReadableStreamUnderlyingSource;
     use crate::jsapi::Realm;
     use crate::jsapi::RefPtr;
     use crate::jsapi::RegExpFlags;
